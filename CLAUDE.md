@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Google Workspace MCP v2 — strangler fig replacement for mcp-google-workspace.
+**mise-en-space** — Google Workspace MCP with mise-en-place philosophy: everything prepped, in its place, ready for Claude to cook with.
 
 ## What This Is
 

@@ -1,6 +1,6 @@
-# mcp-workspace-v2
+# mise-en-space
 
-Google Workspace MCP v2 — Strangler fig replacement for mcp-google-workspace.
+Google Workspace MCP — mise-en-place for knowledge work. Everything prepped, in its place, ready for Claude to cook with.
 
 ## Architecture
 

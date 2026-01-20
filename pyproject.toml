@@ -1,7 +1,7 @@
 [project]
-name = "mcp-workspace-v2"
+name = "mise-en-space"
 version = "0.1.0"
-description = "Google Workspace MCP v2 — filesystem-first, token-efficient"
+description = "Google Workspace MCP — mise-en-place for knowledge work"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
