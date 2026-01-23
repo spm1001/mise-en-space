@@ -1,0 +1,69 @@
+{
+  "thread_id": "18f4a3b2c1d0e9f8",
+  "subject": "Q4 Planning Meeting Notes",
+  "messages": [
+    {
+      "message_id": "18f4a3b2c1d0e9f8",
+      "from_address": "alice@example.com",
+      "to_addresses": [
+        "bob@example.com",
+        "carol@example.com"
+      ],
+      "cc_addresses": [
+        "team@example.com"
+      ],
+      "subject": "Q4 Planning Meeting Notes",
+      "date": "2024-10-15T10:30:00Z",
+      "body_text": "Hi team,\n\nHere are the notes from today's Q4 planning meeting:\n\n1. Revenue targets confirmed at $2.5M\n2. Hiring plan: 3 engineers, 1 PM\n3. Product roadmap attached\n\nLet me know if I missed anything.\n\nThanks,\nAlice\n\n--\nAlice Smith\nHead of Product\nalice@example.com",
+      "body_html": null,
+      "attachments": [
+        {
+          "filename": "Q4_Roadmap.pdf",
+          "mime_type": "application/pdf",
+          "size": 245760,
+          "attachment_id": "ANGjdJ_roadmap123"
+        }
+      ],
+      "drive_links": []
+    },
+    {
+      "message_id": "18f4a3c5d6e7f8a9",
+      "from_address": "bob@example.com",
+      "to_addresses": [
+        "alice@example.com"
+      ],
+      "cc_addresses": [
+        "carol@example.com",
+        "team@example.com"
+      ],
+      "subject": "Re: Q4 Planning Meeting Notes",
+      "date": "2024-10-15T11:45:00Z",
+      "body_text": null,
+      "body_html": "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body><div>Thanks Alice!</div><div><br></div><div>One addition - we also discussed the <b>beta launch timeline</b>:</div><ul><li>Internal beta: Nov 1</li><li>Public beta: Nov 15</li><li>GA: Dec 1</li></ul><div><br></div><div>I've also linked the <a href=\"https://docs.google.com/spreadsheets/d/1ABC_budget_spreadsheet/edit\">budget spreadsheet</a> for reference.</div><div><br></div><div>Best,</div><div>Bob</div><div><br></div><!-- tracking pixel --><img width=\"1\" height=\"1\" src=\"https://track.example.com/pixel.gif\"><div><!--[if mso]>Outlook stuff<![endif]--></div></body></html>",
+      "attachments": [],
+      "drive_links": [
+        {
+          "file_id": "1ABC_budget_spreadsheet",
+          "url": "https://docs.google.com/spreadsheets/d/1ABC_budget_spreadsheet/edit"
+        }
+      ]
+    },
+    {
+      "message_id": "18f4a4d8e9f0a1b2",
+      "from_address": "carol@example.com",
+      "to_addresses": [
+        "alice@example.com",
+        "bob@example.com"
+      ],
+      "cc_addresses": [
+        "team@example.com"
+      ],
+      "subject": "Re: Q4 Planning Meeting Notes",
+      "date": "2024-10-15T14:20:00Z",
+      "body_text": "Looks good! I've updated the project tracker.\n\n> Thanks Alice!\n> One addition - we also discussed the beta launch timeline\n\nAgreed on the timeline. I'll sync with engineering.\n\nCarol\n\nSent from my iPhone",
+      "body_html": null,
+      "attachments": [],
+      "drive_links": []
+    }
+  ]
+}

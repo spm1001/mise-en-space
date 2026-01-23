@@ -1,0 +1,83 @@
+{
+  "spreadsheet_id": "1UlWoEsfjzqbuS_tKD6Drm4wmbPLeGOKWVBVip5AI-xw",
+  "title": "Test Spreadsheet",
+  "locale": "en_GB",
+  "time_zone": "Europe/London",
+  "sheets": [
+    {
+      "name": "Sheet1",
+      "values": [
+        [
+          "Name",
+          "Fibs",
+          "",
+          "23/01/2026"
+        ],
+        [
+          "Hello",
+          "1",
+          "",
+          "\u00a31.00",
+          "",
+          "Merged"
+        ],
+        [
+          "Goodbye",
+          "1",
+          "",
+          "\u00a31.00",
+          "",
+          "Au Revoir",
+          "Au Revoir",
+          "Au Revoir"
+        ],
+        [
+          "Au Revoir",
+          "2",
+          "",
+          "\u00a32.00",
+          "",
+          "Auf Wiedersehen",
+          "Auf Wiedersehen",
+          "Auf Wiedersehen"
+        ],
+        [
+          "Auf Wiedersehen",
+          "3",
+          "",
+          "\u00a33.00",
+          "",
+          "Aloha",
+          "Aloha",
+          "Aloha"
+        ],
+        [
+          "Aloha",
+          "5",
+          "",
+          "\u00a35.00",
+          "",
+          "Yoyo",
+          "Yoyo",
+          "Yoyo"
+        ],
+        [
+          "Yoyo",
+          "8",
+          "",
+          "\u00a38.00",
+          "",
+          "Boom",
+          "Boom",
+          "Boom"
+        ],
+        [
+          "Boom",
+          "13",
+          "",
+          "\u00a313.00"
+        ]
+      ]
+    }
+  ]
+}

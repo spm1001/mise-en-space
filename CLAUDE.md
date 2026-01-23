@@ -276,21 +276,53 @@ uv run python -m auth --manual
 ## Quality Gates
 
 ```bash
-uv run pytest tests/           # 21 unit tests (skip integration by default)
-uv run mypy models.py extractors/ adapters/ logging_config.py retry.py oauth_config.py auth.py
+uv run pytest tests/           # 107 unit tests (skip integration by default)
+uv run mypy models.py extractors/ adapters/ validation.py logging_config.py retry.py oauth_config.py auth.py
 ```
 
 Integration tests require `-m integration` flag and real credentials.
+
+## Validation & ID Conversion
+
+`validation.py` provides shared utilities for URL/ID handling:
+
+| Function | Purpose |
+|----------|---------|
+| `extract_drive_file_id(url_or_id)` | Drive URL → file ID |
+| `extract_gmail_id(url_or_id)` | Gmail URL/web ID → API ID (auto-converts) |
+| `convert_gmail_web_id(web_id)` | Arsenal Recon algorithm for web→API conversion |
+| `is_gmail_web_id()` / `is_gmail_api_id()` | Format detection |
+
+**Gmail ID gotcha:** Web UI uses different IDs than API. URLs like `mail.google.com/.../FMfcgz...` have web IDs that need conversion. The conversion works for `thread-f:` format (normal emails) but fails for `thread-a:` format (self-sent emails ~2018+).
 
 ## Fixture Organization
 
 ```
 fixtures/
-├── sheets/basic.json     # Spreadsheet with multiple tabs, escaping edge cases
-├── docs/                 # (empty — add when porting docs extractor)
-├── gmail/                # (empty — add when porting gmail extractor)
-└── slides/               # (empty — add when porting slides extractor)
+├── docs/
+│   ├── basic.json              # Synthetic: multi-tab with all element types
+│   ├── real_multi_tab.json     # Real API: 3-tab test document
+│   └── real_single_tab.json    # Real API: single tab document
+├── sheets/
+│   ├── basic.json              # Synthetic: escaping edge cases
+│   └── real_spreadsheet.json   # Real API: test spreadsheet
+├── gmail/
+│   ├── thread.json             # Synthetic: 3-message thread
+│   └── real_thread.json        # Real API: 2-message thread (sanitized)
+└── slides/
+    └── real_presentation.json  # Real API: 3-slide presentation
 ```
+
+**Synthetic vs Real:** Synthetic fixtures are hand-crafted for edge cases. Real fixtures are captured from Google APIs via `scripts/capture_fixtures.py` and sanitized via `scripts/sanitize_fixtures.py`.
+
+**Capturing new fixtures:**
+```bash
+uv run python scripts/capture_fixtures.py --sanitize   # Fetch + sanitize (recommended)
+uv run python scripts/capture_fixtures.py              # Fetch only
+uv run python scripts/sanitize_fixtures.py             # Sanitize existing fixtures
+```
+
+**Test doc folder:** [Google Docs Test Suite](https://drive.google.com/drive/folders/1_UMRzD4KScPksrnrGPrpk4ioQmvUDhmX) contains test documents for fixture capture.
 
 Fixtures are JSON. `tests/conftest.py` converts them to typed dataclasses.
 

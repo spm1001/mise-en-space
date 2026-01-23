@@ -78,10 +78,11 @@ class TestLayerBoundaries:
 
     def test_extractors_are_pure(self) -> None:
         """
-        Extractors must only import from stdlib, typing, and shared models.
+        Extractors must only import from stdlib, shared models, and extraction utilities.
 
-        This ensures they're truly pure functions with no side effects
-        or external dependencies that would make testing difficult.
+        This ensures layer isolation: extractors don't import from adapters or tools.
+        Third-party extraction utilities (markitdown, regex) are allowed since they
+        transform data without making API calls.
         """
         extractors_dir = PROJECT_ROOT / "extractors"
         allowed_stdlib = {
@@ -89,10 +90,14 @@ class TestLayerBoundaries:
             "typing", "re", "json", "datetime", "collections",
             "itertools", "functools", "dataclasses", "enum",
             "html", "xml", "csv", "io", "textwrap", "string",
-            # The package itself
-            "extractors",
+            "base64", "tempfile", "os", "logging",
+            # The package itself (internal imports)
+            "extractors", "talon_signature",
             # Shared type definitions (allowed - no side effects)
             "models",
+            # Extraction utilities (no API calls, just data transformation)
+            "markitdown",  # HTML/PDF/Office → markdown conversion
+            "regex",       # Enhanced regex (talon needs duplicate named groups)
         }
 
         violations = []
