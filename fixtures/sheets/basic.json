@@ -1,0 +1,27 @@
+{
+  "title": "Q4 Budget 2024",
+  "sheets": [
+    {
+      "name": "Summary",
+      "values": [
+        ["Category", "Amount", "Notes"],
+        ["Revenue", "1000000", "Projected"],
+        ["Expenses", "750000", "Includes \"contingency\""],
+        ["Net", "250000", "Before taxes"]
+      ]
+    },
+    {
+      "name": "Details",
+      "values": [
+        ["ID", "Description", "Amount"],
+        ["1", "Widget A", "500"],
+        ["2", "Service B, Premium", "1500"],
+        ["3", "Multi\nline\nnote", "200"]
+      ]
+    },
+    {
+      "name": "Empty Sheet",
+      "values": []
+    }
+  ]
+}

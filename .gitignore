@@ -38,6 +38,7 @@ ENV/
 htmlcov/
 .tox/
 .nox/
+fixtures/integration_ids.json
 
 # Secrets - NEVER commit
 credentials.json

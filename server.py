@@ -4,11 +4,12 @@ Google Workspace MCP v2 Server
 
 Filesystem-first, token-efficient MCP server for Google Workspace.
 
-Verb model:
+Verb model (3 tools):
 - search: Unified discovery across Drive/Gmail/Contacts
 - fetch: Content to filesystem, return path
 - create: Markdown → Doc/Sheet/Slides
-- help: Self-documentation
+
+Documentation is provided via MCP Resources, not a tool.
 
 Architecture:
 - extractors/: Pure functions (no MCP, no API calls)
@@ -51,19 +52,18 @@ def search(
 
 
 @mcp.tool()
-def fetch(
-    file_id: str,
-    purpose: str = 'llm-analysis'
-) -> dict:
+def fetch(file_id: str) -> dict:
     """
     Fetch content to filesystem.
 
     Writes processed content to ~/.mcp-workspace/[account]/
     Returns path for caller to read with standard file tools.
 
+    Always optimizes for LLM consumption (markdown, clean text).
+    Auto-detects ID type (Drive file vs Gmail thread).
+
     Args:
-        file_id: Drive file ID or Gmail message/thread ID
-        purpose: 'llm-analysis' | 'archival' | 'editing'
+        file_id: Drive file ID, Gmail thread ID, or URL
 
     Returns:
         path: Filesystem path to fetched content
@@ -96,37 +96,6 @@ def create(
     """
     # TODO: Wire to adapters
     return {"status": "not_implemented", "title": title}
-
-
-@mcp.tool()
-def help(topic: str = None) -> str:
-    """
-    Self-documentation for the MCP server.
-
-    Args:
-        topic: Optional topic (search, fetch, create, formats, etc.)
-
-    Returns:
-        Documentation text
-    """
-    if topic is None:
-        return """
-# Google Workspace MCP v2
-
-## Verbs
-- **search** — Find files/emails/contacts, get previews
-- **fetch** — Download content to filesystem
-- **create** — Make new Docs/Sheets/Slides from markdown
-- **help** — This documentation
-
-## Filesystem-First Design
-Content is written to ~/.mcp-workspace/ and you read it with standard tools.
-This keeps context windows clean and gives you full control over ingestion.
-
-Use `help(topic)` for details on specific features.
-"""
-    # TODO: Topic-specific help
-    return f"Help for '{topic}' not yet implemented."
 
 
 # ============================================================================

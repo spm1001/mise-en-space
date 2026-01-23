@@ -26,31 +26,41 @@ server.py       FastMCP entry point
 - Tools wire adapters → extractors → workspace
 - server.py just registers tools
 
-## Verb Vocabulary
+## MCP Tool Surface (3 verbs)
 
-Based on research in `mcp-google-workspace/docs/archive/mcpv2/Deep-dive code analysis...`:
+The MCP exposes exactly 3 tools to Claude:
 
-```
-find_*          Discovery, returns metadata only (NEVER writes files)
-  find_drive_files(query) → [{id, name, mimeType, modified}]
-  find_gmail_threads(query) → [{threadId, subject, snippet, date}]
+| Tool | Purpose | Writes files? |
+|------|---------|---------------|
+| `search` | Find files/emails/contacts, return metadata | No |
+| `fetch` | Download content to workspace, return path | Yes |
+| `create` | Make new Doc/Sheet/Slides from markdown | No (creates in Drive) |
 
-fetch_*         Retrieval, deposits to working folder (ALWAYS writes, returns path)
-  fetch_drive_file(fileId, format?) → {path: "~/.mcp-workspace/.../file.md"}
-  fetch_gmail_thread(threadId) → {path: "~/.mcp-workspace/.../thread.txt"}
-
-action_*        Mutations (minimal surface)
-  action_send_gmail(to, subject, body)
-  action_create_drive_file(name, content, parent?)
-
-help            Self-documentation
-```
+Documentation is provided via MCP Resources (static content), not a tool.
 
 **Key behaviors:**
-- `find_*` tools NEVER write files — metadata only
-- `fetch_*` tools ALWAYS write to account folder, return path
+- `search` returns metadata only — Claude triages before fetching
+- `fetch` always writes to `~/.mcp-workspace/[account]/`, returns path
+- `fetch` auto-detects ID type (Drive file ID vs Gmail thread ID vs URL)
 - Filenames use IDs for deduplication
 - Pagination is opaque (cursors managed internally)
+
+## Adapter Functions
+
+Adapter functions mirror the MCP verbs exactly:
+
+```python
+# In adapters/drive.py
+search_drive_files(query) -> list[dict]
+fetch_drive_file(file_id) -> dict
+create_drive_file(title, content) -> dict
+
+# In adapters/gmail.py
+search_gmail_threads(query) -> list[dict]
+fetch_gmail_thread(thread_id) -> dict
+```
+
+Same vocabulary at every layer. No mental translation needed.
 
 ## Adapter Patterns
 
@@ -93,25 +103,89 @@ drive.files().export(fileId=file_id, mimeType="text/markdown")
 
 ## Extractor Interface
 
-Extractors are pure functions. They receive API response data, return processed content.
+Extractors are pure functions. They receive typed dataclasses, return content strings.
 
 ```python
-# extractors/docs.py
-def extract_doc_content(doc_response: dict) -> str:
-    """
-    Args:
-        doc_response: Raw response from Docs API documents.get()
+# extractors/sheets.py
+from models import SpreadsheetData
 
-    Returns:
-        Markdown string
-    """
-    # Pure transformation, no API calls
-    return markdown_content
+def extract_sheets_content(data: SpreadsheetData, max_length: int | None = None) -> str:
+    """Pure transformation, no API calls."""
+    ...
 ```
 
-**What extractors receive:** Raw API response dicts
-**What extractors return:** Processed content (markdown, CSV, structured text)
+**What extractors receive:** Typed dataclasses from `models.py` (SpreadsheetData, DocData, etc.)
+**What extractors return:** Content strings (markdown, CSV, structured text)
 **What extractors NEVER do:** Make API calls, write files, access filesystem
+
+## Error Handling
+
+Errors are structured via `MiseError` dataclass in `models.py`.
+
+### Error Kinds
+
+| Kind | Meaning | Retryable? |
+|------|---------|------------|
+| `AUTH_EXPIRED` | Token needs refresh | No (user action required) |
+| `NOT_FOUND` | Resource doesn't exist | No |
+| `PERMISSION_DENIED` | No access to resource | No |
+| `RATE_LIMITED` | Hit API quota | Yes (with backoff) |
+| `NETWORK_ERROR` | Connection failed | Yes |
+| `INVALID_INPUT` | Bad parameters | No |
+| `EXTRACTION_FAILED` | Couldn't process content | No |
+
+### Layer Responsibilities
+
+**Adapters:**
+- Catch Google API exceptions
+- Convert to `MiseError` with appropriate `ErrorKind`
+- Include useful details (file_id, http_status, etc.)
+
+```python
+from models import MiseError, ErrorKind
+
+try:
+    result = service.files().get(fileId=file_id).execute()
+except HttpError as e:
+    if e.resp.status == 404:
+        raise MiseError(ErrorKind.NOT_FOUND, f"File not found: {file_id}")
+    elif e.resp.status == 403:
+        raise MiseError(ErrorKind.PERMISSION_DENIED, f"No access to: {file_id}")
+    elif e.resp.status == 429:
+        raise MiseError(ErrorKind.RATE_LIMITED, "API quota exceeded", retryable=True)
+    raise
+```
+
+**Extractors:**
+- Handle malformed input gracefully where possible
+- Raise `MiseError(ErrorKind.EXTRACTION_FAILED, ...)` for unrecoverable issues
+- Never swallow errors silently
+
+**Tools (MCP layer):**
+- Catch `MiseError`, format for MCP response
+- Include `retryable` hint so Claude knows whether to retry
+
+```python
+@mcp.tool()
+def fetch(file_id: str) -> dict:
+    try:
+        # ... adapter + extractor calls ...
+        return result.to_dict()
+    except MiseError as e:
+        return e.to_dict()  # {"error": True, "kind": "not_found", ...}
+```
+
+### MCP Response Shape
+
+Success:
+```json
+{"path": "~/.mcp-workspace/.../file.md", "format": "markdown", ...}
+```
+
+Error:
+```json
+{"error": true, "kind": "not_found", "message": "File not found: abc123", "retryable": false}
+```
 
 ## Development
 
@@ -184,6 +258,27 @@ To re-authenticate: `cd ../mcp-google-workspace && uv run python -m workspace_mc
 - Clean temp/ on startup
 - Return paths (never content) to tools layer
 
+## Quality Gates
+
+```bash
+uv run pytest tests/           # 21 unit tests (skip integration by default)
+uv run mypy models.py extractors/ logging_config.py retry.py  # Strict type checking
+```
+
+Integration tests require `-m integration` flag and real credentials.
+
+## Fixture Organization
+
+```
+fixtures/
+├── sheets/basic.json     # Spreadsheet with multiple tabs, escaping edge cases
+├── docs/                 # (empty — add when porting docs extractor)
+├── gmail/                # (empty — add when porting gmail extractor)
+└── slides/               # (empty — add when porting slides extractor)
+```
+
+Fixtures are JSON. `tests/conftest.py` converts them to typed dataclasses.
+
 ## Key Design Decisions
 
 Decisions made during planning (Jan 2026) that future Claude should understand:
@@ -193,7 +288,7 @@ Decisions made during planning (Jan 2026) that future Claude should understand:
 | **No `purpose` parameter** | Always LLM-analysis | This MCP is Claude's sous chef — always preparing for LLM consumption. Archival/editing modes are YAGNI. |
 | **markitdown over PyMuPDF** | markitdown | PyMuPDF is 35x faster but AGPL licensed. markitdown is MIT and "good enough" for 80% of PDFs. Revisit if perf becomes an issue. |
 | **MCP SDK v1.x not v2** | Pin to `>=1.23.0,<2.0.0` | v2 is pre-alpha (Q1 2026 expected stable). Core FastMCP patterns are identical; migration will be version bump not rewrite. |
-| **4 verbs not 17 tools** | search, fetch, create, help | v1 had 17 tools. Claude doesn't need that many levers. Unified search + polymorphic fetch covers 95% of use cases. |
+| **3 verbs not 17 tools** | search, fetch, create | v1 had 17 tools. Claude doesn't need that many levers. Unified search + polymorphic fetch covers 95% of use cases. Documentation via MCP Resources, not a tool. |
 | **ID auto-detection** | fetch(id) figures out type | Gmail thread IDs look different from Drive file IDs. Server detects, no explicit source param needed. |
 | **Pre-exfil detection** | Check "Email Attachments" folder | User runs background extractor. Value isn't speed (Gmail is 3x faster); value is Drive fullText indexes PDF *content*. |
 

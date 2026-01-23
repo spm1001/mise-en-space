@@ -1,0 +1,276 @@
+"""
+Type definitions for mise-en-space.
+
+Dataclasses defining the contracts between layers:
+- Adapters produce these structures from API responses
+- Extractors consume these structures and return content strings
+- Tools wire everything together
+
+These types make the adapter→extractor contract explicit and IDE-checkable.
+"""
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any
+
+
+# ============================================================================
+# ERROR TYPES
+# ============================================================================
+
+class ErrorKind(Enum):
+    """Categories of errors for consistent handling."""
+    AUTH_EXPIRED = "auth_expired"        # Token needs refresh
+    NOT_FOUND = "not_found"              # Resource doesn't exist
+    PERMISSION_DENIED = "permission_denied"  # No access to resource
+    RATE_LIMITED = "rate_limited"        # Hit API quota
+    NETWORK_ERROR = "network_error"      # Connection failed
+    INVALID_INPUT = "invalid_input"      # Bad parameters
+    EXTRACTION_FAILED = "extraction_failed"  # Couldn't process content
+    UNKNOWN = "unknown"                  # Unexpected error
+
+
+class MiseError(Exception):
+    """
+    Structured error for consistent handling across layers.
+
+    Adapters raise these on API failures.
+    Tools catch and format for MCP response.
+
+    Inherits from Exception so it can be raised.
+    """
+
+    def __init__(
+        self,
+        kind: ErrorKind,
+        message: str,
+        details: dict[str, Any] | None = None,
+        retryable: bool = False,
+    ):
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+        self.details = details or {}
+        self.retryable = retryable
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dict for MCP response."""
+        return {
+            "error": True,
+            "kind": self.kind.value,
+            "message": self.message,
+            "retryable": self.retryable,
+            **self.details,
+        }
+
+
+# ============================================================================
+# SHEETS TYPES
+# ============================================================================
+
+# Cell values from Sheets API are strings, numbers, booleans, or None
+CellValue = str | int | float | bool | None
+
+
+@dataclass
+class SheetTab:
+    """A single sheet/tab within a spreadsheet."""
+    name: str
+    values: list[list[CellValue]]  # Rows of cells
+
+
+@dataclass
+class SpreadsheetData:
+    """
+    Assembled spreadsheet data for the sheets extractor.
+
+    Adapter calls:
+    1. spreadsheets().get() for metadata
+    2. spreadsheets().values().get() for each sheet
+    Then assembles this structure.
+    """
+    title: str
+    spreadsheet_id: str
+    sheets: list[SheetTab]
+
+    # Optional metadata
+    locale: str | None = None
+    time_zone: str | None = None
+
+
+# ============================================================================
+# DOCS TYPES
+# ============================================================================
+
+@dataclass
+class DocData:
+    """
+    Assembled document data for the docs extractor.
+
+    Adapter calls documents().get() and assembles this structure.
+    The raw API response has deeply nested paragraphs, text runs, etc.
+    Adapter flattens it into a processable form.
+    """
+    title: str
+    document_id: str
+    body: dict[str, Any]  # The 'body' field from Docs API
+    lists: dict[str, Any] = field(default_factory=dict)  # List definitions
+    inline_objects: dict[str, Any] = field(default_factory=dict)  # Images, etc.
+
+    # Optional metadata
+    revision_id: str | None = None
+
+
+# ============================================================================
+# GMAIL TYPES
+# ============================================================================
+
+@dataclass
+class EmailAttachment:
+    """An attachment on an email message."""
+    filename: str
+    mime_type: str
+    size: int
+    attachment_id: str  # For fetching content later
+
+    # If already fetched
+    content: bytes | None = None
+
+
+@dataclass
+class EmailMessage:
+    """A single email message within a thread."""
+    message_id: str
+    from_address: str
+    to_addresses: list[str]
+    cc_addresses: list[str] = field(default_factory=list)
+    subject: str = ""
+    date: datetime | None = None
+
+    # Content - at least one should be present
+    body_text: str | None = None  # Plain text version
+    body_html: str | None = None  # HTML version
+
+    # Attachments
+    attachments: list[EmailAttachment] = field(default_factory=list)
+
+    # Drive links mentioned in body (people say "attached" when they mean "linked")
+    drive_links: list[dict[str, str]] = field(default_factory=list)
+
+
+@dataclass
+class GmailThreadData:
+    """
+    Assembled Gmail thread data for the gmail extractor.
+
+    Adapter calls:
+    1. threads().get() with format=FULL
+    2. Processes each message
+    Then assembles this structure.
+    """
+    thread_id: str
+    subject: str
+    messages: list[EmailMessage]
+
+    # Summary metadata
+    message_count: int = 0
+    has_attachments: bool = False
+
+    def __post_init__(self) -> None:
+        self.message_count = len(self.messages)
+        self.has_attachments = any(
+            m.attachments for m in self.messages
+        )
+
+
+# ============================================================================
+# SLIDES TYPES
+# ============================================================================
+
+@dataclass
+class SlideData:
+    """A single slide within a presentation."""
+    slide_id: str
+    index: int  # 0-based position
+
+    # Text content extracted from shapes
+    text_content: list[str] = field(default_factory=list)
+
+    # Speaker notes
+    notes: str | None = None
+
+
+@dataclass
+class PresentationData:
+    """
+    Assembled presentation data for the slides extractor.
+
+    Adapter calls presentations().get() and assembles this structure.
+    """
+    title: str
+    presentation_id: str
+    slides: list[SlideData]
+
+    # Optional metadata
+    page_size: dict[str, Any] | None = None  # Width/height
+    locale: str | None = None
+
+
+# ============================================================================
+# SEARCH RESULT TYPES
+# ============================================================================
+
+@dataclass
+class DriveSearchResult:
+    """A single result from Drive search."""
+    file_id: str
+    name: str
+    mime_type: str
+    modified_time: datetime | None = None
+
+    # For triage
+    snippet: str | None = None
+    owners: list[str] = field(default_factory=list)
+    web_view_link: str | None = None
+
+
+@dataclass
+class GmailSearchResult:
+    """A single result from Gmail search."""
+    thread_id: str
+    subject: str
+    snippet: str
+    date: datetime | None = None
+
+    # For triage
+    from_address: str | None = None
+    message_count: int = 1
+    has_attachments: bool = False
+
+
+# ============================================================================
+# FETCH RESULT TYPE
+# ============================================================================
+
+@dataclass
+class FetchResult:
+    """
+    Result of a fetch operation.
+
+    Returned by tools layer after:
+    1. Adapter fetches data
+    2. Extractor processes content
+    3. Workspace writes file
+    """
+    path: str  # Filesystem path to content
+    format: str  # 'markdown', 'csv', 'text', etc.
+
+    # Metadata about the source
+    title: str
+    source_id: str
+    source_type: str  # 'drive', 'gmail', 'slides', etc.
+
+    # Content stats
+    content_length: int = 0
+    truncated: bool = False
