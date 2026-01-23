@@ -184,6 +184,19 @@ To re-authenticate: `cd ../mcp-google-workspace && uv run python -m workspace_mc
 - Clean temp/ on startup
 - Return paths (never content) to tools layer
 
+## Key Design Decisions
+
+Decisions made during planning (Jan 2026) that future Claude should understand:
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| **No `purpose` parameter** | Always LLM-analysis | This MCP is Claude's sous chef — always preparing for LLM consumption. Archival/editing modes are YAGNI. |
+| **markitdown over PyMuPDF** | markitdown | PyMuPDF is 35x faster but AGPL licensed. markitdown is MIT and "good enough" for 80% of PDFs. Revisit if perf becomes an issue. |
+| **MCP SDK v1.x not v2** | Pin to `>=1.23.0,<2.0.0` | v2 is pre-alpha (Q1 2026 expected stable). Core FastMCP patterns are identical; migration will be version bump not rewrite. |
+| **4 verbs not 17 tools** | search, fetch, create, help | v1 had 17 tools. Claude doesn't need that many levers. Unified search + polymorphic fetch covers 95% of use cases. |
+| **ID auto-detection** | fetch(id) figures out type | Gmail thread IDs look different from Drive file IDs. Server detects, no explicit source param needed. |
+| **Pre-exfil detection** | Check "Email Attachments" folder | User runs background extractor. Value isn't speed (Gmail is 3x faster); value is Drive fullText indexes PDF *content*. |
+
 ## Research References
 
 Key research informing this design:
