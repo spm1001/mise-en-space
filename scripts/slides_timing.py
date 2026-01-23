@@ -58,8 +58,16 @@ def time_sequential_thumbnails(service, presentation_id: str, slide_ids: list[st
     return elapsed
 
 
-def time_batch_thumbnails(service, presentation_id: str, slide_ids: list[str]) -> float:
-    """Time batch thumbnail fetches (new approach)."""
+def time_batch_thumbnails(service, presentation_id: str, slide_ids: list[str]) -> tuple[float, int, int]:
+    """
+    Time batch thumbnail fetches.
+
+    NOTE: Google disabled HTTP batch for Workspace APIs in 2022. This will fail
+    with 501 errors. Kept for documentation purposes.
+
+    Returns:
+        Tuple of (elapsed_time, success_count, error_count)
+    """
     results = {}
 
     def callback(request_id, response, exception):
@@ -81,7 +89,10 @@ def time_batch_thumbnails(service, presentation_id: str, slide_ids: list[str]) -
         )
     batch.execute()
     elapsed = time.perf_counter() - start
-    return elapsed
+
+    successes = len([r for r in results.values() if "error" not in r])
+    errors = len([r for r in results.values() if "error" in r])
+    return elapsed, successes, errors
 
 
 def main():
@@ -115,15 +126,20 @@ def main():
     print(f"   Per slide: {seq_time/len(slide_ids):.3f}s")
 
     print(f"\n3. Batch thumbnails ({len(slide_ids)} slides):")
-    batch_time = time_batch_thumbnails(service, presentation_id, slide_ids)
+    batch_time, batch_ok, batch_err = time_batch_thumbnails(service, presentation_id, slide_ids)
     print(f"   Time: {batch_time:.3f}s")
-    print(f"   Per slide: {batch_time/len(slide_ids):.3f}s")
+    print(f"   Successes: {batch_ok}, Errors: {batch_err}")
+    if batch_err > 0:
+        print(f"   NOTE: HTTP batch disabled for Workspace APIs (2022). Errors expected.")
 
     print(f"\n--- Summary ---")
     print(f"Text only:   {get_time:.3f}s")
     print(f"Sequential:  {get_time + seq_time:.3f}s total ({seq_time:.3f}s for thumbnails)")
-    print(f"Batch:       {get_time + batch_time:.3f}s total ({batch_time:.3f}s for thumbnails)")
-    print(f"Batch speedup: {seq_time/batch_time:.1f}x faster than sequential")
+    if batch_ok > 0:
+        print(f"Batch:       {get_time + batch_time:.3f}s total ({batch_time:.3f}s for thumbnails)")
+        print(f"Batch speedup: {seq_time/batch_time:.1f}x faster than sequential")
+    else:
+        print(f"Batch:       FAILED ({batch_err} errors) — use sequential")
 
 
 if __name__ == "__main__":

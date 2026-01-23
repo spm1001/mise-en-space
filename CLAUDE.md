@@ -343,7 +343,7 @@ Integration tests require `-m integration` flag and real credentials.
 uv run python scripts/slides_timing.py [presentation_id]   # Compare API patterns
 ```
 
-**Key finding (Jan 2026):** Batch thumbnail fetching is 58x faster than sequential for 43 slides (1.1s vs 62s). This eliminates the need for heuristic "should I fetch this thumbnail?" logic — just batch-fetch all.
+**Key finding (Jan 2026):** HTTP batch requests are NOT supported for Workspace editor APIs (Slides, Sheets, Docs) — Google disabled this platform feature in 2022. Thumbnails must be fetched sequentially (~0.5s per slide). For a 43-slide deck, expect ~20s. Consider porting v1's selective thumbnail logic (skip stock photos, text-only slides).
 
 ## Validation & ID Conversion
 
@@ -412,7 +412,7 @@ Decisions made during planning (Jan 2026) that future Claude should understand:
 |---------|-----------------|-------|-----|
 | **Docs** | `get(includeTabsContent=True)` | 1 | Minimal overhead, all tabs in one response |
 | **Sheets** | `get()` + `values().batchGet()` | 2 | `includeGridData` bloats payload 560x with formatting metadata |
-| **Slides** | `get()` + batch `pages().getThumbnail()` | 1-2 | 1 for text-only, +1 if thumbnails needed |
+| **Slides** | `get()` + sequential `getThumbnail()` | 1+N | Batch not supported; ~0.5s per thumbnail |
 | **Gmail** | `threads().get()` + batch `messages().get()` | 2 | Thread metadata + full message bodies |
 
 ### Linked Content in Docs
