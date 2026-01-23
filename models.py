@@ -199,16 +199,37 @@ class GmailThreadData:
 # ============================================================================
 
 @dataclass
+class SlideTable:
+    """A table within a slide."""
+    rows: list[list[str]]  # 2D grid of cell values
+
+
+@dataclass
 class SlideData:
     """A single slide within a presentation."""
     slide_id: str
     index: int  # 0-based position
 
-    # Text content extracted from shapes
+    # Slide title (from TITLE or CENTERED_TITLE placeholder)
+    title: str | None = None
+
+    # Text content extracted from shapes (excluding title)
     text_content: list[str] = field(default_factory=list)
+
+    # Tables extracted from slide
+    tables: list[SlideTable] = field(default_factory=list)
 
     # Speaker notes
     notes: str | None = None
+
+    # Visual elements descriptions (for context without thumbnails)
+    visual_elements: list[str] = field(default_factory=list)
+
+    # Thumbnail (populated by adapter if requested)
+    thumbnail_bytes: bytes | None = None
+
+    # Warnings during extraction (missing objectId, etc.)
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -216,14 +237,20 @@ class PresentationData:
     """
     Assembled presentation data for the slides extractor.
 
-    Adapter calls presentations().get() and assembles this structure.
+    Adapter calls:
+    1. presentations().get() for structure and text
+    2. batch pages().getThumbnail() for thumbnails (optional)
+    Then assembles this structure.
     """
     title: str
     presentation_id: str
     slides: list[SlideData]
 
+    # Whether thumbnails were fetched
+    thumbnails_included: bool = False
+
     # Optional metadata
-    page_size: dict[str, Any] | None = None  # Width/height
+    page_size: dict[str, Any] | None = None  # Width/height in EMU
     locale: str | None = None
 
 

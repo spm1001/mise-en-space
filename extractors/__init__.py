@@ -13,6 +13,10 @@ from .gmail import (
     parse_message_payload,
     parse_attachments_from_payload,
 )
+from .slides import (
+    extract_slides_content,
+    parse_presentation,
+)
 
 __all__ = [
     "extract_sheets_content",
@@ -21,4 +25,6 @@ __all__ = [
     "extract_message_content",
     "parse_message_payload",
     "parse_attachments_from_payload",
+    "extract_slides_content",
+    "parse_presentation",
 ]

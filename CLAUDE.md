@@ -16,7 +16,7 @@ A complete rewrite of the Google Workspace MCP with:
 extractors/     Pure functions, no MCP awareness (testable without APIs)
 adapters/       Thin Google API wrappers (easily mocked)
 tools/          MCP tool definitions (thin wiring layer)
-workspace/      Per-session folder management (~/.mcp-workspace/)
+workspace/      File deposit management (mise-fetch/ in cwd)
 server.py       FastMCP entry point
 ```
 
@@ -40,7 +40,7 @@ Documentation is provided via MCP Resources (static content), not a tool.
 
 **Key behaviors:**
 - `search` returns metadata only — Claude triages before fetching
-- `fetch` always writes to `~/.mcp-workspace/[account]/`, returns path
+- `fetch` writes to `mise-fetch/` in cwd, returns path
 - `fetch` auto-detects ID type (Drive file ID vs Gmail thread ID vs URL)
 - Filenames use IDs for deduplication
 - Pagination is opaque (cursors managed internally)
@@ -251,36 +251,63 @@ uv run python -m auth --manual
 
 ## File Deposit Structure
 
+Fetched content goes to `mise-fetch/` in the current working directory:
+
 ```
-~/.mcp-workspace/
-├── config/
-│   └── accounts.json           # Multi-account registry (future)
-├── [account@domain.com]/
-│   ├── drive/
-│   │   ├── {fileId}.md         # Fetched files by ID
-│   │   └── index.json          # Local metadata cache (future)
-│   ├── gmail/
-│   │   ├── {threadId}.txt      # Fetched threads
-│   │   └── attachments/        # Downloaded attachments
-│   └── calendar/
-│       └── {eventId}.json      # Fetched events (future)
-└── temp/                       # Auto-cleanup on server start
+mise-fetch/
+├── slides--ami-deck-2026--1OepZjuwi2em/
+│   ├── manifest.json           # Self-describing metadata
+│   ├── content.md              # Extracted text/markdown
+│   ├── slide_01.png            # Thumbnails (1-indexed, zero-padded)
+│   ├── slide_02.png
+│   └── ...
+├── doc--meeting-notes--abc123def/
+│   ├── manifest.json
+│   └── content.md
+└── gmail--re-project-update--thread456/
+    ├── manifest.json
+    └── content.md
+```
+
+**Folder naming:** `{type}--{title-slug}--{id-prefix}/`
+- Type: slides, doc, sheet, gmail
+- Title: slugified, max 50 chars
+- ID: first 12 chars for readability
+
+**manifest.json:** Self-describing folder metadata:
+```json
+{
+  "type": "slides",
+  "title": "AMI Deck 2026",
+  "id": "1OepZjuwi2emuHPAP-LWxWZnw9g0SbkjhkBJh9ta1rqU",
+  "fetched_at": "2026-01-23T17:00:00+00:00",
+  "slide_count": 43,
+  "has_thumbnails": true
+}
 ```
 
 **workspace/manager.py responsibilities:**
-- Create account folders on first use
-- Generate file paths from IDs
-- Clean temp/ on startup
-- Return paths (never content) to tools layer
+- Create deposit folders with slugified names
+- Write content, thumbnails, manifests
+- List/parse existing deposits
+- Cleanup old deposits (configurable age)
 
 ## Quality Gates
 
 ```bash
-uv run pytest tests/           # 107 unit tests (skip integration by default)
-uv run mypy models.py extractors/ adapters/ validation.py logging_config.py retry.py oauth_config.py auth.py
+uv run pytest tests/           # 160 unit tests (skip integration by default)
+uv run mypy models.py extractors/ adapters/ validation.py workspace/
 ```
 
 Integration tests require `-m integration` flag and real credentials.
+
+## Timing & Benchmarks
+
+```bash
+uv run python scripts/slides_timing.py [presentation_id]   # Compare API patterns
+```
+
+**Key finding (Jan 2026):** Batch thumbnail fetching is 58x faster than sequential for 43 slides (1.1s vs 62s). This eliminates the need for heuristic "should I fetch this thumbnail?" logic — just batch-fetch all.
 
 ## Validation & ID Conversion
 
@@ -310,7 +337,7 @@ fixtures/
 │   ├── thread.json             # Synthetic: 3-message thread
 │   └── real_thread.json        # Real API: 2-message thread (sanitized)
 └── slides/
-    └── real_presentation.json  # Real API: 3-slide presentation
+    └── real_presentation.json  # Real API: 7-slide test presentation
 ```
 
 **Synthetic vs Real:** Synthetic fixtures are hand-crafted for edge cases. Real fixtures are captured from Google APIs via `scripts/capture_fixtures.py` and sanitized via `scripts/sanitize_fixtures.py`.

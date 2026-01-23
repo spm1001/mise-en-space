@@ -14,7 +14,9 @@ from models import (
     SpreadsheetData, SheetTab,
     DocData, DocTab,
     GmailThreadData, EmailMessage, EmailAttachment,
+    PresentationData,
 )
+from extractors.slides import parse_presentation
 from datetime import datetime
 
 # Project root for fixture loading
@@ -196,10 +198,11 @@ def real_gmail_thread() -> GmailThreadData:
 
 
 # ============================================================================
-# Slides Fixtures (add when ported)
+# Slides Fixtures
 # ============================================================================
 
-# @pytest.fixture
-# def slides_response() -> PresentationData:
-#     """Sample Google Slides data for testing."""
-#     pass
+@pytest.fixture
+def real_slides() -> PresentationData:
+    """Real Google Slides response."""
+    raw = load_fixture("slides", "real_presentation")
+    return parse_presentation(raw)

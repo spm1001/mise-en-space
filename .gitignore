@@ -50,6 +50,7 @@ token.json
 
 # MCP workspace output
 .mcp-workspace/
+mise-fetch/
 
 # uv
 uv.lock
