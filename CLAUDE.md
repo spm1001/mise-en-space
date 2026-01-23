@@ -308,7 +308,49 @@ Decisions made during planning (Jan 2026) that future Claude should understand:
 | **Pre-exfil detection** | Check "Email Attachments" folder | User runs background extractor. Value isn't speed (Gmail is 3x faster); value is Drive fullText indexes PDF *content*. |
 | **Sync adapters, async tools** | Adapters sync, tools can wrap | Google API client is synchronous. Adapters stay sync. For MCP v2 tasks (async dispatch), tools layer wraps with `asyncio.to_thread()`. Avoids rewriting adapters. |
 | **Thread-safe services** | `@lru_cache` | Service getters use lru_cache for thread-safe caching. No manual dict + lock needed. |
-| **Batch API calls** | Always batch when possible | Sheets uses `batchGet`, Gmail uses `batch_http_request`. Reduces quota usage, prevents rate limits. See parent adapter bead (mise-g9i) for per-adapter requirements. |
+| **Batch API calls** | Service-specific optimization | Not "always batch" — use most efficient pattern per service. See table below. |
+| **Sheets: 2 calls not 1** | `get()` + `batchGet()` | `includeGridData=True` returns 44MB of formatting metadata vs 79KB for values-only. Benchmarked: 2 calls is 3.5x faster despite extra round-trip. |
+
+### Per-Service API Patterns
+
+| Service | Optimal Pattern | Calls | Why |
+|---------|-----------------|-------|-----|
+| **Docs** | `get(includeTabsContent=True)` | 1 | Minimal overhead, all tabs in one response |
+| **Sheets** | `get()` + `values().batchGet()` | 2 | `includeGridData` bloats payload 560x with formatting metadata |
+| **Slides** | `get()` + batch `pages().getThumbnail()` | 1-2 | 1 for text-only, +1 if thumbnails needed |
+| **Gmail** | `threads().get()` + batch `messages().get()` | 2 | Thread metadata + full message bodies |
+
+### Linked Content in Docs
+
+When content is linked from other Google apps into a Doc:
+
+| Source | What API exposes | What we output |
+|--------|------------------|----------------|
+| **Sheets chart** | `linkedContentReference.sheetsChartReference` with spreadsheet/chart ID | `[Chart: title (from spreadsheet X)]` |
+| **Sheets table** | Native table structure (not a linked object) | Markdown table |
+| **Slides** | Image only, `linkedContentReference: {}` (empty) | `![image](url)` |
+
+**Slides link limitation:** The Docs API doesn't expose the source presentation ID for linked slides. Google stores it server-side (the UI's "Open source" works) but it's not in the API response. This is a known limitation we can't work around.
+
+**inlineObjects is per-tab:** In multi-tab docs, `inlineObjects` lives at `documentTab.inlineObjects`, not at document level. The model reflects this: `DocTab.inline_objects`.
+
+### Docs API Element Taxonomy
+
+ParagraphElement types (from discovery doc):
+- `textRun` — main text content
+- `footnoteReference` — footnote markers
+- `inlineObjectElement` — images, drawings, charts
+- `horizontalRule`, `pageBreak`, `columnBreak` — structural breaks
+- `equation` — math (currently just `[equation]` placeholder)
+- `autoText` — page numbers, dates
+- `person` — @mentions
+- `richLink` — smart chips (Calendar, Sheets, etc.)
+- `dateElement` — date chips
+
+EmbeddedObject subtypes (in inlineObjects):
+- `imageProperties` — actual images (includes linked slides rendered as images)
+- `embeddedDrawingProperties` — Google Drawings
+- `linkedContentReference` — linked charts from Sheets (only type currently implemented)
 
 ## Research References
 

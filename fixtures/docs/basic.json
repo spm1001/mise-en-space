@@ -1,0 +1,200 @@
+{
+  "title": "Project Proposal",
+  "document_id": "test-doc-id",
+  "tabs": [
+    {
+      "title": "Overview",
+      "tab_id": "t.0",
+      "index": 0,
+      "body": {
+        "content": [
+          {
+            "paragraph": {
+              "paragraphStyle": {"namedStyleType": "HEADING_1"},
+              "elements": [
+                {"textRun": {"content": "Project Proposal\n", "textStyle": {}}}
+              ]
+            }
+          },
+          {
+            "paragraph": {
+              "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+              "elements": [
+                {"textRun": {"content": "This is a ", "textStyle": {}}},
+                {"textRun": {"content": "bold", "textStyle": {"bold": true}}},
+                {"textRun": {"content": " and ", "textStyle": {}}},
+                {"textRun": {"content": "italic", "textStyle": {"italic": true}}},
+                {"textRun": {"content": " text.\n", "textStyle": {}}}
+              ]
+            }
+          },
+          {
+            "paragraph": {
+              "paragraphStyle": {"namedStyleType": "HEADING_2"},
+              "elements": [
+                {"textRun": {"content": "Background\n", "textStyle": {}}}
+              ]
+            }
+          },
+          {
+            "paragraph": {
+              "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+              "elements": [
+                {"textRun": {"content": "See the ", "textStyle": {}}},
+                {"textRun": {"content": "documentation", "textStyle": {"link": {"url": "https://example.com/docs"}}}},
+                {"textRun": {"content": " for more details", "textStyle": {}}},
+                {"footnoteReference": {"footnoteId": "fn1", "footnoteNumber": "1"}},
+                {"textRun": {"content": ".\n", "textStyle": {}}}
+              ]
+            }
+          },
+          {
+            "paragraph": {
+              "paragraphStyle": {"namedStyleType": "HEADING_2"},
+              "elements": [
+                {"textRun": {"content": "Requirements\n", "textStyle": {}}}
+              ]
+            }
+          },
+          {
+            "paragraph": {
+              "bullet": {"listId": "list1", "nestingLevel": 0},
+              "paragraphStyle": {},
+              "elements": [
+                {"textRun": {"content": "First requirement\n", "textStyle": {}}}
+              ]
+            }
+          },
+          {
+            "paragraph": {
+              "bullet": {"listId": "list1", "nestingLevel": 0},
+              "paragraphStyle": {},
+              "elements": [
+                {"textRun": {"content": "Second requirement\n", "textStyle": {}}}
+              ]
+            }
+          },
+          {
+            "paragraph": {
+              "bullet": {"listId": "list1", "nestingLevel": 1},
+              "paragraphStyle": {},
+              "elements": [
+                {"textRun": {"content": "Sub-item\n", "textStyle": {}}}
+              ]
+            }
+          }
+        ]
+      },
+      "footnotes": {
+        "fn1": {
+          "content": [
+            {
+              "paragraph": {
+                "paragraphStyle": {},
+                "elements": [
+                  {"textRun": {"content": "Additional context about the documentation.\n", "textStyle": {}}}
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "lists": {
+        "list1": {
+          "listProperties": {
+            "nestingLevels": [
+              {"glyphType": "BULLET"},
+              {"glyphType": "BULLET"}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Budget",
+      "tab_id": "t.1",
+      "index": 1,
+      "body": {
+        "content": [
+          {
+            "paragraph": {
+              "paragraphStyle": {"namedStyleType": "HEADING_1"},
+              "elements": [
+                {"textRun": {"content": "Budget Breakdown\n", "textStyle": {}}}
+              ]
+            }
+          },
+          {
+            "table": {
+              "tableRows": [
+                {
+                  "tableCells": [
+                    {"content": [{"paragraph": {"elements": [{"textRun": {"content": "Item\n", "textStyle": {}}}]}}]},
+                    {"content": [{"paragraph": {"elements": [{"textRun": {"content": "Cost\n", "textStyle": {}}}]}}]}
+                  ]
+                },
+                {
+                  "tableCells": [
+                    {"content": [{"paragraph": {"elements": [{"textRun": {"content": "Development\n", "textStyle": {}}}]}}]},
+                    {"content": [{"paragraph": {"elements": [{"textRun": {"content": "$50,000\n", "textStyle": {}}}]}}]}
+                  ]
+                },
+                {
+                  "tableCells": [
+                    {"content": [{"paragraph": {"elements": [{"textRun": {"content": "Testing\n", "textStyle": {}}}]}}]},
+                    {"content": [{"paragraph": {"elements": [{"textRun": {"content": "$10,000\n", "textStyle": {}}}]}}]}
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "paragraph": {
+              "paragraphStyle": {"namedStyleType": "HEADING_2"},
+              "elements": [
+                {"textRun": {"content": "Timeline\n", "textStyle": {}}}
+              ]
+            }
+          },
+          {
+            "paragraph": {
+              "bullet": {"listId": "list2", "nestingLevel": 0},
+              "paragraphStyle": {},
+              "elements": [
+                {"textRun": {"content": "Phase 1: Planning\n", "textStyle": {}}}
+              ]
+            }
+          },
+          {
+            "paragraph": {
+              "bullet": {"listId": "list2", "nestingLevel": 0},
+              "paragraphStyle": {},
+              "elements": [
+                {"textRun": {"content": "Phase 2: Development\n", "textStyle": {}}}
+              ]
+            }
+          },
+          {
+            "paragraph": {
+              "bullet": {"listId": "list2", "nestingLevel": 0},
+              "paragraphStyle": {},
+              "elements": [
+                {"textRun": {"content": "Phase 3: Launch\n", "textStyle": {}}}
+              ]
+            }
+          }
+        ]
+      },
+      "footnotes": {},
+      "lists": {
+        "list2": {
+          "listProperties": {
+            "nestingLevels": [
+              {"glyphType": "DECIMAL"}
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

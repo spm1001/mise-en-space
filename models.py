@@ -104,19 +104,29 @@ class SpreadsheetData:
 # ============================================================================
 
 @dataclass
+class DocTab:
+    """A single tab within a Google Doc."""
+    title: str
+    tab_id: str
+    index: int
+    body: dict[str, Any]  # The 'body' field from documentTab
+    footnotes: dict[str, Any] = field(default_factory=dict)  # Tab-specific footnotes
+    lists: dict[str, Any] = field(default_factory=dict)  # List definitions
+    inline_objects: dict[str, Any] = field(default_factory=dict)  # Images, drawings, charts
+
+
+@dataclass
 class DocData:
     """
     Assembled document data for the docs extractor.
 
     Adapter calls documents().get() and assembles this structure.
-    The raw API response has deeply nested paragraphs, text runs, etc.
-    Adapter flattens it into a processable form.
+    Both legacy single-tab and modern multi-tab docs are normalized
+    to a list of DocTab for consistent extractor interface.
     """
     title: str
     document_id: str
-    body: dict[str, Any]  # The 'body' field from Docs API
-    lists: dict[str, Any] = field(default_factory=dict)  # List definitions
-    inline_objects: dict[str, Any] = field(default_factory=dict)  # Images, etc.
+    tabs: list[DocTab]
 
     # Optional metadata
     revision_id: str | None = None

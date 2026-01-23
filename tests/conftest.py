@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from models import SpreadsheetData, SheetTab
+from models import SpreadsheetData, SheetTab, DocData, DocTab
 
 # Project root for fixture loading
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -52,13 +52,34 @@ def sheets_response() -> SpreadsheetData:
 
 
 # ============================================================================
-# Future fixtures (add as extractors are ported)
+# Docs Fixtures
 # ============================================================================
 
-# @pytest.fixture
-# def docs_response() -> dict:
-#     """Sample Google Docs API response."""
-#     return load_fixture("docs_response")
+@pytest.fixture
+def docs_response() -> DocData:
+    """Sample Google Docs data for testing."""
+    raw = load_fixture("docs", "basic")
+    return DocData(
+        title=raw["title"],
+        document_id=raw["document_id"],
+        tabs=[
+            DocTab(
+                title=t["title"],
+                tab_id=t["tab_id"],
+                index=t["index"],
+                body=t["body"],
+                footnotes=t.get("footnotes", {}),
+                lists=t.get("lists", {}),
+                inline_objects=t.get("inline_objects", {}),
+            )
+            for t in raw["tabs"]
+        ],
+    )
+
+
+# ============================================================================
+# Future fixtures (add as extractors are ported)
+# ============================================================================
 
 # @pytest.fixture
 # def gmail_thread_response() -> dict:
