@@ -180,7 +180,7 @@ class TestMessageExtraction:
             to_addresses=["bob@example.com"],
             body_text="Hello Bob!\n\nHow are you?\n\nBest,\nAlice",
         )
-        result = extract_message_content(msg, strip_signature=True)
+        result, warnings = extract_message_content(msg, strip_signature=True)
         assert "Hello Bob!" in result
         assert "How are you?" in result
         assert "Best," not in result  # Signature stripped
@@ -193,7 +193,7 @@ class TestMessageExtraction:
             to_addresses=["bob@example.com"],
             body_text="Hello!\n\nBest,\nAlice",
         )
-        result = extract_message_content(msg, strip_signature=False)
+        result, warnings = extract_message_content(msg, strip_signature=False)
         assert "Best," in result  # Signature preserved
 
     def test_converts_html_to_markdown(self):
@@ -204,7 +204,7 @@ class TestMessageExtraction:
             to_addresses=["bob@example.com"],
             body_html="<p>Hello <b>Bob</b>!</p><ul><li>Item 1</li><li>Item 2</li></ul>",
         )
-        result = extract_message_content(msg)
+        result, warnings = extract_message_content(msg)
         # Should contain converted content (exact format depends on markitdown)
         assert "Bob" in result
         assert "Item 1" in result
@@ -218,7 +218,7 @@ class TestMessageExtraction:
             body_text="Plain text version",
             body_html="<p>HTML version</p>",
         )
-        result = extract_message_content(msg)
+        result, warnings = extract_message_content(msg)
         assert "Plain text version" in result
         assert "HTML version" not in result
 
@@ -229,8 +229,9 @@ class TestMessageExtraction:
             from_address="alice@example.com",
             to_addresses=["bob@example.com"],
         )
-        result = extract_message_content(msg)
+        result, warnings = extract_message_content(msg)
         assert result == ""
+        assert "no body content" in warnings[0].lower()  # Should warn about empty body
 
 
 class TestThreadExtraction:

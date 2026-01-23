@@ -98,6 +98,9 @@ class SpreadsheetData:
     locale: str | None = None
     time_zone: str | None = None
 
+    # Warnings during extraction (empty sheets, truncation, etc.)
+    warnings: list[str] = field(default_factory=list)
+
 
 # ============================================================================
 # DOCS TYPES
@@ -130,6 +133,9 @@ class DocData:
 
     # Optional metadata
     revision_id: str | None = None
+
+    # Warnings during extraction (unknown elements, truncation, etc.)
+    warnings: list[str] = field(default_factory=list)
 
 
 # ============================================================================
@@ -186,6 +192,9 @@ class GmailThreadData:
     # Summary metadata
     message_count: int = 0
     has_attachments: bool = False
+
+    # Warnings during extraction (signature stripping issues, encoding, etc.)
+    warnings: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.message_count = len(self.messages)
@@ -253,6 +262,9 @@ class PresentationData:
     page_size: dict[str, Any] | None = None  # Width/height in EMU
     locale: str | None = None
 
+    # Warnings aggregated from all slides
+    warnings: list[str] = field(default_factory=list)
+
 
 # ============================================================================
 # SEARCH RESULT TYPES
@@ -311,3 +323,6 @@ class FetchResult:
     # Content stats
     content_length: int = 0
     truncated: bool = False
+
+    # Warnings from extraction (bubbled up from extractors)
+    warnings: list[str] = field(default_factory=list)

@@ -160,7 +160,7 @@ def write_manifest(
         content_type: Type of content (slides, doc, sheet, gmail)
         title: Original title
         resource_id: Google resource ID
-        extra: Additional metadata (slide_count, has_thumbnails, etc.)
+        extra: Additional metadata (slide_count, has_thumbnails, warnings, etc.)
 
     Returns:
         Path to the manifest file

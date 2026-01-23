@@ -226,6 +226,42 @@ def extract_doc_content(doc_response: dict) -> str:
     return markdown
 ```
 
+## Warnings Pattern
+
+Extractors are pure functions — no logging, no side effects. But we need visibility when things go wrong.
+
+**Solution:** Data models have `warnings: list[str]` fields. Extractors populate them during processing.
+
+```python
+# Extractor populates warnings on the data object
+def extract_sheets_content(data: SpreadsheetData, max_length=None) -> str:
+    data.warnings = []  # Clear existing
+    if some_sheet_is_empty:
+        data.warnings.append("Sheet 'Summary' is empty")
+    # ... extraction ...
+    return content
+
+# Caller reads warnings after extraction
+content = extract_sheets_content(data)
+manifest_extra = {"warnings": data.warnings}  # Goes to manifest.json
+```
+
+**Why mutate `data.warnings` instead of returning a tuple?**
+- Preserves the simple `str` return type
+- Caller already has the data object, can read warnings from it
+- Consistent with slides extractor (which had this pattern first)
+
+**What gets warned:**
+
+| Extractor | Warnings |
+|-----------|----------|
+| Sheets | Empty sheets, truncation |
+| Docs | Unknown element types, missing inline objects, truncation |
+| Gmail | HTML conversion fallback, empty body, truncation |
+| Slides | Missing objectId, other per-slide issues |
+
+**Note:** `extract_message_content()` in gmail.py returns `tuple[str, list[str]]` because it processes individual messages, not thread-level data. The thread extractor aggregates these into `data.warnings`.
+
 ## OAuth
 
 OAuth client credentials live in GCP Secret Manager (not in repo). Auth flow:

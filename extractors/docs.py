@@ -17,6 +17,8 @@ def extract_doc_content(
     """
     Convert document data to markdown with tab headers.
 
+    Populates data.warnings with extraction issues encountered.
+
     Args:
         data: DocData with title and tabs
         max_length: Optional character limit. Truncates if exceeded.
@@ -35,6 +37,11 @@ def extract_doc_content(
     content_parts: list[str] = []
     total_length = 0
 
+    # Clear any existing warnings and set up tracking
+    data.warnings = []
+    unknown_elements: set[str] = set()
+    missing_objects: list[str] = []
+
     for i, tab in enumerate(data.tabs):
         # Add separator between tabs
         if i > 0:
@@ -49,6 +56,8 @@ def extract_doc_content(
             tab.lists,
             None,  # list_counters
             tab.inline_objects,
+            unknown_elements,
+            missing_objects,
         )
 
         # Add footnote definitions if any
@@ -70,10 +79,18 @@ def extract_doc_content(
                     f"\n\n[... TRUNCATED at {max_length:,} chars "
                     f"(document is {original:,} chars) ...]"
                 )
+            data.warnings.append(f"Content truncated at {max_length:,} characters")
             break
 
         content_parts.append(tab_content)
         total_length += len(tab_content)
+
+    # Aggregate warnings
+    if unknown_elements:
+        data.warnings.append(f"Unknown element types ignored: {', '.join(sorted(unknown_elements))}")
+    if missing_objects:
+        data.warnings.append(f"Missing inline objects: {', '.join(missing_objects[:5])}" +
+                            (f" (+{len(missing_objects)-5} more)" if len(missing_objects) > 5 else ""))
 
     return "".join(content_parts).strip()
 
@@ -199,6 +216,8 @@ def _extract_text_from_elements(
     lists: dict[str, Any] | None = None,
     list_counters: dict[tuple[str, int], int] | None = None,
     inline_objects: dict[str, Any] | None = None,
+    unknown_elements: set[str] | None = None,
+    missing_objects: list[str] | None = None,
 ) -> str:
     """
     Recursively extract text from document elements.
@@ -218,6 +237,8 @@ def _extract_text_from_elements(
         collected_footnotes: Optional list to collect (number, id) tuples
         lists: Optional dict of list definitions
         list_counters: Optional dict tracking list item counters
+        unknown_elements: Optional set to track unknown element types
+        missing_objects: Optional list to track missing inline objects
 
     Returns:
         Extracted text as string
@@ -243,6 +264,8 @@ def _extract_text_from_elements(
                 footnotes,
                 collected_footnotes,
                 inline_objects,
+                unknown_elements,
+                missing_objects,
             )
             text_parts.append(para_text)
 
@@ -254,6 +277,8 @@ def _extract_text_from_elements(
                 lists,
                 list_counters,
                 inline_objects,
+                unknown_elements,
+                missing_objects,
             )
             text_parts.append(table_text)
 
@@ -263,12 +288,19 @@ def _extract_text_from_elements(
             text_parts.append(
                 _extract_text_from_elements(
                     toc_content, footnotes, collected_footnotes, lists, list_counters,
-                    inline_objects,
+                    inline_objects, unknown_elements, missing_objects,
                 )
             )
 
         elif "sectionBreak" in element:
             text_parts.append("\n---\n")
+
+        else:
+            # Track unknown structural element types
+            if unknown_elements is not None:
+                elem_type = next((k for k in element.keys() if k != "startIndex" and k != "endIndex"), None)
+                if elem_type:
+                    unknown_elements.add(elem_type)
 
     return "".join(text_parts)
 
@@ -282,6 +314,8 @@ def _extract_paragraph(
     footnotes: dict[str, Any] | None,
     collected_footnotes: list[tuple[str, str]] | None,
     inline_objects: dict[str, Any] | None = None,
+    unknown_elements: set[str] | None = None,
+    missing_objects: list[str] | None = None,
 ) -> tuple[str, str | None, int]:
     """
     Extract text from a paragraph element.
@@ -352,6 +386,8 @@ def _extract_paragraph(
         footnotes,
         collected_footnotes,
         inline_objects,
+        unknown_elements,
+        missing_objects,
     )
     text_parts.append(para_content)
 
@@ -363,6 +399,8 @@ def _extract_paragraph_content(
     footnotes: dict[str, Any] | None,
     collected_footnotes: list[tuple[str, str]] | None,
     inline_objects: dict[str, Any] | None = None,
+    unknown_elements: set[str] | None = None,
+    missing_objects: list[str] | None = None,
 ) -> str:
     """Extract text from paragraph elements with link merging."""
     text_parts: list[str] = []
@@ -418,7 +456,7 @@ def _extract_paragraph_content(
         elif "inlineObjectElement" in elem:
             flush_link()
             obj_id = elem["inlineObjectElement"].get("inlineObjectId", "")
-            text_parts.append(_format_inline_object(obj_id, inline_objects))
+            text_parts.append(_format_inline_object(obj_id, inline_objects, missing_objects))
 
         elif "horizontalRule" in elem:
             flush_link()
@@ -466,6 +504,13 @@ def _extract_paragraph_content(
             # Date is stored as textRun-style content typically
             text_parts.append("[date]")
 
+        else:
+            # Track unknown paragraph element types
+            if unknown_elements is not None:
+                elem_type = next((k for k in elem.keys() if k not in ("startIndex", "endIndex")), None)
+                if elem_type:
+                    unknown_elements.add(elem_type)
+
     flush_link()
     return "".join(text_parts)
 
@@ -473,9 +518,12 @@ def _extract_paragraph_content(
 def _format_inline_object(
     obj_id: str,
     inline_objects: dict[str, Any] | None,
+    missing_objects: list[str] | None = None,
 ) -> str:
     """Format an inline object (image, drawing, chart) as markdown."""
     if not inline_objects or obj_id not in inline_objects:
+        if missing_objects is not None:
+            missing_objects.append(obj_id)
         return f"[object:{obj_id}]"
 
     obj = inline_objects[obj_id]
@@ -567,6 +615,8 @@ def _extract_table(
     lists: dict[str, Any] | None,
     list_counters: dict[tuple[str, int], int] | None,
     inline_objects: dict[str, Any] | None = None,
+    unknown_elements: set[str] | None = None,
+    missing_objects: list[str] | None = None,
 ) -> str:
     """Extract table as markdown."""
     rows = table.get("tableRows", [])
@@ -583,7 +633,7 @@ def _extract_table(
             cell_content = cell.get("content", [])
             cell_text = _extract_text_from_elements(
                 cell_content, footnotes, collected_footnotes, lists, list_counters,
-                inline_objects,
+                inline_objects, unknown_elements, missing_objects,
             )
             # Clean for table cell: strip, collapse newlines, escape pipes
             cell_text = cell_text.strip().replace("\n", " ").replace("|", "\\|")

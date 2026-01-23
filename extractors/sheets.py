@@ -15,6 +15,8 @@ def extract_sheets_content(
     """
     Convert spreadsheet data to CSV text with sheet headers.
 
+    Populates data.warnings with extraction issues encountered.
+
     Args:
         data: SpreadsheetData with title and sheets
         max_length: Optional character limit. Truncates if exceeded.
@@ -32,6 +34,10 @@ def extract_sheets_content(
     """
     content_parts: list[str] = []
     total_length = 0
+    empty_sheets: list[str] = []
+
+    # Clear any existing warnings
+    data.warnings = []
 
     for sheet in data.sheets:
         sheet_name = sheet.name
@@ -50,12 +56,21 @@ def extract_sheets_content(
                 if remaining > 100:
                     content_parts.append(sheet_content[:remaining])
                     content_parts.append(f"\n[... TRUNCATED at {max_length:,} chars ...]")
+                data.warnings.append(f"Content truncated at {max_length:,} characters")
                 break
 
             content_parts.append(sheet_content)
             total_length += len(sheet_content)
         else:
             content_parts.append(f"\n=== Sheet: {sheet_name} ===\n(empty)\n")
+            empty_sheets.append(sheet_name)
+
+    # Warn about empty sheets
+    if empty_sheets:
+        if len(empty_sheets) == 1:
+            data.warnings.append(f"Sheet '{empty_sheets[0]}' is empty")
+        else:
+            data.warnings.append(f"{len(empty_sheets)} sheets are empty: {', '.join(empty_sheets)}")
 
     return "".join(content_parts).strip()
 

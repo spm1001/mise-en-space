@@ -83,7 +83,7 @@ def _clean_html_for_conversion(html: str) -> str:
     return html
 
 
-def _convert_html_to_markdown(html: str) -> str:
+def _convert_html_to_markdown(html: str) -> tuple[str, bool]:
     """
     Convert HTML to markdown using markitdown (local, fast).
 
@@ -97,10 +97,11 @@ def _convert_html_to_markdown(html: str) -> str:
         html: HTML content to convert
 
     Returns:
-        Markdown string, or stripped text if conversion fails
+        Tuple of (markdown_string, used_fallback)
+        used_fallback is True if markitdown failed and we stripped tags
     """
     if not html or not html.strip():
-        return ''
+        return '', False
 
     try:
         from markitdown import MarkItDown
@@ -118,7 +119,7 @@ def _convert_html_to_markdown(html: str) -> str:
             markdown = result.text_content if result else ''
 
             if markdown:
-                return markdown
+                return markdown, False
             else:
                 raise ValueError("markitdown returned empty result")
 
@@ -131,7 +132,7 @@ def _convert_html_to_markdown(html: str) -> str:
         # Fallback: basic HTML tag stripping
         text = re.sub(r'<[^>]+>', ' ', html)  # Remove HTML tags
         text = re.sub(r'\s+', ' ', text)  # Collapse whitespace
-        return text.strip()
+        return text.strip(), True
 
 
 # =============================================================================
@@ -198,7 +199,7 @@ def _extract_drive_links(text: str) -> list[dict[str, str]]:
 def extract_message_content(
     message: EmailMessage,
     strip_signature: bool = True,
-) -> str:
+) -> tuple[str, list[str]]:
     """
     Extract clean text content from a single email message.
 
@@ -207,25 +208,29 @@ def extract_message_content(
         strip_signature: Whether to strip signatures and quoted replies
 
     Returns:
-        Clean text content, preferring plain text over HTML conversion
+        Tuple of (clean_text_content, warnings_list)
+        Prefers plain text over HTML conversion.
     """
+    warnings: list[str] = []
+
     # Prefer plain text if available
     if message.body_text:
         body = message.body_text
-        source = 'text/plain'
     elif message.body_html:
         # Clean and convert HTML
         cleaned_html = _clean_html_for_conversion(message.body_html)
-        body = _convert_html_to_markdown(cleaned_html)
-        source = 'text/html'
+        body, used_fallback = _convert_html_to_markdown(cleaned_html)
+        if used_fallback:
+            warnings.append("HTML conversion failed, used basic tag stripping")
     else:
-        return ''
+        warnings.append("Message has no body content")
+        return '', warnings
 
     # Strip signatures and quoted replies if requested
     if strip_signature and body:
         body = strip_signature_and_quotes(body)
 
-    return body.strip()
+    return body.strip(), warnings
 
 
 def _format_message_header(message: EmailMessage, position: int, total: int) -> str:
@@ -265,6 +270,8 @@ def extract_thread_content(
     """
     Convert Gmail thread data to markdown text.
 
+    Populates data.warnings with extraction issues encountered.
+
     Args:
         data: GmailThreadData with subject and messages
         max_length: Optional character limit. Truncates if exceeded.
@@ -288,6 +295,9 @@ def extract_thread_content(
     content_parts: list[str] = []
     total_length = 0
     total_messages = len(data.messages)
+
+    # Clear any existing warnings
+    data.warnings = []
 
     # Thread header
     header = f"# {data.subject}\n\n"
@@ -318,7 +328,9 @@ def extract_thread_content(
         total_length += len(msg_header_block)
 
         # Message body
-        body = extract_message_content(message, strip_signature=strip_signatures)
+        body, msg_warnings = extract_message_content(message, strip_signature=strip_signatures)
+        for w in msg_warnings:
+            data.warnings.append(f"Message {i}: {w}")
 
         if max_length:
             remaining = max_length - total_length
@@ -328,6 +340,7 @@ def extract_thread_content(
                 content_parts.append(
                     f"\n\n[... TRUNCATED at {max_length:,} chars ...]"
                 )
+                data.warnings.append(f"Content truncated at {max_length:,} characters")
                 truncated = True
                 break
 
