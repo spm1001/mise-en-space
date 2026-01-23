@@ -5,6 +5,7 @@ Used by adapters to handle transient API failures.
 """
 
 import asyncio
+import random
 import time
 from functools import wraps
 from typing import TypeVar, Callable, Any, ParamSpec, Awaitable, cast
@@ -93,19 +94,39 @@ def _convert_to_mise_error(exception: Exception) -> MiseError:
     return MiseError(ErrorKind.UNKNOWN, str(exception))
 
 
+def _calculate_wait_with_jitter(
+    base_delay_ms: int,
+    attempt: int,
+    backoff_multiplier: float,
+    jitter_factor: float,
+) -> int:
+    """
+    Calculate wait time with exponential backoff and random jitter.
+
+    Jitter prevents thundering herd when multiple requests retry together.
+    """
+    base_wait = base_delay_ms * (backoff_multiplier ** attempt)
+    # Add jitter: ±jitter_factor of base wait (e.g., ±25%)
+    jitter_range = base_wait * jitter_factor
+    jitter = random.uniform(-jitter_range, jitter_range)
+    return max(0, int(base_wait + jitter))
+
+
 def with_retry(
     max_attempts: int = 3,
     delay_ms: int = 1000,
     backoff_multiplier: float = 2.0,
+    jitter_factor: float = 0.25,
     convert_errors: bool = True,
 ) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """
-    Retry decorator with exponential backoff.
+    Retry decorator with exponential backoff and jitter.
 
     Args:
         max_attempts: Maximum number of retry attempts
         delay_ms: Initial delay in milliseconds
         backoff_multiplier: Multiplier for exponential backoff
+        jitter_factor: Random jitter as fraction of wait (0.25 = ±25%)
         convert_errors: Convert exceptions to MiseError on final failure
 
     Returns:
@@ -139,8 +160,10 @@ def with_retry(
                             raise _convert_to_mise_error(e) from e
                         raise
 
-                    # Calculate wait time with exponential backoff
-                    wait_ms = int(delay_ms * (backoff_multiplier ** attempt))
+                    # Calculate wait time with exponential backoff + jitter
+                    wait_ms = _calculate_wait_with_jitter(
+                        delay_ms, attempt, backoff_multiplier, jitter_factor
+                    )
                     log_retry(attempt + 1, max_attempts, wait_ms, str(e))
                     await asyncio.sleep(wait_ms / 1000)
 
@@ -168,7 +191,9 @@ def with_retry(
                             raise _convert_to_mise_error(e) from e
                         raise
 
-                    wait_ms = int(delay_ms * (backoff_multiplier ** attempt))
+                    wait_ms = _calculate_wait_with_jitter(
+                        delay_ms, attempt, backoff_multiplier, jitter_factor
+                    )
                     log_retry(attempt + 1, max_attempts, wait_ms, str(e))
                     time.sleep(wait_ms / 1000)
 
