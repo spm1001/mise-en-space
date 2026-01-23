@@ -226,44 +226,6 @@ def parse_folder_name(folder: Path) -> dict[str, str] | None:
     return None
 
 
-def cleanup_old_deposits(
-    max_age_hours: int = 24,
-    base_path: Path | None = None,
-) -> list[Path]:
-    """
-    Remove deposit folders older than max_age_hours.
-
-    Args:
-        max_age_hours: Maximum age in hours before cleanup
-        base_path: Base directory (defaults to cwd)
-
-    Returns:
-        List of paths that were removed
-    """
-    import shutil
-    import time
-
-    base = base_path or Path.cwd()
-    mise_fetch = base / "mise-fetch"
-
-    if not mise_fetch.exists():
-        return []
-
-    cutoff = time.time() - (max_age_hours * 3600)
-    removed: list[Path] = []
-
-    for folder in mise_fetch.iterdir():
-        if folder.is_dir() and folder.stat().st_mtime < cutoff:
-            shutil.rmtree(folder)
-            removed.append(folder)
-
-    # Remove mise-fetch/ if empty
-    if mise_fetch.exists() and not any(mise_fetch.iterdir()):
-        mise_fetch.rmdir()
-
-    return removed
-
-
 def get_deposit_summary(folder: Path) -> dict[str, str | int | list[str]]:
     """
     Get a summary of a deposit folder for MCP response.

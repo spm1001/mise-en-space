@@ -299,30 +299,64 @@ class GmailSearchResult:
 
 
 # ============================================================================
-# FETCH RESULT TYPE
+# TOOL RESPONSE TYPES
 # ============================================================================
 
 @dataclass
 class FetchResult:
-    """
-    Result of a fetch operation.
+    """Successful fetch result."""
+    path: str                    # Folder path (mise-fetch/...)
+    content_file: str            # Full path to content file
+    format: str                  # 'markdown', 'csv'
+    type: str                    # 'doc', 'sheet', 'slides', 'gmail'
+    metadata: dict[str, Any]     # Type-specific metadata
 
-    Returned by tools layer after:
-    1. Adapter fetches data
-    2. Extractor processes content
-    3. Workspace writes file
-    """
-    path: str  # Filesystem path to content
-    format: str  # 'markdown', 'csv', 'text', etc.
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "path": self.path,
+            "content_file": self.content_file,
+            "format": self.format,
+            "type": self.type,
+            "metadata": self.metadata,
+        }
 
-    # Metadata about the source
-    title: str
-    source_id: str
-    source_type: str  # 'drive', 'gmail', 'slides', etc.
 
-    # Content stats
-    content_length: int = 0
-    truncated: bool = False
+@dataclass
+class FetchError:
+    """Fetch error result."""
+    error: bool = True
+    kind: str = "unknown"
+    message: str = ""
+    file_id: str | None = None
+    name: str | None = None
 
-    # Warnings from extraction (bubbled up from extractors)
-    warnings: list[str] = field(default_factory=list)
+    def to_dict(self) -> dict[str, Any]:
+        result = {"error": self.error, "kind": self.kind, "message": self.message}
+        if self.file_id:
+            result["file_id"] = self.file_id
+        if self.name:
+            result["name"] = self.name
+        return result
+
+
+@dataclass
+class SearchResult:
+    """Search result across sources."""
+    query: str
+    sources: list[str]
+    drive_results: list[dict[str, Any]] = field(default_factory=list)
+    gmail_results: list[dict[str, Any]] = field(default_factory=list)
+    contacts_results: list[dict[str, Any]] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {"query": self.query, "sources": self.sources}
+        if "drive" in self.sources:
+            result["drive_results"] = self.drive_results
+        if "gmail" in self.sources:
+            result["gmail_results"] = self.gmail_results
+        if "contacts" in self.sources:
+            result["contacts_results"] = self.contacts_results
+        if self.errors:
+            result["errors"] = self.errors
+        return result

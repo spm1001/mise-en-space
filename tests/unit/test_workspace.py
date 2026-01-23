@@ -11,7 +11,6 @@ from workspace import (
     write_manifest,
     list_deposit_folders,
     parse_folder_name,
-    cleanup_old_deposits,
     get_deposit_summary,
 )
 
@@ -296,31 +295,3 @@ class TestGetDepositSummary:
         assert "thumbnails" not in summary
 
 
-class TestCleanupOldDeposits:
-    """Tests for cleanup functionality."""
-
-    def test_cleanup_removes_old_folders(self, tmp_path: Path) -> None:
-        """Test that old folders are removed."""
-        import time
-
-        # Create a folder
-        folder = get_deposit_folder("slides", "Old", "old123", tmp_path)
-
-        # Backdate it (set mtime to 2 days ago)
-        old_time = time.time() - (48 * 3600)
-        import os
-        os.utime(folder, (old_time, old_time))
-
-        # Create a recent folder
-        get_deposit_folder("slides", "New", "new456", tmp_path)
-
-        # Cleanup with 24-hour threshold
-        removed = cleanup_old_deposits(max_age_hours=24, base_path=tmp_path)
-
-        assert len(removed) == 1
-        assert "old123" in str(removed[0])
-
-        # New folder should still exist
-        folders = list_deposit_folders(tmp_path)
-        assert len(folders) == 1
-        assert "new456" in str(folders[0])

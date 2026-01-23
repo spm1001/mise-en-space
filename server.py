@@ -14,18 +14,21 @@ Documentation is provided via MCP Resources, not a tool.
 Architecture:
 - extractors/: Pure functions (no MCP, no API calls)
 - adapters/: Thin Google API wrappers
-- tools/: MCP tool definitions (thin wiring)
+- tools/: Tool implementations (business logic)
 - workspace/: Per-session folder management
+- server.py: Thin MCP wrappers (this file)
 """
 
 from mcp.server.fastmcp import FastMCP
+
+from tools import do_search, do_fetch
 
 # Initialize MCP server
 mcp = FastMCP("Google Workspace v2")
 
 
 # ============================================================================
-# TOOLS — Verb Model
+# TOOLS — Verb Model (thin wrappers)
 # ============================================================================
 
 @mcp.tool()
@@ -47,8 +50,7 @@ def search(
     Returns:
         Separate lists per source (drive_results, gmail_results, etc.)
     """
-    # TODO: Wire to adapters
-    return {"status": "not_implemented", "query": query}
+    return do_search(query, sources, max_results).to_dict()
 
 
 @mcp.tool()
@@ -56,22 +58,23 @@ def fetch(file_id: str) -> dict:
     """
     Fetch content to filesystem.
 
-    Writes processed content to ~/.mcp-workspace/[account]/
+    Writes processed content to mise-fetch/ in current directory.
     Returns path for caller to read with standard file tools.
 
-    Always optimizes for LLM consumption (markdown, clean text).
-    Auto-detects ID type (Drive file vs Gmail thread).
+    Always optimizes for LLM consumption (markdown, CSV, clean text).
+    Auto-detects ID type (Drive file vs Gmail thread vs URL).
 
     Args:
         file_id: Drive file ID, Gmail thread ID, or URL
 
     Returns:
-        path: Filesystem path to fetched content
-        format: Output format (markdown, csv, etc.)
+        path: Filesystem path to fetched content folder
+        content_file: Path to main content file
+        format: Output format (markdown, csv)
+        type: Content type (doc, sheet, slides, gmail)
         metadata: File metadata
     """
-    # TODO: Wire to extractors + workspace manager
-    return {"status": "not_implemented", "file_id": file_id}
+    return do_fetch(file_id).to_dict()
 
 
 @mcp.tool()
@@ -94,7 +97,7 @@ def create(
         file_id: Created file ID
         web_link: URL to view/edit
     """
-    # TODO: Wire to adapters
+    # TODO: Wire to tools/create.py
     return {"status": "not_implemented", "title": title}
 
 

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
 
-from models import GmailThreadData, EmailMessage, EmailAttachment
+from models import GmailThreadData, GmailSearchResult, EmailMessage, EmailAttachment
 from retry import with_retry
 from adapters.services import get_gmail_service
 from extractors.gmail import parse_message_payload, parse_attachments_from_payload
@@ -29,6 +29,13 @@ THREAD_FIELDS = (
 
 # Headers we care about
 WANTED_HEADERS = frozenset({"From", "To", "Cc", "Subject", "Date"})
+
+# Fields for search results — lighter than full thread fetch
+SEARCH_THREAD_FIELDS = (
+    "id,"
+    "snippet,"
+    "messages(id,payload(headers),internalDate,labelIds)"
+)
 
 # Regex to find Drive links in text
 DRIVE_LINK_PATTERN = re.compile(
@@ -186,3 +193,90 @@ def fetch_message(message_id: str) -> EmailMessage:
     )
 
     return _build_message(msg)
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def search_threads(
+    query: str,
+    max_results: int = 20,
+) -> list[GmailSearchResult]:
+    """
+    Search for threads matching query.
+
+    Uses threads().list() to find threads, then batch-fetches metadata
+    for subject, from, date extraction. Returns triage-ready results.
+
+    Args:
+        query: Gmail search query (e.g., "from:example@gmail.com budget")
+        max_results: Maximum number of results
+
+    Returns:
+        List of GmailSearchResult objects
+
+    Raises:
+        MiseError: On API failure
+    """
+    service = get_gmail_service()
+
+    # Step 1: Get thread IDs and snippets
+    list_response = (
+        service.users()
+        .threads()
+        .list(userId="me", q=query, maxResults=min(max_results, 100))
+        .execute()
+    )
+
+    threads = list_response.get("threads", [])
+    if not threads:
+        return []
+
+    # Step 2: Batch-fetch thread metadata for subject/from/date
+    # Gmail batch API works (unlike Slides/Sheets/Docs)
+    results: list[GmailSearchResult] = []
+    batch = service.new_batch_http_request()
+
+    def handle_thread_response(request_id: str, response: dict, exception: Exception | None) -> None:
+        if exception:
+            # Skip failed threads, don't fail entire search
+            return
+
+        messages = response.get("messages", [])
+        if not messages:
+            return
+
+        # First message has subject and sender
+        first_msg = messages[0]
+        payload = first_msg.get("payload", {})
+        headers = _parse_headers(payload.get("headers", []))
+
+        # Check for attachments in any message
+        has_attachments = any(
+            "ATTACHMENT" in msg.get("labelIds", []) or
+            "attachment" in str(msg.get("payload", {})).lower()
+            for msg in messages
+        )
+
+        results.append(
+            GmailSearchResult(
+                thread_id=response.get("id", ""),
+                subject=headers.get("Subject", "(no subject)"),
+                snippet=response.get("snippet", ""),
+                date=_parse_date(headers.get("Date"), first_msg.get("internalDate")),
+                from_address=headers.get("From"),
+                message_count=len(messages),
+                has_attachments=has_attachments,
+            )
+        )
+
+    # Add batch requests
+    for thread in threads[:max_results]:
+        batch.add(
+            service.users()
+            .threads()
+            .get(userId="me", id=thread["id"], format="metadata", metadataHeaders=["Subject", "From", "Date"]),
+            callback=handle_thread_response,
+        )
+
+    batch.execute()
+
+    return results

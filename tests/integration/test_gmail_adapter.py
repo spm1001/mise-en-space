@@ -8,9 +8,9 @@ import json
 import pytest
 from pathlib import Path
 
-from adapters.gmail import fetch_thread, fetch_message
+from adapters.gmail import fetch_thread, fetch_message, search_threads
 from extractors.gmail import extract_thread_content
-from models import GmailThreadData, EmailMessage
+from models import GmailThreadData, GmailSearchResult, EmailMessage
 
 
 IDS_FILE = Path(__file__).parent.parent.parent / "fixtures" / "integration_ids.json"
@@ -127,3 +127,41 @@ def test_invalid_thread_id() -> None:
         ErrorKind.INVALID_INPUT,
         ErrorKind.UNKNOWN,  # 400 errors map to UNKNOWN currently
     )
+
+
+@pytest.mark.integration
+def test_search_threads_returns_results() -> None:
+    """Test that search_threads returns valid results."""
+    # Search for something that should exist in any Gmail account
+    results = search_threads("in:inbox", max_results=5)
+
+    assert isinstance(results, list)
+    # May or may not have results depending on inbox state
+    if results:
+        first = results[0]
+        assert isinstance(first, GmailSearchResult)
+        assert first.thread_id  # Has ID
+        assert first.subject or first.snippet  # Has some content
+
+
+@pytest.mark.integration
+def test_search_threads_with_query() -> None:
+    """Test search with a specific query."""
+    # Search for a common term
+    results = search_threads("test", max_results=3)
+
+    assert isinstance(results, list)
+    for result in results:
+        assert isinstance(result, GmailSearchResult)
+        assert result.thread_id
+        assert result.message_count >= 1
+
+
+@pytest.mark.integration
+def test_search_threads_empty_query() -> None:
+    """Test search with query that likely returns nothing."""
+    # Highly specific query unlikely to match
+    results = search_threads("xyzzy12345nosuchterm98765", max_results=5)
+
+    assert isinstance(results, list)
+    assert len(results) == 0  # Should find nothing

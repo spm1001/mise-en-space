@@ -13,7 +13,6 @@ from .manager import (
     write_manifest,
     list_deposit_folders,
     parse_folder_name,
-    cleanup_old_deposits,
     get_deposit_summary,
 )
 
@@ -25,6 +24,5 @@ __all__ = [
     "write_manifest",
     "list_deposit_folders",
     "parse_folder_name",
-    "cleanup_old_deposits",
     "get_deposit_summary",
 ]
