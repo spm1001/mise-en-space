@@ -277,7 +277,7 @@ uv run python -m auth --manual
 
 ```bash
 uv run pytest tests/           # 21 unit tests (skip integration by default)
-uv run mypy models.py extractors/ logging_config.py retry.py  # Strict type checking
+uv run mypy models.py extractors/ adapters/ logging_config.py retry.py oauth_config.py auth.py
 ```
 
 Integration tests require `-m integration` flag and real credentials.
