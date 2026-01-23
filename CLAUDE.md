@@ -228,11 +228,26 @@ def extract_doc_content(doc_response: dict) -> str:
 
 ## OAuth
 
-Credentials are symlinked from v1 (shared OAuth):
-- `credentials.json` → `../mcp-google-workspace/credentials.json`
-- `token.json` → `../mcp-google-workspace/token.json`
+OAuth client credentials live in GCP Secret Manager (not in repo). Auth flow:
 
-To re-authenticate: `cd ../mcp-google-workspace && uv run python -m workspace_mcp.auth`
+```bash
+# First time (or to refresh tokens)
+uv run python -m auth          # Opens browser, creates token.json locally
+
+# Manual mode (for SSH/remote)
+uv run python -m auth --manual
+```
+
+**Prerequisites:**
+- `gcloud` CLI installed and authenticated
+- Access to the GCP project (set in `oauth_config.py`)
+
+**What happens:**
+1. Fetches `mise-credentials` from Secret Manager (in-memory, not saved)
+2. Runs OAuth flow, opens browser for consent
+3. Creates `token.json` locally (your personal tokens, gitignored)
+
+**To change the GCP project:** Edit `oauth_config.py` or use `--project` flag.
 
 ## File Deposit Structure
 

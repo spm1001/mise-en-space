@@ -11,7 +11,7 @@ dependencies = [
     "google-api-python-client>=2.100.0",
     "google-auth-httplib2>=0.2.0",
     # OAuth (shared with v1)
-    "itv-google-auth @ git+https://github.com/spm1001/itv-google-auth.git",
+    "itv-google-auth",
     # Extraction
     "pdfplumber>=0.11.0",
     "markitdown[all]>=0.1.4",
@@ -43,6 +43,8 @@ packages = ["extractors", "adapters", "tools", "workspace"]
 "models.py" = "models.py"
 "logging_config.py" = "logging_config.py"
 "retry.py" = "retry.py"
+"oauth_config.py" = "oauth_config.py"
+"auth.py" = "auth.py"
 
 [tool.black]
 line-length = 100
@@ -66,3 +68,13 @@ warn_unused_ignores = true
 disallow_untyped_defs = true
 # Ignore missing stubs for third-party libs
 ignore_missing_imports = true
+
+[tool.uv.sources]
+itv-google-auth = { path = "../itv-google-auth", editable = true }
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+]
