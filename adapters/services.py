@@ -2,7 +2,10 @@
 Google API service initialization.
 
 Shared by all adapters. Loads token.json, builds service objects.
+Uses lru_cache for thread-safe caching.
 """
+
+from functools import lru_cache
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build, Resource
@@ -21,50 +24,45 @@ def _get_credentials() -> Credentials:
     return creds
 
 
-# Service cache to avoid rebuilding on every call
-_service_cache: dict[str, Resource] = {}
-
-
+@lru_cache(maxsize=8)
 def get_sheets_service() -> Resource:
-    """Get authenticated Google Sheets API service."""
-    if "sheets" not in _service_cache:
-        creds = _get_credentials()
-        _service_cache["sheets"] = build("sheets", "v4", credentials=creds)
-    return _service_cache["sheets"]
+    """Get authenticated Google Sheets API service (cached, thread-safe)."""
+    creds = _get_credentials()
+    return build("sheets", "v4", credentials=creds)
 
 
+@lru_cache(maxsize=8)
 def get_drive_service() -> Resource:
-    """Get authenticated Google Drive API service."""
-    if "drive" not in _service_cache:
-        creds = _get_credentials()
-        _service_cache["drive"] = build("drive", "v3", credentials=creds)
-    return _service_cache["drive"]
+    """Get authenticated Google Drive API service (cached, thread-safe)."""
+    creds = _get_credentials()
+    return build("drive", "v3", credentials=creds)
 
 
+@lru_cache(maxsize=8)
 def get_docs_service() -> Resource:
-    """Get authenticated Google Docs API service."""
-    if "docs" not in _service_cache:
-        creds = _get_credentials()
-        _service_cache["docs"] = build("docs", "v1", credentials=creds)
-    return _service_cache["docs"]
+    """Get authenticated Google Docs API service (cached, thread-safe)."""
+    creds = _get_credentials()
+    return build("docs", "v1", credentials=creds)
 
 
+@lru_cache(maxsize=8)
 def get_gmail_service() -> Resource:
-    """Get authenticated Gmail API service."""
-    if "gmail" not in _service_cache:
-        creds = _get_credentials()
-        _service_cache["gmail"] = build("gmail", "v1", credentials=creds)
-    return _service_cache["gmail"]
+    """Get authenticated Gmail API service (cached, thread-safe)."""
+    creds = _get_credentials()
+    return build("gmail", "v1", credentials=creds)
 
 
+@lru_cache(maxsize=8)
 def get_slides_service() -> Resource:
-    """Get authenticated Google Slides API service."""
-    if "slides" not in _service_cache:
-        creds = _get_credentials()
-        _service_cache["slides"] = build("slides", "v1", credentials=creds)
-    return _service_cache["slides"]
+    """Get authenticated Google Slides API service (cached, thread-safe)."""
+    creds = _get_credentials()
+    return build("slides", "v1", credentials=creds)
 
 
 def clear_service_cache() -> None:
     """Clear cached services. Useful for testing or after re-auth."""
-    _service_cache.clear()
+    get_sheets_service.cache_clear()
+    get_drive_service.cache_clear()
+    get_docs_service.cache_clear()
+    get_gmail_service.cache_clear()
+    get_slides_service.cache_clear()

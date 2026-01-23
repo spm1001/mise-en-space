@@ -306,6 +306,9 @@ Decisions made during planning (Jan 2026) that future Claude should understand:
 | **3 verbs not 17 tools** | search, fetch, create | v1 had 17 tools. Claude doesn't need that many levers. Unified search + polymorphic fetch covers 95% of use cases. Documentation via MCP Resources, not a tool. |
 | **ID auto-detection** | fetch(id) figures out type | Gmail thread IDs look different from Drive file IDs. Server detects, no explicit source param needed. |
 | **Pre-exfil detection** | Check "Email Attachments" folder | User runs background extractor. Value isn't speed (Gmail is 3x faster); value is Drive fullText indexes PDF *content*. |
+| **Sync adapters, async tools** | Adapters sync, tools can wrap | Google API client is synchronous. Adapters stay sync. For MCP v2 tasks (async dispatch), tools layer wraps with `asyncio.to_thread()`. Avoids rewriting adapters. |
+| **Thread-safe services** | `@lru_cache` | Service getters use lru_cache for thread-safe caching. No manual dict + lock needed. |
+| **Batch API calls** | Always batch when possible | Sheets uses `batchGet`, Gmail uses `batch_http_request`. Reduces quota usage, prevents rate limits. See parent adapter bead (mise-g9i) for per-adapter requirements. |
 
 ## Research References
 
