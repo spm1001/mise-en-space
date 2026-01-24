@@ -4,20 +4,15 @@ Fetch tool implementation.
 Routes by ID type, extracts content, deposits to workspace.
 """
 
-import tempfile
-from pathlib import Path
-
-from googleapiclient.http import MediaInMemoryUpload
-from markitdown import MarkItDown
-
-from adapters.drive import get_file_metadata, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
-from adapters.services import get_drive_service
+from adapters.drive import get_file_metadata, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
 from adapters.gmail import fetch_thread
 from adapters.docs import fetch_document
 from adapters.sheets import fetch_spreadsheet
 from adapters.slides import fetch_presentation
 from adapters.genai import get_video_summary, is_media_file
 from adapters.cdp import is_cdp_available
+from adapters.pdf import fetch_and_extract_pdf
+from adapters.office import fetch_and_extract_office, get_office_type_from_mime
 from extractors.docs import extract_doc_content
 from extractors.sheets import extract_sheets_content
 from extractors.slides import extract_slides_content
@@ -25,12 +20,6 @@ from extractors.gmail import extract_thread_content
 from models import MiseError, FetchResult, FetchError
 from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id
 from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail
-
-
-# Threshold for markitdown fallback to Drive conversion.
-# If markitdown extracts less than this many chars, assume it failed on a complex/image PDF.
-# Determined empirically: simple PDFs produce 1000s of chars, complex ones produce <100.
-MARKITDOWN_MIN_CHARS = 500
 
 
 def detect_id_type(input_id: str) -> tuple[str, str]:
@@ -114,12 +103,8 @@ def fetch_drive(file_id: str) -> dict:
         return fetch_video(file_id, title, metadata)
     elif mime_type == "application/pdf":
         return fetch_pdf(file_id, title, metadata)
-    elif mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        return fetch_office(file_id, title, metadata, "docx")
-    elif mime_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
-        return fetch_office(file_id, title, metadata, "xlsx")
-    elif mime_type == "application/vnd.openxmlformats-officedocument.presentationml.presentation":
-        return fetch_office(file_id, title, metadata, "pptx")
+    elif (office_type := get_office_type_from_mime(mime_type)):
+        return fetch_office(file_id, title, metadata, office_type)
     else:
         # For now, return error for unsupported types
         return FetchError(
@@ -302,60 +287,22 @@ def fetch_pdf(file_id: str, title: str, metadata: dict) -> dict:
     """
     Fetch PDF file with hybrid extraction strategy.
 
-    1. Try markitdown first (fast, ~1-5s)
-    2. If <500 chars extracted, fall back to Drive conversion (slower, ~10-20s)
-
-    Drive conversion handles complex/image-heavy PDFs that markitdown can't parse.
-    This gives fast results for simple PDFs while ensuring quality on complex ones.
+    Uses adapters/pdf.py which tries markitdown first, falls back to Drive
+    conversion for complex/image-heavy PDFs.
     """
-    # 1. Download the PDF
-    pdf_bytes = download_file(file_id)
+    # Extract via adapter (handles download + hybrid extraction)
+    result = fetch_and_extract_pdf(file_id)
 
-    # 2. Try markitdown first (fast path)
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp.write(pdf_bytes)
-        tmp_path = Path(tmp.name)
-
-    try:
-        md = MarkItDown()
-        result = md.convert_local(str(tmp_path))
-        content = result.text_content or ""
-    finally:
-        tmp_path.unlink(missing_ok=True)
-
-    # 3. If markitdown barfed (<500 chars), fall back to Drive conversion
-    used_drive = False
-    if len(content.strip()) < MARKITDOWN_MIN_CHARS:
-        service = get_drive_service()
-        media = MediaInMemoryUpload(pdf_bytes, mimetype="application/pdf")
-        uploaded = service.files().create(
-            body={"name": f"_mise_temp_{file_id}", "mimeType": "application/vnd.google-apps.document"},
-            media_body=media,
-            fields="id",
-        ).execute()
-        temp_id = uploaded["id"]
-
-        try:
-            content = service.files().export(
-                fileId=temp_id,
-                mimeType="text/markdown",
-            ).execute()
-
-            if isinstance(content, bytes):
-                content = content.decode("utf-8")
-            used_drive = True
-
-        finally:
-            try:
-                service.files().delete(fileId=temp_id).execute()
-            except Exception:
-                pass
-
-    # 4. Deposit to workspace
+    # Deposit to workspace
     folder = get_deposit_folder("pdf", title, file_id)
-    content_path = write_content(folder, content)
+    content_path = write_content(folder, result.content)
 
-    extra = {"file_size": len(pdf_bytes), "extraction_method": "drive" if used_drive else "markitdown"}
+    extra = {
+        "char_count": result.char_count,
+        "extraction_method": result.method,
+    }
+    if result.warnings:
+        extra["warnings"] = result.warnings
     write_manifest(folder, "pdf", title, file_id, extra=extra)
 
     return FetchResult(
@@ -365,85 +312,32 @@ def fetch_pdf(file_id: str, title: str, metadata: dict) -> dict:
         type="pdf",
         metadata={
             "title": title,
-            "file_size": len(pdf_bytes),
-            "extraction_method": "drive" if used_drive else "markitdown",
+            "extraction_method": result.method,
         },
     )
-
-
-# Office format mappings: source MIME → (Google MIME, export MIME, export extension)
-OFFICE_CONVERSIONS = {
-    "docx": (
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.google-apps.document",
-        "text/markdown",
-        "md",
-    ),
-    "xlsx": (
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "application/vnd.google-apps.spreadsheet",
-        "text/csv",
-        "csv",
-    ),
-    "pptx": (
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        "application/vnd.google-apps.presentation",
-        "text/plain",
-        "txt",
-    ),
-}
 
 
 def fetch_office(file_id: str, title: str, metadata: dict, office_type: str) -> dict:
     """
     Fetch Office file via Drive conversion.
 
-    Downloads file, uploads with conversion to Google format, exports, then deletes temp.
-    This produces cleaner output than local conversion (markitdown), especially for XLSX.
+    Uses adapters/office.py which handles download, conversion, and cleanup.
     """
-    source_mime, google_mime, export_mime, ext = OFFICE_CONVERSIONS[office_type]
-    service = get_drive_service()
-
-    # 1. Download the Office file
-    file_bytes = download_file(file_id)
-
-    # 2. Upload with conversion to Google format
-    media = MediaInMemoryUpload(file_bytes, mimetype=source_mime)
-    uploaded = service.files().create(
-        body={"name": f"_mise_temp_{file_id}", "mimeType": google_mime},
-        media_body=media,
-        fields="id",
-    ).execute()
-    temp_id = uploaded["id"]
-
-    try:
-        # 3. Export from Google format
-        content = service.files().export(
-            fileId=temp_id,
-            mimeType=export_mime,
-        ).execute()
-
-        # Decode if bytes
-        if isinstance(content, bytes):
-            content = content.decode("utf-8")
-
-    finally:
-        # 4. Always delete the temp file
-        try:
-            service.files().delete(fileId=temp_id).execute()
-        except Exception:
-            pass  # Best effort cleanup
+    # Extract via adapter (handles download + conversion)
+    result = fetch_and_extract_office(file_id, office_type)
 
     # Determine output format
     output_format = "csv" if office_type == "xlsx" else "markdown"
-    filename = f"content.{ext}"
+    filename = f"content.{result.extension}"
 
     # Deposit to workspace
     folder = get_deposit_folder(office_type, title, file_id)
-    content_path = write_content(folder, content, filename=filename)
+    content_path = write_content(folder, result.content, filename=filename)
 
-    extra = {"file_size": len(file_bytes)}
-    write_manifest(folder, office_type, title, file_id, extra=extra)
+    extra: dict = {}
+    if result.warnings:
+        extra["warnings"] = result.warnings
+    write_manifest(folder, office_type, title, file_id, extra=extra if extra else None)
 
     return FetchResult(
         path=str(folder),
@@ -452,7 +346,6 @@ def fetch_office(file_id: str, title: str, metadata: dict, office_type: str) -> 
         type=office_type,
         metadata={
             "title": title,
-            "file_size": len(file_bytes),
         },
     )
 

@@ -26,6 +26,22 @@ server.py       FastMCP entry point
 - Tools wire adapters → extractors → workspace
 - server.py just registers tools
 
+### Adapter Specializations
+
+| Adapter | Purpose |
+|---------|---------|
+| `adapters/drive.py` | File metadata, search, download, export |
+| `adapters/docs.py` | Google Docs API (multi-tab support) |
+| `adapters/sheets.py` | Sheets API (batchGet for values) |
+| `adapters/slides.py` | Slides API + thumbnail fetching |
+| `adapters/gmail.py` | Gmail threads and messages |
+| `adapters/conversion.py` | **Shared** Drive upload→convert→export→delete pattern |
+| `adapters/pdf.py` | PDF extraction (hybrid: markitdown → Drive fallback) |
+| `adapters/office.py` | Office files (DOCX/XLSX/PPTX via Drive conversion) |
+| `adapters/genai.py` | Video summaries via internal GenAI API |
+
+**Layered pattern:** `pdf.py` and `office.py` use `conversion.py` for the shared Drive conversion logic. This keeps the specific adapters thin while centralizing temp file management.
+
 ## Optional: Video Summaries (chrome-debug)
 
 For video/audio files, `fetch` can return AI-generated summaries from Google's internal GenAI API. This requires `chrome-debug` running on port 9222.

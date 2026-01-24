@@ -1,0 +1,187 @@
+"""Unit tests for Office file extraction."""
+
+import pytest
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+
+from adapters.office import (
+    extract_office_content,
+    get_office_type_from_mime,
+    OfficeExtractionResult,
+    OFFICE_FORMATS,
+)
+from tools.fetch import fetch_office
+
+
+class TestOfficeExtraction:
+    """Tests for Office extraction adapter."""
+
+    @patch("adapters.office.convert_via_drive")
+    def test_extract_docx(self, mock_convert: MagicMock) -> None:
+        """Test DOCX extraction uses markdown export."""
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="# Document Title\n\nSome content.",
+            temp_file_deleted=True,
+            warnings=[],
+        )
+
+        result = extract_office_content(b"fake docx bytes", "docx", "file123")
+
+        assert result.source_type == "docx"
+        assert result.export_format == "markdown"
+        assert result.extension == "md"
+        assert "Document Title" in result.content
+
+        # Verify correct conversion params
+        mock_convert.assert_called_once()
+        call_kwargs = mock_convert.call_args.kwargs
+        assert call_kwargs["target_type"] == "doc"
+        assert call_kwargs["export_format"] == "markdown"
+
+    @patch("adapters.office.convert_via_drive")
+    def test_extract_xlsx(self, mock_convert: MagicMock) -> None:
+        """Test XLSX extraction uses CSV export."""
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="Name,Value\nAlice,100\nBob,200",
+            temp_file_deleted=True,
+            warnings=[],
+        )
+
+        result = extract_office_content(b"fake xlsx bytes", "xlsx", "file123")
+
+        assert result.source_type == "xlsx"
+        assert result.export_format == "csv"
+        assert result.extension == "csv"
+        assert "Alice" in result.content
+
+        call_kwargs = mock_convert.call_args.kwargs
+        assert call_kwargs["target_type"] == "sheet"
+        assert call_kwargs["export_format"] == "csv"
+
+    @patch("adapters.office.convert_via_drive")
+    def test_extract_pptx(self, mock_convert: MagicMock) -> None:
+        """Test PPTX extraction uses plain text export."""
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="Slide 1: Title\nSlide 2: Content",
+            temp_file_deleted=True,
+            warnings=[],
+        )
+
+        result = extract_office_content(b"fake pptx bytes", "pptx", "file123")
+
+        assert result.source_type == "pptx"
+        assert result.export_format == "plain"
+        assert result.extension == "txt"
+
+        call_kwargs = mock_convert.call_args.kwargs
+        assert call_kwargs["target_type"] == "slides"
+        assert call_kwargs["export_format"] == "plain"
+
+    @patch("adapters.office.convert_via_drive")
+    def test_warnings_propagated(self, mock_convert: MagicMock) -> None:
+        """Test that conversion warnings are included in result."""
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="content",
+            temp_file_deleted=False,
+            warnings=["Failed to delete temp file"],
+        )
+
+        result = extract_office_content(b"bytes", "docx", "file123")
+
+        assert "Failed to delete temp file" in result.warnings
+
+
+class TestOfficeTypeDetection:
+    """Tests for MIME type to Office type mapping."""
+
+    def test_docx_mime(self) -> None:
+        """Test DOCX MIME type detection."""
+        mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        assert get_office_type_from_mime(mime) == "docx"
+
+    def test_xlsx_mime(self) -> None:
+        """Test XLSX MIME type detection."""
+        mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        assert get_office_type_from_mime(mime) == "xlsx"
+
+    def test_pptx_mime(self) -> None:
+        """Test PPTX MIME type detection."""
+        mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        assert get_office_type_from_mime(mime) == "pptx"
+
+    def test_unknown_mime(self) -> None:
+        """Test unknown MIME type returns None."""
+        assert get_office_type_from_mime("application/pdf") is None
+        assert get_office_type_from_mime("text/plain") is None
+
+
+class TestFetchOffice:
+    """Tests for Office fetch tool function."""
+
+    @patch("tools.fetch.fetch_and_extract_office")
+    @patch("tools.fetch.get_deposit_folder")
+    @patch("tools.fetch.write_content")
+    @patch("tools.fetch.write_manifest")
+    def test_fetch_office_deposits_to_workspace(
+        self,
+        mock_write_manifest: MagicMock,
+        mock_write_content: MagicMock,
+        mock_get_folder: MagicMock,
+        mock_extract: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Test that fetch_office deposits content to workspace."""
+        mock_extract.return_value = OfficeExtractionResult(
+            content="# Document",
+            source_type="docx",
+            export_format="markdown",
+            extension="md",
+            warnings=[],
+        )
+        mock_get_folder.return_value = tmp_path / "docx--test--abc123"
+        mock_write_content.return_value = tmp_path / "content.md"
+
+        result = fetch_office("abc123", "Test.docx", {}, "docx")
+
+        assert result.type == "docx"
+        assert result.format == "markdown"
+        assert result.metadata["title"] == "Test.docx"
+
+        mock_extract.assert_called_once_with("abc123", "docx")
+        mock_write_content.assert_called_once()
+
+    @patch("tools.fetch.fetch_and_extract_office")
+    @patch("tools.fetch.get_deposit_folder")
+    @patch("tools.fetch.write_content")
+    @patch("tools.fetch.write_manifest")
+    def test_fetch_xlsx_uses_csv_format(
+        self,
+        mock_write_manifest: MagicMock,
+        mock_write_content: MagicMock,
+        mock_get_folder: MagicMock,
+        mock_extract: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Test that XLSX fetch uses CSV format."""
+        mock_extract.return_value = OfficeExtractionResult(
+            content="A,B,C",
+            source_type="xlsx",
+            export_format="csv",
+            extension="csv",
+            warnings=[],
+        )
+        mock_get_folder.return_value = tmp_path / "xlsx--test--abc123"
+        mock_write_content.return_value = tmp_path / "content.csv"
+
+        result = fetch_office("abc123", "Data.xlsx", {}, "xlsx")
+
+        assert result.type == "xlsx"
+        assert result.format == "csv"
+
+        # Verify filename is content.csv
+        call_args = mock_write_content.call_args
+        assert call_args.kwargs.get("filename") == "content.csv" or "content.csv" in str(call_args)

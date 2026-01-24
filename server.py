@@ -21,7 +21,7 @@ Architecture:
 
 from mcp.server.fastmcp import FastMCP
 
-from tools import do_search, do_fetch
+from tools import do_search, do_fetch, do_create
 
 # Initialize MCP server
 mcp = FastMCP("Google Workspace v2")
@@ -97,8 +97,7 @@ def create(
         file_id: Created file ID
         web_link: URL to view/edit
     """
-    # TODO: Wire to tools/create.py
-    return {"status": "not_implemented", "title": title}
+    return do_create(content, title, doc_type, folder_id).to_dict()
 
 
 # ============================================================================
