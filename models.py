@@ -237,6 +237,11 @@ class SlideData:
     # Thumbnail (populated by adapter if requested)
     thumbnail_bytes: bytes | None = None
 
+    # Thumbnail decision (populated during parsing)
+    needs_thumbnail: bool = False
+    thumbnail_reason: str | None = None  # 'chart', 'image', 'fragmented_text'
+    skip_thumbnail_reason: str | None = None  # 'single_large_image', 'text_only'
+
     # Warnings during extraction (missing objectId, etc.)
     warnings: list[str] = field(default_factory=list)
 

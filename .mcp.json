@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "workspace": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["--directory", "/Users/modha/Repos/mcp-google-workspace", "run", "python", "-m", "workspace_mcp.server"]
+    }
+  }
+}

@@ -176,6 +176,148 @@ def _escape_cell(value: str) -> str:
 
 
 # =============================================================================
+# THUMBNAIL DECISION LOGIC
+# =============================================================================
+# Selective thumbnailing: skip stock photos and text-only slides.
+# Ported from v1 (mcp-google-workspace).
+
+
+def _get_image_coverage(
+    element: dict[str, Any],
+    page_width: int,
+    page_height: int,
+) -> float:
+    """
+    Calculate what fraction of the page an image element covers.
+
+    Args:
+        element: PageElement containing an image
+        page_width: Page width in EMU
+        page_height: Page height in EMU
+
+    Returns:
+        Coverage ratio (0.0 to 1.0)
+    """
+    if page_width <= 0 or page_height <= 0:
+        return 0.0
+
+    # Get element size from transform
+    transform = element.get("transform", {})
+    # Size can be in scaleX/scaleY (relative) or in the size property
+    size = element.get("size", {})
+
+    elem_width = size.get("width", {}).get("magnitude", 0)
+    elem_height = size.get("height", {}).get("magnitude", 0)
+
+    if elem_width <= 0 or elem_height <= 0:
+        return 0.0
+
+    page_area = page_width * page_height
+    elem_area = elem_width * elem_height
+
+    return elem_area / page_area
+
+
+def _is_single_large_image_slide(
+    elements: list[dict[str, Any]],
+    page_width: int,
+    page_height: int,
+    coverage_threshold: float = 0.5,
+) -> bool:
+    """
+    Detect if a slide is dominated by a single large image (likely stock photo).
+
+    Args:
+        elements: List of pageElements from slide
+        page_width: Page width in EMU
+        page_height: Page height in EMU
+        coverage_threshold: Minimum fraction of page for "large" (default 0.5)
+
+    Returns:
+        True if slide has exactly one image covering > threshold of page
+    """
+    image_elements = []
+    for element in elements:
+        if "image" in element:
+            coverage = _get_image_coverage(element, page_width, page_height)
+            image_elements.append((element, coverage))
+
+    # Single large image check
+    if len(image_elements) == 1:
+        _, coverage = image_elements[0]
+        return coverage >= coverage_threshold
+
+    return False
+
+
+def _has_fragmented_text(
+    text_content: list[str],
+    min_fragments: int = 5,
+    max_avg_length: int = 50,
+) -> bool:
+    """
+    Detect if text is fragmented (many short pieces) suggesting visual layout matters.
+
+    Fragmented text = spatial arrangement carries meaning lost in extraction.
+
+    Args:
+        text_content: List of extracted text strings
+        min_fragments: Minimum number of text pieces to consider fragmented
+        max_avg_length: Maximum average length to consider fragmented
+
+    Returns:
+        True if text appears fragmented (thumbnail would help)
+    """
+    if len(text_content) < min_fragments:
+        return False
+
+    avg_length = sum(len(t) for t in text_content) / len(text_content)
+    return avg_length < max_avg_length
+
+
+def _determine_thumbnail_need(
+    elements: list[dict[str, Any]],
+    text_content: list[str],
+    visual_elements: list[str],
+    page_width: int,
+    page_height: int,
+) -> tuple[bool, str | None, str | None]:
+    """
+    Decide whether a slide needs a thumbnail.
+
+    Returns:
+        Tuple of (needs_thumbnail, thumbnail_reason, skip_reason)
+        - If needs_thumbnail=True: reason explains why (chart, image, fragmented_text)
+        - If needs_thumbnail=False: skip_reason explains why (single_large_image, text_only)
+    """
+    # Check for visual elements
+    has_visuals = len(visual_elements) > 0
+
+    if has_visuals:
+        # Is it just a stock photo?
+        if _is_single_large_image_slide(elements, page_width, page_height):
+            return False, None, "single_large_image"
+
+        # Has meaningful visual content - determine reason
+        reason = "shapes"  # default
+        for elem in visual_elements:
+            if "[CHART]" in elem:
+                reason = "chart"
+                break
+            elif "[IMAGE]" in elem:
+                reason = "image"
+
+        return True, reason, None
+
+    # No visual elements - check for fragmented text
+    if _has_fragmented_text(text_content):
+        return True, "fragmented_text", None
+
+    # Text-only slide, thumbnail not needed
+    return False, None, "text_only"
+
+
+# =============================================================================
 # RAW API RESPONSE PARSING
 # =============================================================================
 # These functions parse raw Slides API responses into our model types.
@@ -194,9 +336,13 @@ def parse_presentation(response: dict[str, Any]) -> PresentationData:
     page_size = response.get("pageSize")
     locale = response.get("locale")
 
+    # Extract page dimensions for thumbnail decisions
+    page_width = page_size.get("width", {}).get("magnitude", 0) if page_size else 0
+    page_height = page_size.get("height", {}).get("magnitude", 0) if page_size else 0
+
     slides: list[SlideData] = []
     for idx, slide_data in enumerate(response.get("slides", [])):
-        slides.append(_parse_slide(slide_data, idx))
+        slides.append(_parse_slide(slide_data, idx, page_width, page_height))
 
     return PresentationData(
         title=title,
@@ -207,7 +353,12 @@ def parse_presentation(response: dict[str, Any]) -> PresentationData:
     )
 
 
-def _parse_slide(slide: dict[str, Any], index: int) -> SlideData:
+def _parse_slide(
+    slide: dict[str, Any],
+    index: int,
+    page_width: int = 0,
+    page_height: int = 0,
+) -> SlideData:
     """Parse a single slide from API response."""
     slide_id = slide.get("objectId", "")
     title: str | None = None
@@ -276,6 +427,12 @@ def _parse_slide(slide: dict[str, Any], index: int) -> SlideData:
                 notes = _extract_text_from_shape(shape)
                 break
 
+    # Determine thumbnail need
+    elements = slide.get("pageElements", [])
+    needs_thumb, thumb_reason, skip_reason = _determine_thumbnail_need(
+        elements, text_content, visual_elements, page_width, page_height
+    )
+
     return SlideData(
         slide_id=slide_id,
         index=index,
@@ -285,6 +442,9 @@ def _parse_slide(slide: dict[str, Any], index: int) -> SlideData:
         notes=notes,
         visual_elements=visual_elements,
         warnings=warnings,
+        needs_thumbnail=needs_thumb,
+        thumbnail_reason=thumb_reason,
+        skip_thumbnail_reason=skip_reason,
     )
 
 

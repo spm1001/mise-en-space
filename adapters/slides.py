@@ -69,32 +69,39 @@ def fetch_presentation(
     # Parse into typed model
     data = parse_presentation(response)
 
-    # Fetch thumbnails if requested (sequential API calls, parallel downloads)
+    # Fetch thumbnails selectively (only for slides that need them)
     if include_thumbnails and data.slides:
-        _fetch_thumbnails(service, presentation_id, data)
+        _fetch_thumbnails_selective(service, presentation_id, data)
 
     return data
 
 
-def _fetch_thumbnails(
+def _fetch_thumbnails_selective(
     service: Resource,
     presentation_id: str,
     data: PresentationData,
 ) -> None:
     """
-    Fetch thumbnails for all slides.
+    Fetch thumbnails selectively based on slide.needs_thumbnail.
+
+    Skips slides where:
+    - needs_thumbnail=False (stock photos, text-only)
+    - slide_id is missing
 
     API calls are sequential (batch not supported for Workspace APIs).
     Image downloads are parallelized for speed.
 
     Updates data.slides[i].thumbnail_bytes in place.
     """
-    # Step 1: Get thumbnail URLs (sequential API calls — no way around this)
+    # Step 1: Get thumbnail URLs only for slides that need them
     thumbnail_urls: list[tuple[str, str]] = []  # (slide_id, url)
 
     for slide in data.slides:
         if not slide.slide_id:
             continue
+        if not slide.needs_thumbnail:
+            continue  # Skip based on selective logic
+
         try:
             response = (
                 service.presentations()
@@ -109,8 +116,8 @@ def _fetch_thumbnails(
             url = response.get("contentUrl")
             if url:
                 thumbnail_urls.append((slide.slide_id, url))
-        except Exception:
-            pass  # Skip failed thumbnails
+        except Exception as e:
+            slide.warnings.append(f"Thumbnail fetch failed: {type(e).__name__}")
 
     if not thumbnail_urls:
         return

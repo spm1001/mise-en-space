@@ -159,7 +159,8 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict) -> dict:
 
 def fetch_slides(presentation_id: str, title: str, metadata: dict) -> dict:
     """Fetch Google Slides."""
-    presentation_data = fetch_presentation(presentation_id)
+    # Enable thumbnails - selective logic in adapter skips stock photos/text-only
+    presentation_data = fetch_presentation(presentation_id, include_thumbnails=True)
     content = extract_slides_content(presentation_data)
 
     folder = get_deposit_folder("slides", title, presentation_id)

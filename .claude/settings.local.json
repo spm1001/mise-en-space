@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__workspace__create_doc_from_markdown",
+      "mcp__workspace__get_working_set",
+      "Skill(webctl)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "workspace"
+  ]
+}

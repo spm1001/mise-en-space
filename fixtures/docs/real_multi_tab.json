@@ -1,6 +1,6 @@
 {
   "title": "Test multi-tab document",
-  "revisionId": "AONSffzwxyxJwcttggrdXBcRIzNAAfuNlBA2m2VDkKzbBZR4uyUzcsO8pndM4UE6eN5g_zT2t9_6s8HyYy4UjL3ZY-HztpLoE5eN093RIwU",
+  "revisionId": "AONSffx8nFA37EnfivpVMr1r6PQfkCVxldoLMxKVUq3swDoVwU8QcCmwzLauKCjggFq2WM83fAfzMatp2Fc3-XuiYkEbEU5CwHG7qPWLaJg",
   "suggestionsViewMode": "SUGGESTIONS_INLINE",
   "documentId": "1iBsJHoqza53_r5FxqKX-FIh7ctW2RD8J_8xqOd6Uyxo",
   "tabs": [
@@ -8069,7 +8069,7 @@
             "inlineObjectProperties": {
               "embeddedObject": {
                 "imageProperties": {
-                  "contentUri": "https://lh7-rt.googleusercontent.com/docsz/AD_4nXepRlAIY7MsYlxevGkChNGi2Gk0KZ1rijH8YfijQ_n0XnUDw6UMa6oTSrz0NCxsIwYarPXOx3ZckOPznJfqvIjhHNPbSc0e21MC4Q7vBnkim9gEXAbVohg4ZGSYK0bIHZ3kH6BqrOAkD0XOcRlYlCzLxd6Qz28ak6g?key=ThBZ6jBoWAreMIFDXFoMBw",
+                  "contentUri": "https://lh7-rt.googleusercontent.com/docsz/AD_4nXfD2EGLEP9v_B1p21JLz3wi95F5nKnGib1JVDQk-Ama9j69CP4Is-YCCuAA0MFE7KAwubLroufeCmwGToKs0c9GoOMkZ01_RBOWYrmQI1whNqivUeYsg0CtlnPD-RXrJJYkow8Gn1DyHLof6bVzySDs0af4R4-VaV0?key=ThBZ6jBoWAreMIFDXFoMBw",
                   "cropProperties": {}
                 },
                 "description": "Alt text for image",
@@ -8138,12 +8138,32 @@
             },
             {
               "startIndex": 1,
-              "endIndex": 2,
+              "endIndex": 47,
               "paragraph": {
                 "elements": [
                   {
                     "startIndex": 1,
-                    "endIndex": 2,
+                    "endIndex": 47,
+                    "textRun": {
+                      "content": "This is the second tab - not much to see here\n",
+                      "textStyle": {}
+                    }
+                  }
+                ],
+                "paragraphStyle": {
+                  "namedStyleType": "NORMAL_TEXT",
+                  "direction": "LEFT_TO_RIGHT"
+                }
+              }
+            },
+            {
+              "startIndex": 47,
+              "endIndex": 48,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 47,
+                    "endIndex": 48,
                     "textRun": {
                       "content": "\n",
                       "textStyle": {}
@@ -8548,14 +8568,14 @@
             },
             {
               "startIndex": 1,
-              "endIndex": 2,
+              "endIndex": 67,
               "paragraph": {
                 "elements": [
                   {
                     "startIndex": 1,
-                    "endIndex": 2,
+                    "endIndex": 67,
                     "textRun": {
-                      "content": "\n",
+                      "content": "This is the third tab. You are feeling sleeeepy. Veeeery sleepy. \n",
                       "textStyle": {}
                     }
                   }
