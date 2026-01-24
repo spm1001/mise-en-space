@@ -483,6 +483,14 @@ EmbeddedObject subtypes (in inlineObjects):
 - `embeddedDrawingProperties` — Google Drawings
 - `linkedContentReference` — linked charts from Sheets (only type currently implemented)
 
+## Unsupported Content Types
+
+| Content Type | Why Unsupported | Alternatives |
+|--------------|-----------------|--------------|
+| **Google Groups** | No read API exists. Groups Migration API is write-only (import). Google Takeout can export but has no programmatic API. Web scraping works but is impractically slow (~3s per topic). | Request Vault export from IT (requires license), or access group content via individual Gmail subscriptions (incomplete). |
+
+**Research (Jan 2026):** Confirmed with Jay Lee (GAM creator) that Google has never provided a Groups content read API. This is a known gap Google hasn't addressed in 3-5 years.
+
 ## Research References
 
 Key research informing this design:
