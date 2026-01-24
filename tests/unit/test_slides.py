@@ -212,6 +212,32 @@ class TestParsePresentation:
         # The row should have 3 columns (merged + 2 empty)
         assert "| I am a merged cell - fear me |  |  |" in result
 
+    def test_selective_thumbnail_decisions(self, real_slides: PresentationData) -> None:
+        """Test that slides get correct thumbnail decisions.
+
+        Based on v1 selective logic:
+        - Charts: needs_thumbnail=True (visual IS the content)
+        - Images: needs_thumbnail=True (unless single large = stock photo)
+        - Text-only: needs_thumbnail=False (extraction is enough)
+        """
+        # Check that decisions were made for all slides
+        for slide in real_slides.slides:
+            # Every slide should have a reason (either thumbnail_reason or skip_reason)
+            has_decision = slide.thumbnail_reason or slide.skip_thumbnail_reason
+            assert has_decision, f"Slide {slide.index + 1} has no thumbnail decision"
+
+        # Slide 6 and 7 have charts - should need thumbnails
+        slide_6 = real_slides.slides[5]
+        slide_7 = real_slides.slides[6]
+        assert slide_6.needs_thumbnail, "Chart slide should need thumbnail"
+        assert slide_6.thumbnail_reason == "chart"
+        assert slide_7.needs_thumbnail, "Chart slide should need thumbnail"
+        assert slide_7.thumbnail_reason == "chart"
+
+        # At least one slide should be text_only (skipped)
+        text_only_slides = [s for s in real_slides.slides if s.skip_thumbnail_reason == "text_only"]
+        assert len(text_only_slides) > 0, "Should have at least one text-only slide"
+
     def test_rowspan_handled(self, real_slides: PresentationData) -> None:
         """Test that vertical merged cells (rowSpan) are handled correctly.
 

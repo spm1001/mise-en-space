@@ -379,7 +379,14 @@ Integration tests require `-m integration` flag and real credentials.
 uv run python scripts/slides_timing.py [presentation_id]   # Compare API patterns
 ```
 
-**Key finding (Jan 2026):** HTTP batch requests are NOT supported for Workspace editor APIs (Slides, Sheets, Docs) — Google disabled this platform feature in 2022. Thumbnails must be fetched sequentially (~0.5s per slide). For a 43-slide deck, expect ~20s. Consider porting v1's selective thumbnail logic (skip stock photos, text-only slides).
+**Key finding (Jan 2026):** HTTP batch requests are NOT supported for Workspace editor APIs (Slides, Sheets, Docs) — Google disabled this platform feature in 2022. Thumbnails must be fetched sequentially (~0.5s per slide).
+
+**Selective thumbnails (Jan 2026):** Thumbnails are now **enabled by default** because selective logic makes them cheap. The extractor analyzes each slide and sets `needs_thumbnail=True` only for:
+- Charts (visual IS the content)
+- Images (unless single large image >50% = stock photo)
+- Fragmented text (≥5 short pieces, layout matters)
+
+Text-only slides and stock photos are skipped. Test presentation: 4 of 7 slides get thumbnails.
 
 ## Validation & ID Conversion
 
