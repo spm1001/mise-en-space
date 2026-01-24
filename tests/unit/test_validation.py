@@ -5,6 +5,7 @@ Tests for validation and ID conversion utilities.
 import pytest
 
 from validation import (
+    escape_drive_query,
     extract_drive_file_id,
     extract_gmail_id,
     extract_gmail_id_from_url,
@@ -13,6 +14,7 @@ from validation import (
     is_gmail_api_id,
     is_valid_email,
     normalize_email,
+    sanitize_gmail_query,
 )
 
 
@@ -141,3 +143,91 @@ class TestEmailValidation:
         """Reject invalid emails during normalization."""
         with pytest.raises(ValueError, match="Invalid email"):
             normalize_email("not-an-email")
+
+
+class TestQueryEscaping:
+    """Tests for search query escaping and sanitization."""
+
+    # -------------------------------------------------------------------------
+    # escape_drive_query tests
+    # -------------------------------------------------------------------------
+
+    def test_escape_drive_query_normal_text(self):
+        """Normal text passes through unchanged."""
+        assert escape_drive_query("meeting notes") == "meeting notes"
+        assert escape_drive_query("budget 2026") == "budget 2026"
+
+    def test_escape_drive_query_single_quotes(self):
+        """Single quotes are escaped."""
+        assert escape_drive_query("it's") == "it\\'s"
+        assert escape_drive_query("'quoted'") == "\\'quoted\\'"
+
+    def test_escape_drive_query_backslashes(self):
+        """Backslashes are escaped."""
+        assert escape_drive_query("path\\to\\file") == "path\\\\to\\\\file"
+
+    def test_escape_drive_query_injection_attempt(self):
+        """Query injection attempts are neutralized."""
+        # This would break out of the quoted string without escaping
+        malicious = "test' OR name contains 'secret"
+        escaped = escape_drive_query(malicious)
+        assert escaped == "test\\' OR name contains \\'secret"
+        # When used in fullText contains '{escaped}', this stays as a single value
+
+    def test_escape_drive_query_mixed_special_chars(self):
+        """Mixed quotes and backslashes handled correctly."""
+        # Order matters: backslash before quote
+        assert escape_drive_query("it's a\\path") == "it\\'s a\\\\path"
+
+    def test_escape_drive_query_empty(self):
+        """Empty string returns empty."""
+        assert escape_drive_query("") == ""
+        assert escape_drive_query(None) is None
+
+    def test_escape_drive_query_operators_preserved(self):
+        """Drive operators in user input are just text (escaped as needed)."""
+        # Users can't inject operators because the query is inside quotes
+        query = "mimeType:application/pdf"
+        assert escape_drive_query(query) == "mimeType:application/pdf"
+
+    # -------------------------------------------------------------------------
+    # sanitize_gmail_query tests
+    # -------------------------------------------------------------------------
+
+    def test_sanitize_gmail_query_normal_text(self):
+        """Normal text passes through unchanged."""
+        assert sanitize_gmail_query("meeting notes") == "meeting notes"
+
+    def test_sanitize_gmail_query_preserves_operators(self):
+        """Gmail operators are preserved (intentional feature)."""
+        assert sanitize_gmail_query("from:alice@example.com") == "from:alice@example.com"
+        assert sanitize_gmail_query("subject:meeting is:unread") == "subject:meeting is:unread"
+        assert sanitize_gmail_query("has:attachment larger:5M") == "has:attachment larger:5M"
+
+    def test_sanitize_gmail_query_strips_control_chars(self):
+        """Control characters are removed."""
+        assert sanitize_gmail_query("test\x00with\x1fnull") == "testwithnull"
+        assert sanitize_gmail_query("bell\x07char") == "bellchar"
+
+    def test_sanitize_gmail_query_preserves_whitespace(self):
+        """Tab, newline, CR are preserved."""
+        assert sanitize_gmail_query("line1\nline2") == "line1\nline2"
+        assert sanitize_gmail_query("col1\tcol2") == "col1\tcol2"
+
+    def test_sanitize_gmail_query_strips_del(self):
+        """DEL character (0x7F) is removed."""
+        assert sanitize_gmail_query("test\x7ftext") == "testtext"
+
+    def test_sanitize_gmail_query_strips_surrounding_whitespace(self):
+        """Leading/trailing whitespace stripped."""
+        assert sanitize_gmail_query("  query  ") == "query"
+
+    def test_sanitize_gmail_query_empty(self):
+        """Empty string returns empty."""
+        assert sanitize_gmail_query("") == ""
+        assert sanitize_gmail_query(None) is None
+
+    def test_sanitize_gmail_query_unicode(self):
+        """Unicode characters pass through."""
+        assert sanitize_gmail_query("日本語 email") == "日本語 email"
+        assert sanitize_gmail_query("émoji 🎉") == "émoji 🎉"

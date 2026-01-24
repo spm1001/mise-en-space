@@ -340,6 +340,77 @@ def extract_gmail_id(input_value: str) -> str:
 
 
 # =============================================================================
+# SEARCH QUERY ESCAPING
+# =============================================================================
+
+def escape_drive_query(query: str) -> str:
+    """
+    Escape user input for use in Drive search queries.
+
+    Drive uses single-quoted strings in queries like:
+        fullText contains 'search term'
+
+    Without escaping, a query like "test' OR name contains 'secret" becomes:
+        fullText contains 'test' OR name contains 'secret'
+    which is query injection.
+
+    Args:
+        query: Raw user search input
+
+    Returns:
+        Escaped string safe for use in single-quoted Drive query clauses
+
+    Example:
+        >>> escape_drive_query("test' OR name contains 'secret")
+        "test\\' OR name contains \\'secret"
+    """
+    if not query:
+        return query
+
+    # Escape backslashes first (before we add more with quote escaping)
+    escaped = query.replace('\\', '\\\\')
+    # Escape single quotes
+    escaped = escaped.replace("'", "\\'")
+
+    return escaped
+
+
+def sanitize_gmail_query(query: str) -> str:
+    """
+    Sanitize user input for Gmail search queries.
+
+    Gmail search supports operators (from:, subject:, is:, etc.) which users
+    should be able to use. We only strip control characters and null bytes
+    that could cause issues.
+
+    Args:
+        query: Raw user search input
+
+    Returns:
+        Sanitized string safe for Gmail API
+
+    Example:
+        >>> sanitize_gmail_query("from:alice subject:meeting")
+        "from:alice subject:meeting"
+        >>> sanitize_gmail_query("test\\x00with\\x1fnull")
+        "testwithnull"
+    """
+    if not query:
+        return query
+
+    # Strip control characters (ASCII 0-31 except tab, newline, carriage return)
+    # and DEL (127). Gmail handles these poorly.
+    sanitized = ''.join(
+        char for char in query
+        if ord(char) >= 32 or char in '\t\n\r'
+    )
+    # Also strip DEL
+    sanitized = sanitized.replace('\x7f', '')
+
+    return sanitized.strip()
+
+
+# =============================================================================
 # EMAIL VALIDATION
 # =============================================================================
 

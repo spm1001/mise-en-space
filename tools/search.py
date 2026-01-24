@@ -7,6 +7,7 @@ Unified search across Drive and Gmail.
 from adapters.drive import search_files
 from adapters.gmail import search_threads
 from models import DriveSearchResult, GmailSearchResult, MiseError, SearchResult
+from validation import escape_drive_query, sanitize_gmail_query
 
 
 def format_drive_result(result: DriveSearchResult) -> dict:
@@ -58,7 +59,8 @@ def do_search(
     # Drive search
     if "drive" in sources:
         try:
-            drive_query = f"fullText contains '{query}' and trashed = false"
+            escaped_query = escape_drive_query(query)
+            drive_query = f"fullText contains '{escaped_query}' and trashed = false"
             drive_results = search_files(drive_query, max_results=max_results)
             result.drive_results = [format_drive_result(r) for r in drive_results]
         except MiseError as e:
@@ -69,7 +71,8 @@ def do_search(
     # Gmail search
     if "gmail" in sources:
         try:
-            gmail_results = search_threads(query, max_results=max_results)
+            sanitized_query = sanitize_gmail_query(query)
+            gmail_results = search_threads(sanitized_query, max_results=max_results)
             result.gmail_results = [format_gmail_result(r) for r in gmail_results]
         except MiseError as e:
             result.errors.append(f"Gmail search failed: {e.message}")
