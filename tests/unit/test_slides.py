@@ -212,6 +212,31 @@ class TestParsePresentation:
         # The row should have 3 columns (merged + 2 empty)
         assert "| I am a merged cell - fear me |  |  |" in result
 
+    def test_rowspan_handled(self, real_slides: PresentationData) -> None:
+        """Test that vertical merged cells (rowSpan) are handled correctly.
+
+        Slide 3 Table 2 has a cell in column 3 that spans 3 rows.
+        Without rowSpan handling, rows 2 and 3 would only have 2 cells
+        because the API doesn't include the spanned cell in those rows.
+        """
+        # Check the table structure directly
+        slide_3 = real_slides.slides[2]
+        assert len(slide_3.tables) >= 2, "Slide 3 should have at least 2 tables"
+
+        # Table 2 has the rowSpan cell
+        table_2 = slide_3.tables[1]
+
+        # All 3 rows should have exactly 3 cells (not 3, 2, 2)
+        assert len(table_2.rows) == 3, "Table 2 should have 3 rows"
+        for i, row in enumerate(table_2.rows):
+            assert len(row) == 3, f"Row {i} should have 3 cells, got {len(row)}: {row}"
+
+        # Row 0 has the merged cell content
+        assert "vertical merged cell" in table_2.rows[0][2]
+        # Rows 1 and 2 have empty placeholders in column 3
+        assert table_2.rows[1][2] == ""
+        assert table_2.rows[2][2] == ""
+
     def test_slide_ids_parsed(self, real_slides: PresentationData) -> None:
         """Test that slide IDs are extracted."""
         # All slides should have IDs

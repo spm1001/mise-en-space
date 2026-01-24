@@ -292,33 +292,73 @@ def _parse_table(table: dict[str, Any]) -> SlideTable:
     """
     Parse a table element into SlideTable.
 
-    Handles merged cells by expanding them to fill the grid.
-    A cell with colSpan=3 becomes 3 cells in the output row.
+    Handles merged cells by expanding them to fill the grid:
+    - colSpan: A cell spanning 3 columns becomes 1 cell + 2 empty cells
+    - rowSpan: Subsequent rows get empty cells inserted where the span occupies
+
+    The Slides API only includes cells in the row where they start. If a cell
+    has rowSpan=3, rows 2 and 3 won't have that cell at all — we must track
+    which columns are "occupied" and insert placeholders.
     """
     num_columns = table.get("columns", 0)
     rows: list[list[str]] = []
 
+    # Track how many more rows each column is occupied by a rowSpan.
+    # Key = column index, Value = remaining rows (decremented after each row)
+    row_span_remaining: dict[int, int] = {}
+
     for row in table.get("tableRows", []):
         row_cells: list[str] = []
-        for cell in row.get("tableCells", []):
+        col_index = 0  # Current position in the output row
+        cell_iter = iter(row.get("tableCells", []))
+
+        while col_index < num_columns:
+            # Check if this column is occupied by a rowSpan from a previous row
+            if col_index in row_span_remaining and row_span_remaining[col_index] > 0:
+                row_cells.append("")  # Placeholder for spanned cell
+                col_index += 1
+                continue
+
+            # Get next cell from this row
+            cell = next(cell_iter, None)
+            if cell is None:
+                # No more cells in this row, pad with empty
+                row_cells.append("")
+                col_index += 1
+                continue
+
+            # Extract cell text
             cell_text = ""
             if "text" in cell:
                 text_elements = cell["text"].get("textElements", [])
                 cell_text = _extract_text_from_elements(text_elements)
             cell_text = cell_text.strip()
 
-            # Handle column spans by repeating/padding
             col_span = cell.get("columnSpan", 1)
+            row_span = cell.get("rowSpan", 1)
+
+            # Add the cell content
             row_cells.append(cell_text)
-            # Add empty cells for the span (merged cell shows content once)
+
+            # Track rowSpan for subsequent rows (all columns this cell spans)
+            if row_span > 1:
+                for span_col in range(col_index, col_index + col_span):
+                    row_span_remaining[span_col] = row_span - 1
+
+            col_index += 1
+
+            # Handle colSpan by adding empty cells
             for _ in range(col_span - 1):
                 row_cells.append("")
-
-        # Ensure row has correct number of columns
-        while len(row_cells) < num_columns:
-            row_cells.append("")
+                col_index += 1
 
         rows.append(row_cells)
+
+        # Decrement rowSpan counters for next row
+        for col in list(row_span_remaining.keys()):
+            row_span_remaining[col] -= 1
+            if row_span_remaining[col] <= 0:
+                del row_span_remaining[col]
 
     return SlideTable(rows=rows)
 

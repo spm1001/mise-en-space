@@ -444,7 +444,7 @@
           },
           "description": "An isometric 3D illustration of a vibrant, interconnected network of data streams flowing between different city buildings, representing a smart city\u2019s data infrastructure. The style should be clean, with a corporate blue and green colour palette on a white background. Include icons representing different services like transportation, energy and communication. The image should be professional and suitable for a presentation on urban technology and data management.",
           "image": {
-            "contentUrl": "https://lh7-rt.googleusercontent.com/slidesz/AGV_vUfLRmRfDg-73IArCNN2_FBxfKZmXWu7Pilagb6AoAEe-9cqPNb834pBvpgZ4tC25u1dx486WlWKqcKX2XkZzII1oyuw9Wm2xzb2pcnJMEKxjqf27oPsv8EjY8ZRtdodV-KDzyYpXLXHPtbFSZ3azPM55jcuAdlVKlIct9donV684TI=s2048?key=NqbTHjtAZXQNscARDVXszw",
+            "contentUrl": "https://lh7-rt.googleusercontent.com/slidesz/AGV_vUewT8WEqVR2NRxIURarUZer0QvigOlDnpg9OTk_cb_GWXiVwQtdtO-bjqrsUQxO851bEP8D3d4UK1jGqwEnsiJjEqFFD07V4s0j0qr_iDyBCb_XQcxc4NTDGiAhXW8uFNIzIVVep9xBZnIjRjxqIm7sqdpL1bflDG_6dv7wnXIYZkU=s2048?key=NqbTHjtAZXQNscARDVXszw",
             "imageProperties": {
               "outline": {
                 "outlineFill": {
@@ -2156,12 +2156,12 @@
                     "location": {
                       "columnIndex": 2
                     },
-                    "rowSpan": 1,
+                    "rowSpan": 3,
                     "columnSpan": 1,
                     "text": {
                       "textElements": [
                         {
-                          "endIndex": 7,
+                          "endIndex": 43,
                           "paragraphMarker": {
                             "style": {
                               "lineSpacing": 100,
@@ -2187,9 +2187,9 @@
                           }
                         },
                         {
-                          "endIndex": 7,
+                          "endIndex": 43,
                           "textRun": {
-                            "content": "Table3\n",
+                            "content": "I am a vertical merged cell, fear me more\u2026\n",
                             "style": {
                               "backgroundColor": {},
                               "foregroundColor": {
@@ -2412,89 +2412,6 @@
                       },
                       "contentAlignment": "TOP"
                     }
-                  },
-                  {
-                    "location": {
-                      "rowIndex": 1,
-                      "columnIndex": 2
-                    },
-                    "rowSpan": 1,
-                    "columnSpan": 1,
-                    "text": {
-                      "textElements": [
-                        {
-                          "endIndex": 2,
-                          "paragraphMarker": {
-                            "style": {
-                              "lineSpacing": 100,
-                              "alignment": "START",
-                              "indentStart": {
-                                "unit": "PT"
-                              },
-                              "indentEnd": {
-                                "unit": "PT"
-                              },
-                              "spaceAbove": {
-                                "unit": "PT"
-                              },
-                              "spaceBelow": {
-                                "unit": "PT"
-                              },
-                              "indentFirstLine": {
-                                "unit": "PT"
-                              },
-                              "direction": "LEFT_TO_RIGHT",
-                              "spacingMode": "COLLAPSE_LISTS"
-                            }
-                          }
-                        },
-                        {
-                          "endIndex": 2,
-                          "textRun": {
-                            "content": "3\n",
-                            "style": {
-                              "backgroundColor": {},
-                              "foregroundColor": {
-                                "opaqueColor": {
-                                  "rgbColor": {}
-                                }
-                              },
-                              "bold": false,
-                              "italic": false,
-                              "fontFamily": "Arial",
-                              "fontSize": {
-                                "magnitude": 14,
-                                "unit": "PT"
-                              },
-                              "baselineOffset": "NONE",
-                              "smallCaps": false,
-                              "strikethrough": false,
-                              "underline": false,
-                              "weightedFontFamily": {
-                                "fontFamily": "Arial",
-                                "weight": 400
-                              }
-                            }
-                          }
-                        }
-                      ]
-                    },
-                    "tableCellProperties": {
-                      "tableCellBackgroundFill": {
-                        "propertyState": "NOT_RENDERED",
-                        "solidFill": {
-                          "color": {
-                            "rgbColor": {
-                              "red": 1,
-                              "green": 1,
-                              "blue": 1
-                            }
-                          },
-                          "alpha": 1
-                        }
-                      },
-                      "contentAlignment": "TOP"
-                    }
                   }
                 ],
                 "tableRowProperties": {
@@ -2631,89 +2548,6 @@
                           "endIndex": 2,
                           "textRun": {
                             "content": "5\n",
-                            "style": {
-                              "backgroundColor": {},
-                              "foregroundColor": {
-                                "opaqueColor": {
-                                  "rgbColor": {}
-                                }
-                              },
-                              "bold": false,
-                              "italic": false,
-                              "fontFamily": "Arial",
-                              "fontSize": {
-                                "magnitude": 14,
-                                "unit": "PT"
-                              },
-                              "baselineOffset": "NONE",
-                              "smallCaps": false,
-                              "strikethrough": false,
-                              "underline": false,
-                              "weightedFontFamily": {
-                                "fontFamily": "Arial",
-                                "weight": 400
-                              }
-                            }
-                          }
-                        }
-                      ]
-                    },
-                    "tableCellProperties": {
-                      "tableCellBackgroundFill": {
-                        "propertyState": "NOT_RENDERED",
-                        "solidFill": {
-                          "color": {
-                            "rgbColor": {
-                              "red": 1,
-                              "green": 1,
-                              "blue": 1
-                            }
-                          },
-                          "alpha": 1
-                        }
-                      },
-                      "contentAlignment": "TOP"
-                    }
-                  },
-                  {
-                    "location": {
-                      "rowIndex": 2,
-                      "columnIndex": 2
-                    },
-                    "rowSpan": 1,
-                    "columnSpan": 1,
-                    "text": {
-                      "textElements": [
-                        {
-                          "endIndex": 2,
-                          "paragraphMarker": {
-                            "style": {
-                              "lineSpacing": 100,
-                              "alignment": "START",
-                              "indentStart": {
-                                "unit": "PT"
-                              },
-                              "indentEnd": {
-                                "unit": "PT"
-                              },
-                              "spaceAbove": {
-                                "unit": "PT"
-                              },
-                              "spaceBelow": {
-                                "unit": "PT"
-                              },
-                              "indentFirstLine": {
-                                "unit": "PT"
-                              },
-                              "direction": "LEFT_TO_RIGHT",
-                              "spacingMode": "COLLAPSE_LISTS"
-                            }
-                          }
-                        },
-                        {
-                          "endIndex": 2,
-                          "textRun": {
-                            "content": "4\n",
                             "style": {
                               "backgroundColor": {},
                               "foregroundColor": {
@@ -2912,31 +2746,6 @@
                       },
                       "dashStyle": "SOLID"
                     }
-                  },
-                  {
-                    "location": {
-                      "rowIndex": 1,
-                      "columnIndex": 2
-                    },
-                    "tableBorderProperties": {
-                      "tableBorderFill": {
-                        "solidFill": {
-                          "color": {
-                            "rgbColor": {
-                              "red": 0.61960787,
-                              "green": 0.61960787,
-                              "blue": 0.61960787
-                            }
-                          },
-                          "alpha": 1
-                        }
-                      },
-                      "weight": {
-                        "magnitude": 9525,
-                        "unit": "EMU"
-                      },
-                      "dashStyle": "SOLID"
-                    }
                   }
                 ]
               },
@@ -2970,31 +2779,6 @@
                     "location": {
                       "rowIndex": 2,
                       "columnIndex": 1
-                    },
-                    "tableBorderProperties": {
-                      "tableBorderFill": {
-                        "solidFill": {
-                          "color": {
-                            "rgbColor": {
-                              "red": 0.61960787,
-                              "green": 0.61960787,
-                              "blue": 0.61960787
-                            }
-                          },
-                          "alpha": 1
-                        }
-                      },
-                      "weight": {
-                        "magnitude": 9525,
-                        "unit": "EMU"
-                      },
-                      "dashStyle": "SOLID"
-                    }
-                  },
-                  {
-                    "location": {
-                      "rowIndex": 2,
-                      "columnIndex": 2
                     },
                     "tableBorderProperties": {
                       "tableBorderFill": {
@@ -5040,7 +4824,7 @@
           "sheetsChart": {
             "spreadsheetId": "1nwHAkUqM7tdQQqMFO9V0UCOvrCVsE25AXP4r04UOSL0",
             "chartId": 1622092212,
-            "contentUrl": "https://lh7-rt.googleusercontent.com/slidesz/AGV_vUfa5FCcukUq0u2BOdquLfRNah-IcT-4NHJbVztDfeUNDsMhlbpyPIoABAyEy3l7267IaMJp9AG_zF0B3CbJrGY-qP5kQOrGnLt3dlYGNnQy6jPbfgtHxSMC-P8r3_cPx4bUd5CI_RwLjRUnt-bs5oHTM86pAkFL9h0iR5OsmLuEWEl1sg=s2048?key=NqbTHjtAZXQNscARDVXszw",
+            "contentUrl": "https://lh7-rt.googleusercontent.com/slidesz/AGV_vUfOSGHUfy3G4ol5rojfkmyRGskrvVVafOBEwFj3zbO1-FbRRbkXVjxXVHqUV43OVE8i9P0t8ChzQxjFxEwtu0GUspX_sSkBY38INVtgIW_tOLLYDCBGG-anSJXf1PPk1-WhT9sN-0DJocSJV5iguTTodAFd4aFgoZLjVhbKzsxcNLPrEQ=s2048?key=NqbTHjtAZXQNscARDVXszw",
             "sheetsChartProperties": {
               "chartImageProperties": {
                 "outline": {
@@ -5265,7 +5049,7 @@
           "sheetsChart": {
             "spreadsheetId": "1aRxF9gpaoJAvEjeaXXLPQw84SINYvxRHX36815hn658",
             "chartId": 756213713,
-            "contentUrl": "https://lh7-rt.googleusercontent.com/slidesz/AGV_vUd4Nyz_vMAijLGsuKThiJmyl4G_mwyhYAHl9hJgyeS0mK2hTT7xn-R0C1knaFh7XyGU0M4jT9EUAlfLUfmT3HazJOOuKJG3LOoJPonjM603nSOMfZyYb0hmeUUWPxkmVHrh-RIAKu1Z9iPjuPK6bAOcJhkbQLLBWLoIKFEIc6kaGZGZww=s2048?key=NqbTHjtAZXQNscARDVXszw",
+            "contentUrl": "https://lh7-rt.googleusercontent.com/slidesz/AGV_vUfWiRANUJ83xXc9e5fSJ_HXbAGWIlxcM77H808EMDsP7FkjAViA32zvBYakG0srpuSUVHaDw4cGkOu8tWUEPhMsXY_1gnZmqywWaEDAeBp1ZpuLrDJUJtSNoRJ7_e20Km5Dn8fxS5uukVPY3T3QK6BbARVsq1yH3sgBRFIdrGmHc1_5rQ=s2048?key=NqbTHjtAZXQNscARDVXszw",
             "sheetsChartProperties": {
               "chartImageProperties": {
                 "outline": {
@@ -14585,7 +14369,7 @@
     }
   ],
   "locale": "en-GB",
-  "revisionId": "x_mdWX9Smelmew",
+  "revisionId": "I9IGtGSJd1ppCg",
   "notesMaster": {
     "objectId": "n",
     "pageType": "NOTES_MASTER",
