@@ -9,6 +9,8 @@ from adapters.gmail import fetch_thread
 from adapters.docs import fetch_document
 from adapters.sheets import fetch_spreadsheet
 from adapters.slides import fetch_presentation
+from adapters.genai import get_video_summary, is_media_file
+from adapters.cdp import is_cdp_available
 from extractors.docs import extract_doc_content
 from extractors.sheets import extract_sheets_content
 from extractors.slides import extract_slides_content
@@ -95,6 +97,8 @@ def fetch_drive(file_id: str) -> dict:
         return fetch_sheet(file_id, title, metadata)
     elif mime_type == GOOGLE_SLIDES_MIME:
         return fetch_slides(file_id, title, metadata)
+    elif is_media_file(mime_type):
+        return fetch_video(file_id, title, metadata)
     else:
         # For now, return error for unsupported types
         # TODO: Handle PDFs, Office files, binary downloads
@@ -181,6 +185,95 @@ def fetch_slides(presentation_id: str, title: str, metadata: dict) -> dict:
             "title": title,
             "slide_count": len(presentation_data.slides),
             "thumbnail_count": thumbnail_count,
+        },
+    )
+
+
+def fetch_video(file_id: str, title: str, metadata: dict) -> dict:
+    """
+    Fetch video/audio file with AI summary if available.
+
+    Tries to get pre-computed AI summary via GenAI API (requires chrome-debug).
+    Falls back to basic metadata if CDP not available.
+    """
+    mime_type = metadata.get("mimeType", "")
+    duration_ms = metadata.get("videoMediaMetadata", {}).get("durationMillis")
+
+    # Try to get AI summary
+    summary_result = get_video_summary(file_id)
+
+    # Build content
+    content_lines = [f"# {title}", ""]
+
+    if summary_result and summary_result.has_content:
+        content_lines.append("## AI Summary")
+        content_lines.append("")
+        if summary_result.summary:
+            content_lines.append(summary_result.summary)
+            content_lines.append("")
+
+        if summary_result.transcript_snippets:
+            content_lines.append("## Transcript Snippets")
+            content_lines.append("")
+            for snippet in summary_result.transcript_snippets:
+                content_lines.append(f"- {snippet}")
+            content_lines.append("")
+    elif summary_result and summary_result.error == "stale_cookies":
+        content_lines.append("*AI summary unavailable — browser session expired.*")
+        content_lines.append("")
+        content_lines.append(
+            "_Tip: Refresh your Google session in chrome-debug, then retry._"
+        )
+        content_lines.append("")
+    elif summary_result and summary_result.error == "permission_denied":
+        content_lines.append("*AI summary unavailable — no access to this video.*")
+        content_lines.append("")
+    else:
+        content_lines.append("*No AI summary available.*")
+        content_lines.append("")
+        if not is_cdp_available():
+            content_lines.append(
+                "_Tip: Run `chrome-debug` to enable AI summaries for videos._"
+            )
+        content_lines.append("")
+
+    # Add metadata section
+    content_lines.append("## Metadata")
+    content_lines.append("")
+    content_lines.append(f"- **Type:** {mime_type}")
+    if duration_ms:
+        duration_s = int(duration_ms) // 1000
+        minutes, seconds = divmod(duration_s, 60)
+        hours, minutes = divmod(minutes, 60)
+        if hours:
+            content_lines.append(f"- **Duration:** {hours}:{minutes:02d}:{seconds:02d}")
+        else:
+            content_lines.append(f"- **Duration:** {minutes}:{seconds:02d}")
+    content_lines.append(f"- **Link:** {metadata.get('webViewLink', '')}")
+
+    content = "\n".join(content_lines)
+
+    # Deposit to workspace
+    folder = get_deposit_folder("video", title, file_id)
+    content_path = write_content(folder, content)
+
+    extra = {
+        "mime_type": mime_type,
+        "has_summary": summary_result.has_content if summary_result else False,
+    }
+    if duration_ms:
+        extra["duration_ms"] = int(duration_ms)
+    write_manifest(folder, "video", title, file_id, extra=extra)
+
+    return FetchResult(
+        path=str(folder),
+        content_file=str(content_path),
+        format="markdown",
+        type="video",
+        metadata={
+            "title": title,
+            "mime_type": mime_type,
+            "has_summary": summary_result.has_content if summary_result else False,
         },
     )
 

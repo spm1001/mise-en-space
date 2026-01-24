@@ -26,6 +26,26 @@ server.py       FastMCP entry point
 - Tools wire adapters → extractors → workspace
 - server.py just registers tools
 
+## Optional: Video Summaries (chrome-debug)
+
+For video/audio files, `fetch` can return AI-generated summaries from Google's internal GenAI API. This requires `chrome-debug` running on port 9222.
+
+```bash
+chrome-debug    # Start Chrome with debug port enabled
+```
+
+**How it works:**
+1. `fetch` detects video/audio MIME types
+2. Connects to CDP (Chrome DevTools Protocol) on port 9222
+3. Gets browser cookies for authentication
+4. Calls Google's internal GenAI API for pre-computed summaries
+
+**Without chrome-debug:** Falls back gracefully — returns basic metadata with a hint to run `chrome-debug`.
+
+**Why cookies?** Google's video summary API is internal (not OAuth-accessible). It requires browser session cookies, not API tokens. The `websockets` dependency is for CDP communication.
+
+**Caveat:** The GenAI endpoint (`appsgenaiserver-pa.clients6.google.com`) is undocumented and may change without notice.
+
 ## MCP Tool Surface (3 verbs)
 
 The MCP exposes exactly 3 tools to Claude:
