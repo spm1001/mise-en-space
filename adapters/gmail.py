@@ -230,6 +230,9 @@ def search_threads(
     if not threads:
         return []
 
+    # Preserve snippets from list response — batch fetch with format="metadata" doesn't include them
+    snippets_by_id = {t["id"]: t.get("snippet", "") for t in threads}
+
     # Step 2: Batch-fetch thread metadata for subject/from/date
     # Gmail batch API works (unlike Slides/Sheets/Docs)
     results: list[GmailSearchResult] = []
@@ -256,11 +259,12 @@ def search_threads(
             for msg in messages
         )
 
+        thread_id = response.get("id", "")
         results.append(
             GmailSearchResult(
-                thread_id=response.get("id", ""),
-                subject=headers.get("Subject", "(no subject)"),
-                snippet=response.get("snippet", ""),
+                thread_id=thread_id,
+                subject=headers.get("Subject", ""),
+                snippet=snippets_by_id.get(thread_id, ""),
                 date=_parse_date(headers.get("Date"), first_msg.get("internalDate")),
                 from_address=headers.get("From"),
                 message_count=len(messages),

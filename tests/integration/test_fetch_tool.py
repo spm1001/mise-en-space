@@ -163,3 +163,102 @@ def test_fetch_manifest_structure(integration_ids: dict[str, str], cleanup_mise_
     assert "title" in manifest
     assert "id" in manifest
     assert "fetched_at" in manifest
+
+
+# --- PDF Tests ---
+
+
+@pytest.mark.integration
+def test_fetch_pdf(integration_ids: dict[str, str], cleanup_mise_fetch) -> None:
+    """Test fetching a PDF file."""
+    pdf_id = integration_ids.get("test_pdf_id")
+    if not pdf_id:
+        pytest.skip("test_pdf_id not in integration_ids.json")
+
+    result = fetch(pdf_id)
+
+    assert "error" not in result, f"Fetch failed: {result}"
+    assert result["type"] == "pdf"
+    assert result["format"] == "markdown"
+    assert "path" in result
+
+    # Verify files exist
+    folder = Path(result["path"])
+    assert folder.exists()
+    assert (folder / "content.md").exists()
+    assert (folder / "manifest.json").exists()
+
+    # Verify content is not empty
+    content = (folder / "content.md").read_text()
+    assert len(content) > 0
+
+
+@pytest.mark.integration
+def test_fetch_pdf_extraction_method(integration_ids: dict[str, str], cleanup_mise_fetch) -> None:
+    """Test that PDF extraction reports which method was used."""
+    pdf_id = integration_ids.get("test_pdf_id")
+    if not pdf_id:
+        pytest.skip("test_pdf_id not in integration_ids.json")
+
+    result = fetch(pdf_id)
+
+    assert "error" not in result, f"Fetch failed: {result}"
+
+    # Check manifest has extraction method
+    folder = Path(result["path"])
+    manifest = json.loads((folder / "manifest.json").read_text())
+    assert "extraction_method" in manifest
+    assert manifest["extraction_method"] in ("markitdown", "drive")
+
+
+# --- Office File Tests ---
+
+
+@pytest.mark.integration
+def test_fetch_docx(integration_ids: dict[str, str], cleanup_mise_fetch) -> None:
+    """Test fetching a DOCX file."""
+    docx_id = integration_ids.get("test_docx_id")
+    if not docx_id:
+        pytest.skip("test_docx_id not in integration_ids.json")
+
+    result = fetch(docx_id)
+
+    assert "error" not in result, f"Fetch failed: {result}"
+    assert result["type"] == "docx"
+    assert result["format"] == "markdown"
+    assert "path" in result
+
+    # Verify files exist
+    folder = Path(result["path"])
+    assert folder.exists()
+    assert (folder / "content.md").exists()
+    assert (folder / "manifest.json").exists()
+
+    # Verify content is not empty
+    content = (folder / "content.md").read_text()
+    assert len(content) > 0
+
+
+@pytest.mark.integration
+def test_fetch_xlsx(integration_ids: dict[str, str], cleanup_mise_fetch) -> None:
+    """Test fetching an XLSX file."""
+    xlsx_id = integration_ids.get("test_xlsx_id")
+    if not xlsx_id:
+        pytest.skip("test_xlsx_id not in integration_ids.json")
+
+    result = fetch(xlsx_id)
+
+    assert "error" not in result, f"Fetch failed: {result}"
+    assert result["type"] == "xlsx"
+    assert result["format"] == "csv"
+    assert "path" in result
+
+    # Verify files exist
+    folder = Path(result["path"])
+    assert folder.exists()
+    assert (folder / "content.csv").exists()
+    assert (folder / "manifest.json").exists()
+
+    # Verify content is not empty
+    content = (folder / "content.csv").read_text()
+    assert len(content) > 0
