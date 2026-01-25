@@ -571,10 +571,10 @@ def _format_inline_object(
     return f"[Object: {label}]"
 
 
-def _apply_text_formatting(content: str, text_style: dict[str, Any]) -> str:
+def _apply_text_formatting(content: str | None, text_style: dict[str, Any]) -> str:
     """Apply markdown formatting based on text style."""
-    if not content.strip():
-        return content
+    if not content or not content.strip():
+        return content or ""
 
     # Check for monospace font (inline code)
     font_family = text_style.get("weightedFontFamily", {}).get("fontFamily", "")

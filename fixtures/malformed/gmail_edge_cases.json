@@ -1,0 +1,38 @@
+{
+  "thread_id": "malformed-thread-id",
+  "subject": "Edge Case Thread",
+  "messages": [
+    {
+      "message_id": "msg1",
+      "from_address": "sender@example.com",
+      "to_addresses": ["recipient@example.com"],
+      "subject": "Normal message",
+      "body_text": "This is normal body text.",
+      "body_html": null
+    },
+    {
+      "message_id": "msg2",
+      "from_address": "sender@example.com",
+      "to_addresses": [],
+      "subject": "",
+      "body_text": null,
+      "body_html": null
+    },
+    {
+      "message_id": "msg3",
+      "from_address": "",
+      "to_addresses": ["recipient@example.com"],
+      "subject": "Empty sender",
+      "body_text": "",
+      "body_html": "<html><body></body></html>"
+    },
+    {
+      "message_id": "msg4",
+      "from_address": "sender@example.com",
+      "to_addresses": ["recipient@example.com"],
+      "subject": "HTML only",
+      "body_text": null,
+      "body_html": "<html><body><p>HTML content only</p></body></html>"
+    }
+  ]
+}

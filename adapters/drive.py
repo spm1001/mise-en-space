@@ -17,8 +17,13 @@ from retry import with_retry
 from adapters.services import get_drive_service
 
 
-# Size threshold for streaming (50MB) — files larger than this stream to disk
-STREAMING_THRESHOLD_BYTES = 50 * 1024 * 1024
+# Size threshold for streaming — files larger than this stream to disk
+# 50MB is conservative: Python handles 100MB+ fine, but OOM is catastrophic.
+# Google recommends streaming for >5MB (bandwidth), but that's aggressive.
+# For gigabyte PPTXs, any reasonable threshold triggers the safety net.
+# Can be overridden via environment variable if needed.
+import os
+STREAMING_THRESHOLD_BYTES = int(os.environ.get("MISE_STREAMING_THRESHOLD_MB", 50)) * 1024 * 1024
 
 
 # Fields for file metadata — only what we need

@@ -1,0 +1,34 @@
+{
+  "title": "Malformed Sheet",
+  "spreadsheet_id": "malformed-sheet-id",
+  "sheets": [
+    {
+      "name": "Empty Sheet",
+      "values": []
+    },
+    {
+      "name": "Null Cells",
+      "values": [
+        ["Header1", "Header2", null],
+        [null, "Value", null],
+        [null, null, null]
+      ]
+    },
+    {
+      "name": "Ragged Rows",
+      "values": [
+        ["A", "B", "C", "D"],
+        ["1"],
+        ["2", "3"],
+        []
+      ]
+    },
+    {
+      "name": "Special Characters",
+      "values": [
+        ["Quote\"Test", "Comma,Test", "Newline\nTest"],
+        ["Tab\tTest", "=Formula", "\\Backslash"]
+      ]
+    }
+  ]
+}

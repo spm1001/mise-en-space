@@ -1,0 +1,86 @@
+{
+  "title": "Malformed Slides",
+  "presentation_id": "malformed-slides-id",
+  "slides": [
+    {
+      "slide_id": "slide1",
+      "index": 0,
+      "pageElements": [
+        {
+          "shape": {
+            "shapeType": "TEXT_BOX",
+            "text": {
+              "textElements": [
+                {"textRun": {"content": "Valid text\n"}}
+              ]
+            }
+          },
+          "size": {"width": {"magnitude": 100}, "height": {"magnitude": 50}}
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "pageElements": [
+        {
+          "objectId": "missing-slide-id-shape",
+          "shape": {
+            "shapeType": "TEXT_BOX",
+            "text": {
+              "textElements": [
+                {"textRun": {"content": "Shape on slide missing slide_id\n"}}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "slide_id": "slide3",
+      "index": 2,
+      "pageElements": [
+        {
+          "objectId": "shape-no-text",
+          "shape": {
+            "shapeType": "TEXT_BOX"
+          }
+        },
+        {
+          "objectId": "shape-null-content",
+          "shape": {
+            "shapeType": "TEXT_BOX",
+            "text": {
+              "textElements": [
+                {"textRun": {"content": null}},
+                {"textRun": {}}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "slide_id": "slide4",
+      "index": 3,
+      "pageElements": []
+    },
+    {
+      "slide_id": "slide5",
+      "index": 4,
+      "pageElements": [
+        {
+          "objectId": "table-empty",
+          "table": {
+            "rows": 0,
+            "columns": 0,
+            "tableRows": []
+          }
+        }
+      ]
+    }
+  ],
+  "pageSize": {
+    "width": {"magnitude": 9144000, "unit": "EMU"},
+    "height": {"magnitude": 5143500, "unit": "EMU"}
+  }
+}

@@ -546,7 +546,8 @@ def _extract_text_from_elements(elements: list[dict[str, Any]]) -> str:
 
     for element in elements:
         if "textRun" in element:
-            content = element["textRun"].get("content", "")
+            # .get("content", "") returns None when key exists with null value
+            content = element["textRun"].get("content") or ""
             parts.append(content)
         elif "autoText" in element:
             # Auto text like slide numbers, dates

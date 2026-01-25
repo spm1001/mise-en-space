@@ -1,0 +1,66 @@
+{
+  "title": "Malformed Doc",
+  "document_id": "malformed-doc-id",
+  "tabs": [
+    {
+      "title": "Edge Cases",
+      "tab_id": "t.0",
+      "index": 0,
+      "body": {
+        "content": [
+          {
+            "paragraph": {
+              "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+              "elements": [
+                {"textRun": {"content": null, "textStyle": {}}},
+                {"textRun": {"textStyle": {}}},
+                {"textRun": {"content": "Valid text\n", "textStyle": {}}}
+              ]
+            }
+          },
+          {
+            "paragraph": {
+              "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+              "elements": [
+                {"inlineObjectElement": {"inlineObjectId": "missing-object-id"}},
+                {"textRun": {"content": " after missing inline object\n", "textStyle": {}}}
+              ]
+            }
+          },
+          {
+            "paragraph": {
+              "paragraphStyle": {},
+              "elements": []
+            }
+          },
+          {
+            "paragraph": {
+              "elements": [
+                {"textRun": {"content": "No paragraphStyle\n", "textStyle": {}}}
+              ]
+            }
+          },
+          {
+            "paragraph": {
+              "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
+              "elements": [
+                {"unknownElement": {"someField": "unknown type"}}
+              ]
+            }
+          }
+        ]
+      },
+      "inline_objects": {
+        "different-object-id": {
+          "inlineObjectProperties": {
+            "embeddedObject": {
+              "imageProperties": {
+                "contentUri": "https://example.com/image.png"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
