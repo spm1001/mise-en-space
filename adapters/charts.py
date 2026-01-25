@@ -14,9 +14,14 @@ Benchmarks (Jan 2026):
 - Fully batched (slides+charts in one batchUpdate) is ~20% faster
 
 Use LINKED mode (not NOT_LINKED_IMAGE) - counterintuitively faster.
+
+Benchmarked Jan 2026: LINKED is ~10-15% faster than NOT_LINKED_IMAGE.
+Theory: NOT_LINKED_IMAGE does extra work to "freeze" the chart as a static
+image, while LINKED just renders and links. The contentUrl works either way.
 """
 
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import requests  # type: ignore[import-untyped]
@@ -172,21 +177,33 @@ def render_charts_as_pngs(
                     if url:
                         obj_id_to_url[obj_id] = url
 
-        # Step 4: Fetch PNGs
-        for i, (chart, obj_id) in enumerate(zip(charts, chart_obj_ids)):
-            content_url = obj_id_to_url.get(obj_id)
-            if not content_url:
-                continue
-
+        # Step 4: Fetch PNGs in parallel
+        def fetch_png(chart_obj_id: str) -> tuple[str, bytes | None]:
+            """Fetch a single PNG, return (obj_id, bytes or None)."""
+            url = obj_id_to_url.get(chart_obj_id)
+            if not url:
+                return chart_obj_id, None
             try:
-                response = requests.get(content_url, timeout=30)
-                if response.status_code == 200:
-                    # Verify it's actually image data
-                    if len(response.content) > 100:  # Not an error page
-                        chart.png_bytes = response.content
+                response = requests.get(url, timeout=30)
+                if response.status_code == 200 and len(response.content) > 100:
+                    return chart_obj_id, response.content
             except requests.RequestException:
-                # Continue with other charts if one fails
                 pass
+            return chart_obj_id, None
+
+        # Fetch all PNGs concurrently
+        png_results: dict[str, bytes | None] = {}
+        with ThreadPoolExecutor(max_workers=min(len(chart_obj_ids), 10)) as executor:
+            futures = {executor.submit(fetch_png, obj_id): obj_id for obj_id in chart_obj_ids}
+            for future in as_completed(futures):
+                obj_id, png_data = future.result()
+                png_results[obj_id] = png_data
+
+        # Assign results back to charts
+        for chart, obj_id in zip(charts, chart_obj_ids):
+            png_data = png_results.get(obj_id)
+            if png_data:
+                chart.png_bytes = png_data
 
         render_time_ms = int((time.perf_counter() - render_start) * 1000)
         return charts, render_time_ms
