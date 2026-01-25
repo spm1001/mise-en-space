@@ -3,13 +3,17 @@ Shared pytest fixtures for mise-en-space tests.
 
 Fixtures are loaded from the fixtures/ directory at project root.
 JSON is converted to typed dataclasses for type safety.
+
+Adapter mocking infrastructure is also provided here for testing
+adapters without hitting real Google APIs.
 """
 
 import json
 from pathlib import Path
+from typing import Generator
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 from models import (
     SpreadsheetData, SheetTab,
     DocData, DocTab,
@@ -206,3 +210,92 @@ def real_slides() -> PresentationData:
     """Real Google Slides response."""
     raw = load_fixture("slides", "real_presentation")
     return parse_presentation(raw)
+
+
+# ============================================================================
+# Adapter Mocking Infrastructure
+# ============================================================================
+
+# Re-export make_http_error for convenience (actual implementation in mock_utils.py)
+from tests.mock_utils import make_http_error  # noqa: F401, E402
+
+
+@pytest.fixture
+def mock_drive_service() -> MagicMock:
+    """
+    Create a mock Google Drive service.
+
+    Use with patch to replace real service:
+
+        def test_something(mock_drive_service):
+            mock_drive_service.files().get().execute.return_value = {"id": "123"}
+            with patch("adapters.drive.get_drive_service", return_value=mock_drive_service):
+                result = some_drive_function()
+    """
+    return MagicMock()
+
+
+@pytest.fixture
+def mock_slides_service() -> MagicMock:
+    """Create a mock Google Slides service."""
+    return MagicMock()
+
+
+@pytest.fixture
+def mock_sheets_service() -> MagicMock:
+    """Create a mock Google Sheets service."""
+    return MagicMock()
+
+
+@pytest.fixture
+def mock_docs_service() -> MagicMock:
+    """Create a mock Google Docs service."""
+    return MagicMock()
+
+
+@pytest.fixture
+def mock_gmail_service() -> MagicMock:
+    """Create a mock Gmail service."""
+    return MagicMock()
+
+
+@pytest.fixture
+def patch_drive_service(mock_drive_service: MagicMock) -> Generator[MagicMock, None, None]:
+    """
+    Fixture that patches get_drive_service and yields the mock.
+
+    Example:
+        def test_something(patch_drive_service):
+            patch_drive_service.files().get().execute.return_value = {"id": "123"}
+            result = fetch_file_metadata("123")  # Uses mocked service
+    """
+    with patch("adapters.drive.get_drive_service", return_value=mock_drive_service):
+        yield mock_drive_service
+
+
+@pytest.fixture
+def patch_slides_service(mock_slides_service: MagicMock) -> Generator[MagicMock, None, None]:
+    """Fixture that patches get_slides_service and yields the mock."""
+    with patch("adapters.slides.get_slides_service", return_value=mock_slides_service):
+        yield mock_slides_service
+
+
+@pytest.fixture
+def patch_sheets_service(mock_sheets_service: MagicMock) -> Generator[MagicMock, None, None]:
+    """Fixture that patches get_sheets_service and yields the mock."""
+    with patch("adapters.sheets.get_sheets_service", return_value=mock_sheets_service):
+        yield mock_sheets_service
+
+
+@pytest.fixture
+def patch_docs_service(mock_docs_service: MagicMock) -> Generator[MagicMock, None, None]:
+    """Fixture that patches get_docs_service and yields the mock."""
+    with patch("adapters.docs.get_docs_service", return_value=mock_docs_service):
+        yield mock_docs_service
+
+
+@pytest.fixture
+def patch_gmail_service(mock_gmail_service: MagicMock) -> Generator[MagicMock, None, None]:
+    """Fixture that patches get_gmail_service and yields the mock."""
+    with patch("adapters.gmail.get_gmail_service", return_value=mock_gmail_service):
+        yield mock_gmail_service
