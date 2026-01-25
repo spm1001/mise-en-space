@@ -12,6 +12,7 @@ from typing import TypeVar, Callable, Any, ParamSpec, Awaitable, cast
 
 from logging_config import logger, log_retry
 from models import MiseError, ErrorKind
+from adapters.services import clear_service_cache
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -77,6 +78,8 @@ def _convert_to_mise_error(exception: Exception) -> MiseError:
     status = _get_http_status(exception)
     if status is not None:
         if status == 401:
+            # Invalidate cached services so next call gets fresh credentials
+            clear_service_cache()
             return MiseError(ErrorKind.AUTH_EXPIRED, str(exception))
         elif status == 403:
             return MiseError(ErrorKind.PERMISSION_DENIED, str(exception))

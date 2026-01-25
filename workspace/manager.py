@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 # Type aliases
-ContentType = Literal["slides", "doc", "sheet", "gmail"]
+ContentType = Literal["slides", "doc", "sheet", "gmail", "pdf", "docx", "xlsx", "pptx", "video"]
 
 
 def slugify(text: str, max_length: int = 50) -> str:

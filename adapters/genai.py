@@ -24,6 +24,7 @@ If this breaks, check:
 
 import hashlib
 import json
+import os
 import random
 import re
 import time
@@ -36,7 +37,10 @@ from adapters.cdp import get_google_cookies
 
 # GenAI endpoint (internal Google API)
 GENAI_ENDPOINT = "https://appsgenaiserver-pa.clients6.google.com/v1/genai/streamGenerate"
-GENAI_API_KEY = "AIzaSyBPoyoJwz3wa8B8XhHSI6oloJc9K16XSBk"
+
+# API key loaded from environment - DO NOT HARDCODE
+# Get from Chrome network logs: drive.google.com video page → filter "streamGenerate"
+GENAI_API_KEY = os.environ.get("GENAI_API_KEY", "")
 
 
 @dataclass
@@ -124,7 +128,9 @@ def get_video_summary(file_id: str) -> VideoSummary | None:
     """
     Get AI-generated summary for a Google Drive video.
 
-    Requires chrome-debug running with an authenticated Google session.
+    Requires:
+    - GENAI_API_KEY env var (get from Chrome network logs on drive.google.com)
+    - chrome-debug running with an authenticated Google session
 
     Args:
         file_id: Drive file ID of the video
@@ -132,6 +138,10 @@ def get_video_summary(file_id: str) -> VideoSummary | None:
     Returns:
         VideoSummary with summary and transcript snippets, or None if unavailable.
     """
+    # Check API key is configured
+    if not GENAI_API_KEY:
+        return None
+
     # Get cookies from browser session
     cookies = get_google_cookies()
     if not cookies:

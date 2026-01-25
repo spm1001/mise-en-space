@@ -5,46 +5,14 @@ Creates Google Workspace documents from markdown content.
 """
 
 import io
-from dataclasses import dataclass
 from typing import Any
 
 from googleapiclient.http import MediaIoBaseUpload
 
 from adapters.services import get_drive_service
 from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
+from models import CreateResult, CreateError
 from retry import with_retry
-
-
-@dataclass
-class CreateResult:
-    """Successful create result."""
-    file_id: str
-    web_link: str
-    title: str
-    doc_type: str
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "file_id": self.file_id,
-            "web_link": self.web_link,
-            "title": self.title,
-            "type": self.doc_type,
-        }
-
-
-@dataclass
-class CreateError:
-    """Create error result."""
-    error: bool = True
-    kind: str = "unknown"
-    message: str = ""
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "error": self.error,
-            "kind": self.kind,
-            "message": self.message,
-        }
 
 
 # Supported doc types and their target MIME types

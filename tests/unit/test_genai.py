@@ -201,16 +201,17 @@ class TestGetVideoSummary:
         import urllib.error
 
         mock_cookies = {"SAPISID": "test", "SID": "sid", "HSID": "hsid"}
-        with patch.object(genai, "get_google_cookies", return_value=mock_cookies):
-            with patch("urllib.request.urlopen") as mock_urlopen:
-                mock_urlopen.side_effect = urllib.error.HTTPError(
-                    url="", code=401, msg="Unauthorized", hdrs={}, fp=None
-                )
-                result = genai.get_video_summary("file123")
+        with patch.object(genai, "GENAI_API_KEY", "test-key"):
+            with patch.object(genai, "get_google_cookies", return_value=mock_cookies):
+                with patch("urllib.request.urlopen") as mock_urlopen:
+                    mock_urlopen.side_effect = urllib.error.HTTPError(
+                        url="", code=401, msg="Unauthorized", hdrs={}, fp=None
+                    )
+                    result = genai.get_video_summary("file123")
 
-                assert result is not None
-                assert result.error == "stale_cookies"
-                assert not result.has_content
+                    assert result is not None
+                    assert result.error == "stale_cookies"
+                    assert not result.has_content
 
     def test_returns_permission_denied_on_403(self):
         """Should return error='permission_denied' on 403."""
@@ -218,12 +219,13 @@ class TestGetVideoSummary:
         import urllib.error
 
         mock_cookies = {"SAPISID": "test", "SID": "sid"}
-        with patch.object(genai, "get_google_cookies", return_value=mock_cookies):
-            with patch("urllib.request.urlopen") as mock_urlopen:
-                mock_urlopen.side_effect = urllib.error.HTTPError(
-                    url="", code=403, msg="Forbidden", hdrs={}, fp=None
-                )
-                result = genai.get_video_summary("file123")
+        with patch.object(genai, "GENAI_API_KEY", "test-key"):
+            with patch.object(genai, "get_google_cookies", return_value=mock_cookies):
+                with patch("urllib.request.urlopen") as mock_urlopen:
+                    mock_urlopen.side_effect = urllib.error.HTTPError(
+                        url="", code=403, msg="Forbidden", hdrs={}, fp=None
+                    )
+                    result = genai.get_video_summary("file123")
 
                 assert result is not None
                 assert result.error == "permission_denied"

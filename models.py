@@ -351,7 +351,6 @@ class SearchResult:
     sources: list[str]
     drive_results: list[dict[str, Any]] = field(default_factory=list)
     gmail_results: list[dict[str, Any]] = field(default_factory=list)
-    contacts_results: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -360,8 +359,38 @@ class SearchResult:
             result["drive_results"] = self.drive_results
         if "gmail" in self.sources:
             result["gmail_results"] = self.gmail_results
-        if "contacts" in self.sources:
-            result["contacts_results"] = self.contacts_results
         if self.errors:
             result["errors"] = self.errors
         return result
+
+
+@dataclass
+class CreateResult:
+    """Successful create result."""
+    file_id: str
+    web_link: str
+    title: str
+    doc_type: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "file_id": self.file_id,
+            "web_link": self.web_link,
+            "title": self.title,
+            "type": self.doc_type,
+        }
+
+
+@dataclass
+class CreateError:
+    """Create error result."""
+    error: bool = True
+    kind: str = "unknown"
+    message: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "error": self.error,
+            "kind": self.kind,
+            "message": self.message,
+        }

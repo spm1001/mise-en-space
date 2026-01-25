@@ -5,7 +5,7 @@ Google Workspace MCP v2 Server
 Filesystem-first, token-efficient MCP server for Google Workspace.
 
 Verb model (3 tools):
-- search: Unified discovery across Drive/Gmail/Contacts
+- search: Unified discovery across Drive/Gmail
 - fetch: Content to filesystem, return path
 - create: Markdown → Doc/Sheet/Slides
 
@@ -38,17 +38,17 @@ def search(
     max_results: int = 20
 ) -> dict:
     """
-    Search across Drive/Gmail/Contacts.
+    Search across Drive and Gmail.
 
     Returns metadata + snippets for triage. No files written.
 
     Args:
         query: Search terms
-        sources: ['drive', 'gmail', 'contacts'] — default: ['drive', 'gmail']
+        sources: ['drive', 'gmail'] — default: both
         max_results: Maximum results per source
 
     Returns:
-        Separate lists per source (drive_results, gmail_results, etc.)
+        Separate lists per source (drive_results, gmail_results)
     """
     return do_search(query, sources, max_results).to_dict()
 

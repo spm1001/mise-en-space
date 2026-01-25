@@ -79,8 +79,4 @@ def do_search(
         except Exception as e:
             result.errors.append(f"Gmail search failed: {str(e)}")
 
-    # Contacts search (not implemented yet)
-    if "contacts" in sources:
-        result.errors.append("Contacts search not yet implemented")
-
     return result

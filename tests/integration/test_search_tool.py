@@ -74,13 +74,3 @@ def test_search_no_results() -> None:
     assert len(result["gmail_results"]) == 0
     # Should NOT have errors key for this case
     assert "errors" not in result or len(result.get("errors", [])) == 0
-
-
-@pytest.mark.integration
-def test_search_contacts_not_implemented() -> None:
-    """Test that contacts source returns placeholder error."""
-    result = search("test", sources=["contacts"], max_results=5)
-
-    assert "contacts_results" in result
-    assert "errors" in result
-    assert any("Contacts" in e for e in result["errors"])
