@@ -12,11 +12,12 @@ from adapters.slides import fetch_presentation
 from adapters.genai import get_video_summary, is_media_file
 from adapters.cdp import is_cdp_available
 from adapters.pdf import fetch_and_extract_pdf
-from adapters.office import fetch_and_extract_office, get_office_type_from_mime
+from adapters.office import fetch_and_extract_office, get_office_type_from_mime, OfficeType
 from extractors.docs import extract_doc_content
 from extractors.sheets import extract_sheets_content
 from extractors.slides import extract_slides_content
 from extractors.gmail import extract_thread_content
+from typing import Any, Literal
 from models import MiseError, FetchResult, FetchError
 from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id
 from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail
@@ -47,7 +48,7 @@ def detect_id_type(input_id: str) -> tuple[str, str]:
     return ("drive", input_id)
 
 
-def fetch_gmail(thread_id: str) -> dict:
+def fetch_gmail(thread_id: str) -> FetchResult:
     """Fetch Gmail thread, extract content, deposit to workspace."""
     # Fetch thread data
     thread_data = fetch_thread(thread_id)
@@ -62,7 +63,7 @@ def fetch_gmail(thread_id: str) -> dict:
         resource_id=thread_id,
     )
     content_path = write_content(folder, content)
-    extra = {"message_count": len(thread_data.messages)}
+    extra: dict[str, Any] = {"message_count": len(thread_data.messages)}
     if thread_data.warnings:
         extra["warnings"] = thread_data.warnings
     write_manifest(
@@ -85,7 +86,7 @@ def fetch_gmail(thread_id: str) -> dict:
     )
 
 
-def fetch_drive(file_id: str) -> dict:
+def fetch_drive(file_id: str) -> FetchResult | FetchError:
     """Fetch Drive file, route by type, extract content, deposit to workspace."""
     # Get metadata to determine type
     metadata = get_file_metadata(file_id)
@@ -115,14 +116,14 @@ def fetch_drive(file_id: str) -> dict:
         )
 
 
-def fetch_doc(doc_id: str, title: str, metadata: dict) -> dict:
+def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any]) -> FetchResult:
     """Fetch Google Doc."""
     doc_data = fetch_document(doc_id)
     content = extract_doc_content(doc_data)
 
     folder = get_deposit_folder("doc", title, doc_id)
     content_path = write_content(folder, content)
-    extra = {"tab_count": len(doc_data.tabs) if doc_data.tabs else 1}
+    extra: dict[str, Any] = {"tab_count": len(doc_data.tabs) if doc_data.tabs else 1}
     if doc_data.warnings:
         extra["warnings"] = doc_data.warnings
     write_manifest(folder, "doc", title, doc_id, extra=extra)
@@ -136,14 +137,14 @@ def fetch_doc(doc_id: str, title: str, metadata: dict) -> dict:
     )
 
 
-def fetch_sheet(sheet_id: str, title: str, metadata: dict) -> dict:
+def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any]) -> FetchResult:
     """Fetch Google Sheet."""
     sheet_data = fetch_spreadsheet(sheet_id)
     content = extract_sheets_content(sheet_data)
 
     folder = get_deposit_folder("sheet", title, sheet_id)
     content_path = write_content(folder, content, filename="content.csv")
-    extra = {"sheet_count": len(sheet_data.sheets)}
+    extra: dict[str, Any] = {"sheet_count": len(sheet_data.sheets)}
     if sheet_data.warnings:
         extra["warnings"] = sheet_data.warnings
     write_manifest(folder, "sheet", title, sheet_id, extra=extra)
@@ -157,7 +158,7 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict) -> dict:
     )
 
 
-def fetch_slides(presentation_id: str, title: str, metadata: dict) -> dict:
+def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any]) -> FetchResult:
     """Fetch Google Slides."""
     # Enable thumbnails - selective logic in adapter skips stock photos/text-only
     presentation_data = fetch_presentation(presentation_id, include_thumbnails=True)
@@ -177,7 +178,7 @@ def fetch_slides(presentation_id: str, title: str, metadata: dict) -> dict:
             # Thumbnail was requested but not received
             thumbnail_failures.append(slide.index + 1)  # 1-indexed for humans
 
-    extra = {
+    extra: dict[str, Any] = {
         "slide_count": len(presentation_data.slides),
         "has_thumbnails": thumbnail_count > 0,
         "thumbnail_count": thumbnail_count,
@@ -201,7 +202,7 @@ def fetch_slides(presentation_id: str, title: str, metadata: dict) -> dict:
     )
 
 
-def fetch_video(file_id: str, title: str, metadata: dict) -> dict:
+def fetch_video(file_id: str, title: str, metadata: dict[str, Any]) -> FetchResult:
     """
     Fetch video/audio file with AI summary if available.
 
@@ -290,7 +291,7 @@ def fetch_video(file_id: str, title: str, metadata: dict) -> dict:
     )
 
 
-def fetch_pdf(file_id: str, title: str, metadata: dict) -> dict:
+def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any]) -> FetchResult:
     """
     Fetch PDF file with hybrid extraction strategy.
 
@@ -304,7 +305,7 @@ def fetch_pdf(file_id: str, title: str, metadata: dict) -> dict:
     folder = get_deposit_folder("pdf", title, file_id)
     content_path = write_content(folder, result.content)
 
-    extra = {
+    extra: dict[str, Any] = {
         "char_count": result.char_count,
         "extraction_method": result.method,
     }
@@ -324,7 +325,7 @@ def fetch_pdf(file_id: str, title: str, metadata: dict) -> dict:
     )
 
 
-def fetch_office(file_id: str, title: str, metadata: dict, office_type: str) -> dict:
+def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type: OfficeType) -> FetchResult:
     """
     Fetch Office file via Drive conversion.
 
@@ -341,10 +342,10 @@ def fetch_office(file_id: str, title: str, metadata: dict, office_type: str) -> 
     folder = get_deposit_folder(office_type, title, file_id)
     content_path = write_content(folder, result.content, filename=filename)
 
-    extra: dict = {}
+    extra_office: dict[str, Any] = {}
     if result.warnings:
-        extra["warnings"] = result.warnings
-    write_manifest(folder, office_type, title, file_id, extra=extra if extra else None)
+        extra_office["warnings"] = result.warnings
+    write_manifest(folder, office_type, title, file_id, extra=extra_office if extra_office else None)
 
     return FetchResult(
         path=str(folder),

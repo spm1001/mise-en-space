@@ -238,7 +238,7 @@ def search_threads(
     results: list[GmailSearchResult] = []
     batch = service.new_batch_http_request()
 
-    def handle_thread_response(request_id: str, response: dict, exception: Exception | None) -> None:
+    def handle_thread_response(request_id: str, response: dict[str, Any], exception: Exception | None) -> None:
         if exception:
             # Skip failed threads, don't fail entire search
             return

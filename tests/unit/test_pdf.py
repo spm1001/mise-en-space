@@ -6,9 +6,12 @@ from unittest.mock import patch, MagicMock
 
 from adapters.pdf import (
     extract_pdf_content,
+    fetch_and_extract_pdf,
     PdfExtractionResult,
     DEFAULT_MIN_CHARS_THRESHOLD,
+    STREAMING_THRESHOLD_BYTES,
 )
+from adapters.drive import STREAMING_THRESHOLD_BYTES as DRIVE_STREAMING_THRESHOLD
 from tools.fetch import fetch_pdf
 
 
@@ -173,3 +176,111 @@ class TestFetchPdf:
         extra = call_args.kwargs.get("extra") or call_args[1].get("extra") or (call_args[0][4] if len(call_args[0]) > 4 else {})
         assert "warnings" in extra
         assert "Fallback warning" in extra["warnings"]
+
+
+class TestLargeFileStreaming:
+    """Tests for large file streaming download support."""
+
+    def test_streaming_threshold_is_50mb(self) -> None:
+        """Verify streaming threshold is 50MB."""
+        assert DRIVE_STREAMING_THRESHOLD == 50 * 1024 * 1024
+        assert STREAMING_THRESHOLD_BYTES == 50 * 1024 * 1024
+
+    @patch("adapters.pdf.get_file_size")
+    @patch("adapters.pdf.download_file")
+    @patch("adapters.pdf._extract_with_markitdown")
+    def test_small_file_uses_memory_download(
+        self,
+        mock_markitdown: MagicMock,
+        mock_download: MagicMock,
+        mock_get_size: MagicMock,
+    ) -> None:
+        """Test that files under threshold use memory download."""
+        # Small file (10MB)
+        mock_get_size.return_value = 10 * 1024 * 1024
+        mock_download.return_value = b"PDF content"
+        mock_markitdown.return_value = "Extracted content " * 100
+
+        result = fetch_and_extract_pdf("small_file_id")
+
+        # Should use memory download
+        mock_download.assert_called_once_with("small_file_id")
+        assert result.method == "markitdown"
+
+    @patch("adapters.pdf.get_file_size")
+    @patch("adapters.pdf.download_file_to_temp")
+    @patch("adapters.pdf.MarkItDown")
+    def test_large_file_uses_streaming_download(
+        self,
+        mock_markitdown_class: MagicMock,
+        mock_download_temp: MagicMock,
+        mock_get_size: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Test that files over threshold use streaming download to temp."""
+        # Large file (100MB)
+        mock_get_size.return_value = 100 * 1024 * 1024
+
+        # Create a temp file for the mock
+        temp_file = tmp_path / "large.pdf"
+        temp_file.write_bytes(b"PDF content")
+        mock_download_temp.return_value = temp_file
+
+        # Mock markitdown
+        mock_md_instance = MagicMock()
+        mock_md_instance.convert_local.return_value = MagicMock(
+            text_content="Extracted from large file " * 100
+        )
+        mock_markitdown_class.return_value = mock_md_instance
+
+        result = fetch_and_extract_pdf("large_file_id")
+
+        # Should use streaming download
+        mock_download_temp.assert_called_once_with("large_file_id", suffix=".pdf")
+        assert result.method == "markitdown"
+        # Should have warning about large file
+        assert any("Large file" in w for w in result.warnings)
+
+    @patch("adapters.pdf.get_file_size")
+    @patch("adapters.pdf.download_file_to_temp")
+    @patch("adapters.pdf.convert_via_drive")
+    @patch("adapters.pdf.MarkItDown")
+    def test_large_file_drive_fallback_reads_from_temp(
+        self,
+        mock_markitdown_class: MagicMock,
+        mock_convert: MagicMock,
+        mock_download_temp: MagicMock,
+        mock_get_size: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Test that large file Drive fallback reads from temp file."""
+        # Large file
+        mock_get_size.return_value = 100 * 1024 * 1024
+
+        # Create temp file with content
+        temp_file = tmp_path / "large.pdf"
+        temp_content = b"PDF binary content for conversion"
+        temp_file.write_bytes(temp_content)
+        mock_download_temp.return_value = temp_file
+
+        # Markitdown fails (low char count)
+        mock_md_instance = MagicMock()
+        mock_md_instance.convert_local.return_value = MagicMock(text_content="short")
+        mock_markitdown_class.return_value = mock_md_instance
+
+        # Drive conversion succeeds
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="Extracted via Drive " * 100,
+            temp_file_deleted=True,
+            warnings=[],
+        )
+
+        result = fetch_and_extract_pdf("large_file_id")
+
+        # Should fall back to Drive
+        assert result.method == "drive"
+        # Convert should be called with bytes read from temp file
+        mock_convert.assert_called_once()
+        call_kwargs = mock_convert.call_args.kwargs
+        assert call_kwargs["file_bytes"] == temp_content

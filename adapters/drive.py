@@ -4,12 +4,21 @@ Drive adapter — Google Drive API wrapper.
 Provides file metadata, export, and search. Used by fetch tool for routing.
 """
 
+import io
+import tempfile
 from datetime import datetime
+from pathlib import Path
 from typing import Any, cast
 
-from models import DriveSearchResult
+from googleapiclient.http import MediaIoBaseDownload
+
+from models import DriveSearchResult, MiseError, ErrorKind
 from retry import with_retry
 from adapters.services import get_drive_service
+
+
+# Size threshold for streaming (50MB) — files larger than this stream to disk
+STREAMING_THRESHOLD_BYTES = 50 * 1024 * 1024
 
 
 # Fields for file metadata — only what we need
@@ -102,28 +111,108 @@ def export_file(file_id: str, mime_type: str) -> bytes:
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
-def download_file(file_id: str) -> bytes:
+def download_file(file_id: str, max_memory_size: int = STREAMING_THRESHOLD_BYTES) -> bytes:
     """
     Download file content (for binary/non-native files).
 
+    For files larger than max_memory_size, use download_file_to_temp() instead
+    to avoid OOM errors.
+
     Args:
         file_id: The file ID
+        max_memory_size: Maximum size to load into memory (default: 50MB)
 
     Returns:
         File content as bytes
 
     Raises:
-        MiseError: On API failure
+        MiseError: If file too large for memory, or on API failure
     """
+    # Check size first
     service = get_drive_service()
+    metadata = (
+        service.files()
+        .get(fileId=file_id, fields="size", supportsAllDrives=True)
+        .execute()
+    )
 
-    # get_media returns raw bytes
+    file_size = int(metadata.get("size", 0))
+    if file_size > max_memory_size:
+        raise MiseError(
+            ErrorKind.INVALID_INPUT,
+            f"File too large for memory download ({file_size / (1024*1024):.1f}MB). "
+            f"Use download_file_to_temp() for files over {max_memory_size / (1024*1024):.0f}MB.",
+            details={"file_id": file_id, "size_bytes": file_size},
+        )
+
+    # Small file: load into memory
     result = (
         service.files()
         .get_media(fileId=file_id)
         .execute()
     )
     return cast(bytes, result)
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def download_file_to_temp(file_id: str, suffix: str = "") -> Path:
+    """
+    Download file content to a temporary file (streaming, memory-safe).
+
+    Use this for large files to avoid OOM. Caller is responsible for
+    cleaning up the temp file when done.
+
+    Args:
+        file_id: The file ID
+        suffix: File suffix (e.g., ".pdf", ".pptx")
+
+    Returns:
+        Path to temp file containing downloaded content
+
+    Raises:
+        MiseError: On API failure
+    """
+    service = get_drive_service()
+
+    # Create request for streaming download
+    request = service.files().get_media(fileId=file_id)
+
+    # Create temp file
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    tmp_path = Path(tmp.name)
+
+    try:
+        # Stream download in chunks
+        downloader = MediaIoBaseDownload(tmp, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        tmp.close()
+        return tmp_path
+    except Exception:
+        # Clean up temp file on error
+        tmp.close()
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
+def get_file_size(file_id: str) -> int:
+    """
+    Get file size in bytes.
+
+    Args:
+        file_id: The file ID
+
+    Returns:
+        File size in bytes (0 if unknown)
+    """
+    service = get_drive_service()
+    metadata = (
+        service.files()
+        .get(fileId=file_id, fields="size", supportsAllDrives=True)
+        .execute()
+    )
+    return int(metadata.get("size", 0))
 
 
 @with_retry(max_attempts=3, delay_ms=1000)

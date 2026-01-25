@@ -31,6 +31,7 @@ import time
 import urllib.request
 import urllib.error
 from dataclasses import dataclass
+from typing import Any
 
 from adapters.cdp import get_google_cookies
 
@@ -64,7 +65,7 @@ def _compute_sapisidhash(sapisid: str, origin: str = "https://drive.google.com")
     return f"{timestamp}_{hash_value}"
 
 
-def _build_request_body(file_id: str) -> list:
+def _build_request_body(file_id: str) -> list[Any]:
     """Build protobuf-as-JSON request body for GenAI API."""
     request_id = f"goog_{random.randint(-999999999, -1)}"
     return [

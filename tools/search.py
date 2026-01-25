@@ -4,13 +4,15 @@ Search tool implementation.
 Unified search across Drive and Gmail.
 """
 
+from typing import Any
+
 from adapters.drive import search_files
 from adapters.gmail import search_threads
 from models import DriveSearchResult, GmailSearchResult, MiseError, SearchResult
 from validation import escape_drive_query, sanitize_gmail_query
 
 
-def format_drive_result(result: DriveSearchResult) -> dict:
+def format_drive_result(result: DriveSearchResult) -> dict[str, Any]:
     """Convert DriveSearchResult to JSON-serializable dict."""
     return {
         "id": result.file_id,
@@ -22,7 +24,7 @@ def format_drive_result(result: DriveSearchResult) -> dict:
     }
 
 
-def format_gmail_result(result: GmailSearchResult) -> dict:
+def format_gmail_result(result: GmailSearchResult) -> dict[str, Any]:
     """Convert GmailSearchResult to JSON-serializable dict."""
     return {
         "thread_id": result.thread_id,

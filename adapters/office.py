@@ -6,10 +6,10 @@ This produces cleaner output than local conversion tools, especially for XLSX.
 """
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, cast
 
 from adapters.conversion import convert_via_drive
-from adapters.drive import download_file
+from adapters.drive import download_file, download_file_to_temp, get_file_size, STREAMING_THRESHOLD_BYTES
 
 
 # Supported Office types and their conversion mappings
@@ -67,11 +67,12 @@ def extract_office_content(
     source_mime, target_type, export_format, extension = OFFICE_FORMATS[office_type]
 
     # Convert via Drive
+    # Cast to Literal types (OFFICE_FORMATS values are constants)
     conversion_result = convert_via_drive(
         file_bytes=file_bytes,
         source_mime=source_mime,
-        target_type=target_type,
-        export_format=export_format,
+        target_type=cast(Literal["doc", "sheet", "slides"], target_type),
+        export_format=cast(Literal["markdown", "csv", "plain"], export_format),
         file_id_hint=file_id,
     )
 
@@ -92,6 +93,7 @@ def fetch_and_extract_office(
     Download Office file from Drive and extract content.
 
     Convenience function that combines download + extraction.
+    Handles large files by streaming to temp file.
 
     Args:
         file_id: Drive file ID
@@ -100,15 +102,32 @@ def fetch_and_extract_office(
     Returns:
         OfficeExtractionResult with content and format info
     """
-    # Download the file
-    file_bytes = download_file(file_id)
+    # Check file size to determine download strategy
+    file_size = get_file_size(file_id)
+    suffix = f".{office_type}"
 
-    # Extract content
-    return extract_office_content(
-        file_bytes=file_bytes,
-        office_type=office_type,
-        file_id=file_id,
-    )
+    if file_size > STREAMING_THRESHOLD_BYTES:
+        # Large file: stream to temp
+        tmp_path = download_file_to_temp(file_id, suffix=suffix)
+        try:
+            file_bytes = tmp_path.read_bytes()
+            result = extract_office_content(
+                file_bytes=file_bytes,
+                office_type=office_type,
+                file_id=file_id,
+            )
+            result.warnings.insert(0, "Large file: used streaming download")
+            return result
+        finally:
+            tmp_path.unlink(missing_ok=True)
+    else:
+        # Small file: load into memory
+        file_bytes = download_file(file_id)
+        return extract_office_content(
+            file_bytes=file_bytes,
+            office_type=office_type,
+            file_id=file_id,
+        )
 
 
 def get_office_type_from_mime(mime_type: str) -> OfficeType | None:
@@ -121,7 +140,7 @@ def get_office_type_from_mime(mime_type: str) -> OfficeType | None:
     Returns:
         'docx', 'xlsx', 'pptx', or None if not an Office type
     """
-    for office_type, (source_mime, _, _, _) in OFFICE_FORMATS.items():
+    for office_type_key, (source_mime, _, _, _) in OFFICE_FORMATS.items():
         if mime_type == source_mime:
-            return office_type
+            return cast(OfficeType, office_type_key)
     return None

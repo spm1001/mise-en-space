@@ -17,7 +17,7 @@ from typing import Literal
 from markitdown import MarkItDown
 
 from adapters.conversion import convert_via_drive
-from adapters.drive import download_file
+from adapters.drive import download_file, download_file_to_temp, get_file_size, STREAMING_THRESHOLD_BYTES
 
 
 # Default threshold for fallback to Drive conversion.
@@ -99,6 +99,7 @@ def fetch_and_extract_pdf(
     Download PDF from Drive and extract content.
 
     Convenience function that combines download + extraction.
+    Handles large files by streaming to temp file.
 
     Args:
         file_id: Drive file ID
@@ -107,15 +108,77 @@ def fetch_and_extract_pdf(
     Returns:
         PdfExtractionResult with content and extraction method used
     """
-    # Download the PDF
-    pdf_bytes = download_file(file_id)
+    # Check file size to determine download strategy
+    file_size = get_file_size(file_id)
 
-    # Extract content
-    return extract_pdf_content(
-        file_bytes=pdf_bytes,
-        file_id=file_id,
-        min_chars_threshold=min_chars_threshold,
-    )
+    if file_size > STREAMING_THRESHOLD_BYTES:
+        # Large file: stream to temp, extract from path
+        return _fetch_and_extract_pdf_large(file_id, min_chars_threshold)
+    else:
+        # Small file: load into memory
+        pdf_bytes = download_file(file_id)
+        return extract_pdf_content(
+            file_bytes=pdf_bytes,
+            file_id=file_id,
+            min_chars_threshold=min_chars_threshold,
+        )
+
+
+def _fetch_and_extract_pdf_large(
+    file_id: str,
+    min_chars_threshold: int = DEFAULT_MIN_CHARS_THRESHOLD,
+) -> PdfExtractionResult:
+    """
+    Extract large PDF using streaming download.
+
+    Downloads to temp file, extracts with markitdown (which needs a path anyway),
+    then cleans up.
+    """
+    warnings: list[str] = []
+    warnings.append("Large file: using streaming download")
+
+    # Download to temp file
+    tmp_path = download_file_to_temp(file_id, suffix=".pdf")
+
+    try:
+        # Extract with markitdown (which needs a file path)
+        md = MarkItDown()
+        result = md.convert_local(str(tmp_path))
+        content = result.text_content or ""
+        char_count = len(content.strip())
+
+        if char_count >= min_chars_threshold:
+            return PdfExtractionResult(
+                content=content,
+                method="markitdown",
+                char_count=char_count,
+                warnings=warnings,
+            )
+
+        # Markitdown failed — need Drive conversion
+        # For large files, we already have it on disk, read bytes for conversion
+        warnings.append(
+            f"Markitdown extracted only {char_count} chars, falling back to Drive conversion"
+        )
+
+        pdf_bytes = tmp_path.read_bytes()
+        conversion_result = convert_via_drive(
+            file_bytes=pdf_bytes,
+            source_mime="application/pdf",
+            target_type="doc",
+            export_format="markdown",
+            file_id_hint=file_id,
+        )
+        warnings.extend(conversion_result.warnings)
+
+        return PdfExtractionResult(
+            content=conversion_result.content,
+            method="drive",
+            char_count=len(conversion_result.content.strip()),
+            warnings=warnings,
+        )
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 def _extract_with_markitdown(pdf_bytes: bytes) -> str:

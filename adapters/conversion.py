@@ -6,7 +6,7 @@ Both use Drive's implicit conversion: upload with target mimeType → auto-conve
 """
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 import logging
 
 from googleapiclient.http import MediaInMemoryUpload
@@ -114,7 +114,7 @@ def convert_via_drive(
     )
 
 
-def _delete_temp_file(service, file_id: str, file_name: str) -> bool:
+def _delete_temp_file(service: Any, file_id: str, file_name: str) -> bool:
     """
     Delete temporary file from Drive. Best-effort, logs failures.
 

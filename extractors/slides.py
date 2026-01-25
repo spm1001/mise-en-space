@@ -216,14 +216,14 @@ def _get_image_coverage(
     # Size can be in scaleX/scaleY (relative) or in the size property
     size = element.get("size", {})
 
-    elem_width = size.get("width", {}).get("magnitude", 0)
-    elem_height = size.get("height", {}).get("magnitude", 0)
+    elem_width: float = size.get("width", {}).get("magnitude", 0)
+    elem_height: float = size.get("height", {}).get("magnitude", 0)
 
     if elem_width <= 0 or elem_height <= 0:
         return 0.0
 
-    page_area = page_width * page_height
-    elem_area = elem_width * elem_height
+    page_area: float = page_width * page_height
+    elem_area: float = elem_width * elem_height
 
     return elem_area / page_area
 

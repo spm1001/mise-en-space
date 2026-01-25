@@ -61,7 +61,8 @@ async def _get_cookies_async(urls: list[str]) -> list[dict[str, Any]]:
         }))
 
         response = json.loads(await asyncio.wait_for(ws.recv(), timeout=CDP_TIMEOUT))
-        return response.get("result", {}).get("cookies", [])
+        cookies: list[dict[str, Any]] = response.get("result", {}).get("cookies", [])
+        return cookies
 
 
 def get_google_cookies() -> dict[str, str] | None:
