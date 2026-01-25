@@ -20,6 +20,8 @@ def extract_slides_content(
     """
     Convert presentation data to markdown text.
 
+    Populates data.warnings with extraction issues encountered.
+
     Args:
         data: PresentationData with title, slides, and metadata
         max_length: Optional character limit. Truncates if exceeded.
@@ -45,6 +47,9 @@ def extract_slides_content(
             ## Slide 2
             ...
     """
+    # Initialize warnings (will aggregate from slides)
+    data.warnings = []
+
     parts: list[str] = []
 
     # Header
@@ -70,6 +75,11 @@ def extract_slides_content(
 
         parts.append(slide_md)
         total_length += len(slide_md)
+
+    # Aggregate warnings from all slides
+    for slide in data.slides:
+        for warning in slide.warnings:
+            data.warnings.append(f"Slide {slide.index + 1}: {warning}")
 
     return "".join(parts)
 

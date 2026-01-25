@@ -308,6 +308,65 @@ class TestWarnings:
         assert "*Warning:" in result
         assert "Missing objectId" in result
 
+    def test_slide_warnings_aggregated_to_data(self) -> None:
+        """Test that slide-level warnings are aggregated into data.warnings."""
+        data = PresentationData(
+            title="Test",
+            presentation_id="test-id",
+            slides=[
+                SlideData(
+                    slide_id="s1",
+                    index=0,
+                    warnings=["Thumbnail unavailable: HTTP 403"],
+                ),
+                SlideData(
+                    slide_id="s2",
+                    index=1,
+                    warnings=[],  # No warnings
+                ),
+                SlideData(
+                    slide_id="s3",
+                    index=2,
+                    warnings=["Download failed: timeout"],
+                ),
+            ],
+        )
+
+        # Initially data.warnings is empty
+        assert data.warnings == []
+
+        # After extraction, warnings should be aggregated
+        extract_slides_content(data)
+
+        assert len(data.warnings) == 2
+        assert "Slide 1: Thumbnail unavailable: HTTP 403" in data.warnings
+        assert "Slide 3: Download failed: timeout" in data.warnings
+
+    def test_thumbnail_failure_in_output_and_aggregated(self) -> None:
+        """Test that thumbnail failures appear in both markdown and data.warnings."""
+        data = PresentationData(
+            title="Test",
+            presentation_id="test-id",
+            slides=[
+                SlideData(
+                    slide_id="s1",
+                    index=0,
+                    needs_thumbnail=True,
+                    thumbnail_reason="chart",
+                    warnings=["Thumbnail unavailable: permission denied"],
+                ),
+            ],
+        )
+
+        result = extract_slides_content(data)
+
+        # Should appear inline in markdown
+        assert "permission denied" in result
+
+        # Should also be in aggregated warnings
+        assert len(data.warnings) == 1
+        assert "Slide 1: Thumbnail unavailable: permission denied" in data.warnings[0]
+
 
 class TestFormatTable:
     """Tests for table formatting."""

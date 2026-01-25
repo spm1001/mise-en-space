@@ -9,10 +9,12 @@ Sheets, Docs) — Google disabled this platform feature in 2022. Thumbnails must
 be fetched sequentially. See: github.com/googleapis/google-api-python-client/issues/2085
 """
 
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 from googleapiclient.discovery import Resource
+from googleapiclient.errors import HttpError
 
 from models import PresentationData
 from retry import with_retry
@@ -116,6 +118,14 @@ def _fetch_thumbnails_selective(
             url = response.get("contentUrl")
             if url:
                 thumbnail_urls.append((slide.slide_id, url))
+        except HttpError as e:
+            status = e.resp.status if e.resp else "unknown"
+            if status == 403:
+                slide.warnings.append("Thumbnail unavailable: permission denied")
+            elif status == 404:
+                slide.warnings.append("Thumbnail unavailable: not found")
+            else:
+                slide.warnings.append(f"Thumbnail unavailable: HTTP {status}")
         except Exception as e:
             slide.warnings.append(f"Thumbnail fetch failed: {type(e).__name__}")
 
@@ -123,22 +133,31 @@ def _fetch_thumbnails_selective(
         return
 
     # Step 2: Download images in parallel
-    def download(item: tuple[str, str]) -> tuple[str, bytes | None]:
+    def download(item: tuple[str, str]) -> tuple[str, bytes | None, str | None]:
         slide_id, url = item
         try:
             with urllib.request.urlopen(url, timeout=30) as resp:
-                return slide_id, resp.read()
-        except Exception:
-            return slide_id, None
+                return slide_id, resp.read(), None
+        except urllib.error.URLError as e:
+            return slide_id, None, f"Download failed: {e.reason}"
+        except TimeoutError:
+            return slide_id, None, "Download failed: timeout"
+        except Exception as e:
+            return slide_id, None, f"Download failed: {type(e).__name__}"
 
     with ThreadPoolExecutor(max_workers=10) as executor:
         results = list(executor.map(download, thumbnail_urls))
 
-    # Step 3: Update slides with downloaded thumbnails
-    thumbnail_map = {sid: data for sid, data in results if data is not None}
+    # Step 3: Update slides with downloaded thumbnails and track failures
+    slide_by_id = {s.slide_id: s for s in data.slides if s.slide_id}
 
-    for slide in data.slides:
-        if slide.slide_id in thumbnail_map:
-            slide.thumbnail_bytes = thumbnail_map[slide.slide_id]
+    for slide_id, image_data, error in results:
+        if slide_id not in slide_by_id:
+            continue
+        slide = slide_by_id[slide_id]
+        if image_data is not None:
+            slide.thumbnail_bytes = image_data
+        elif error:
+            slide.warnings.append(error)
 
-    data.thumbnails_included = len(thumbnail_map) > 0
+    data.thumbnails_included = any(s.thumbnail_bytes for s in data.slides)

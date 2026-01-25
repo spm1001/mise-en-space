@@ -166,18 +166,24 @@ def fetch_slides(presentation_id: str, title: str, metadata: dict) -> dict:
     folder = get_deposit_folder("slides", title, presentation_id)
     content_path = write_content(folder, content)
 
-    # Write thumbnails if available
+    # Write thumbnails if available, track failures
     thumbnail_count = 0
+    thumbnail_failures: list[int] = []
     for slide in presentation_data.slides:
         if slide.thumbnail_bytes:
             write_thumbnail(folder, slide.thumbnail_bytes, slide.index)
             thumbnail_count += 1
+        elif slide.needs_thumbnail:
+            # Thumbnail was requested but not received
+            thumbnail_failures.append(slide.index + 1)  # 1-indexed for humans
 
     extra = {
         "slide_count": len(presentation_data.slides),
         "has_thumbnails": thumbnail_count > 0,
         "thumbnail_count": thumbnail_count,
     }
+    if thumbnail_failures:
+        extra["thumbnail_failures"] = thumbnail_failures
     if presentation_data.warnings:
         extra["warnings"] = presentation_data.warnings
     write_manifest(folder, "slides", title, presentation_id, extra=extra)
