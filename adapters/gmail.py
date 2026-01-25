@@ -252,12 +252,14 @@ def search_threads(
         payload = first_msg.get("payload", {})
         headers = _parse_headers(payload.get("headers", []))
 
-        # Check for attachments in any message
-        has_attachments = any(
-            "ATTACHMENT" in msg.get("labelIds", []) or
-            "attachment" in str(msg.get("payload", {})).lower()
-            for msg in messages
-        )
+        # Collect attachment names from all messages
+        attachment_names: list[str] = []
+        for msg in messages:
+            msg_payload = msg.get("payload", {})
+            msg_attachments = parse_attachments_from_payload(msg_payload)
+            for att in msg_attachments:
+                if att.get("filename"):
+                    attachment_names.append(att["filename"])
 
         thread_id = response.get("id", "")
         results.append(
@@ -268,16 +270,17 @@ def search_threads(
                 date=_parse_date(headers.get("Date"), first_msg.get("internalDate")),
                 from_address=headers.get("From"),
                 message_count=len(messages),
-                has_attachments=has_attachments,
+                has_attachments=len(attachment_names) > 0,
+                attachment_names=attachment_names,
             )
         )
 
-    # Add batch requests
+    # Add batch requests — use format="full" to get attachment info
     for thread in threads[:max_results]:
         batch.add(
             service.users()
             .threads()
-            .get(userId="me", id=thread["id"], format="metadata", metadataHeaders=["Subject", "From", "Date"]),
+            .get(userId="me", id=thread["id"], format="full"),
             callback=handle_thread_response,
         )
 

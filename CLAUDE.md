@@ -18,7 +18,10 @@ adapters/       Thin Google API wrappers (easily mocked)
 tools/          MCP tool definitions (thin wiring layer)
 workspace/      File deposit management (mise-fetch/ in cwd)
 server.py       FastMCP entry point
+docs/           Design documents and references
 ```
+
+**Key reference:** `docs/information-flow.md` — Timing data, design decisions, and flow diagrams showing how data moves from APIs through extraction to deposit. Read this before making changes to the fetch/search paths.
 
 **Layer rules:**
 - Extractors NEVER import from adapters or tools

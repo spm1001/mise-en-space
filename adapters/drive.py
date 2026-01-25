@@ -46,7 +46,8 @@ SEARCH_RESULT_FIELDS = (
     "mimeType,"
     "modifiedTime,"
     "owners(displayName),"
-    "webViewLink"
+    "webViewLink,"
+    "contentSnippet"
     ")"
 )
 
@@ -266,6 +267,7 @@ def search_files(
                 name=file.get("name", ""),
                 mime_type=file.get("mimeType", ""),
                 modified_time=_parse_datetime(file.get("modifiedTime")),
+                snippet=file.get("contentSnippet"),
                 owners=owners,
                 web_view_link=file.get("webViewLink"),
             )

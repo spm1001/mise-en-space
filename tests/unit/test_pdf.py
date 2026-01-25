@@ -366,7 +366,37 @@ class TestLargeFileStreaming:
 
         # Should fall back to Drive
         assert result.method == "drive"
-        # Convert should be called with bytes read from temp file
+        # Convert should be called with file_path (streaming, not bytes in memory)
         mock_convert.assert_called_once()
         call_kwargs = mock_convert.call_args.kwargs
-        assert call_kwargs["file_bytes"] == temp_content
+        assert call_kwargs["file_path"] == temp_file
+
+
+class TestConvertViaDriveValidation:
+    """Tests for convert_via_drive input validation."""
+
+    def test_requires_either_bytes_or_path(self):
+        """Must provide at least one of file_bytes or file_path."""
+        from adapters.conversion import convert_via_drive
+        from models import MiseError
+
+        # Retry decorator converts ValueError to MiseError
+        with pytest.raises(MiseError, match="Must provide either file_bytes or file_path"):
+            convert_via_drive(source_mime="application/pdf", target_type="doc")
+
+    def test_rejects_both_bytes_and_path(self, tmp_path: Path):
+        """Cannot provide both file_bytes and file_path."""
+        from adapters.conversion import convert_via_drive
+        from models import MiseError
+
+        test_file = tmp_path / "test.pdf"
+        test_file.write_bytes(b"test")
+
+        # Retry decorator converts ValueError to MiseError
+        with pytest.raises(MiseError, match="Cannot provide both file_bytes and file_path"):
+            convert_via_drive(
+                file_bytes=b"test",
+                file_path=test_file,
+                source_mime="application/pdf",
+                target_type="doc",
+            )

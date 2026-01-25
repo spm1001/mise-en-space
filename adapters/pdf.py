@@ -161,14 +161,13 @@ def _fetch_and_extract_pdf_large(
             )
 
         # Markitdown failed — need Drive conversion
-        # For large files, we already have it on disk, read bytes for conversion
+        # For large files, stream directly from disk (no memory load)
         warnings.append(
             f"Markitdown extracted only {char_count} chars, falling back to Drive conversion"
         )
 
-        pdf_bytes = tmp_path.read_bytes()
         conversion_result = convert_via_drive(
-            file_bytes=pdf_bytes,
+            file_path=tmp_path,
             source_mime="application/pdf",
             target_type="doc",
             export_format="markdown",

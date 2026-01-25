@@ -6,10 +6,11 @@ Both use Drive's implicit conversion: upload with target mimeType → auto-conve
 """
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal
 import logging
 
-from googleapiclient.http import MediaInMemoryUpload
+from googleapiclient.http import MediaFileUpload, MediaInMemoryUpload
 
 from adapters.services import get_drive_service
 from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
@@ -44,12 +45,13 @@ EXPORT_MIMES = {
 
 @with_retry(max_attempts=3, delay_ms=1000)
 def convert_via_drive(
-    file_bytes: bytes,
-    source_mime: str,
-    target_type: Literal["doc", "sheet", "slides"],
+    file_bytes: bytes | None = None,
+    source_mime: str = "",
+    target_type: Literal["doc", "sheet", "slides"] = "doc",
     export_format: Literal["markdown", "csv", "plain"] = "markdown",
     temp_name_prefix: str = "_mise_temp_",
     file_id_hint: str = "",
+    file_path: Path | None = None,
 ) -> ConversionResult:
     """
     Convert file via Drive: upload with conversion, export, delete temp.
@@ -57,26 +59,42 @@ def convert_via_drive(
     This leverages Drive's implicit conversion — when you upload a file with
     a Google Workspace mimeType as target, Drive converts automatically.
 
+    Accepts either file_bytes (in-memory) or file_path (streaming from disk).
+    Use file_path for large files to avoid memory issues.
+
     Args:
-        file_bytes: Raw file content
+        file_bytes: Raw file content (mutually exclusive with file_path)
         source_mime: Original file MIME type (e.g., 'application/pdf')
         target_type: Google format to convert to ('doc', 'sheet', 'slides')
         export_format: Format to export as ('markdown', 'csv', 'plain')
         temp_name_prefix: Prefix for temp file name (for debugging orphans)
         file_id_hint: Optional ID hint for temp file naming
+        file_path: Path to file on disk (mutually exclusive with file_bytes)
 
     Returns:
         ConversionResult with content and cleanup status
+
+    Raises:
+        ValueError: If neither or both of file_bytes/file_path provided
     """
+    # Validate: exactly one of file_bytes or file_path
+    if file_bytes is None and file_path is None:
+        raise ValueError("Must provide either file_bytes or file_path")
+    if file_bytes is not None and file_path is not None:
+        raise ValueError("Cannot provide both file_bytes and file_path")
+
     service = get_drive_service()
     warnings: list[str] = []
 
     target_mime = CONVERSION_TARGETS[target_type]
     export_mime = EXPORT_MIMES[export_format]
 
-    # 1. Upload with conversion
+    # 1. Upload with conversion (streaming from disk or in-memory)
     temp_name = f"{temp_name_prefix}{file_id_hint}" if file_id_hint else temp_name_prefix
-    media = MediaInMemoryUpload(file_bytes, mimetype=source_mime)
+    if file_path is not None:
+        media = MediaFileUpload(str(file_path), mimetype=source_mime, resumable=True)
+    else:
+        media = MediaInMemoryUpload(file_bytes, mimetype=source_mime)
 
     uploaded = (
         service.files()

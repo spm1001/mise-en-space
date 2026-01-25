@@ -301,6 +301,7 @@ class GmailSearchResult:
     from_address: str | None = None
     message_count: int = 1
     has_attachments: bool = False
+    attachment_names: list[str] = field(default_factory=list)
 
 
 # ============================================================================

@@ -21,6 +21,7 @@ def format_drive_result(result: DriveSearchResult) -> dict[str, Any]:
         "modified": result.modified_time.isoformat() if result.modified_time else None,
         "url": result.web_view_link,
         "owners": result.owners,
+        "snippet": result.snippet,
     }
 
 
@@ -34,6 +35,7 @@ def format_gmail_result(result: GmailSearchResult) -> dict[str, Any]:
         "from": result.from_address,
         "message_count": result.message_count,
         "has_attachments": result.has_attachments,
+        "attachment_names": result.attachment_names,
     }
 
 
