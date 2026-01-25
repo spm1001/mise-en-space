@@ -21,8 +21,13 @@ from adapters.drive import download_file, download_file_to_temp, get_file_size, 
 
 
 # Default threshold for fallback to Drive conversion.
-# Determined empirically: simple text PDFs produce 1000s of chars,
-# complex/image-heavy PDFs produce <100 chars with markitdown.
+# Determined empirically (Jan 2026):
+# - Simple text PDFs (reports, contracts): markitdown extracts 1000s-10000s chars
+# - Complex/image-heavy PDFs (slides, scanned docs): markitdown extracts <100 chars
+# - 500 chars is the midpoint with safety margin
+# - Drive conversion extracts 100-1000x more from complex PDFs but is 5-10x slower
+# If this threshold is too low: unnecessary slow conversions for simple PDFs
+# If this threshold is too high: missed content from complex PDFs
 DEFAULT_MIN_CHARS_THRESHOLD = 500
 
 

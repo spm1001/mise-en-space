@@ -88,6 +88,92 @@ class TestPdfExtraction:
         assert result.method == "markitdown"
         assert result.char_count == 200
 
+    @patch("adapters.pdf._extract_with_markitdown")
+    def test_threshold_boundary_exactly_at(
+        self,
+        mock_markitdown: MagicMock,
+        sample_pdf_bytes: bytes,
+    ) -> None:
+        """Test that exactly threshold chars uses markitdown (>= comparison)."""
+        mock_markitdown.return_value = "A" * DEFAULT_MIN_CHARS_THRESHOLD  # Exactly 500
+
+        result = extract_pdf_content(sample_pdf_bytes, "file123")
+
+        # Should use markitdown (>= threshold)
+        assert result.method == "markitdown"
+        assert result.char_count == DEFAULT_MIN_CHARS_THRESHOLD
+
+    @patch("adapters.pdf.convert_via_drive")
+    @patch("adapters.pdf._extract_with_markitdown")
+    def test_threshold_boundary_one_below(
+        self,
+        mock_markitdown: MagicMock,
+        mock_convert: MagicMock,
+        sample_pdf_bytes: bytes,
+    ) -> None:
+        """Test that one char below threshold triggers fallback."""
+        mock_markitdown.return_value = "A" * (DEFAULT_MIN_CHARS_THRESHOLD - 1)  # 499
+
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="B" * 1000,
+            temp_file_deleted=True,
+            warnings=[],
+        )
+
+        result = extract_pdf_content(sample_pdf_bytes, "file123")
+
+        # Should fall back to Drive since 499 < 500
+        assert result.method == "drive"
+
+    @patch("adapters.pdf.convert_via_drive")
+    @patch("adapters.pdf._extract_with_markitdown")
+    def test_empty_content_triggers_fallback(
+        self,
+        mock_markitdown: MagicMock,
+        mock_convert: MagicMock,
+        sample_pdf_bytes: bytes,
+    ) -> None:
+        """Test that empty markitdown result triggers fallback."""
+        mock_markitdown.return_value = ""  # Empty
+
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="B" * 500,
+            temp_file_deleted=True,
+            warnings=[],
+        )
+
+        result = extract_pdf_content(sample_pdf_bytes, "file123")
+
+        # Should fall back to Drive
+        assert result.method == "drive"
+        assert any("0 chars" in w for w in result.warnings)
+
+    @patch("adapters.pdf.convert_via_drive")
+    @patch("adapters.pdf._extract_with_markitdown")
+    def test_whitespace_only_counts_as_zero(
+        self,
+        mock_markitdown: MagicMock,
+        mock_convert: MagicMock,
+        sample_pdf_bytes: bytes,
+    ) -> None:
+        """Test that whitespace-only content is counted as zero chars after strip."""
+        mock_markitdown.return_value = "   \n\t\n   "  # Only whitespace
+
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="Real content",
+            temp_file_deleted=True,
+            warnings=[],
+        )
+
+        result = extract_pdf_content(sample_pdf_bytes, "file123")
+
+        # Should fall back to Drive because stripped content is 0 chars
+        assert result.method == "drive"
+        assert any("0 chars" in w for w in result.warnings)
+
     @patch("adapters.pdf.convert_via_drive")
     @patch("adapters.pdf._extract_with_markitdown")
     def test_conversion_warnings_propagated(
