@@ -20,7 +20,7 @@ from extractors.gmail import extract_thread_content
 from typing import Any, Literal
 from models import MiseError, FetchResult, FetchError
 from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id
-from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail
+from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_chart, write_charts_metadata
 
 
 def detect_id_type(input_id: str) -> tuple[str, str]:
@@ -138,23 +138,57 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any]) -> FetchResult:
 
 
 def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any]) -> FetchResult:
-    """Fetch Google Sheet."""
+    """Fetch Google Sheet with charts rendered as PNGs."""
     sheet_data = fetch_spreadsheet(sheet_id)
     content = extract_sheets_content(sheet_data)
 
     folder = get_deposit_folder("sheet", title, sheet_id)
     content_path = write_content(folder, content, filename="content.csv")
+
+    # Write chart PNGs
+    chart_count = 0
+    charts_meta: list[dict[str, Any]] = []
+    for i, chart in enumerate(sheet_data.charts):
+        if chart.png_bytes:
+            write_chart(folder, chart.png_bytes, i)
+            chart_count += 1
+
+        # Always include metadata even if PNG failed
+        charts_meta.append({
+            "chart_id": chart.chart_id,
+            "title": chart.title,
+            "sheet_name": chart.sheet_name,
+            "chart_type": chart.chart_type,
+            "has_png": chart.png_bytes is not None,
+        })
+
+    # Write charts.json if there are charts
+    if charts_meta:
+        write_charts_metadata(folder, charts_meta)
+
+    # Build manifest extras
     extra: dict[str, Any] = {"sheet_count": len(sheet_data.sheets)}
+    if chart_count > 0:
+        extra["chart_count"] = chart_count
+        extra["chart_render_time_ms"] = sheet_data.chart_render_time_ms
     if sheet_data.warnings:
         extra["warnings"] = sheet_data.warnings
     write_manifest(folder, "sheet", title, sheet_id, extra=extra)
+
+    result_meta: dict[str, Any] = {
+        "title": title,
+        "sheet_count": len(sheet_data.sheets),
+    }
+    if chart_count > 0:
+        result_meta["chart_count"] = chart_count
+        result_meta["chart_render_time_ms"] = sheet_data.chart_render_time_ms
 
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format="csv",
         type="sheet",
-        metadata={"title": title, "sheet_count": len(sheet_data.sheets)},
+        metadata=result_meta,
     )
 
 

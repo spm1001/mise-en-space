@@ -145,6 +145,51 @@ def write_thumbnail(
     return file_path
 
 
+def write_chart(
+    folder: Path,
+    image_bytes: bytes,
+    chart_index: int,
+) -> Path:
+    """
+    Write a chart PNG to the deposit folder.
+
+    Args:
+        folder: Deposit folder from get_deposit_folder()
+        image_bytes: PNG image data
+        chart_index: 0-based chart index
+
+    Returns:
+        Path to the written file
+
+    Example:
+        write_chart(folder, png_bytes, 0) -> folder/chart_01.png
+    """
+    # 1-indexed, zero-padded for sorting
+    filename = f"chart_{chart_index + 1:02d}.png"
+    file_path = folder / filename
+    file_path.write_bytes(image_bytes)
+    return file_path
+
+
+def write_charts_metadata(
+    folder: Path,
+    charts: list[dict[str, Any]],
+) -> Path:
+    """
+    Write charts.json metadata to the deposit folder.
+
+    Args:
+        folder: Deposit folder from get_deposit_folder()
+        charts: List of chart metadata dicts with title, type, sheet_name, etc.
+
+    Returns:
+        Path to the written file
+    """
+    file_path = folder / "charts.json"
+    file_path.write_text(json.dumps(charts, indent=2), encoding="utf-8")
+    return file_path
+
+
 def write_manifest(
     folder: Path,
     content_type: ContentType,
@@ -239,17 +284,21 @@ def get_deposit_summary(folder: Path) -> dict[str, str | int | list[str]]:
     parsed = parse_folder_name(folder)
     files = list(folder.iterdir())
 
-    # Separate content and thumbnails
+    # Separate content, thumbnails, and charts
     content_file = None
     thumbnails: list[str] = []
+    charts: list[str] = []
 
     for f in files:
         if f.suffix == ".md":
             content_file = f.name
         elif f.suffix == ".png" and f.name.startswith("slide_"):
             thumbnails.append(f.name)
+        elif f.suffix == ".png" and f.name.startswith("chart_"):
+            charts.append(f.name)
 
     thumbnails.sort()
+    charts.sort()
 
     result: dict[str, str | int | list[str]] = {
         "path": str(folder),
@@ -262,5 +311,8 @@ def get_deposit_summary(folder: Path) -> dict[str, str | int | list[str]]:
     if thumbnails:
         result["thumbnails"] = thumbnails
         result["thumbnail_count"] = len(thumbnails)
+    if charts:
+        result["charts"] = charts
+        result["chart_count"] = len(charts)
 
     return result

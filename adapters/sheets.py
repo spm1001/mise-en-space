@@ -1,21 +1,27 @@
 """
 Sheets adapter — Google Sheets API wrapper.
 
-Fetches spreadsheet metadata and values, assembles SpreadsheetData.
+Fetches spreadsheet metadata, values, and charts. Assembles SpreadsheetData.
+
+Chart rendering uses Slides API (see adapters/charts.py) because Sheets API
+has no direct chart export endpoint.
 """
 
 from typing import Any
 
-from models import SpreadsheetData, SheetTab, CellValue
+from models import SpreadsheetData, SheetTab, ChartData, CellValue
 from retry import with_retry
 from adapters.services import get_sheets_service
+from adapters.charts import get_charts_from_spreadsheet, render_charts_as_pngs
 
 
-# Fields to request from spreadsheets().get() — only what we need
+# Fields to request from spreadsheets().get()
+# Include sheetType to filter OBJECT sheets, and charts for metadata
 SPREADSHEET_METADATA_FIELDS = (
     "spreadsheetId,"
     "properties(title,locale,timeZone),"
-    "sheets(properties(sheetId,title))"
+    "sheets(properties(sheetId,title,sheetType),"
+    "charts(chartId,spec(title,basicChart(chartType),pieChart,histogramChart)))"
 )
 
 
@@ -35,16 +41,21 @@ def _parse_row(row: list[Any]) -> list[CellValue]:
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
-def fetch_spreadsheet(spreadsheet_id: str) -> SpreadsheetData:
+def fetch_spreadsheet(
+    spreadsheet_id: str,
+    render_charts: bool = True,
+) -> SpreadsheetData:
     """
-    Fetch complete spreadsheet data.
+    Fetch complete spreadsheet data including charts.
 
     Calls:
-    1. spreadsheets().get() for metadata + sheet list
-    2. spreadsheets().values().batchGet() for ALL sheets in one call
+    1. spreadsheets().get() for metadata + sheet list + chart info
+    2. spreadsheets().values().batchGet() for GRID sheets only
+    3. Chart rendering via Slides API (if charts present and render_charts=True)
 
     Args:
         spreadsheet_id: The spreadsheet ID (from URL or API)
+        render_charts: Whether to render charts as PNGs (default True)
 
     Returns:
         SpreadsheetData ready for the extractor
@@ -54,7 +65,7 @@ def fetch_spreadsheet(spreadsheet_id: str) -> SpreadsheetData:
     """
     service = get_sheets_service()
 
-    # Get metadata
+    # Get metadata including charts
     metadata = (
         service.spreadsheets()
         .get(spreadsheetId=spreadsheet_id, fields=SPREADSHEET_METADATA_FIELDS)
@@ -66,39 +77,71 @@ def fetch_spreadsheet(spreadsheet_id: str) -> SpreadsheetData:
     locale = properties.get("locale")
     time_zone = properties.get("timeZone")
 
-    # Get sheet names from metadata
-    sheet_names = [
-        sheet["properties"]["title"]
-        for sheet in metadata.get("sheets", [])
-    ]
+    # Separate GRID sheets (have values) from OBJECT sheets (chart sheets)
+    grid_sheets: list[tuple[str, str]] = []  # (name, sheetType)
+    all_sheet_info: list[tuple[str, str]] = []
 
-    # Fetch ALL sheet values in one batch call (not N calls)
-    ranges = [f"'{name}'" for name in sheet_names]  # Quote for names with spaces
+    for sheet in metadata.get("sheets", []):
+        props = sheet.get("properties", {})
+        name = props.get("title", "")
+        sheet_type = props.get("sheetType", "GRID")
+        all_sheet_info.append((name, sheet_type))
 
-    batch_response = (
-        service.spreadsheets()
-        .values()
-        .batchGet(
-            spreadsheetId=spreadsheet_id,
-            ranges=ranges,
-            valueRenderOption="FORMATTED_VALUE",
-        )
-        .execute()
-    )
+        # Only GRID sheets have values to fetch
+        if sheet_type == "GRID":
+            grid_sheets.append((name, sheet_type))
 
-    # Parse batch response - valueRanges is in same order as ranges
+    # Fetch values only for GRID sheets
     sheets: list[SheetTab] = []
-    value_ranges = batch_response.get("valueRanges", [])
 
-    for sheet_name, value_range in zip(sheet_names, value_ranges):
-        raw_values = value_range.get("values", [])
-        parsed_values = [_parse_row(row) for row in raw_values]
-        sheets.append(SheetTab(name=sheet_name, values=parsed_values))
+    if grid_sheets:
+        ranges = [f"'{name}'" for name, _ in grid_sheets]
+
+        batch_response = (
+            service.spreadsheets()
+            .values()
+            .batchGet(
+                spreadsheetId=spreadsheet_id,
+                ranges=ranges,
+                valueRenderOption="FORMATTED_VALUE",
+            )
+            .execute()
+        )
+
+        value_ranges = batch_response.get("valueRanges", [])
+
+        for (sheet_name, sheet_type), value_range in zip(grid_sheets, value_ranges):
+            raw_values = value_range.get("values", [])
+            parsed_values = [_parse_row(row) for row in raw_values]
+            sheets.append(SheetTab(
+                name=sheet_name,
+                values=parsed_values,
+                sheet_type=sheet_type,
+            ))
+
+    # Add non-GRID sheets (OBJECT sheets = chart sheets) with empty values
+    for name, sheet_type in all_sheet_info:
+        if sheet_type != "GRID":
+            sheets.append(SheetTab(
+                name=name,
+                values=[],
+                sheet_type=sheet_type,
+            ))
+
+    # Extract chart metadata
+    charts = get_charts_from_spreadsheet(metadata)
+    chart_render_time_ms = 0
+
+    # Render charts as PNGs if requested
+    if render_charts and charts:
+        charts, chart_render_time_ms = render_charts_as_pngs(spreadsheet_id, charts)
 
     return SpreadsheetData(
         title=title,
         spreadsheet_id=spreadsheet_id,
         sheets=sheets,
+        charts=charts,
         locale=locale,
         time_zone=time_zone,
+        chart_render_time_ms=chart_render_time_ms,
     )

@@ -78,6 +78,30 @@ class SheetTab:
     """A single sheet/tab within a spreadsheet."""
     name: str
     values: list[list[CellValue]]  # Rows of cells
+    sheet_type: str = "GRID"  # GRID, OBJECT (chart sheet), or DATA_SOURCE
+
+
+@dataclass
+class ChartData:
+    """
+    A chart from a spreadsheet.
+
+    Charts can be:
+    - Floating (embedded on a GRID sheet)
+    - Sheet charts (on their own OBJECT sheet)
+
+    Rendering happens via Slides API - see adapters/charts.py.
+    """
+    chart_id: int
+    title: str | None = None
+    sheet_name: str | None = None  # Where the chart lives
+    chart_type: str | None = None  # COLUMN, LINE, PIE, etc.
+
+    # Rendered PNG (populated by chart rendering)
+    png_bytes: bytes | None = None
+
+    # Source data range (for metadata)
+    source_ranges: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -86,17 +110,24 @@ class SpreadsheetData:
     Assembled spreadsheet data for the sheets extractor.
 
     Adapter calls:
-    1. spreadsheets().get() for metadata
-    2. spreadsheets().values().get() for each sheet
+    1. spreadsheets().get() for metadata + chart info
+    2. spreadsheets().values().batchGet() for all sheet values
+    3. Chart rendering via Slides API (if charts present)
     Then assembles this structure.
     """
     title: str
     spreadsheet_id: str
     sheets: list[SheetTab]
 
+    # Charts from the spreadsheet (populated by chart rendering)
+    charts: list[ChartData] = field(default_factory=list)
+
     # Optional metadata
     locale: str | None = None
     time_zone: str | None = None
+
+    # Chart rendering timing (ms)
+    chart_render_time_ms: int = 0
 
     # Warnings during extraction (empty sheets, truncation, etc.)
     warnings: list[str] = field(default_factory=list)
