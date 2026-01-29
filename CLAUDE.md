@@ -452,6 +452,7 @@ Decisions made during planning (Jan 2026) that future Claude should understand:
 | **Batch API calls** | Service-specific optimization | Not "always batch" — use most efficient pattern per service. See table below. |
 | **Sheets: 2 calls not 1** | `get()` + `batchGet()` | `includeGridData=True` returns 44MB of formatting metadata vs 79KB for values-only. Benchmarked: 2 calls is 3.5x faster despite extra round-trip. |
 | **Large file streaming** | 50MB threshold | Files >50MB stream to temp file instead of loading into memory. Prevents OOM on gigabyte PPTXs. Configurable via `MISE_STREAMING_THRESHOLD_MB` env var. The exact threshold matters less than having the safety net — any reasonable value catches gigabyte files. |
+| **No search snippets** | `snippet: None` | Drive API v3 has no `contentSnippet` field. The API returns 400 if requested. `fullText` search finds files but doesn't explain *why* they matched. Discovered Jan 2026 via live testing. |
 
 ### Per-Service API Patterns
 

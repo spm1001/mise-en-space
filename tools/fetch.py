@@ -4,7 +4,7 @@ Fetch tool implementation.
 Routes by ID type, extracts content, deposits to workspace.
 """
 
-from adapters.drive import get_file_metadata, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
+from adapters.drive import get_file_metadata, _parse_email_context, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
 from adapters.gmail import fetch_thread
 from adapters.docs import fetch_document
 from adapters.sheets import fetch_spreadsheet
@@ -18,7 +18,7 @@ from extractors.sheets import extract_sheets_content
 from extractors.slides import extract_slides_content
 from extractors.gmail import extract_thread_content
 from typing import Any, Literal
-from models import MiseError, FetchResult, FetchError
+from models import MiseError, FetchResult, FetchError, EmailContext
 from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id
 from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_chart, write_charts_metadata
 
@@ -112,19 +112,22 @@ def fetch_drive(file_id: str) -> FetchResult | FetchError:
     mime_type = metadata.get("mimeType", "")
     title = metadata.get("name", "untitled")
 
+    # Parse email context for cross-source linkage (exfil'd files)
+    email_context = _parse_email_context(metadata.get("description"))
+
     # Route by MIME type
     if mime_type == GOOGLE_DOC_MIME:
-        return fetch_doc(file_id, title, metadata)
+        return fetch_doc(file_id, title, metadata, email_context)
     elif mime_type == GOOGLE_SHEET_MIME:
-        return fetch_sheet(file_id, title, metadata)
+        return fetch_sheet(file_id, title, metadata, email_context)
     elif mime_type == GOOGLE_SLIDES_MIME:
-        return fetch_slides(file_id, title, metadata)
+        return fetch_slides(file_id, title, metadata, email_context)
     elif is_media_file(mime_type):
-        return fetch_video(file_id, title, metadata)
+        return fetch_video(file_id, title, metadata, email_context)
     elif mime_type == "application/pdf":
-        return fetch_pdf(file_id, title, metadata)
+        return fetch_pdf(file_id, title, metadata, email_context)
     elif (office_type := get_office_type_from_mime(mime_type)):
-        return fetch_office(file_id, title, metadata, office_type)
+        return fetch_office(file_id, title, metadata, office_type, email_context)
     else:
         # For now, return error for unsupported types
         return FetchError(
@@ -135,7 +138,19 @@ def fetch_drive(file_id: str) -> FetchResult | FetchError:
         )
 
 
-def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any]) -> FetchResult:
+def _build_email_context_metadata(email_context: EmailContext | None) -> dict[str, Any] | None:
+    """Build email_context dict for FetchResult metadata."""
+    if not email_context:
+        return None
+    return {
+        "message_id": email_context.message_id,
+        "from": email_context.from_address,
+        "subject": email_context.subject,
+        "hint": f"Use fetch('{email_context.message_id}') to get source email",
+    }
+
+
+def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
     """Fetch Google Doc."""
     doc_data = fetch_document(doc_id)
     content = extract_doc_content(doc_data)
@@ -147,16 +162,20 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any]) -> FetchResult:
         extra["warnings"] = doc_data.warnings
     write_manifest(folder, "doc", title, doc_id, extra=extra)
 
+    result_metadata: dict[str, Any] = {"title": title, "mimeType": metadata.get("mimeType")}
+    if email_context:
+        result_metadata["email_context"] = _build_email_context_metadata(email_context)
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format="markdown",
         type="doc",
-        metadata={"title": title, "mimeType": metadata.get("mimeType")},
+        metadata=result_metadata,
     )
 
 
-def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any]) -> FetchResult:
+def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
     """Fetch Google Sheet with charts rendered as PNGs."""
     sheet_data = fetch_spreadsheet(sheet_id)
     content = extract_sheets_content(sheet_data)
@@ -201,6 +220,8 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any]) -> FetchRes
     if chart_count > 0:
         result_meta["chart_count"] = chart_count
         result_meta["chart_render_time_ms"] = sheet_data.chart_render_time_ms
+    if email_context:
+        result_meta["email_context"] = _build_email_context_metadata(email_context)
 
     return FetchResult(
         path=str(folder),
@@ -211,7 +232,7 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any]) -> FetchRes
     )
 
 
-def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any]) -> FetchResult:
+def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
     """Fetch Google Slides."""
     # Enable thumbnails - selective logic in adapter skips stock photos/text-only
     presentation_data = fetch_presentation(presentation_id, include_thumbnails=True)
@@ -242,20 +263,24 @@ def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any]) -> 
         extra["warnings"] = presentation_data.warnings
     write_manifest(folder, "slides", title, presentation_id, extra=extra)
 
+    result_meta: dict[str, Any] = {
+        "title": title,
+        "slide_count": len(presentation_data.slides),
+        "thumbnail_count": thumbnail_count,
+    }
+    if email_context:
+        result_meta["email_context"] = _build_email_context_metadata(email_context)
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format="markdown",
         type="slides",
-        metadata={
-            "title": title,
-            "slide_count": len(presentation_data.slides),
-            "thumbnail_count": thumbnail_count,
-        },
+        metadata=result_meta,
     )
 
 
-def fetch_video(file_id: str, title: str, metadata: dict[str, Any]) -> FetchResult:
+def fetch_video(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
     """
     Fetch video/audio file with AI summary if available.
 
@@ -331,20 +356,24 @@ def fetch_video(file_id: str, title: str, metadata: dict[str, Any]) -> FetchResu
         extra["duration_ms"] = int(duration_ms)
     write_manifest(folder, "video", title, file_id, extra=extra)
 
+    result_meta: dict[str, Any] = {
+        "title": title,
+        "mime_type": mime_type,
+        "has_summary": summary_result.has_content if summary_result else False,
+    }
+    if email_context:
+        result_meta["email_context"] = _build_email_context_metadata(email_context)
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format="markdown",
         type="video",
-        metadata={
-            "title": title,
-            "mime_type": mime_type,
-            "has_summary": summary_result.has_content if summary_result else False,
-        },
+        metadata=result_meta,
     )
 
 
-def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any]) -> FetchResult:
+def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
     """
     Fetch PDF file with hybrid extraction strategy.
 
@@ -366,19 +395,23 @@ def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any]) -> FetchResult
         extra["warnings"] = result.warnings
     write_manifest(folder, "pdf", title, file_id, extra=extra)
 
+    result_meta: dict[str, Any] = {
+        "title": title,
+        "extraction_method": result.method,
+    }
+    if email_context:
+        result_meta["email_context"] = _build_email_context_metadata(email_context)
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format="markdown",
         type="pdf",
-        metadata={
-            "title": title,
-            "extraction_method": result.method,
-        },
+        metadata=result_meta,
     )
 
 
-def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type: OfficeType) -> FetchResult:
+def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type: OfficeType, email_context: EmailContext | None = None) -> FetchResult:
     """
     Fetch Office file via Drive conversion.
 
@@ -400,14 +433,18 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
         extra_office["warnings"] = result.warnings
     write_manifest(folder, office_type, title, file_id, extra=extra_office if extra_office else None)
 
+    result_meta: dict[str, Any] = {
+        "title": title,
+    }
+    if email_context:
+        result_meta["email_context"] = _build_email_context_metadata(email_context)
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format=output_format,
         type=office_type,
-        metadata={
-            "title": title,
-        },
+        metadata=result_meta,
     )
 
 
