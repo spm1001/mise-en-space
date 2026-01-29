@@ -41,9 +41,12 @@ docs/           Design documents and references
 | `adapters/conversion.py` | **Shared** Drive upload→convert→export→delete pattern |
 | `adapters/pdf.py` | PDF extraction (hybrid: markitdown → Drive fallback) |
 | `adapters/office.py` | Office files (DOCX/XLSX/PPTX via Drive conversion) |
+| `adapters/image.py` | Image files (raster + SVG→PNG rendering) |
 | `adapters/genai.py` | Video summaries via internal GenAI API |
 
 **Layered pattern:** `pdf.py` and `office.py` use `conversion.py` for the shared Drive conversion logic. This keeps the specific adapters thin while centralizing temp file management.
+
+**Image handling:** `image.py` downloads raster images directly and renders SVG to PNG via `rsvg-convert` (fallback: `sips` on macOS). SVGs deposit both the raw XML and rendered PNG so Claude can "see" the content.
 
 ## Optional: Video Summaries (chrome-debug)
 

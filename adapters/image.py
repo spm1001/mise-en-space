@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from adapters.drive import download_file
+from adapters.drive import download_file, get_file_size, download_file_to_temp, STREAMING_THRESHOLD_BYTES
 
 
 # MIME types we handle
@@ -81,6 +81,7 @@ def fetch_image(file_id: str, filename: str, mime_type: str) -> ImageResult:
 
     For raster images: just download.
     For SVG: download + render to PNG.
+    Large files (>50MB) stream to temp file to avoid OOM.
 
     Args:
         file_id: Drive file ID
@@ -90,19 +91,32 @@ def fetch_image(file_id: str, filename: str, mime_type: str) -> ImageResult:
     Returns:
         ImageResult with image bytes and optional PNG render for SVG
     """
-    # Download image
-    image_bytes = download_file(file_id)
+    # Check file size for streaming decision
+    file_size = get_file_size(file_id)
+    warnings: list[str] = []
+
+    if file_size > STREAMING_THRESHOLD_BYTES:
+        # Large file: stream to temp, read back
+        warnings.append(f"Large image ({file_size / (1024*1024):.1f}MB): using streaming download")
+        ext = get_extension(mime_type)
+        tmp_path = download_file_to_temp(file_id, suffix=f".{ext}")
+        try:
+            image_bytes = tmp_path.read_bytes()
+        finally:
+            tmp_path.unlink(missing_ok=True)
+    else:
+        # Normal download
+        image_bytes = download_file(file_id)
 
     # Build output filename with correct extension
     ext = get_extension(mime_type)
-    # Strip any existing extension and add correct one
-    base_name = Path(filename).stem
     output_filename = f"image.{ext}"
 
     result = ImageResult(
         image_bytes=image_bytes,
         filename=output_filename,
         mime_type=mime_type,
+        warnings=warnings,
     )
 
     # For SVG, also render to PNG

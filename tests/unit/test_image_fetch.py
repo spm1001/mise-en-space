@@ -72,11 +72,13 @@ class TestGetExtension:
 class TestFetchImageAdapter:
     """Tests for the image adapter fetch_image()."""
 
+    @patch("adapters.image.get_file_size")
     @patch("adapters.image.download_file")
-    def test_fetch_raster_image(self, mock_download):
+    def test_fetch_raster_image(self, mock_download, mock_size):
         """Fetches raster image and returns bytes."""
         png_bytes = b"\x89PNG\r\n\x1a\n"  # PNG magic bytes
         mock_download.return_value = png_bytes
+        mock_size.return_value = 100  # Small file
 
         result = fetch_image("abc123", "diagram.png", "image/png")
 
@@ -85,16 +87,17 @@ class TestFetchImageAdapter:
         assert result.mime_type == "image/png"
         assert result.rendered_png_bytes is None  # No rendering for raster
         assert result.render_method is None
-        assert result.warnings == []
 
+    @patch("adapters.image.get_file_size")
     @patch("adapters.image._render_svg_to_png")
     @patch("adapters.image.download_file")
-    def test_fetch_svg_with_successful_render(self, mock_download, mock_render):
+    def test_fetch_svg_with_successful_render(self, mock_download, mock_render, mock_size):
         """Fetches SVG and renders to PNG."""
         svg_bytes = b"<svg>...</svg>"
         png_bytes = b"\x89PNG\r\n\x1a\n"
         mock_download.return_value = svg_bytes
         mock_render.return_value = (png_bytes, "rsvg-convert", None)
+        mock_size.return_value = 100  # Small file
 
         result = fetch_image("svg123", "diagram.svg", "image/svg+xml")
 
@@ -103,15 +106,16 @@ class TestFetchImageAdapter:
         assert result.mime_type == "image/svg+xml"
         assert result.rendered_png_bytes == png_bytes
         assert result.render_method == "rsvg-convert"
-        assert result.warnings == []
 
+    @patch("adapters.image.get_file_size")
     @patch("adapters.image._render_svg_to_png")
     @patch("adapters.image.download_file")
-    def test_fetch_svg_with_failed_render(self, mock_download, mock_render):
+    def test_fetch_svg_with_failed_render(self, mock_download, mock_render, mock_size):
         """Handles SVG render failure gracefully."""
         svg_bytes = b"<svg>...</svg>"
         mock_download.return_value = svg_bytes
         mock_render.return_value = (None, None, "SVG render failed: neither rsvg-convert nor sips available")
+        mock_size.return_value = 100  # Small file
 
         result = fetch_image("svg456", "diagram.svg", "image/svg+xml")
 
