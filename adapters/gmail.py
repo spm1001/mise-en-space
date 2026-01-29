@@ -4,15 +4,20 @@ Gmail adapter — Gmail API wrapper.
 Fetches threads and messages, parses into typed models.
 """
 
+import base64
 import re
+import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 from typing import Any
 
 from models import GmailThreadData, GmailSearchResult, EmailMessage, EmailAttachment
 from retry import with_retry
 from adapters.services import get_gmail_service
 from extractors.gmail import parse_message_payload, parse_attachments_from_payload
+from filters import is_trivial_attachment, filter_attachments
 
 
 # Fields to request for threads — only what we need
@@ -100,8 +105,9 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
     # Parse body
     body_text, body_html = parse_message_payload(payload)
 
-    # Parse attachments
+    # Parse attachments (filtered - hide trivials from Claude)
     attachments_raw = parse_attachments_from_payload(payload)
+    filtered_raw = filter_attachments(attachments_raw)
     attachments = [
         EmailAttachment(
             filename=a["filename"],
@@ -109,7 +115,7 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
             size=a["size"],
             attachment_id=a["attachment_id"],
         )
-        for a in attachments_raw
+        for a in filtered_raw
     ]
 
     # Extract Drive links from body
@@ -252,12 +258,14 @@ def search_threads(
         payload = first_msg.get("payload", {})
         headers = _parse_headers(payload.get("headers", []))
 
-        # Collect attachment names from all messages
+        # Collect attachment names from all messages (filtered)
         attachment_names: list[str] = []
         for msg in messages:
             msg_payload = msg.get("payload", {})
             msg_attachments = parse_attachments_from_payload(msg_payload)
-            for att in msg_attachments:
+            # Filter out trivial attachments
+            filtered = filter_attachments(msg_attachments)
+            for att in filtered:
                 if att.get("filename"):
                     attachment_names.append(att["filename"])
 
@@ -287,3 +295,82 @@ def search_threads(
     batch.execute()
 
     return results
+
+
+# =============================================================================
+# ATTACHMENT DOWNLOAD
+# =============================================================================
+
+
+@dataclass
+class AttachmentDownload:
+    """Result of downloading an attachment."""
+    filename: str
+    mime_type: str
+    size: int
+    content: bytes
+    temp_path: Path | None = None  # For large files streamed to disk
+
+
+# Large attachment threshold (50MB) - stream to disk above this
+ATTACHMENT_STREAMING_THRESHOLD = 50 * 1024 * 1024
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def download_attachment(
+    message_id: str,
+    attachment_id: str,
+    filename: str = "",
+    mime_type: str = "",
+) -> AttachmentDownload:
+    """
+    Download a Gmail attachment.
+
+    For small attachments, returns content in memory.
+    For large attachments (>50MB), streams to temp file.
+
+    Args:
+        message_id: Gmail message ID containing the attachment
+        attachment_id: Attachment ID from message payload
+        filename: Optional filename (for result metadata)
+        mime_type: Optional MIME type (for result metadata)
+
+    Returns:
+        AttachmentDownload with content bytes (or temp_path for large files)
+
+    Raises:
+        MiseError: On API failure
+    """
+    service = get_gmail_service()
+
+    # Download attachment data
+    response = (
+        service.users()
+        .messages()
+        .attachments()
+        .get(userId="me", messageId=message_id, id=attachment_id)
+        .execute()
+    )
+
+    # Decode base64url data
+    data = base64.urlsafe_b64decode(response["data"])
+    size = len(data)
+
+    # For large files, write to temp
+    temp_path = None
+    if size > ATTACHMENT_STREAMING_THRESHOLD:
+        suffix = ""
+        if filename and "." in filename:
+            suffix = "." + filename.rsplit(".", 1)[1]
+        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        tmp.write(data)
+        tmp.close()
+        temp_path = Path(tmp.name)
+
+    return AttachmentDownload(
+        filename=filename or "attachment",
+        mime_type=mime_type or "application/octet-stream",
+        size=size,
+        content=data,
+        temp_path=temp_path,
+    )

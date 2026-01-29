@@ -5,7 +5,7 @@ Routes by ID type, extracts content, deposits to workspace.
 """
 
 from adapters.drive import get_file_metadata, _parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
-from adapters.gmail import fetch_thread
+from adapters.gmail import fetch_thread, download_attachment
 from adapters.docs import fetch_document
 from adapters.sheets import fetch_spreadsheet
 from adapters.slides import fetch_presentation
@@ -75,36 +75,188 @@ def detect_id_type(input_id: str) -> tuple[str, str]:
     return ("drive", input_id)
 
 
+# MIME types for Office files that are too slow to extract eagerly (5-10s each)
+OFFICE_MIME_TYPES = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # docx
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # xlsx
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",  # pptx
+    "application/msword",  # doc
+    "application/vnd.ms-excel",  # xls
+    "application/vnd.ms-powerpoint",  # ppt
+}
+
+# Maximum attachments to extract eagerly (prevent runaway extraction)
+MAX_EAGER_ATTACHMENTS = 10
+
+
+def _is_extractable_attachment(mime_type: str) -> bool:
+    """
+    Check if attachment MIME type is extractable.
+
+    Office files are skipped (too slow for eager extraction).
+    PDFs and images are extracted.
+    """
+    # Skip Office files - they take 5-10s each
+    if mime_type in OFFICE_MIME_TYPES:
+        return False
+
+    # Extract PDFs
+    if mime_type == "application/pdf":
+        return True
+
+    # Extract images (will be deposited as-is)
+    if mime_type.startswith("image/"):
+        return True
+
+    return False
+
+
+def _extract_attachment_content(
+    message_id: str,
+    att: Any,  # EmailAttachment
+    folder: Any,  # Path
+    warnings: list[str],
+) -> dict[str, Any] | None:
+    """
+    Download and extract content from a single attachment.
+
+    Returns extraction result dict or None on failure.
+    """
+    try:
+        # Download attachment
+        download = download_attachment(
+            message_id=message_id,
+            attachment_id=att.attachment_id,
+            filename=att.filename,
+            mime_type=att.mime_type,
+        )
+
+        # Route by MIME type
+        if att.mime_type == "application/pdf":
+            # Extract PDF text via adapter
+            from adapters.pdf import extract_pdf_content
+            result = extract_pdf_content(download.content, file_id=att.attachment_id)
+
+            # Write extracted content to folder
+            content_filename = f"{att.filename}.md"
+            write_content(folder, result.content, filename=content_filename)
+
+            # Also write raw PDF for reference
+            write_image(folder, download.content, att.filename)
+
+            return {
+                "filename": att.filename,
+                "mime_type": att.mime_type,
+                "extracted": True,
+                "extraction_method": result.method,
+                "content_file": content_filename,
+                "char_count": result.char_count,
+            }
+
+        elif att.mime_type.startswith("image/"):
+            # Deposit image as-is (Claude can view images)
+            write_image(folder, download.content, att.filename)
+
+            return {
+                "filename": att.filename,
+                "mime_type": att.mime_type,
+                "extracted": True,
+                "deposited_as": att.filename,
+            }
+
+        # Clean up temp file if created
+        if download.temp_path:
+            download.temp_path.unlink(missing_ok=True)
+
+        return None
+
+    except Exception as e:
+        warnings.append(f"Failed to extract {att.filename}: {str(e)}")
+        return None
+
+
 def fetch_gmail(thread_id: str) -> FetchResult:
-    """Fetch Gmail thread, extract content, deposit to workspace."""
+    """
+    Fetch Gmail thread, extract content and attachments, deposit to workspace.
+
+    Eager extraction philosophy: By the time Claude calls fetch, they've
+    committed to reading this conversation. PDFs and images are part of
+    what they want - extract immediately.
+
+    Office files (DOCX/XLSX/PPTX) are skipped due to slow extraction (5-10s each).
+    They're listed in metadata so Claude can fetch explicitly if needed.
+    """
     # Fetch thread data
     thread_data = fetch_thread(thread_id)
 
-    # Extract content
+    # Extract thread text content
     content = extract_thread_content(thread_data)
 
-    # Collect attachments and drive_links from all messages (for cross-source linkage)
-    all_attachments: list[dict[str, Any]] = []
-    all_drive_links: list[dict[str, str]] = []
-    for msg in thread_data.messages:
-        for att in msg.attachments:
-            all_attachments.append({
-                "filename": att.filename,
-                "mime_type": att.mime_type,
-                "size": att.size,
-            })
-        all_drive_links.extend(msg.drive_links)
-
-    # Deposit to workspace
+    # Get deposit folder early (need it for attachment extraction)
     folder = get_deposit_folder(
         content_type="gmail",
         title=thread_data.subject or "email-thread",
         resource_id=thread_id,
     )
+
+    # Collect attachments and drive_links from all messages
+    all_attachments: list[dict[str, Any]] = []
+    all_drive_links: list[dict[str, str]] = []
+    skipped_office: list[str] = []
+    extracted_attachments: list[dict[str, Any]] = []
+    extraction_warnings: list[str] = []
+    extracted_count = 0
+
+    for msg in thread_data.messages:
+        for att in msg.attachments:
+            att_info = {
+                "filename": att.filename,
+                "mime_type": att.mime_type,
+                "size": att.size,
+            }
+            all_attachments.append(att_info)
+
+            # Skip Office files (note for manifest)
+            if att.mime_type in OFFICE_MIME_TYPES:
+                skipped_office.append(att.filename)
+                continue
+
+            # Limit eager extraction
+            if extracted_count >= MAX_EAGER_ATTACHMENTS:
+                extraction_warnings.append(
+                    f"Attachment limit ({MAX_EAGER_ATTACHMENTS}) reached, "
+                    f"skipping: {att.filename}"
+                )
+                continue
+
+            # Try to extract extractable types
+            if _is_extractable_attachment(att.mime_type):
+                result = _extract_attachment_content(
+                    message_id=msg.message_id,
+                    att=att,
+                    folder=folder,
+                    warnings=extraction_warnings,
+                )
+                if result:
+                    extracted_attachments.append(result)
+                    extracted_count += 1
+
+        all_drive_links.extend(msg.drive_links)
+
+    # Write thread content
     content_path = write_content(folder, content)
+
+    # Build manifest extras
     extra: dict[str, Any] = {"message_count": len(thread_data.messages)}
     if thread_data.warnings:
-        extra["warnings"] = thread_data.warnings
+        extra["warnings"] = thread_data.warnings + extraction_warnings
+    elif extraction_warnings:
+        extra["warnings"] = extraction_warnings
+    if extracted_attachments:
+        extra["extracted_attachments"] = len(extracted_attachments)
+    if skipped_office:
+        extra["skipped_office"] = skipped_office
+
     write_manifest(
         folder,
         content_type="gmail",
@@ -113,7 +265,7 @@ def fetch_gmail(thread_id: str) -> FetchResult:
         extra=extra,
     )
 
-    # Build metadata with cross-source linkage info
+    # Build result metadata
     metadata: dict[str, Any] = {
         "subject": thread_data.subject,
         "message_count": len(thread_data.messages),
@@ -122,6 +274,14 @@ def fetch_gmail(thread_id: str) -> FetchResult:
         metadata["attachments"] = all_attachments
     if all_drive_links:
         metadata["drive_links"] = all_drive_links
+    if extracted_attachments:
+        metadata["extracted"] = extracted_attachments
+    if skipped_office:
+        metadata["skipped_office"] = skipped_office
+        metadata["skipped_office_hint"] = (
+            "Office files take 5-10s each to extract. "
+            "Fetch individually if needed: fetch('message_id', attachment='filename')"
+        )
 
     return FetchResult(
         path=str(folder),

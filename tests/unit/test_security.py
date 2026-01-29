@@ -79,6 +79,8 @@ class TestNoRawQueryInterpolation:
         "result",  # API response
         # Internal/computed values
         "temp_name", "temp_id", "char_count", "min_chars_threshold",
+        # Pre-exfil lookup - message_ids from our own list
+        "mid",
     }
 
     def test_no_raw_query_interpolation_in_search(self):

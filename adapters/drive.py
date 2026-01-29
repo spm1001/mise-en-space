@@ -332,3 +332,141 @@ GOOGLE_FOLDER_MIME = "application/vnd.google-apps.folder"
 def is_google_workspace_file(mime_type: str) -> bool:
     """Check if MIME type is a Google Workspace native format."""
     return mime_type.startswith("application/vnd.google-apps.")
+
+
+# =============================================================================
+# PRE-EXFIL LOOKUP
+# =============================================================================
+
+
+# Email Attachments folder ID (auto-discovered or from env var)
+_email_attachments_folder_id: str | None = None
+
+
+def _get_email_attachments_folder_id() -> str | None:
+    """
+    Get the Email Attachments folder ID.
+
+    Checks in order:
+    1. MISE_EMAIL_ATTACHMENTS_FOLDER_ID env var
+    2. Auto-discover folder named "Email Attachments" in Drive
+
+    Returns None if not configured and can't auto-discover.
+    """
+    global _email_attachments_folder_id
+
+    if _email_attachments_folder_id:
+        return _email_attachments_folder_id
+
+    # Check env var first
+    folder_id = os.environ.get("MISE_EMAIL_ATTACHMENTS_FOLDER_ID")
+    if folder_id:
+        _email_attachments_folder_id = folder_id
+        return folder_id
+
+    # Auto-discover by name
+    try:
+        service = get_drive_service()
+        response = (
+            service.files()
+            .list(
+                q="name = 'Email Attachments' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                pageSize=1,
+                fields="files(id)",
+            )
+            .execute()
+        )
+        files = response.get("files", [])
+        if files:
+            _email_attachments_folder_id = files[0]["id"]
+            return _email_attachments_folder_id
+    except Exception:
+        pass
+
+    return None
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def lookup_exfiltrated(message_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+    """
+    Look up which messages have attachments pre-exfiltrated to Drive.
+
+    The Apps Script exfiltrator stores metadata in file descriptions:
+        Message ID: 19abc123...
+        From: alice@example.com
+        Subject: Budget analysis
+
+    This queries the Email Attachments folder for files matching these
+    message IDs. Found files are already indexed by Drive and can be
+    fetched directly (faster than Gmail API download + extraction).
+
+    Args:
+        message_ids: List of Gmail message IDs to look up
+
+    Returns:
+        Dict mapping message_id to list of Drive file metadata:
+        {
+            'msg123': [
+                {'file_id': '1ABC...', 'name': 'report.pdf', 'mimeType': 'application/pdf'},
+                ...
+            ],
+            ...
+        }
+        Messages with no exfiltrated attachments won't have a key.
+    """
+    if not message_ids:
+        return {}
+
+    folder_id = _get_email_attachments_folder_id()
+    if not folder_id:
+        return {}
+
+    service = get_drive_service()
+    result: dict[str, list[dict[str, Any]]] = {}
+
+    # Query for all message IDs at once using fullText search
+    # Message IDs are unique (Gmail's hex format)
+    # Files are in dated subfolders, so search globally (not just direct children)
+    if len(message_ids) == 1:
+        query = f"fullText contains 'Message ID: {message_ids[0]}'"
+    else:
+        # Batch query with OR
+        id_clauses = " or ".join(
+            f"fullText contains 'Message ID: {mid}'" for mid in message_ids
+        )
+        query = f"({id_clauses})"
+
+    try:
+        response = (
+            service.files()
+            .list(
+                q=query,
+                fields="files(id,name,mimeType,description)",
+                pageSize=1000,  # Should be plenty for a batch
+            )
+            .execute()
+        )
+
+        files = response.get("files", [])
+
+        # Group files by message ID (extracted from description)
+        for f in files:
+            description = f.get("description", "")
+            # Extract message ID from description
+            for line in description.split("\n"):
+                if line.startswith("Message ID:"):
+                    msg_id = line.split(":", 1)[1].strip()
+                    if msg_id in message_ids:
+                        if msg_id not in result:
+                            result[msg_id] = []
+                        result[msg_id].append({
+                            "file_id": f["id"],
+                            "name": f["name"],
+                            "mimeType": f.get("mimeType", ""),
+                        })
+                    break
+
+    except Exception:
+        pass  # Silently fail - pre-exfil is optional optimization
+
+    return result

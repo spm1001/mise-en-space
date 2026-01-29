@@ -121,49 +121,22 @@ Timing: ~1-5s depending on content type and thumbnails
 
 ---
 
-## Fetch Flow — Gmail Thread (Current: THE GAP)
+## Fetch Flow — Gmail Thread (Before: THE GAP - Now Fixed)
 
 ```
-┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
-│   CALLING CLAUDE    │    │        MISE         │    │    FILE DEPOSIT     │
-├─────────────────────┤    ├─────────────────────┤    ├─────────────────────┤
-│                     │    │                     │    │                     │
-│ fetch("thread789")  │───▶│ fetch_gmail()       │    │                     │
-│                     │    │   │                 │    │                     │
-│                     │    │   ├─▶ Gmail API     │    │                     │
-│                     │    │   │   (~250ms)      │    │                     │
-│                     │    │   │                 │    │                     │
-│                     │    │   ▼                 │    │                     │
-│                     │    │ extract_thread()    │    │                     │
-│                     │    │   │                 │    │                     │
-│                     │    │   ▼                 │    │mise-fetch/          │
-│                     │    │ write_content() ────────▶│ gmail--subject--789/│
-│                     │    │ write_manifest()────────▶│   ├── content.md    │
-│                     │    │                     │    │   └── manifest.json │
-│                     │    │                     │    │                     │
-│ ◀─────────────────────── │ Returns: {path, ...}│    │                     │
-│                     │    │                     │    │                     │
-│ Read(content_file)  │────────────────────────────────▶│                     │
-│                     │    │                     │    │                     │
-│ content.md says:    │    │                     │    │                     │
-│ "📎 Attachments:    │    │                     │    │                     │
-│  - report.pdf       │    │                     │    │ ❌ NO ATTACHMENT    │
-│  - slides.pptx"     │    │                     │    │    CONTENT HERE     │
-│                     │    │                     │    │                     │
-│ ??? How to read     │    │                     │    │                     │
-│ attachment content? │    │                     │    │                     │
-│                     │    │                     │    │                     │
-└─────────────────────┘    └─────────────────────┘    └─────────────────────┘
+The previous gap: Attachments were listed but not fetched.
+Claude saw "📎 report.pdf" but couldn't read the PDF content.
 
-                              ▲
-                              │
-                         THE GAP
-              Attachments listed but not fetched
+This is now fixed with eager attachment extraction:
+- PDFs: downloaded + extracted via markitdown/Drive
+- Images: deposited alongside content.md
+- Office files: skipped (too slow), listed in manifest for explicit fetch
+- Trivial attachments: filtered out completely (calendar invites, vcards, small images)
 ```
 
 ---
 
-## Fetch Flow — Gmail Thread (Proposed: With Attachments)
+## Fetch Flow — Gmail Thread (Now: With Attachments)
 
 ```
 ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
@@ -241,8 +214,8 @@ Timing: ~1-2s typical (text + PDFs + images)
 | Fetch → PDF | ✅ Works | ~0.5-1s | Hybrid markitdown/Drive extraction |
 | Fetch → Office | ✅ Works | ~5-10s | Via Drive conversion (slow) |
 | Fetch → Video | ✅ Works | ~1s | AI summary if chrome-debug available |
-| Fetch → Gmail | ❌ Gap | ~250ms | Attachments listed but not fetched |
-| Fetch → Gmail + Attachments | 🔧 Proposed | ~1-2s | PDFs/images extracted, Office files skipped |
+| Fetch → Gmail | ✅ Works | ~250ms | Text + eager attachment extraction |
+| Fetch → Gmail + Attachments | ✅ Works | ~1-2s | PDFs/images extracted, Office files skipped |
 
 ---
 
@@ -255,12 +228,13 @@ Timing: ~1-2s typical (text + PDFs + images)
 - [ ] Include `attachment_names` in Gmail results ✅ (done)
 
 ### Gmail Attachment Fetch
-- [ ] Download attachments from Gmail API
-- [ ] Check "Email Attachments" Drive folder for pre-exfiltrated copies
-- [ ] Extract PDFs (reuse existing extractor)
-- [ ] Extract images (minimal processing)
-- [ ] Skip Office files by default, note in manifest
-- [ ] Combine thread + attachment content into single content.md
+- [x] Download attachments from Gmail API
+- [x] Check "Email Attachments" Drive folder for pre-exfiltrated copies
+- [x] Extract PDFs (reuse existing extractor)
+- [x] Extract images (minimal processing)
+- [x] Skip Office files by default, note in manifest
+- [x] Filter trivial attachments (calendar invites, vcards, small images, generic filenames)
+- [x] Combine thread + attachment content into deposit folder (PDFs deposited alongside content.md)
 
 ### Future (FastMCP v2)
 - [ ] Async task dispatch for attachment extraction
