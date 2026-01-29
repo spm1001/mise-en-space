@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 # Type aliases
-ContentType = Literal["slides", "doc", "sheet", "gmail", "pdf", "docx", "xlsx", "pptx", "video"]
+ContentType = Literal["slides", "doc", "sheet", "gmail", "pdf", "docx", "xlsx", "pptx", "video", "image", "text"]
 
 
 def slugify(text: str, max_length: int = 50) -> str:
@@ -140,6 +140,27 @@ def write_thumbnail(
     """
     # 1-indexed, zero-padded for sorting
     filename = f"slide_{slide_index + 1:02d}.png"
+    file_path = folder / filename
+    file_path.write_bytes(image_bytes)
+    return file_path
+
+
+def write_image(
+    folder: Path,
+    image_bytes: bytes,
+    filename: str,
+) -> Path:
+    """
+    Write image file to deposit folder.
+
+    Args:
+        folder: Deposit folder from get_deposit_folder()
+        image_bytes: Image data (any format)
+        filename: Output filename (e.g., "image.png", "image.svg")
+
+    Returns:
+        Path to the written file
+    """
     file_path = folder / filename
     file_path.write_bytes(image_bytes)
     return file_path

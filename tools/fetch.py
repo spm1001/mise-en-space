@@ -13,6 +13,7 @@ from adapters.genai import get_video_summary, is_media_file
 from adapters.cdp import is_cdp_available
 from adapters.pdf import fetch_and_extract_pdf
 from adapters.office import fetch_and_extract_office, get_office_type_from_mime, OfficeType
+from adapters.image import fetch_image as adapter_fetch_image, is_image_file, is_svg
 from extractors.docs import extract_doc_content
 from extractors.sheets import extract_sheets_content
 from extractors.slides import extract_slides_content
@@ -20,7 +21,7 @@ from extractors.gmail import extract_thread_content
 from typing import Any, Literal
 from models import MiseError, FetchResult, FetchError, EmailContext
 from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id
-from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_chart, write_charts_metadata
+from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata
 
 
 # Text MIME types that can be downloaded and deposited directly
@@ -156,6 +157,8 @@ def fetch_drive(file_id: str) -> FetchResult | FetchError:
         return fetch_office(file_id, title, metadata, office_type, email_context)
     elif is_text_file(mime_type):
         return fetch_text(file_id, title, metadata, email_context)
+    elif is_image_file(mime_type):
+        return fetch_image_file(file_id, title, metadata, email_context)
     else:
         # Return error for unsupported types
         return FetchError(
@@ -524,6 +527,73 @@ def fetch_text(file_id: str, title: str, metadata: dict[str, Any], email_context
         content_file=str(content_path),
         format=output_format,
         type="text",
+        metadata=result_meta,
+    )
+
+
+def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
+    """
+    Fetch image file (PNG, JPEG, GIF, WEBP, SVG, etc.).
+
+    For raster images: deposit as-is.
+    For SVG: deposit raw SVG + render to PNG (Claude can view PNGs but not SVGs).
+    """
+    mime_type = metadata.get("mimeType", "")
+
+    # Fetch via adapter (handles download + SVG rendering)
+    result = adapter_fetch_image(file_id, title, mime_type)
+
+    # Deposit to workspace
+    folder = get_deposit_folder("image", title, file_id)
+
+    # Write the original image
+    image_path = write_image(folder, result.image_bytes, result.filename)
+
+    # For SVG, also write rendered PNG if available
+    rendered_png_filename = None
+    if result.rendered_png_bytes:
+        rendered_png_filename = "image_rendered.png"
+        write_image(folder, result.rendered_png_bytes, rendered_png_filename)
+
+    # Build manifest extras
+    extra: dict[str, Any] = {
+        "mime_type": mime_type,
+        "size_bytes": len(result.image_bytes),
+    }
+    if is_svg(mime_type):
+        extra["is_svg"] = True
+        if result.render_method:
+            extra["render_method"] = result.render_method
+            extra["has_rendered_png"] = True
+        else:
+            extra["has_rendered_png"] = False
+    if result.warnings:
+        extra["warnings"] = result.warnings
+
+    write_manifest(folder, "image", title, file_id, extra=extra)
+
+    # Build result metadata
+    result_meta: dict[str, Any] = {
+        "title": title,
+        "mime_type": mime_type,
+        "size_bytes": len(result.image_bytes),
+    }
+    if is_svg(mime_type):
+        result_meta["is_svg"] = True
+        result_meta["has_rendered_png"] = result.rendered_png_bytes is not None
+        if result.render_method:
+            result_meta["render_method"] = result.render_method
+    if email_context:
+        result_meta["email_context"] = _build_email_context_metadata(email_context)
+
+    # Content file is the original image (or rendered PNG for SVG if available)
+    content_file = str(folder / rendered_png_filename) if rendered_png_filename else str(image_path)
+
+    return FetchResult(
+        path=str(folder),
+        content_file=content_file,
+        format="image",
+        type="image",
         metadata=result_meta,
     )
 
