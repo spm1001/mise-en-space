@@ -4,7 +4,7 @@ Fetch tool implementation.
 Routes by ID type, extracts content, deposits to workspace.
 """
 
-from adapters.drive import get_file_metadata, _parse_email_context, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
+from adapters.drive import get_file_metadata, _parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
 from adapters.gmail import fetch_thread
 from adapters.docs import fetch_document
 from adapters.sheets import fetch_spreadsheet
@@ -21,6 +21,32 @@ from typing import Any, Literal
 from models import MiseError, FetchResult, FetchError, EmailContext
 from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id
 from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_chart, write_charts_metadata
+
+
+# Text MIME types that can be downloaded and deposited directly
+TEXT_MIME_TYPES = {
+    "text/plain",
+    "text/csv",
+    "text/markdown",
+    "text/html",
+    "text/xml",
+    "application/json",
+    "application/xml",
+    "application/x-yaml",
+    "text/x-python",
+    "text/javascript",
+    "application/javascript",
+}
+
+
+def is_text_file(mime_type: str) -> bool:
+    """Check if MIME type is a text-based format we can handle directly."""
+    if mime_type in TEXT_MIME_TYPES:
+        return True
+    # Also handle any text/* type not explicitly listed
+    if mime_type.startswith("text/"):
+        return True
+    return False
 
 
 def detect_id_type(input_id: str) -> tuple[str, str]:
@@ -128,8 +154,10 @@ def fetch_drive(file_id: str) -> FetchResult | FetchError:
         return fetch_pdf(file_id, title, metadata, email_context)
     elif (office_type := get_office_type_from_mime(mime_type)):
         return fetch_office(file_id, title, metadata, office_type, email_context)
+    elif is_text_file(mime_type):
+        return fetch_text(file_id, title, metadata, email_context)
     else:
-        # For now, return error for unsupported types
+        # Return error for unsupported types
         return FetchError(
             kind="unsupported_type",
             message=f"Unsupported file type: {mime_type}",
@@ -444,6 +472,58 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
         content_file=str(content_path),
         format=output_format,
         type=office_type,
+        metadata=result_meta,
+    )
+
+
+def fetch_text(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
+    """
+    Fetch text-based file (txt, csv, json, etc.) by downloading directly.
+
+    No extraction needed — just download and deposit.
+    """
+    mime_type = metadata.get("mimeType", "text/plain")
+
+    # Download content
+    content_bytes = download_file(file_id)
+    content = content_bytes.decode("utf-8", errors="replace")
+
+    # Determine output format and extension
+    extension_map = {
+        "text/csv": ("csv", "csv"),
+        "application/json": ("json", "json"),
+        "text/markdown": ("markdown", "md"),
+        "text/html": ("html", "html"),
+        "text/xml": ("xml", "xml"),
+        "application/xml": ("xml", "xml"),
+        "application/x-yaml": ("yaml", "yaml"),
+    }
+    output_format, ext = extension_map.get(mime_type, ("text", "txt"))
+    filename = f"content.{ext}"
+
+    # Deposit to workspace
+    folder = get_deposit_folder("text", title, file_id)
+    content_path = write_content(folder, content, filename=filename)
+
+    extra: dict[str, Any] = {
+        "mime_type": mime_type,
+        "char_count": len(content),
+    }
+    write_manifest(folder, "text", title, file_id, extra=extra)
+
+    result_meta: dict[str, Any] = {
+        "title": title,
+        "mime_type": mime_type,
+        "char_count": len(content),
+    }
+    if email_context:
+        result_meta["email_context"] = _build_email_context_metadata(email_context)
+
+    return FetchResult(
+        path=str(folder),
+        content_file=str(content_path),
+        format=output_format,
+        type="text",
         metadata=result_meta,
     )
 
