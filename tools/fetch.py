@@ -56,6 +56,18 @@ def fetch_gmail(thread_id: str) -> FetchResult:
     # Extract content
     content = extract_thread_content(thread_data)
 
+    # Collect attachments and drive_links from all messages (for cross-source linkage)
+    all_attachments: list[dict[str, Any]] = []
+    all_drive_links: list[dict[str, str]] = []
+    for msg in thread_data.messages:
+        for att in msg.attachments:
+            all_attachments.append({
+                "filename": att.filename,
+                "mime_type": att.mime_type,
+                "size": att.size,
+            })
+        all_drive_links.extend(msg.drive_links)
+
     # Deposit to workspace
     folder = get_deposit_folder(
         content_type="gmail",
@@ -74,15 +86,22 @@ def fetch_gmail(thread_id: str) -> FetchResult:
         extra=extra,
     )
 
+    # Build metadata with cross-source linkage info
+    metadata: dict[str, Any] = {
+        "subject": thread_data.subject,
+        "message_count": len(thread_data.messages),
+    }
+    if all_attachments:
+        metadata["attachments"] = all_attachments
+    if all_drive_links:
+        metadata["drive_links"] = all_drive_links
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format="markdown",
         type="gmail",
-        metadata={
-            "subject": thread_data.subject,
-            "message_count": len(thread_data.messages),
-        },
+        metadata=metadata,
     )
 
 

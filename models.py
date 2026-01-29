@@ -307,6 +307,15 @@ class PresentationData:
 # ============================================================================
 
 @dataclass
+class EmailContext:
+    """Email context extracted from exfil'd file description."""
+    message_id: str
+    from_address: str | None = None
+    subject: str | None = None
+    date: str | None = None
+
+
+@dataclass
 class DriveSearchResult:
     """A single result from Drive search."""
     file_id: str
@@ -318,6 +327,10 @@ class DriveSearchResult:
     snippet: str | None = None
     owners: list[str] = field(default_factory=list)
     web_view_link: str | None = None
+
+    # For cross-source linkage
+    description: str | None = None
+    email_context: EmailContext | None = None  # Populated for exfil'd files
 
 
 @dataclass

@@ -12,9 +12,47 @@ from typing import Any, cast
 
 from googleapiclient.http import MediaIoBaseDownload
 
-from models import DriveSearchResult, MiseError, ErrorKind
+import re
+
+from models import DriveSearchResult, EmailContext, MiseError, ErrorKind
 from retry import with_retry
 from adapters.services import get_drive_service
+
+
+def _parse_email_context(description: str | None) -> EmailContext | None:
+    """
+    Parse email context from exfil'd file description.
+
+    The Apps Script exfil stores metadata in this format:
+        From: alice@example.com
+        Subject: Budget analysis
+        Date: 2026-01-15T10:30:00Z
+        Message ID: 18f4a5b6c7d8e9f0
+        Content Hash: abc123...
+
+    Returns EmailContext if Message ID is found, None otherwise.
+    """
+    if not description:
+        return None
+
+    # Look for Message ID - the key identifier
+    message_id_match = re.search(r"Message ID:\s*(\w+)", description)
+    if not message_id_match:
+        return None
+
+    message_id = message_id_match.group(1)
+
+    # Extract optional fields
+    from_match = re.search(r"From:\s*(.+)", description)
+    subject_match = re.search(r"Subject:\s*(.+)", description)
+    date_match = re.search(r"Date:\s*(.+)", description)
+
+    return EmailContext(
+        message_id=message_id,
+        from_address=from_match.group(1).strip() if from_match else None,
+        subject=subject_match.group(1).strip() if subject_match else None,
+        date=date_match.group(1).strip() if date_match else None,
+    )
 
 
 # Size threshold for streaming — files larger than this stream to disk
@@ -35,10 +73,13 @@ FILE_METADATA_FIELDS = (
     "size,"
     "owners(displayName,emailAddress),"
     "webViewLink,"
-    "parents"
+    "parents,"
+    "description"  # Contains Message ID for exfil'd email attachments
 )
 
 # Fields for search results
+# Note: Drive API v3 doesn't support contentSnippet - fullText search returns
+# matching files but not why they matched. Snippet will be None.
 SEARCH_RESULT_FIELDS = (
     "files("
     "id,"
@@ -47,7 +88,7 @@ SEARCH_RESULT_FIELDS = (
     "modifiedTime,"
     "owners(displayName),"
     "webViewLink,"
-    "contentSnippet"
+    "description"  # Contains Message ID for exfil'd email attachments
     ")"
 )
 
@@ -261,6 +302,9 @@ def search_files(
             o.get("displayName", o.get("emailAddress", ""))
             for o in file.get("owners", [])
         ]
+        description = file.get("description")
+        email_context = _parse_email_context(description)
+
         results.append(
             DriveSearchResult(
                 file_id=file["id"],
@@ -270,6 +314,8 @@ def search_files(
                 snippet=file.get("contentSnippet"),
                 owners=owners,
                 web_view_link=file.get("webViewLink"),
+                description=description,
+                email_context=email_context,
             )
         )
 

@@ -14,7 +14,7 @@ from validation import escape_drive_query, sanitize_gmail_query
 
 def format_drive_result(result: DriveSearchResult) -> dict[str, Any]:
     """Convert DriveSearchResult to JSON-serializable dict."""
-    return {
+    output: dict[str, Any] = {
         "id": result.file_id,
         "name": result.name,
         "mimeType": result.mime_type,
@@ -23,6 +23,17 @@ def format_drive_result(result: DriveSearchResult) -> dict[str, Any]:
         "owners": result.owners,
         "snippet": result.snippet,
     }
+
+    # Add email context for exfil'd files (cross-source linkage)
+    if result.email_context:
+        output["email_context"] = {
+            "message_id": result.email_context.message_id,
+            "from": result.email_context.from_address,
+            "subject": result.email_context.subject,
+            "hint": f"Use fetch('{result.email_context.message_id}') to get source email",
+        }
+
+    return output
 
 
 def format_gmail_result(result: GmailSearchResult) -> dict[str, Any]:

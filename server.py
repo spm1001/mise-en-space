@@ -140,6 +140,7 @@ Supported: Google Docs, Sheets, Slides, Gmail threads, PDFs, Office files (DOCX/
 - `mise://docs/fetch` — Fetch tool details and supported types
 - `mise://docs/create` — Create tool details
 - `mise://docs/workspace` — Deposit folder structure
+- `mise://docs/cross-source` — Cross-source search patterns (Drive↔Gmail linkage)
 """
 
 
@@ -310,6 +311,111 @@ create("# Meeting Notes\\n\\n- Item 1\\n- Item 2", title="Team Sync")
 # Create in specific folder
 create("| A | B |\\n|---|---|\\n| 1 | 2 |", title="Data", doc_type="sheet", folder_id="1xyz...")
 ```
+"""
+
+
+@mcp.resource("mise://docs/cross-source")
+def docs_cross_source() -> str:
+    """Documentation for cross-source search patterns."""
+    return """# Cross-Source Search Patterns
+
+When exploring context, you often need to bounce between sources:
+
+- **Drive → Email**: Found a file, want the email thread that sent it
+- **Email → Drive**: Found an email, want to read the attachments/linked files
+
+## Direction 1: Drive → Email
+
+### Pattern A: Search by filename
+
+When you find a file in Drive, search Gmail for the email that shared it:
+
+```python
+# Found in Drive search
+{"name": "xgbtest.R", "id": "abc123..."}
+
+# Search Gmail for emails with that attachment
+search("filename:xgbtest.R", sources=["gmail"])
+```
+
+The `filename:` operator searches attachment names.
+
+### Pattern B: Files from "Email Attachments" folder
+
+The user may have an exfiltration script that copies email attachments to Drive
+for fulltext indexing. These files have email metadata in their description:
+
+```
+From: alice@example.com
+Subject: Budget analysis
+Date: 2026-01-15T10:30:00Z
+Message ID: 18f4a5b6c7d8e9f0
+Content Hash: abc123...
+```
+
+If you see a file in "Email Attachments" folder, the **Message ID** can be
+used to fetch the source email thread:
+
+```python
+fetch("18f4a5b6c7d8e9f0")  # Returns the email thread
+```
+
+## Direction 2: Email → Drive
+
+### Following attachments
+
+When you fetch an email thread, attachments are listed in the markdown:
+
+```markdown
+**Attachments:**
+- budget_v3.xlsx (application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, 1.2 MB)
+- notes.pdf (application/pdf, 450 KB)
+```
+
+To find these in Drive (if exfiltrated):
+
+```python
+search("name contains 'budget_v3.xlsx'", sources=["drive"])
+```
+
+### Following Drive links
+
+Emails often contain Drive links instead of attachments. These are also listed:
+
+```markdown
+**Linked files:**
+- [1abc...](https://docs.google.com/document/d/1abc...)
+```
+
+Fetch directly by ID:
+
+```python
+fetch("1abc...")  # Works with file IDs from links
+```
+
+## The Exploration Loop
+
+Context exploration often involves iterating:
+
+1. Search Drive for topic → find file
+2. Search Gmail `filename:X` → find email thread with context
+3. Read email → discover new terms, people, related files
+4. Search Drive with new terms → repeat
+
+This loop discovers the **meaning** (in communications) behind **artifacts** (files).
+
+## Gmail Search Operators
+
+Useful operators for cross-source exploration:
+
+| Operator | Example | Finds |
+|----------|---------|-------|
+| `filename:` | `filename:report.pdf` | Emails with attachment named report.pdf |
+| `has:attachment` | `has:attachment budget` | Emails about budget with any attachment |
+| `from:` | `from:alice@example.com` | Emails from Alice |
+| `to:` | `to:team@company.com` | Emails to the team |
+| `after:` | `after:2026/01/01` | Emails after Jan 1, 2026 |
+| `before:` | `before:2026/02/01` | Emails before Feb 1, 2026 |
 """
 
 
