@@ -19,6 +19,7 @@ from models import (
     DocData, DocTab,
     GmailThreadData, EmailMessage, EmailAttachment,
     PresentationData,
+    FileCommentsData, CommentData, CommentReply,
 )
 from extractors.slides import parse_presentation
 from datetime import datetime
@@ -84,6 +85,44 @@ def docs_response() -> DocData:
                 inline_objects=t.get("inline_objects", {}),
             )
             for t in raw["tabs"]
+        ],
+    )
+
+
+# ============================================================================
+# Comments Fixtures
+# ============================================================================
+
+@pytest.fixture
+def comments_response() -> FileCommentsData:
+    """Sample file comments data for testing."""
+    raw = load_fixture("comments", "basic")
+    return FileCommentsData(
+        file_id=raw["file_id"],
+        file_name=raw["file_name"],
+        comments=[
+            CommentData(
+                id=c["id"],
+                content=c["content"],
+                author_name=c["author_name"],
+                author_email=c.get("author_email"),
+                created_time=c.get("created_time"),
+                modified_time=c.get("modified_time"),
+                resolved=c.get("resolved", False),
+                quoted_text=c.get("quoted_text", ""),
+                replies=[
+                    CommentReply(
+                        id=r["id"],
+                        content=r["content"],
+                        author_name=r["author_name"],
+                        author_email=r.get("author_email"),
+                        created_time=r.get("created_time"),
+                        modified_time=r.get("modified_time"),
+                    )
+                    for r in c.get("replies", [])
+                ],
+            )
+            for c in raw["comments"]
         ],
     )
 

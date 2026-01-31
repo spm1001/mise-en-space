@@ -23,6 +23,7 @@ from adapters.services import (
     get_sheets_service,
     get_slides_service,
     get_gmail_service,
+    get_drive_service,
 )
 from validation import extract_gmail_id
 
@@ -34,6 +35,8 @@ TEST_IDS = {
     "docs_single_tab": "1bREiVmvgSsRKJLjamTOE0Wasq1ze7R3bIPOdtJMomKM",
     "sheets": "1UlWoEsfjzqbuS_tKD6Drm4wmbPLeGOKWVBVip5AI-xw",
     "slides": "1ZrknZXSsyDtWuWq0cXV7UMZ-7WHClm3fJa61uZY2pwY",
+    # Use the Innovid doc which has good comment examples
+    "comments": "1u5HAOwh0dGQPdELj4OSHIWoJURvK9o1m",
 }
 
 
@@ -170,6 +173,82 @@ def capture_gmail_thread(thread_id_or_url: str, output_name: str) -> dict:
     return thread
 
 
+def capture_comments(file_id: str, output_name: str) -> dict:
+    """Capture Drive Comments API response."""
+    print(f"Fetching comments: {file_id}...")
+    service = get_drive_service()
+
+    # Also get file metadata for the name
+    metadata = service.files().get(
+        fileId=file_id,
+        fields="id,name,mimeType",
+        supportsAllDrives=True,
+    ).execute()
+
+    # Fetch comments with full author and reply info
+    comments_response = service.comments().list(
+        fileId=file_id,
+        fields=(
+            "comments("
+            "id,content,"
+            "author(displayName,emailAddress),"
+            "createdTime,modifiedTime,"
+            "resolved,quotedFileContent,"
+            "replies(id,content,author(displayName,emailAddress),createdTime,modifiedTime)"
+            ")"
+        ),
+        pageSize=100,
+    ).execute()
+
+    # Combine into fixture format matching our models
+    fixture = {
+        "file_id": file_id,
+        "file_name": metadata.get("name", ""),
+        "mime_type": metadata.get("mimeType", ""),
+        "comments": [],
+    }
+
+    for comment in comments_response.get("comments", []):
+        author = comment.get("author", {})
+        parsed_comment = {
+            "id": comment.get("id", ""),
+            "content": comment.get("content", ""),
+            "author_name": author.get("displayName", "Unknown"),
+            "author_email": author.get("emailAddress"),
+            "created_time": comment.get("createdTime"),
+            "modified_time": comment.get("modifiedTime"),
+            "resolved": comment.get("resolved", False),
+            "quoted_text": comment.get("quotedFileContent", {}).get("value", ""),
+            "replies": [],
+        }
+
+        for reply in comment.get("replies", []):
+            reply_author = reply.get("author", {})
+            parsed_comment["replies"].append({
+                "id": reply.get("id", ""),
+                "content": reply.get("content", ""),
+                "author_name": reply_author.get("displayName", "Unknown"),
+                "author_email": reply_author.get("emailAddress"),
+                "created_time": reply.get("createdTime"),
+                "modified_time": reply.get("modifiedTime"),
+            })
+
+        fixture["comments"].append(parsed_comment)
+
+    # Save
+    output_path = FIXTURES_DIR / "comments" / f"{output_name}.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, "w") as f:
+        json.dump(fixture, f, indent=2)
+
+    print(f"  Saved: {output_path}")
+    print(f"  File: {fixture['file_name']}")
+    print(f"  Comments: {len(fixture['comments'])}")
+
+    return fixture
+
+
 def run_sanitize():
     """Run sanitization on captured fixtures."""
     from scripts.sanitize_fixtures import main as sanitize_main
@@ -207,6 +286,10 @@ def main():
         "https://mail.google.com/mail/u/0/#sent/FMfcgzQfBZdVqDtDZnXwMRWvRZjGhdWN",
         "real_thread"
     )
+    print()
+
+    # Comments
+    capture_comments(TEST_IDS["comments"], "real_comments")
 
     print("\n=== Capture Done ===")
 

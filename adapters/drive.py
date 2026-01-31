@@ -14,7 +14,15 @@ from googleapiclient.http import MediaIoBaseDownload
 
 import re
 
-from models import DriveSearchResult, EmailContext, MiseError, ErrorKind
+from models import (
+    DriveSearchResult,
+    EmailContext,
+    MiseError,
+    ErrorKind,
+    FileCommentsData,
+    CommentData,
+    CommentReply,
+)
 from retry import with_retry
 from adapters.services import get_drive_service
 
@@ -470,3 +478,162 @@ def lookup_exfiltrated(message_ids: list[str]) -> dict[str, list[dict[str, Any]]
         pass  # Silently fail - pre-exfil is optional optimization
 
     return result
+
+
+# =============================================================================
+# COMMENTS
+# =============================================================================
+
+# Fields for comments API — nested structure for author and replies
+COMMENT_FIELDS = (
+    "comments("
+    "id,content,"
+    "author(displayName,emailAddress),"
+    "createdTime,modifiedTime,"
+    "resolved,quotedFileContent,"
+    "replies(id,content,author(displayName,emailAddress),createdTime,modifiedTime)"
+    ")"
+)
+
+
+# MIME types that don't support comments (return 404 from Comments API)
+COMMENT_UNSUPPORTED_MIMES = {
+    "application/vnd.google-apps.form",
+    "application/vnd.google-apps.shortcut",
+    "application/vnd.google-apps.site",
+    "application/vnd.google-apps.map",
+    "application/vnd.google-apps.script",
+}
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def fetch_file_comments(
+    file_id: str,
+    include_deleted: bool = False,
+    max_results: int = 100,
+) -> FileCommentsData:
+    """
+    Fetch comments from a Google Drive file.
+
+    Uses Drive API comments endpoint. Comments include the comment text,
+    author (name and email), anchor context (what text was highlighted),
+    and any replies.
+
+    Note: Some file types (Forms, Shortcuts, Sites, Maps, Apps Script) don't
+    support comments and will raise MiseError with INVALID_INPUT.
+
+    Args:
+        file_id: The file ID
+        include_deleted: Include deleted comments (default: False)
+        max_results: Maximum comments to return (default: 100)
+
+    Returns:
+        FileCommentsData with all comments and replies
+
+    Raises:
+        MiseError: On API failure or unsupported file type
+    """
+    from googleapiclient.errors import HttpError
+
+    service = get_drive_service()
+
+    # Get file metadata first — also validates file exists
+    metadata = get_file_metadata(file_id)
+    file_name = metadata.get("name", "")
+    mime_type = metadata.get("mimeType", "")
+
+    # Check for known unsupported types before hitting the API
+    if mime_type in COMMENT_UNSUPPORTED_MIMES:
+        raise MiseError(
+            ErrorKind.INVALID_INPUT,
+            f"Comments not supported for {mime_type.split('.')[-1]} files",
+            details={"file_id": file_id, "name": file_name, "mimeType": mime_type},
+        )
+
+    comments: list[CommentData] = []
+    warnings: list[str] = []
+    page_token = None
+
+    try:
+        while True:
+            response = (
+                service.comments()
+                .list(
+                    fileId=file_id,
+                    fields=COMMENT_FIELDS,
+                    includeDeleted=include_deleted,
+                    pageSize=min(max_results - len(comments), 100),  # API max is 100
+                    pageToken=page_token,
+                )
+                .execute()
+            )
+
+            for comment in response.get("comments", []):
+                # Parse author
+                author = comment.get("author", {})
+                author_name = author.get("displayName")
+                if not author_name:
+                    author_name = "Unknown"
+                    warnings.append(f"Comment {comment.get('id')}: missing author name")
+                author_email = author.get("emailAddress")
+
+                # Parse replies
+                replies: list[CommentReply] = []
+                for reply in comment.get("replies", []):
+                    reply_author = reply.get("author", {})
+                    reply_author_name = reply_author.get("displayName")
+                    if not reply_author_name:
+                        reply_author_name = "Unknown"
+                        warnings.append(f"Reply {reply.get('id')}: missing author name")
+
+                    replies.append(
+                        CommentReply(
+                            id=reply.get("id", ""),
+                            content=reply.get("content", ""),
+                            author_name=reply_author_name,
+                            author_email=reply_author.get("emailAddress"),
+                            created_time=reply.get("createdTime"),
+                            modified_time=reply.get("modifiedTime"),
+                        )
+                    )
+
+                # Parse quoted text (anchor)
+                quoted_text = comment.get("quotedFileContent", {}).get("value", "")
+
+                comments.append(
+                    CommentData(
+                        id=comment.get("id", ""),
+                        content=comment.get("content", ""),
+                        author_name=author_name,
+                        author_email=author_email,
+                        created_time=comment.get("createdTime"),
+                        modified_time=comment.get("modifiedTime"),
+                        resolved=comment.get("resolved", False),
+                        quoted_text=quoted_text,
+                        replies=replies,
+                    )
+                )
+
+            # Check for more pages
+            page_token = response.get("nextPageToken")
+            if not page_token or len(comments) >= max_results:
+                break
+
+    except HttpError as e:
+        # 404 from Comments API means file type doesn't support comments
+        # (even though file exists — we already got metadata)
+        if e.resp.status == 404:
+            raise MiseError(
+                ErrorKind.INVALID_INPUT,
+                f"Comments not supported for this file type ({mime_type})",
+                details={"file_id": file_id, "name": file_name, "mimeType": mime_type},
+            )
+        # Re-raise other HTTP errors
+        raise
+
+    return FileCommentsData(
+        file_id=file_id,
+        file_name=file_name,
+        comments=comments,
+        warnings=warnings,
+    )

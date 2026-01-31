@@ -1,0 +1,65 @@
+{
+  "file_id": "1ABC123-test-doc-id",
+  "file_name": "Q4 Planning Document",
+  "comments": [
+    {
+      "id": "comment1",
+      "content": "Should we increase the budget for this initiative?",
+      "author_name": "Alice Smith",
+      "author_email": "alice@example.com",
+      "created_time": "2026-01-15T10:30:00.000Z",
+      "modified_time": "2026-01-15T10:30:00.000Z",
+      "resolved": false,
+      "quoted_text": "Revenue target: $2.5M",
+      "replies": [
+        {
+          "id": "reply1a",
+          "content": "Yes, I think we need at least 20% more.",
+          "author_name": "Bob Jones",
+          "author_email": "bob@example.com",
+          "created_time": "2026-01-15T14:22:00.000Z",
+          "modified_time": "2026-01-15T14:22:00.000Z"
+        },
+        {
+          "id": "reply1b",
+          "content": "Let me check with finance first.",
+          "author_name": "Carol White",
+          "author_email": "carol@example.com",
+          "created_time": "2026-01-16T09:15:00.000Z",
+          "modified_time": "2026-01-16T09:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "comment2",
+      "content": "This timeline seems aggressive. Can we push back the launch?",
+      "author_name": "David Chen",
+      "author_email": "david@example.com",
+      "created_time": "2026-01-17T11:00:00.000Z",
+      "modified_time": "2026-01-17T11:00:00.000Z",
+      "resolved": true,
+      "quoted_text": "Beta launch: March 15",
+      "replies": [
+        {
+          "id": "reply2a",
+          "content": "Agreed. Let's target April 1 instead.",
+          "author_name": "Alice Smith",
+          "author_email": "alice@example.com",
+          "created_time": "2026-01-17T14:30:00.000Z",
+          "modified_time": "2026-01-17T14:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "comment3",
+      "content": "Consider adding a fallback strategy here.",
+      "author_name": "Eve Wilson",
+      "author_email": "eve@example.com",
+      "created_time": "2026-01-18T16:45:00.000Z",
+      "modified_time": "2026-01-18T16:45:00.000Z",
+      "resolved": false,
+      "quoted_text": "",
+      "replies": []
+    }
+  ]
+}

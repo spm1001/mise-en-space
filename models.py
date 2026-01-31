@@ -439,3 +439,51 @@ class CreateError:
             "kind": self.kind,
             "message": self.message,
         }
+
+
+# ============================================================================
+# COMMENTS TYPES
+# ============================================================================
+
+@dataclass
+class CommentReply:
+    """A reply to a comment on a Drive file."""
+    id: str
+    content: str
+    author_name: str
+    author_email: str | None = None
+    created_time: str | None = None
+    modified_time: str | None = None
+
+
+@dataclass
+class CommentData:
+    """A comment on a Drive file."""
+    id: str
+    content: str
+    author_name: str
+    author_email: str | None = None
+    created_time: str | None = None
+    modified_time: str | None = None
+    resolved: bool = False
+    quoted_text: str = ""  # From quotedFileContent.value (human-readable for Docs)
+    replies: list[CommentReply] = field(default_factory=list)
+
+
+@dataclass
+class FileCommentsData:
+    """
+    Assembled comments data for the comments extractor.
+
+    Adapter calls comments().list() with pagination and assembles this structure.
+    """
+    file_id: str
+    file_name: str
+    comments: list[CommentData]
+    comment_count: int = 0
+
+    # Warnings during extraction (missing authors, truncation, etc.)
+    warnings: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.comment_count = len(self.comments)

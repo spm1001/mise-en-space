@@ -4,7 +4,7 @@ Fetch tool implementation.
 Routes by ID type, extracts content, deposits to workspace.
 """
 
-from adapters.drive import get_file_metadata, _parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
+from adapters.drive import get_file_metadata, _parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME, fetch_file_comments
 from adapters.gmail import fetch_thread, download_attachment
 from adapters.docs import fetch_document
 from adapters.sheets import fetch_spreadsheet
@@ -18,6 +18,7 @@ from extractors.docs import extract_doc_content
 from extractors.sheets import extract_sheets_content
 from extractors.slides import extract_slides_content
 from extractors.gmail import extract_thread_content
+from extractors.comments import extract_comments_content
 from typing import Any, Literal
 from models import MiseError, FetchResult, FetchError, EmailContext
 from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id
@@ -780,3 +781,63 @@ def do_fetch(file_id: str) -> FetchResult | FetchError:
         return FetchError(kind="invalid_input", message=str(e))
     except Exception as e:
         return FetchError(kind="unknown", message=str(e))
+
+
+def do_fetch_comments(
+    file_id: str,
+    include_deleted: bool = False,
+    max_results: int = 100,
+) -> dict[str, Any]:
+    """
+    Fetch comments from a Drive file.
+
+    Returns comments as formatted markdown directly (no file deposit).
+    Comments are typically small enough to return inline.
+
+    Args:
+        file_id: Drive file ID or URL
+        include_deleted: Include deleted comments
+        max_results: Maximum comments to fetch
+
+    Returns:
+        Dict with:
+        - content: Formatted markdown string
+        - file_id: The file ID
+        - file_name: The file name
+        - comment_count: Number of comments
+        - warnings: Any extraction warnings
+    """
+    try:
+        # Normalize file ID (handle URLs)
+        _, normalized_id = detect_id_type(file_id)
+
+        # Fetch comments via adapter
+        data = fetch_file_comments(
+            file_id=normalized_id,
+            include_deleted=include_deleted,
+            max_results=max_results,
+        )
+
+        # Extract to markdown
+        content = extract_comments_content(data)
+
+        return {
+            "content": content,
+            "file_id": data.file_id,
+            "file_name": data.file_name,
+            "comment_count": data.comment_count,
+            "warnings": data.warnings if data.warnings else None,
+        }
+
+    except MiseError as e:
+        return {
+            "error": True,
+            "kind": e.kind.value,
+            "message": e.message,
+        }
+    except Exception as e:
+        return {
+            "error": True,
+            "kind": "unknown",
+            "message": str(e),
+        }

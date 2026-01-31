@@ -301,6 +301,7 @@ manifest_extra = {"warnings": data.warnings}  # Goes to manifest.json
 | Docs | Unknown element types, missing inline objects, truncation |
 | Gmail | HTML conversion fallback, empty body, truncation |
 | Slides | Missing objectId, other per-slide issues |
+| Comments | Missing author name, truncation |
 
 **Note:** `extract_message_content()` in gmail.py returns `tuple[str, list[str]]` because it processes individual messages, not thread-level data. The thread extractor aggregates these into `data.warnings`.
 
@@ -497,6 +498,28 @@ EmbeddedObject subtypes (in inlineObjects):
 - `imageProperties` — actual images (includes linked slides rendered as images)
 - `embeddedDrawingProperties` — Google Drawings
 - `linkedContentReference` — linked charts from Sheets (only type currently implemented)
+
+## Comments
+
+Comments are fetched via `fetch_file_comments()` in `adapters/drive.py` and formatted via `extract_comments_content()` in `extractors/comments.py`.
+
+**What's captured:**
+- Author name and email address
+- Comment content and creation date
+- Resolved status
+- Quoted text (anchor) — human-readable for Google Docs, empty for DOCX/Sheets
+- Threaded replies with author/date
+
+**File types that don't support comments:**
+
+| Type | API Behavior |
+|------|--------------|
+| Folders | Returns 0 comments (no error) |
+| Forms | 404 → `MiseError(INVALID_INPUT, "Comments not supported for form files")` |
+| Shortcuts | 404 → same error (doesn't resolve to target) |
+| Sites, Maps, Apps Script | Same 404 pattern |
+
+The adapter pre-checks known unsupported MIME types and gives a clear error before hitting the API. Unknown types that return 404 also get a clear error message.
 
 ## Unsupported Content Types
 

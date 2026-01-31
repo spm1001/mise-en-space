@@ -21,7 +21,7 @@ Architecture:
 
 from mcp.server.fastmcp import FastMCP
 
-from tools import do_search, do_fetch, do_create
+from tools import do_search, do_fetch, do_fetch_comments, do_create
 
 # Initialize MCP server
 mcp = FastMCP("Google Workspace v2")
@@ -103,6 +103,38 @@ def create(
     return do_create(content, title, doc_type, folder_id).to_dict()
 
 
+@mcp.tool()
+def fetch_comments(
+    file_id: str,
+    include_deleted: bool = False,
+    max_results: int = 100
+) -> dict[str, Any]:
+    """
+    Fetch comments from a Drive file.
+
+    Returns comments as formatted markdown. Includes comment text,
+    author (name and email), quoted anchor text, and threaded replies.
+
+    Args:
+        file_id: Drive file ID or URL
+        include_deleted: Include deleted comments (default: False)
+        max_results: Maximum comments to return (default: 100)
+
+    Returns:
+        content: Formatted markdown with all comments
+        file_id: The file ID
+        file_name: The file name
+        comment_count: Number of comments found
+        warnings: Any extraction issues
+
+    Notes:
+        - Google Docs have human-readable anchor text (what was highlighted)
+        - DOCX/Sheets anchors are opaque (empty in output)
+        - Forms, Shortcuts, Sites don't support comments (returns error)
+    """
+    return do_fetch_comments(file_id, include_deleted, max_results)
+
+
 # ============================================================================
 # RESOURCES — Self-documenting MCP capabilities
 # ============================================================================
@@ -114,12 +146,13 @@ def docs_overview() -> str:
 
 Google Workspace MCP server with filesystem-first design.
 
-## Tools (3 verbs)
+## Tools (4 verbs)
 
 | Tool | Purpose | Writes files? |
 |------|---------|---------------|
 | `search` | Find files/emails, return metadata + snippets | No |
 | `fetch` | Download content to `mise-fetch/`, return path | Yes |
+| `fetch_comments` | Get comments from a file as markdown | No |
 | `create` | Make new Doc/Sheet/Slides from markdown | No |
 
 ## Workflow
@@ -138,6 +171,7 @@ Supported: Google Docs, Sheets, Slides, Gmail threads, PDFs, Office files (DOCX/
 - `mise://docs/overview` — This overview
 - `mise://docs/search` — Search tool details
 - `mise://docs/fetch` — Fetch tool details and supported types
+- `mise://docs/fetch-comments` — Fetch comments tool details
 - `mise://docs/create` — Create tool details
 - `mise://docs/workspace` — Deposit folder structure
 - `mise://docs/cross-source` — Cross-source search patterns (Drive↔Gmail linkage)
@@ -260,6 +294,83 @@ fetch("1abc...")
 
 # Fetch Gmail thread
 fetch("18f3a4b5c6d7e8f9")
+```
+"""
+
+
+@mcp.resource("mise://docs/fetch-comments")
+def docs_fetch_comments() -> str:
+    """Detailed documentation for the fetch_comments tool."""
+    return """# fetch_comments
+
+Fetch comments from a Drive file. Returns formatted markdown directly.
+
+## Parameters
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `file_id` | str | required | Drive file ID or URL |
+| `include_deleted` | bool | False | Include deleted comments |
+| `max_results` | int | 100 | Maximum comments to return |
+
+## Response Shape
+
+```json
+{
+  "content": "## Comments on \\"Doc Title\\" (3 total)\\n\\n### [Author]...",
+  "file_id": "1abc...",
+  "file_name": "Document Title",
+  "comment_count": 3,
+  "warnings": null
+}
+```
+
+## Output Format
+
+The `content` field contains markdown:
+
+```markdown
+## Comments on "Document Title" (3 total)
+
+### [Alice Smith] • 2026-01-15
+> Quoted text from document
+
+Comment content here.
+
+**Replies:**
+- **[Bob Jones]** (2026-01-16): Reply text here.
+
+---
+
+### [Carol White] • 2026-01-17
+...
+```
+
+## Anchor Text (Quoted Context)
+
+- **Google Docs**: Human-readable quoted text (what was highlighted)
+- **DOCX/Sheets**: Empty (anchors are opaque coordinates)
+
+## Unsupported File Types
+
+These file types don't support comments and return an error:
+- Google Forms
+- Shortcuts (doesn't resolve to target)
+- Sites, Maps, Apps Script
+
+Folders return 0 comments (no error).
+
+## Examples
+
+```python
+# Get comments from a doc
+fetch_comments("1abc...")
+
+# Get comments from a URL
+fetch_comments("https://docs.google.com/document/d/1abc.../edit")
+
+# Include deleted comments
+fetch_comments("1abc...", include_deleted=True)
 ```
 """
 
