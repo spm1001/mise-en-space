@@ -10,17 +10,34 @@ from pathlib import Path
 _PACKAGE_ROOT = Path(__file__).parent
 
 # OAuth scopes for mise-en-space
-# Verb model: search, fetch, create
+# Goal: More effective than a human with UI access, on every dimension
 SCOPES = [
-    # Search + Fetch
+    # --- Core: Search + Fetch ---
     'https://www.googleapis.com/auth/drive.readonly',
     'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/contacts.readonly',
-    # Create (need write access)
+
+    # --- Create (need write access) ---
     'https://www.googleapis.com/auth/documents',
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/presentations',
     'https://www.googleapis.com/auth/drive.file',  # Create files in Drive
+
+    # --- Activity + Context (UI parity+) ---
+    # Drive Activity: See who did what, when. Enables action item discovery
+    # via comment events (workaround for followup:actionitems).
+    'https://www.googleapis.com/auth/drive.activity.readonly',
+
+    # Tasks: See Google Tasks. Action items from Docs/Chat can sync here.
+    'https://www.googleapis.com/auth/tasks.readonly',
+
+    # Drive Labels: Organizational metadata (priority, status, etc.)
+    # Enterprise feature but useful when available.
+    'https://www.googleapis.com/auth/drive.labels.readonly',
+
+    # Calendar: Meeting context (who was in the meeting, when, what docs linked)
+    # Helps correlate docs with discussions.
+    'https://www.googleapis.com/auth/calendar.readonly',
 ]
 
 # OAuth server port (localhost callback receiver)

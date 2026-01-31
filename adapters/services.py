@@ -7,6 +7,19 @@ Uses lru_cache for thread-safe caching.
 
 from functools import lru_cache
 
+__all__ = [
+    "get_sheets_service",
+    "get_drive_service",
+    "get_docs_service",
+    "get_gmail_service",
+    "get_slides_service",
+    "get_activity_service",
+    "get_tasks_service",
+    "get_calendar_service",
+    "get_labels_service",
+    "clear_service_cache",
+]
+
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build, Resource
 
@@ -59,6 +72,34 @@ def get_slides_service() -> Resource:
     return build("slides", "v1", credentials=creds)
 
 
+@lru_cache(maxsize=8)
+def get_activity_service() -> Resource:
+    """Get authenticated Drive Activity API v2 service (cached, thread-safe)."""
+    creds = _get_credentials()
+    return build("driveactivity", "v2", credentials=creds)
+
+
+@lru_cache(maxsize=8)
+def get_tasks_service() -> Resource:
+    """Get authenticated Google Tasks API service (cached, thread-safe)."""
+    creds = _get_credentials()
+    return build("tasks", "v1", credentials=creds)
+
+
+@lru_cache(maxsize=8)
+def get_calendar_service() -> Resource:
+    """Get authenticated Google Calendar API service (cached, thread-safe)."""
+    creds = _get_credentials()
+    return build("calendar", "v3", credentials=creds)
+
+
+@lru_cache(maxsize=8)
+def get_labels_service() -> Resource:
+    """Get authenticated Drive Labels API v2 service (cached, thread-safe)."""
+    creds = _get_credentials()
+    return build("drivelabels", "v2", credentials=creds)
+
+
 def clear_service_cache() -> None:
     """Clear cached services. Useful for testing or after re-auth."""
     get_sheets_service.cache_clear()
@@ -66,3 +107,7 @@ def clear_service_cache() -> None:
     get_docs_service.cache_clear()
     get_gmail_service.cache_clear()
     get_slides_service.cache_clear()
+    get_activity_service.cache_clear()
+    get_tasks_service.cache_clear()
+    get_calendar_service.cache_clear()
+    get_labels_service.cache_clear()
