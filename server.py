@@ -47,7 +47,8 @@ def search(
     """
     Search across Drive and Gmail.
 
-    Returns metadata + snippets for triage. No files written.
+    Writes results to mise-fetch/ and returns path + summary.
+    Read the deposited JSON file for full results.
 
     Args:
         query: Search terms
@@ -55,7 +56,11 @@ def search(
         max_results: Maximum results per source
 
     Returns:
-        Separate lists per source (drive_results, gmail_results)
+        path: Path to deposited search results JSON
+        query: The search query
+        sources: Sources searched
+        drive_count: Number of Drive results
+        gmail_count: Number of Gmail results
     """
     return do_search(query, sources, max_results).to_dict()
 
@@ -122,7 +127,7 @@ Google Workspace MCP server with filesystem-first design.
 
 | Tool | Purpose | Writes files? |
 |------|---------|---------------|
-| `search` | Find files/emails, return metadata + snippets | No |
+| `search` | Find files/emails, deposit results to `mise-fetch/` | Yes |
 | `fetch` | Download content to `mise-fetch/`, return path | Yes |
 | `create` | Make new Doc/Sheet/Slides from markdown | No |
 
@@ -159,7 +164,17 @@ def docs_search() -> str:
     """Detailed documentation for the search tool."""
     return """# search
 
-Search across Drive and Gmail. Returns metadata + snippets for triage.
+Search across Drive and Gmail. Deposits results to file for token efficiency.
+
+## Filesystem-First Pattern
+
+Search results are written to `mise-fetch/search--{query-slug}--{timestamp}.json`.
+The tool returns the path and summary counts. Read the file for full results.
+
+This pattern:
+- Saves tokens (results don't bloat context)
+- Scales to many parallel searches
+- Lets you decide what to examine
 
 ## Parameters
 
@@ -174,15 +189,28 @@ Search across Drive and Gmail. Returns metadata + snippets for triage.
 ```python
 # Search both sources
 search("Q4 planning")
+# Returns: {"path": "mise-fetch/search--q4-planning--2026-01-31T21-12-53.json",
+#           "drive_count": 15, "gmail_count": 8, ...}
 
-# Search Drive only
-search("budget 2026", sources=["drive"])
-
-# Search Gmail only
-search("from:boss@company.com", sources=["gmail"])
+# Then read the file for full results
+Read("mise-fetch/search--q4-planning--2026-01-31T21-12-53.json")
 ```
 
 ## Response Shape
+
+```json
+{
+  "path": "mise-fetch/search--q4-planning--2026-01-31T21-12-53.json",
+  "query": "Q4 planning",
+  "sources": ["drive", "gmail"],
+  "drive_count": 15,
+  "gmail_count": 8
+}
+```
+
+## Deposited File Shape
+
+The JSON file contains the full results:
 
 ```json
 {

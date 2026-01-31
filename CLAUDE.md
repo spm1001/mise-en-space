@@ -465,6 +465,8 @@ Decisions made during planning (Jan 2026) that future Claude should understand:
 | **Large file streaming** | 50MB threshold | Files >50MB stream to temp file instead of loading into memory. Prevents OOM on gigabyte PPTXs. Configurable via `MISE_STREAMING_THRESHOLD_MB` env var. The exact threshold matters less than having the safety net — any reasonable value catches gigabyte files. |
 | **No search snippets** | `snippet: None` | Drive API v3 has no `contentSnippet` field. The API returns 400 if requested. `fullText` search finds files but doesn't explain *why* they matched. Discovered Jan 2026 via live testing. |
 | **Gmail: no streaming** | Full response only | Gmail API doesn't support chunked downloads. Current implementation is correct. |
+| **Search deposits to file** | Path + counts, not inline JSON | Filesystem-first consistency with fetch. Claude reads deposited JSON when needed. Saves ~5% tokens per search but scales better (10 parallel searches = 30-40k tokens avoided). Also enables jq/grep filtering before full read. |
+| **cwd is MCP's directory** | Known limitation | MCP servers run as separate processes — `Path.cwd()` is their cwd, not Claude's. All deposits go to `mise-en-space/mise-fetch/`. Future fix: add `base_path` parameter to search/fetch. |
 
 ### Per-Service API Patterns
 

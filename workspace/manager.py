@@ -245,6 +245,40 @@ def write_manifest(
     return file_path
 
 
+def write_search_results(
+    query: str,
+    results: dict[str, Any],
+    base_path: Path | None = None,
+) -> Path:
+    """
+    Write search results to a JSON file in mise-fetch/.
+
+    Args:
+        query: The search query (used for slugified filename)
+        results: The full search results dict
+        base_path: Base directory (defaults to cwd)
+
+    Returns:
+        Path to the written file
+
+    Example:
+        write_search_results("Q4 planning", {...})
+        -> Path("mise-fetch/search--q4-planning--2026-01-31T21-12-53.json")
+    """
+    base = base_path or Path.cwd()
+    mise_fetch = base / "mise-fetch"
+    mise_fetch.mkdir(parents=True, exist_ok=True)
+
+    # Build filename: search--{query-slug}--{timestamp}.json
+    slug = slugify(query, max_length=40)
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
+    filename = f"search--{slug}--{timestamp}.json"
+
+    file_path = mise_fetch / filename
+    file_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
+    return file_path
+
+
 def list_deposit_folders(base_path: Path | None = None) -> list[Path]:
     """
     List all deposit folders in mise-fetch/.

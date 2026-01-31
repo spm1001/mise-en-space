@@ -397,8 +397,11 @@ class SearchResult:
     drive_results: list[dict[str, Any]] = field(default_factory=list)
     gmail_results: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    # Path to deposited results file (filesystem-first pattern)
+    path: str | None = None
 
-    def to_dict(self) -> dict[str, Any]:
+    def full_results(self) -> dict[str, Any]:
+        """Get full results dict (for writing to file)."""
         result: dict[str, Any] = {"query": self.query, "sources": self.sources}
         if "drive" in self.sources:
             result["drive_results"] = self.drive_results
@@ -407,6 +410,29 @@ class SearchResult:
         if self.errors:
             result["errors"] = self.errors
         return result
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Get MCP response dict.
+
+        If path is set, returns path + summary (filesystem-first pattern).
+        Otherwise returns full results inline (legacy/testing).
+        """
+        if self.path:
+            # Filesystem-first: return path + summary
+            result: dict[str, Any] = {
+                "path": self.path,
+                "query": self.query,
+                "sources": self.sources,
+                "drive_count": len(self.drive_results) if "drive" in self.sources else 0,
+                "gmail_count": len(self.gmail_results) if "gmail" in self.sources else 0,
+            }
+            if self.errors:
+                result["errors"] = self.errors
+            return result
+        else:
+            # Legacy: return full results inline
+            return self.full_results()
 
 
 @dataclass

@@ -2,6 +2,7 @@
 Search tool implementation.
 
 Unified search across Drive and Gmail.
+Deposits results to file (filesystem-first pattern).
 """
 
 from typing import Any
@@ -11,6 +12,7 @@ from adapters.gmail import search_threads
 from adapters.activity import search_comment_activities, get_file_activities
 from models import DriveSearchResult, GmailSearchResult, MiseError, SearchResult, CommentActivity
 from validation import escape_drive_query, sanitize_gmail_query
+from workspace.manager import write_search_results
 
 
 def format_drive_result(result: DriveSearchResult) -> dict[str, Any]:
@@ -59,13 +61,16 @@ def do_search(
     """
     Search across Drive and Gmail.
 
+    Deposits results to mise-fetch/ and returns path + summary.
+    Follows filesystem-first pattern for token efficiency.
+
     Args:
         query: Search terms
         sources: List of sources to search (default: ['drive', 'gmail'])
         max_results: Maximum results per source
 
     Returns:
-        SearchResult with separate result lists per source
+        SearchResult with path to deposited file and result counts
     """
     if sources is None:
         sources = ["drive", "gmail"]
@@ -94,6 +99,10 @@ def do_search(
             result.errors.append(f"Gmail search failed: {e.message}")
         except Exception as e:
             result.errors.append(f"Gmail search failed: {str(e)}")
+
+    # Deposit results to file (filesystem-first pattern)
+    path = write_search_results(query, result.full_results())
+    result.path = str(path)
 
     return result
 
