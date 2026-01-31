@@ -147,7 +147,7 @@ def main():
     test_gmail(gmail, "larger:5M smaller:20M", "Medium-size emails (5-20MB)")
 
     # Advanced
-    test_gmail(gmail, "deliveredto:sameer@itv.com", "Delivered to specific address")
+    test_gmail(gmail, "deliveredto:user@example.com", "Delivered to specific address")
 
 
 if __name__ == "__main__":
