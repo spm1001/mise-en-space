@@ -1,0 +1,63 @@
+# Search Syntax Quick Reference
+# For MCP Resource use — terse, copy-pasteable
+
+## Drive API (SQL-like only)
+
+# Text search
+fullText contains 'budget'
+name contains 'meeting'
+
+# Type filter
+mimeType = 'application/vnd.google-apps.document'
+mimeType = 'application/pdf'
+mimeType != 'application/vnd.google-apps.folder'
+
+# Date filter (ISO format, no relative dates)
+modifiedTime > '2025-01-01'
+modifiedTime < '2025-12-31'
+createdTime > '2025-01-01'
+
+# Ownership
+'me' in owners
+'me' in writers
+sharedWithMe = true
+starred = true
+
+# Boolean
+X and Y
+X or Y
+not X
+
+# FAILS (UI-only, returns 400):
+# from: to: type: is: before: after: title: owner: creator:
+
+
+## Gmail API (all UI operators work)
+
+# Sender/recipient
+from:john@example.com
+to:team subject:meeting
+
+# Status
+is:unread is:starred is:important
+
+# Attachments
+has:attachment has:drive
+filename:pdf filename:*.xlsx
+
+# Dates (slashes, not dashes)
+after:2025/01/01 before:2025/12/31
+newer_than:7d older_than:30d
+
+# Size
+larger:5M smaller:1M
+
+# Boolean
+X OR Y
+-spam (exclude)
+"exact phrase"
+AROUND 5 budget report (proximity)
+
+# Labels
+in:inbox in:sent label:important
+category:primary category:updates
