@@ -1,6 +1,7 @@
 """Unit tests for slides extractor."""
 
 import pytest
+from inline_snapshot import snapshot
 
 from extractors.slides import (
     extract_slides_content,
@@ -16,24 +17,91 @@ class TestExtractSlidesContent:
     """Tests for the main extraction function."""
 
     def test_basic_extraction(self, real_slides: PresentationData) -> None:
-        """Test that slides are extracted with proper structure."""
+        """Test full extraction output with snapshot."""
         result = extract_slides_content(real_slides)
+        assert result == snapshot("""\
+# Test Presentation
+**Slides:** 7
+---
 
-        # Check header
-        assert "# Test Presentation" in result
-        assert "**Slides:** 7" in result
+## Slide 1: Test Presentation
+### Speaker Notes
+These are some speaker notes
+And this is more speaker notes in a bigger font
 
-        # Check slide headers present (1-indexed)
-        assert "## Slide 1" in result
-        assert "## Slide 5" in result
-        assert "## Slide 7" in result
+---
 
-    def test_content_extraction(self, real_slides: PresentationData) -> None:
-        """Test that text content is extracted from slides."""
-        result = extract_slides_content(real_slides)
+## Slide 2: This is a heading
+### Content
+This is a bullet
 
-        # Title slide should have presentation title
-        assert "Test Presentation" in result
+### Speaker Notes
+These are some speaker notes
+And this is more speaker notes in a bigger font
+
+### Visual Elements
+- [IMAGE] Visual content
+
+---
+
+## Slide 3
+### Tables
+**Table 1:**
+| I am a merged cell - fear me |  |  |
+| --- | --- | --- |
+| 1 | 2 | 3 |
+| 6 | 5 | 4 |
+
+**Table 2:**
+| Table | Table | I am a vertical merged cell, fear me more… |
+| --- | --- | --- |
+| 1 | 2 |  |
+| 6 | 5 |  |
+
+---
+
+## Slide 4: Two column
+### Content
+- Embedded chart (from Sheets) — would test sheetsChart parsing
+- Grouped elements — shapes inside groups
+- Different layouts — section headers, two-column, etc.
+
+- Embedded chart (from Sheets) — would test sheetsChart parsing
+- Grouped elements — shapes inside groups
+- Different layouts — section headers, two-column, etc.
+
+### Speaker Notes
+- Embedded chart (from Sheets) — would test sheetsChart parsing
+- Grouped elements — shapes inside groups
+- Different layouts — section headers, two-column, etc.
+
+---
+
+## Slide 5: Grouped Test
+### Content
+Top Left
+
+Top right
+
+Bottom Middle
+
+### Visual Elements
+- [GROUP] 6 grouped elements (likely diagram)
+
+---
+
+## Slide 6: Native ‘insert chart’
+### Visual Elements
+- [CHART] Embedded spreadsheet chart (ID: 1622092212)
+
+---
+
+## Slide 7: Inserted from Sheets
+### Visual Elements
+- [CHART] Embedded spreadsheet chart (ID: 756213713)
+
+---
+""")
 
     def test_truncation(self) -> None:
         """Test that content is truncated at max_length."""

@@ -1,6 +1,7 @@
 """Unit tests for sheets extractor."""
 
 import pytest
+from inline_snapshot import snapshot
 
 from extractors.sheets import extract_sheets_content, _row_to_csv
 from models import SpreadsheetData, SheetTab
@@ -13,46 +14,26 @@ class TestExtractSheetsContent:
     """Tests for the main extraction function."""
 
     def test_basic_extraction(self, sheets_response: SpreadsheetData) -> None:
-        """Test that sheets are extracted with proper headers."""
+        """Test full extraction output with snapshot."""
         result = extract_sheets_content(sheets_response)
+        assert result == snapshot('''\
+=== Sheet: Summary ===
+Category,Amount,Notes
+Revenue,1000000,Projected
+Expenses,750000,"Includes ""contingency"""
+Net,250000,Before taxes
 
-        # Check sheet headers present
-        assert "=== Sheet: Summary ===" in result
-        assert "=== Sheet: Details ===" in result
-        assert "=== Sheet: Empty Sheet ===" in result
+=== Sheet: Details ===
+ID,Description,Amount
+1,Widget A,500
+2,"Service B, Premium",1500
+3,"Multi
+line
+note",200
 
-        # Check empty sheet handling
-        assert "(empty)" in result
-
-    def test_csv_content(self, sheets_response: SpreadsheetData) -> None:
-        """Test that content is properly formatted as CSV."""
-        result = extract_sheets_content(sheets_response)
-
-        # Basic CSV row
-        assert "Category,Amount,Notes" in result
-        assert "Revenue,1000000,Projected" in result
-
-    def test_csv_escaping_quotes(self, sheets_response: SpreadsheetData) -> None:
-        """Test that quotes in cells are properly escaped."""
-        result = extract_sheets_content(sheets_response)
-
-        # Cell with quotes: 'Includes "contingency"' becomes '"Includes ""contingency"""'
-        # The inner quotes are doubled, whole cell is wrapped in quotes
-        assert '"Includes ""contingency"""' in result
-
-    def test_csv_escaping_commas(self, sheets_response: SpreadsheetData) -> None:
-        """Test that commas in cells are properly quoted."""
-        result = extract_sheets_content(sheets_response)
-
-        # Cell with comma: 'Service B, Premium' should be quoted
-        assert '"Service B, Premium"' in result
-
-    def test_csv_escaping_newlines(self, sheets_response: SpreadsheetData) -> None:
-        """Test that newlines in cells are properly quoted."""
-        result = extract_sheets_content(sheets_response)
-
-        # Cell with newlines should be quoted
-        assert '"Multi\nline\nnote"' in result
+=== Sheet: Empty Sheet ===
+(empty)\
+''')
 
     def test_truncation(self) -> None:
         """Test that content is truncated at max_length."""
@@ -100,17 +81,12 @@ class TestRowToCsv:
         result = _row_to_csv([1, 2.5, "three"])
         assert result == "1,2.5,three"
 
-    def test_quote_escaping(self) -> None:
-        """Test that quotes are doubled and cell is quoted."""
-        result = _row_to_csv(['Say "hello"'])
-        assert result == '"Say ""hello"""'
-
-    def test_comma_escaping(self) -> None:
-        """Test that cells with commas are quoted."""
-        result = _row_to_csv(["a,b"])
-        assert result == '"a,b"'
-
-    def test_newline_escaping(self) -> None:
-        """Test that cells with newlines are quoted."""
-        result = _row_to_csv(["line1\nline2"])
-        assert result == '"line1\nline2"'
+    @pytest.mark.parametrize("cell,expected", [
+        ('Say "hello"', '"Say ""hello"""'),  # Quotes doubled and wrapped
+        ("a,b", '"a,b"'),                    # Commas wrapped
+        ("line1\nline2", '"line1\nline2"'),  # Newlines wrapped
+    ])
+    def test_csv_special_char_escaping(self, cell, expected) -> None:
+        """Test that special characters are properly escaped."""
+        result = _row_to_csv([cell])
+        assert result == expected

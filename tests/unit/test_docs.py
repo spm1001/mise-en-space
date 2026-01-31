@@ -1,6 +1,7 @@
 """Unit tests for docs extractor."""
 
 import pytest
+from inline_snapshot import snapshot
 
 from extractors.docs import (
     extract_doc_content,
@@ -21,85 +22,35 @@ class TestExtractDocContent:
     """Tests for the main extraction function."""
 
     def test_basic_extraction(self, docs_response: DocData) -> None:
-        """Test that tabs are extracted with proper content."""
+        """Test full extraction output with snapshot."""
         result = extract_doc_content(docs_response)
+        assert result == snapshot("""\
+# Project Proposal
+This is a **bold** and *italic* text.
+## Background
+See the [documentation](https://example.com/docs) for more details[^1].
+## Requirements
+- First requirement
+- Second requirement
+  - Sub-item
 
-        # Check both tabs present
-        assert "Project Proposal" in result
-        assert "Budget Breakdown" in result
 
-        # Check tab separator between tabs
-        assert "=" * 60 in result
+---
+[^1]: Additional context about the documentation.
 
-    def test_headings(self, docs_response: DocData) -> None:
-        """Test that headings are converted to markdown."""
-        result = extract_doc_content(docs_response)
 
-        # H1 headings
-        assert "# Project Proposal" in result or "# Budget Breakdown" in result
+============================================================
+# Budget Breakdown
+| Item | Cost |
+|---|---|
+| Development | $50,000 |
+| Testing | $10,000 |
 
-        # H2 headings
-        assert "## Background" in result
-        assert "## Requirements" in result
-        assert "## Timeline" in result
-
-    def test_text_formatting(self, docs_response: DocData) -> None:
-        """Test bold and italic formatting."""
-        result = extract_doc_content(docs_response)
-
-        assert "**bold**" in result
-        assert "*italic*" in result
-
-    def test_links(self, docs_response: DocData) -> None:
-        """Test that links are converted to markdown."""
-        result = extract_doc_content(docs_response)
-
-        assert "[documentation](https://example.com/docs)" in result
-
-    def test_footnotes(self, docs_response: DocData) -> None:
-        """Test footnote references and definitions."""
-        result = extract_doc_content(docs_response)
-
-        # Footnote reference
-        assert "[^1]" in result
-
-        # Footnote definition
-        assert "[^1]:" in result
-        assert "Additional context about the documentation" in result
-
-    def test_bullet_list(self, docs_response: DocData) -> None:
-        """Test bullet list formatting."""
-        result = extract_doc_content(docs_response)
-
-        # Bullet items
-        assert "- First requirement" in result
-        assert "- Second requirement" in result
-
-        # Nested bullet (2 space indent)
-        assert "  - Sub-item" in result
-
-    def test_numbered_list(self, docs_response: DocData) -> None:
-        """Test numbered list formatting."""
-        result = extract_doc_content(docs_response)
-
-        # Numbered items in timeline
-        assert "1. Phase 1: Planning" in result
-        assert "2. Phase 2: Development" in result
-        assert "3. Phase 3: Launch" in result
-
-    def test_table(self, docs_response: DocData) -> None:
-        """Test table extraction as markdown."""
-        result = extract_doc_content(docs_response)
-
-        # Table header
-        assert "| Item | Cost |" in result
-
-        # Header separator
-        assert "|---|---|" in result
-
-        # Table rows
-        assert "| Development | $50,000 |" in result
-        assert "| Testing | $10,000 |" in result
+## Timeline
+1. Phase 1: Planning
+2. Phase 2: Development
+3. Phase 3: Launch\
+""")
 
     def test_truncation(self) -> None:
         """Test that content is truncated at max_length."""

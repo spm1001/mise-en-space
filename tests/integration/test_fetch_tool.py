@@ -262,3 +262,39 @@ def test_fetch_xlsx(integration_ids: dict[str, str], cleanup_mise_fetch) -> None
     # Verify content is not empty
     content = (folder / "content.csv").read_text()
     assert len(content) > 0
+
+
+# --- Comments Tests ---
+
+
+@pytest.mark.integration
+def test_fetch_comments(integration_ids: dict[str, str]) -> None:
+    """Test fetching comments from a file via tool layer."""
+    from server import fetch_comments
+
+    doc_id = integration_ids.get("test_doc_with_comments_id")
+    if not doc_id:
+        pytest.skip("test_doc_with_comments_id not in integration_ids.json")
+
+    result = fetch_comments(doc_id)
+
+    assert "error" not in result, f"Fetch failed: {result}"
+    # Verify structure, not content
+    assert isinstance(result.get("content"), str)
+    assert result.get("comment_count", 0) >= 0
+
+
+@pytest.mark.integration
+def test_fetch_comments_no_comments(integration_ids: dict[str, str]) -> None:
+    """Test fetching comments from a file with no comments."""
+    from server import fetch_comments
+
+    # Use an existing test doc that might not have comments
+    doc_id = integration_ids.get("test_sheet_id")  # Sheets typically have no comments
+    if not doc_id:
+        pytest.skip("test_sheet_id not in integration_ids.json")
+
+    result = fetch_comments(doc_id)
+
+    # Should succeed even if no comments
+    assert "error" not in result or result.get("comment_count") == 0

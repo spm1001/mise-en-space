@@ -24,35 +24,22 @@ from extractors.talon_signature import (
 class TestSignatureStripping:
     """Tests for talon signature stripping."""
 
-    def test_strips_basic_signature(self):
-        """Strip common signature patterns."""
-        text = "Hello!\n\nLet me know.\n\n--\nJohn Doe\njohn@example.com"
-        result = strip_signature(text)
-        assert result == "Hello!\n\nLet me know."
-
-    def test_strips_thanks_signature(self):
-        """Strip 'Thanks' signature."""
-        text = "Here's the report.\n\nThanks,\nAlice"
-        result = strip_signature(text)
-        assert result == "Here's the report."
-
-    def test_strips_regards_signature(self):
-        """Strip 'Regards' signature."""
-        text = "Please review.\n\nRegards,\nBob"
-        result = strip_signature(text)
-        assert result == "Please review."
-
-    def test_strips_best_signature(self):
-        """Strip 'Best' signature."""
-        text = "See attached.\n\nBest,\nCarol"
-        result = strip_signature(text)
-        assert result == "See attached."
-
-    def test_strips_phone_signature(self):
-        """Strip 'Sent from my iPhone' signature."""
-        text = "Got it, will do.\n\nSent from my iPhone"
-        result = strip_signature(text)
-        assert result == "Got it, will do."
+    @pytest.mark.parametrize("input_text,expected", [
+        # Basic signature with --
+        ("Hello!\n\nLet me know.\n\n--\nJohn Doe\njohn@example.com", "Hello!\n\nLet me know."),
+        # Thanks signature
+        ("Here's the report.\n\nThanks,\nAlice", "Here's the report."),
+        # Regards signature
+        ("Please review.\n\nRegards,\nBob", "Please review."),
+        # Best signature
+        ("See attached.\n\nBest,\nCarol", "See attached."),
+        # Sent from iPhone
+        ("Got it, will do.\n\nSent from my iPhone", "Got it, will do."),
+    ])
+    def test_strips_signature_variants(self, input_text, expected):
+        """Strip various signature patterns."""
+        result = strip_signature(input_text)
+        assert result == expected
 
     def test_strips_quoted_lines(self):
         """Strip lines starting with >."""
@@ -116,32 +103,19 @@ class TestHTMLCleaning:
 class TestDriveLinkExtraction:
     """Tests for extracting Google Drive links from text."""
 
-    def test_extracts_docs_link(self):
-        """Extract Google Docs link."""
+    @pytest.mark.parametrize("url,expected_id", [
+        ("https://docs.google.com/document/d/1ABC123_test/edit", "1ABC123_test"),
+        ("https://docs.google.com/spreadsheets/d/1XYZ789/edit", "1XYZ789"),
+        ("https://docs.google.com/presentation/d/1SLIDES/edit", "1SLIDES"),
+        ("https://drive.google.com/file/d/0BwGZ5_abc123/view", "0BwGZ5_abc123"),
+    ])
+    def test_extracts_drive_link_variants(self, url, expected_id):
+        """Extract Drive links from various URL formats."""
         from extractors.gmail import _extract_drive_links
 
-        text = "See https://docs.google.com/document/d/1ABC123_test/edit"
-        links = _extract_drive_links(text)
+        links = _extract_drive_links(f"See {url}")
         assert len(links) == 1
-        assert links[0]["file_id"] == "1ABC123_test"
-
-    def test_extracts_sheets_link(self):
-        """Extract Google Sheets link."""
-        from extractors.gmail import _extract_drive_links
-
-        text = "Budget: https://docs.google.com/spreadsheets/d/1XYZ789/edit"
-        links = _extract_drive_links(text)
-        assert len(links) == 1
-        assert links[0]["file_id"] == "1XYZ789"
-
-    def test_extracts_drive_file_link(self):
-        """Extract Drive file link."""
-        from extractors.gmail import _extract_drive_links
-
-        text = "File: https://drive.google.com/file/d/0BwGZ5_abc123/view"
-        links = _extract_drive_links(text)
-        assert len(links) == 1
-        assert links[0]["file_id"] == "0BwGZ5_abc123"
+        assert links[0]["file_id"] == expected_id
 
     def test_extracts_multiple_links(self):
         """Extract multiple Drive links."""

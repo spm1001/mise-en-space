@@ -5,6 +5,7 @@ Tests pure extraction functions with no API calls.
 """
 
 import pytest
+from inline_snapshot import snapshot
 
 from models import FileCommentsData, CommentData, CommentReply
 from extractors.comments import extract_comments_content
@@ -14,71 +15,40 @@ class TestCommentsExtraction:
     """Tests for extracting comments content."""
 
     def test_extracts_basic_comment(self, comments_response):
-        """Extract content from comments with replies."""
+        """Extract content from comments with replies — full output verification."""
         result = extract_comments_content(comments_response)
+        assert result == snapshot("""\
+## Comments on "Q4 Planning Document" (3 total)
 
-        # Should have file name in header
-        assert 'Q4 Planning Document' in result
-        assert '3 total' in result
+### [Alice Smith <alice@example.com>] • 2026-01-15
+*Mentions: @bob@example.com, @carol@example.com*
 
-        # Should have all commenters with emails
-        assert 'Alice Smith <alice@example.com>' in result
-        assert 'David Chen <david@example.com>' in result
-        assert 'Eve Wilson <eve@example.com>' in result
+> Revenue target: $2.5M
 
-        # Should have comment content
-        assert 'increase the budget' in result
-        assert 'timeline seems aggressive' in result
-        assert 'fallback strategy' in result
+@bob@example.com @carol@example.com - Should we increase the budget for this initiative?
 
-        # Should have quoted text
-        assert 'Revenue target: $2.5M' in result
-        assert 'Beta launch: March 15' in result
+**Replies:**
+- **[Bob Jones <bob@example.com>]** (2026-01-15): Yes, I think we need at least 20% more.
+- **[Carol White <carol@example.com>]** (2026-01-16): @finance@example.com Let me check with finance first. *[@finance@example.com]*
 
-        # Should have replies with emails
-        assert 'Bob Jones <bob@example.com>' in result
-        assert 'Carol White <carol@example.com>' in result
-        assert '20% more' in result
+---
 
-        # Should have dates
-        assert '2026-01-15' in result
-        assert '2026-01-17' in result
+### [David Chen <david@example.com>] • 2026-01-17
+*[RESOLVED]*
 
-    def test_extracts_mentions(self, comments_response):
-        """Extract @mentions from comments."""
-        result = extract_comments_content(comments_response)
+> Beta launch: March 15
 
-        # Alice's comment mentions Bob and Carol
-        assert '@bob@example.com' in result
-        assert '@carol@example.com' in result
+This timeline seems aggressive. Can we push back the launch?
 
-        # Carol's reply mentions finance
-        assert '@finance@example.com' in result
+**Replies:**
+- **[Alice Smith <alice@example.com>]** (2026-01-17): Agreed. Let's target April 1 instead.
 
-    def test_formats_mentions_section(self, comments_response):
-        """Mentions should be formatted in a *Mentions:* line."""
-        result = extract_comments_content(comments_response)
+---
 
-        # Check the format
-        assert '*Mentions: @bob@example.com, @carol@example.com*' in result
+### [Eve Wilson <eve@example.com>] • 2026-01-18
 
-    def test_shows_resolved_indicator(self, comments_response):
-        """Resolved comments should be marked."""
-        result = extract_comments_content(comments_response)
-        assert '[RESOLVED]' in result
-
-    def test_handles_no_quoted_text(self, comments_response):
-        """Comment without anchor text should still work."""
-        result = extract_comments_content(comments_response)
-        # Eve's comment has no quoted_text
-        assert 'Eve Wilson' in result
-        assert 'fallback strategy' in result
-
-    def test_handles_no_replies(self, comments_response):
-        """Comment without replies should still work."""
-        result = extract_comments_content(comments_response)
-        # Eve's comment has no replies
-        assert 'Eve Wilson' in result
+Consider adding a fallback strategy here.\
+""")
 
     def test_respects_max_length(self, comments_response):
         """Truncate when max_length exceeded."""
