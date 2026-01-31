@@ -44,6 +44,16 @@ GENAI_ENDPOINT = "https://appsgenaiserver-pa.clients6.google.com/v1/genai/stream
 GENAI_API_KEY = os.environ.get("GENAI_API_KEY", "")
 
 
+def _sanitize_url(url: str) -> str:
+    """
+    Redact API key from URL for safe logging.
+
+    Replaces 'key=ACTUAL_KEY' with 'key=[REDACTED]' to prevent
+    accidental exposure in logs or error messages.
+    """
+    return re.sub(r'\bkey=[^&]+', 'key=[REDACTED]', url)
+
+
 @dataclass
 class VideoSummary:
     """Video summary result."""

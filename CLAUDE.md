@@ -24,10 +24,15 @@ docs/           Design documents and references
 **Key reference:** `docs/information-flow.md` — Timing data, design decisions, and flow diagrams showing how data moves from APIs through extraction to deposit. Read this before making changes to the fetch/search paths.
 
 **Layer rules:**
-- Extractors NEVER import from adapters or tools
+- Extractors NEVER import from adapters or tools (no I/O)
 - Adapters NEVER import from tools
+- Adapters MAY import parsing utilities from extractors
 - Tools wire adapters → extractors → workspace
 - server.py just registers tools
+
+**Parsing utilities:** Extractors may contain pure parsing functions
+(e.g., `parse_presentation`, `parse_message_payload`) that adapters import.
+The key invariant is extractors never perform I/O.
 
 ### Adapter Specializations
 
@@ -462,6 +467,7 @@ Decisions made during planning (Jan 2026) that future Claude should understand:
 | **Sheets: 2 calls not 1** | `get()` + `batchGet()` | `includeGridData=True` returns 44MB of formatting metadata vs 79KB for values-only. Benchmarked: 2 calls is 3.5x faster despite extra round-trip. |
 | **Large file streaming** | 50MB threshold | Files >50MB stream to temp file instead of loading into memory. Prevents OOM on gigabyte PPTXs. Configurable via `MISE_STREAMING_THRESHOLD_MB` env var. The exact threshold matters less than having the safety net — any reasonable value catches gigabyte files. |
 | **No search snippets** | `snippet: None` | Drive API v3 has no `contentSnippet` field. The API returns 400 if requested. `fullText` search finds files but doesn't explain *why* they matched. Discovered Jan 2026 via live testing. |
+| **Gmail: no streaming** | Full response only | Gmail API doesn't support chunked downloads. Current implementation is correct. |
 
 ### Per-Service API Patterns
 

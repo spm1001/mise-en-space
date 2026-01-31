@@ -297,7 +297,8 @@ def fetch_gmail(thread_id: str) -> FetchResult:
         metadata["skipped_office"] = skipped_office
         metadata["skipped_office_hint"] = (
             "Office files take 5-10s each to extract. "
-            "Fetch individually if needed: fetch('message_id', attachment='filename')"
+            "To access: 1) Search Drive for the filename if exfiltrated, "
+            "or 2) Download manually from Gmail web UI."
         )
 
     return FetchResult(

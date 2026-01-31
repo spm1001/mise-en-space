@@ -110,7 +110,8 @@ def extract_comments_content(
         total_length += len(comment_block)
 
     # Add truncation notice if we stopped early
-    if max_length and not truncated and i < len(data.comments) - 1:
+    # Guard: only check `i` if we iterated over comments
+    if data.comments and max_length and not truncated and i < len(data.comments) - 1:
         content_parts.append(
             f"\n\n[... TRUNCATED: showing {i + 1} of {data.comment_count} comments ...]"
         )

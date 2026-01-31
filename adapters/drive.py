@@ -346,11 +346,10 @@ def is_google_workspace_file(mime_type: str) -> bool:
 # PRE-EXFIL LOOKUP
 # =============================================================================
 
-
-# Email Attachments folder ID (auto-discovered or from env var)
-_email_attachments_folder_id: str | None = None
+from functools import lru_cache
 
 
+@lru_cache(maxsize=1)
 def _get_email_attachments_folder_id() -> str | None:
     """
     Get the Email Attachments folder ID.
@@ -360,16 +359,11 @@ def _get_email_attachments_folder_id() -> str | None:
     2. Auto-discover folder named "Email Attachments" in Drive
 
     Returns None if not configured and can't auto-discover.
+    Cached for thread-safe, efficient access.
     """
-    global _email_attachments_folder_id
-
-    if _email_attachments_folder_id:
-        return _email_attachments_folder_id
-
     # Check env var first
     folder_id = os.environ.get("MISE_EMAIL_ATTACHMENTS_FOLDER_ID")
     if folder_id:
-        _email_attachments_folder_id = folder_id
         return folder_id
 
     # Auto-discover by name
@@ -386,8 +380,8 @@ def _get_email_attachments_folder_id() -> str | None:
         )
         files = response.get("files", [])
         if files:
-            _email_attachments_folder_id = files[0]["id"]
-            return _email_attachments_folder_id
+            discovered_id: str = files[0]["id"]
+            return discovered_id
     except Exception:
         pass
 
@@ -634,8 +628,33 @@ def fetch_file_comments(
                 f"Comments not supported for this file type ({mime_type})",
                 details={"file_id": file_id, "name": file_name, "mimeType": mime_type},
             )
-        # Re-raise other HTTP errors
-        raise
+        # Convert other HTTP errors to MiseError for consistent handling
+        elif e.resp.status == 403:
+            raise MiseError(
+                ErrorKind.PERMISSION_DENIED,
+                f"No access to comments on: {file_name}",
+                details={"file_id": file_id, "http_status": 403},
+            )
+        elif e.resp.status == 429:
+            raise MiseError(
+                ErrorKind.RATE_LIMITED,
+                "API quota exceeded for comments",
+                details={"file_id": file_id, "http_status": 429},
+                retryable=True,
+            )
+        elif e.resp.status >= 500:
+            raise MiseError(
+                ErrorKind.NETWORK_ERROR,
+                f"Google API server error: {e.resp.status}",
+                details={"file_id": file_id, "http_status": e.resp.status},
+                retryable=True,
+            )
+        # Re-raise other HTTP errors wrapped in MiseError
+        raise MiseError(
+            ErrorKind.NETWORK_ERROR,
+            f"HTTP error fetching comments: {e.resp.status}",
+            details={"file_id": file_id, "http_status": e.resp.status},
+        )
 
     # Filter out resolved comments if requested
     if not include_resolved:

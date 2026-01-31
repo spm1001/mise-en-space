@@ -4,9 +4,11 @@ Google Workspace MCP v2 Server
 
 Filesystem-first, token-efficient MCP server for Google Workspace.
 
-Verb model (3 tools):
+Verb model (5 tools):
 - search: Unified discovery across Drive/Gmail
 - fetch: Content to filesystem, return path
+- fetch_comments: Comments from a file as markdown
+- search_activity: Recent activity (comments, edits) across files
 - create: Markdown → Doc/Sheet/Slides
 
 Documentation is provided via MCP Resources, not a tool.
@@ -22,6 +24,7 @@ Architecture:
 from mcp.server.fastmcp import FastMCP
 
 from tools import do_search, do_search_activity, do_fetch, do_fetch_comments, do_create
+from resources.tools import get_tool_registry
 
 # Initialize MCP server
 mcp = FastMCP("Google Workspace v2")
@@ -742,6 +745,26 @@ Slides get selective thumbnails — only fetched for:
 
 Text-only slides and stock photos are skipped.
 """
+
+
+# ============================================================================
+# AUTO-GENERATED TOOL DOCUMENTATION RESOURCES
+# ============================================================================
+
+# Register tool functions for mise://tools/* resource generation
+# Must be done after all @mcp.tool() decorators have run
+_tool_registry = get_tool_registry()
+_tool_registry.register_from_mcp(mcp)
+
+
+@mcp.resource("mise://tools/{tool_name}")
+def tool_resource(tool_name: str) -> str:
+    """Auto-generated documentation for a specific tool from its docstring."""
+    try:
+        resource = _tool_registry.get_resource(f"mise://tools/{tool_name}")
+        return resource["text"]
+    except KeyError:
+        return f"# {tool_name}()\n\nTool not found."
 
 
 # ============================================================================
