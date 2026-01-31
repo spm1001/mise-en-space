@@ -118,6 +118,14 @@ def extract_comments_content(
     return "".join(content_parts).strip()
 
 
+def _format_mentions(emails: list[str]) -> str:
+    """Format a list of mentioned emails as a display string."""
+    if not emails:
+        return ""
+    mentions = ", ".join(f"@{email}" for email in emails)
+    return f"*Mentions: {mentions}*\n"
+
+
 def _format_comment(comment: CommentData) -> str:
     """Format a single comment with optional replies."""
     parts: list[str] = []
@@ -134,6 +142,10 @@ def _format_comment(comment: CommentData) -> str:
     if comment.resolved:
         parts.append("*[RESOLVED]*\n")
 
+    # Mentions (if any)
+    if comment.mentioned_emails:
+        parts.append(_format_mentions(comment.mentioned_emails))
+
     # Quoted text (anchor)
     if comment.quoted_text:
         parts.append(f"\n> {comment.quoted_text}\n")
@@ -148,9 +160,13 @@ def _format_comment(comment: CommentData) -> str:
         for reply in comment.replies:
             reply_author = _format_author(reply.author_name, reply.author_email)
             reply_date = _format_date(reply.created_time)
+            # Include mentions in reply if present
+            mentions_suffix = ""
+            if reply.mentioned_emails:
+                mentions_suffix = f" *[@{', @'.join(reply.mentioned_emails)}]*"
             if reply_date:
-                parts.append(f"- **[{reply_author}]** ({reply_date}): {reply.content}\n")
+                parts.append(f"- **[{reply_author}]** ({reply_date}): {reply.content}{mentions_suffix}\n")
             else:
-                parts.append(f"- **[{reply_author}]**: {reply.content}\n")
+                parts.append(f"- **[{reply_author}]**: {reply.content}{mentions_suffix}\n")
 
     return "".join(parts)

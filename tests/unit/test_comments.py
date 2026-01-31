@@ -44,6 +44,24 @@ class TestCommentsExtraction:
         assert '2026-01-15' in result
         assert '2026-01-17' in result
 
+    def test_extracts_mentions(self, comments_response):
+        """Extract @mentions from comments."""
+        result = extract_comments_content(comments_response)
+
+        # Alice's comment mentions Bob and Carol
+        assert '@bob@example.com' in result
+        assert '@carol@example.com' in result
+
+        # Carol's reply mentions finance
+        assert '@finance@example.com' in result
+
+    def test_formats_mentions_section(self, comments_response):
+        """Mentions should be formatted in a *Mentions:* line."""
+        result = extract_comments_content(comments_response)
+
+        # Check the format
+        assert '*Mentions: @bob@example.com, @carol@example.com*' in result
+
     def test_shows_resolved_indicator(self, comments_response):
         """Resolved comments should be marked."""
         result = extract_comments_content(comments_response)
@@ -228,6 +246,7 @@ class TestCommentDataModel:
         assert reply.author_email is None
         assert reply.created_time is None
         assert reply.modified_time is None
+        assert reply.mentioned_emails == []
 
     def test_comment_data_default_values(self):
         """CommentData should have sensible defaults."""
@@ -239,4 +258,25 @@ class TestCommentDataModel:
         assert comment.author_email is None
         assert comment.resolved is False
         assert comment.quoted_text == ""
+        assert comment.mentioned_emails == []
         assert comment.replies == []
+
+    def test_comment_with_mentions(self):
+        """CommentData should store mentioned emails."""
+        comment = CommentData(
+            id="c1",
+            content="@alice@test.com check this",
+            author_name="Commenter",
+            mentioned_emails=["alice@test.com"],
+        )
+        assert comment.mentioned_emails == ["alice@test.com"]
+
+    def test_reply_with_mentions(self):
+        """CommentReply should store mentioned emails."""
+        reply = CommentReply(
+            id="r1",
+            content="@bob@test.com done",
+            author_name="Replier",
+            mentioned_emails=["bob@test.com"],
+        )
+        assert reply.mentioned_emails == ["bob@test.com"]

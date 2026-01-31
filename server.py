@@ -21,7 +21,7 @@ Architecture:
 
 from mcp.server.fastmcp import FastMCP
 
-from tools import do_search, do_fetch, do_fetch_comments, do_create
+from tools import do_search, do_search_activity, do_fetch, do_fetch_comments, do_create
 
 # Initialize MCP server
 mcp = FastMCP("Google Workspace v2")
@@ -107,17 +107,20 @@ def create(
 def fetch_comments(
     file_id: str,
     include_deleted: bool = False,
+    include_resolved: bool = True,
     max_results: int = 100
 ) -> dict[str, Any]:
     """
     Fetch comments from a Drive file.
 
     Returns comments as formatted markdown. Includes comment text,
-    author (name and email), quoted anchor text, and threaded replies.
+    author (name and email), quoted anchor text, @mentions, and threaded replies.
 
     Args:
         file_id: Drive file ID or URL
         include_deleted: Include deleted comments (default: False)
+        include_resolved: Include resolved comments (default: True).
+            Set to False to get only unresolved/open comments needing attention.
         max_results: Maximum comments to return (default: 100)
 
     Returns:
@@ -131,8 +134,43 @@ def fetch_comments(
         - Google Docs have human-readable anchor text (what was highlighted)
         - DOCX/Sheets anchors are opaque (empty in output)
         - Forms, Shortcuts, Sites don't support comments (returns error)
+        - @mentions are captured for action item detection
     """
-    return do_fetch_comments(file_id, include_deleted, max_results)
+    return do_fetch_comments(file_id, include_deleted, include_resolved, max_results)
+
+
+@mcp.tool()
+def search_activity(
+    filter_type: str = "comments",
+    file_id: str | None = None,
+    max_results: int = 50
+) -> dict[str, Any]:
+    """
+    Search recent activity across your Drive.
+
+    Useful for finding:
+    - Action items (comments mentioning you)
+    - Recent discussions on your files
+    - Activity history for a specific file
+
+    Args:
+        filter_type: Type of activity to find:
+            - "comments": Comment activities (default)
+            - "edits": Edit activities (requires file_id)
+            - "all": All activities (requires file_id)
+        file_id: If provided, get activity for this specific file only.
+            Required for filter_type other than "comments".
+        max_results: Maximum activities to return (default: 50)
+
+    Returns:
+        activities: List of activity objects with:
+            - timestamp, actor, action_type
+            - target (file_id, file_name, web_link)
+            - mentioned_users (for comments)
+        activity_count: Number of activities returned
+        next_page_token: For pagination if more results exist
+    """
+    return do_search_activity(filter_type, file_id, max_results)
 
 
 # ============================================================================
@@ -146,13 +184,14 @@ def docs_overview() -> str:
 
 Google Workspace MCP server with filesystem-first design.
 
-## Tools (4 verbs)
+## Tools (5 verbs)
 
 | Tool | Purpose | Writes files? |
 |------|---------|---------------|
 | `search` | Find files/emails, return metadata + snippets | No |
 | `fetch` | Download content to `mise-fetch/`, return path | Yes |
 | `fetch_comments` | Get comments from a file as markdown | No |
+| `search_activity` | Find recent activity (comments, edits) across files | No |
 | `create` | Make new Doc/Sheet/Slides from markdown | No |
 
 ## Workflow
@@ -161,6 +200,11 @@ Google Workspace MCP server with filesystem-first design.
 2. **Fetch** to download and extract content
 3. Read content from filesystem with standard tools
 4. **Create** new documents when needed
+
+## Finding Action Items
+
+Use `search_activity` to find comments mentioning you across all files, or
+`fetch_comments` with `include_resolved=False` to see open comments on a specific file.
 
 ## Content Types
 
@@ -172,6 +216,7 @@ Supported: Google Docs, Sheets, Slides, Gmail threads, PDFs, Office files (DOCX/
 - `mise://docs/search` — Search tool details
 - `mise://docs/fetch` — Fetch tool details and supported types
 - `mise://docs/fetch-comments` — Fetch comments tool details
+- `mise://docs/search-activity` — Activity search tool details
 - `mise://docs/create` — Create tool details
 - `mise://docs/workspace` — Deposit folder structure
 - `mise://docs/cross-source` — Cross-source search patterns (Drive↔Gmail linkage)
@@ -311,6 +356,7 @@ Fetch comments from a Drive file. Returns formatted markdown directly.
 |-------|------|---------|-------------|
 | `file_id` | str | required | Drive file ID or URL |
 | `include_deleted` | bool | False | Include deleted comments |
+| `include_resolved` | bool | True | Include resolved comments. Set False for open comments only. |
 | `max_results` | int | 100 | Maximum comments to return |
 
 ## Response Shape
@@ -332,7 +378,9 @@ The `content` field contains markdown:
 ```markdown
 ## Comments on "Document Title" (3 total)
 
-### [Alice Smith] • 2026-01-15
+### [Alice Smith <alice@example.com>] • 2026-01-15
+*Mentions: @bob@example.com, @carol@example.com*
+
 > Quoted text from document
 
 Comment content here.
@@ -345,6 +393,15 @@ Comment content here.
 ### [Carol White] • 2026-01-17
 ...
 ```
+
+## Finding Action Items
+
+```python
+# Get only unresolved (open) comments
+fetch_comments("1abc...", include_resolved=False)
+```
+
+This is useful for finding what needs attention on a specific document.
 
 ## Anchor Text (Quoted Context)
 
@@ -369,9 +426,95 @@ fetch_comments("1abc...")
 # Get comments from a URL
 fetch_comments("https://docs.google.com/document/d/1abc.../edit")
 
+# Get only unresolved comments (action items)
+fetch_comments("1abc...", include_resolved=False)
+
 # Include deleted comments
 fetch_comments("1abc...", include_deleted=True)
 ```
+"""
+
+
+@mcp.resource("mise://docs/search-activity")
+def docs_search_activity() -> str:
+    """Detailed documentation for the search_activity tool."""
+    return """# search_activity
+
+Search recent activity across your Drive. Find action items and track changes.
+
+## Parameters
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `filter_type` | str | "comments" | Type of activity: "comments", "edits", "all" |
+| `file_id` | str | None | Specific file to get activity for |
+| `max_results` | int | 50 | Maximum activities to return |
+
+## Use Cases
+
+### Finding Action Items
+
+```python
+# Get recent comments across all your files
+search_activity()
+
+# Get only comment activities (default)
+search_activity(filter_type="comments")
+```
+
+### File Activity History
+
+```python
+# Get all activity for a specific file
+search_activity(file_id="1abc...", filter_type="all")
+
+# Get just edits for a file
+search_activity(file_id="1abc...", filter_type="edits")
+```
+
+## Response Shape
+
+```json
+{
+  "activities": [
+    {
+      "activity_id": "...",
+      "timestamp": "2026-01-20T10:30:00Z",
+      "actor": {"name": "Alice Smith", "email": null},
+      "target": {
+        "file_id": "1abc...",
+        "file_name": "Q4 Planning",
+        "mime_type": "application/vnd.google-apps.document",
+        "web_link": "https://docs.google.com/document/d/1abc.../edit"
+      },
+      "action_type": "comment",
+      "mentioned_users": ["Bob Jones"]
+    }
+  ],
+  "activity_count": 1,
+  "next_page_token": null
+}
+```
+
+## Action Types
+
+| Type | Meaning |
+|------|---------|
+| `comment` | New comment added |
+| `reply` | Reply to existing comment |
+| `resolve` | Comment marked resolved |
+| `reopen` | Resolved comment reopened |
+| `assign` | Task assigned in comment |
+| `suggest` | Suggestion made |
+| `edit` | File content edited |
+| `create` | File created |
+
+## Notes
+
+- Cross-file search only supports `filter_type="comments"`
+- For edits/all activity, you must provide a `file_id`
+- Actor emails are not exposed due to privacy (only names)
+- `mentioned_users` shows who was @mentioned in comments
 """
 
 

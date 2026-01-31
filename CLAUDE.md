@@ -33,11 +33,12 @@ docs/           Design documents and references
 
 | Adapter | Purpose |
 |---------|---------|
-| `adapters/drive.py` | File metadata, search, download, export |
+| `adapters/drive.py` | File metadata, search, download, export, comments |
 | `adapters/docs.py` | Google Docs API (multi-tab support) |
 | `adapters/sheets.py` | Sheets API (batchGet for values) |
 | `adapters/slides.py` | Slides API + thumbnail fetching |
 | `adapters/gmail.py` | Gmail threads and messages |
+| `adapters/activity.py` | Drive Activity API v2 (comment/edit activities) |
 | `adapters/conversion.py` | **Shared** Drive upload→convert→export→delete pattern |
 | `adapters/pdf.py` | PDF extraction (hybrid: markitdown → Drive fallback) |
 | `adapters/office.py` | Office files (DOCX/XLSX/PPTX via Drive conversion) |
@@ -68,14 +69,16 @@ chrome-debug    # Start Chrome with debug port enabled
 
 **Caveat:** The GenAI endpoint (`appsgenaiserver-pa.clients6.google.com`) is undocumented and may change without notice.
 
-## MCP Tool Surface (3 verbs)
+## MCP Tool Surface (5 verbs)
 
-The MCP exposes exactly 3 tools to Claude:
+The MCP exposes 5 tools to Claude:
 
 | Tool | Purpose | Writes files? |
 |------|---------|---------------|
 | `search` | Find files/emails/contacts, return metadata | No |
 | `fetch` | Download content to workspace, return path | Yes |
+| `fetch_comments` | Get comments from a file as markdown | No |
+| `search_activity` | Find recent activity (comments, edits) across files | No |
 | `create` | Make new Doc/Sheet/Slides from markdown | No (creates in Drive) |
 
 Documentation is provided via MCP Resources (static content), not a tool.
@@ -84,6 +87,8 @@ Documentation is provided via MCP Resources (static content), not a tool.
 - `search` returns metadata only — Claude triages before fetching
 - `fetch` writes to `mise-fetch/` in cwd, returns path
 - `fetch` auto-detects ID type (Drive file ID vs Gmail thread ID vs URL)
+- `fetch_comments` supports `include_resolved=False` to get only open comments
+- `search_activity` finds comment activities (action items) across all files
 - Filenames use IDs for deduplication
 - Pagination is opaque (cursors managed internally)
 

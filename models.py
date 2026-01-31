@@ -454,6 +454,7 @@ class CommentReply:
     author_email: str | None = None
     created_time: str | None = None
     modified_time: str | None = None
+    mentioned_emails: list[str] = field(default_factory=list)  # @mentions in reply
 
 
 @dataclass
@@ -467,6 +468,7 @@ class CommentData:
     modified_time: str | None = None
     resolved: bool = False
     quoted_text: str = ""  # From quotedFileContent.value (human-readable for Docs)
+    mentioned_emails: list[str] = field(default_factory=list)  # @mentions in comment
     replies: list[CommentReply] = field(default_factory=list)
 
 
@@ -487,3 +489,43 @@ class FileCommentsData:
 
     def __post_init__(self) -> None:
         self.comment_count = len(self.comments)
+
+
+# ============================================================================
+# ACTIVITY TYPES
+# ============================================================================
+
+@dataclass
+class ActivityActor:
+    """Actor who performed an activity."""
+    name: str
+    email: str | None = None
+
+
+@dataclass
+class ActivityTarget:
+    """Target file/folder of an activity."""
+    file_id: str
+    file_name: str
+    mime_type: str | None = None
+    web_link: str | None = None
+
+
+@dataclass
+class CommentActivity:
+    """A comment-related activity (create, reply, resolve, etc.)."""
+    activity_id: str
+    timestamp: str  # ISO format
+    actor: ActivityActor
+    target: ActivityTarget
+    action_type: str  # "comment", "reply", "resolve", "reopen", "delete", etc.
+    mentioned_users: list[str] = field(default_factory=list)  # Emails mentioned
+    comment_content: str | None = None  # May be truncated by API
+
+
+@dataclass
+class ActivitySearchResult:
+    """Results from Activity API query."""
+    activities: list[CommentActivity]
+    next_page_token: str | None = None
+    warnings: list[str] = field(default_factory=list)

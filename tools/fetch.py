@@ -25,6 +25,22 @@ from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id
 from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata
 
 
+def _get_open_comment_count(file_id: str) -> int | None:
+    """
+    Get count of open (unresolved) comments on a file.
+
+    Returns None if comments not supported for this file type.
+    Fails silently — comment count is optional metadata.
+    """
+    try:
+        data = fetch_file_comments(file_id, include_resolved=False, max_results=100)
+        return data.comment_count
+    except MiseError:
+        return None
+    except Exception:
+        return None
+
+
 # Text MIME types that can be downloaded and deposited directly
 TEXT_MIME_TYPES = {
     "text/plain",
@@ -352,6 +368,10 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: 
     extra: dict[str, Any] = {"tab_count": len(doc_data.tabs) if doc_data.tabs else 1}
     if doc_data.warnings:
         extra["warnings"] = doc_data.warnings
+    # Add open comment count (optional, fails silently)
+    open_comments = _get_open_comment_count(doc_id)
+    if open_comments is not None:
+        extra["open_comment_count"] = open_comments
     write_manifest(folder, "doc", title, doc_id, extra=extra)
 
     result_metadata: dict[str, Any] = {"title": title, "mimeType": metadata.get("mimeType")}
@@ -403,6 +423,10 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
         extra["chart_render_time_ms"] = sheet_data.chart_render_time_ms
     if sheet_data.warnings:
         extra["warnings"] = sheet_data.warnings
+    # Add open comment count (optional, fails silently)
+    open_comments = _get_open_comment_count(sheet_id)
+    if open_comments is not None:
+        extra["open_comment_count"] = open_comments
     write_manifest(folder, "sheet", title, sheet_id, extra=extra)
 
     result_meta: dict[str, Any] = {
@@ -453,6 +477,10 @@ def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], ema
         extra["thumbnail_failures"] = thumbnail_failures
     if presentation_data.warnings:
         extra["warnings"] = presentation_data.warnings
+    # Add open comment count (optional, fails silently)
+    open_comments = _get_open_comment_count(presentation_id)
+    if open_comments is not None:
+        extra["open_comment_count"] = open_comments
     write_manifest(folder, "slides", title, presentation_id, extra=extra)
 
     result_meta: dict[str, Any] = {
@@ -786,6 +814,7 @@ def do_fetch(file_id: str) -> FetchResult | FetchError:
 def do_fetch_comments(
     file_id: str,
     include_deleted: bool = False,
+    include_resolved: bool = True,
     max_results: int = 100,
 ) -> dict[str, Any]:
     """
@@ -797,6 +826,8 @@ def do_fetch_comments(
     Args:
         file_id: Drive file ID or URL
         include_deleted: Include deleted comments
+        include_resolved: Include resolved comments (default: True).
+            Set to False to get only unresolved/open comments.
         max_results: Maximum comments to fetch
 
     Returns:
@@ -815,6 +846,7 @@ def do_fetch_comments(
         data = fetch_file_comments(
             file_id=normalized_id,
             include_deleted=include_deleted,
+            include_resolved=include_resolved,
             max_results=max_results,
         )
 

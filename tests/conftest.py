@@ -110,6 +110,7 @@ def comments_response() -> FileCommentsData:
                 modified_time=c.get("modified_time"),
                 resolved=c.get("resolved", False),
                 quoted_text=c.get("quoted_text", ""),
+                mentioned_emails=c.get("mentioned_emails", []),
                 replies=[
                     CommentReply(
                         id=r["id"],
@@ -118,6 +119,7 @@ def comments_response() -> FileCommentsData:
                         author_email=r.get("author_email"),
                         created_time=r.get("created_time"),
                         modified_time=r.get("modified_time"),
+                        mentioned_emails=r.get("mentioned_emails", []),
                     )
                     for r in c.get("replies", [])
                 ],

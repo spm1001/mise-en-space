@@ -491,7 +491,8 @@ COMMENT_FIELDS = (
     "author(displayName,emailAddress),"
     "createdTime,modifiedTime,"
     "resolved,quotedFileContent,"
-    "replies(id,content,author(displayName,emailAddress),createdTime,modifiedTime)"
+    "mentionedEmailAddresses,"
+    "replies(id,content,author(displayName,emailAddress),createdTime,modifiedTime,mentionedEmailAddresses)"
     ")"
 )
 
@@ -510,6 +511,7 @@ COMMENT_UNSUPPORTED_MIMES = {
 def fetch_file_comments(
     file_id: str,
     include_deleted: bool = False,
+    include_resolved: bool = True,
     max_results: int = 100,
 ) -> FileCommentsData:
     """
@@ -525,6 +527,8 @@ def fetch_file_comments(
     Args:
         file_id: The file ID
         include_deleted: Include deleted comments (default: False)
+        include_resolved: Include resolved comments (default: True).
+            Set to False to get only unresolved/open comments.
         max_results: Maximum comments to return (default: 100)
 
     Returns:
@@ -594,6 +598,7 @@ def fetch_file_comments(
                             author_email=reply_author.get("emailAddress"),
                             created_time=reply.get("createdTime"),
                             modified_time=reply.get("modifiedTime"),
+                            mentioned_emails=reply.get("mentionedEmailAddresses", []),
                         )
                     )
 
@@ -610,6 +615,7 @@ def fetch_file_comments(
                         modified_time=comment.get("modifiedTime"),
                         resolved=comment.get("resolved", False),
                         quoted_text=quoted_text,
+                        mentioned_emails=comment.get("mentionedEmailAddresses", []),
                         replies=replies,
                     )
                 )
@@ -630,6 +636,10 @@ def fetch_file_comments(
             )
         # Re-raise other HTTP errors
         raise
+
+    # Filter out resolved comments if requested
+    if not include_resolved:
+        comments = [c for c in comments if not c.resolved]
 
     return FileCommentsData(
         file_id=file_id,
