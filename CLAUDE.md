@@ -74,16 +74,14 @@ chrome-debug    # Start Chrome with debug port enabled
 
 **Caveat:** The GenAI endpoint (`appsgenaiserver-pa.clients6.google.com`) is undocumented and may change without notice.
 
-## MCP Tool Surface (5 verbs)
+## MCP Tool Surface (3 verbs)
 
-The MCP exposes 5 tools to Claude:
+The MCP exposes 3 tools to Claude:
 
 | Tool | Purpose | Writes files? |
 |------|---------|---------------|
 | `search` | Find files/emails/contacts, return metadata | No |
 | `fetch` | Download content to workspace, return path | Yes |
-| `fetch_comments` | Get comments from a file as markdown | No |
-| `search_activity` | Find recent activity (comments, edits) across files | No |
 | `create` | Make new Doc/Sheet/Slides from markdown | No (creates in Drive) |
 
 Documentation is provided via MCP Resources (static content), not a tool.
@@ -92,8 +90,7 @@ Documentation is provided via MCP Resources (static content), not a tool.
 - `search` returns metadata only — Claude triages before fetching
 - `fetch` writes to `mise-fetch/` in cwd, returns path
 - `fetch` auto-detects ID type (Drive file ID vs Gmail thread ID vs URL)
-- `fetch_comments` supports `include_resolved=False` to get only open comments
-- `search_activity` finds comment activities (action items) across all files
+- **Comments are included automatically** — when fetching docs/sheets/slides, open comments are deposited as `comments.md` (sous-chef philosophy)
 - Filenames use IDs for deduplication
 - Pagination is opaque (cursors managed internally)
 
@@ -458,7 +455,7 @@ Decisions made during planning (Jan 2026) that future Claude should understand:
 | **No `purpose` parameter** | Always LLM-analysis | This MCP is Claude's sous chef — always preparing for LLM consumption. Archival/editing modes are YAGNI. |
 | **PDF: hybrid extraction** | markitdown → Drive fallback | Try markitdown first (fast, MIT). If <500 chars extracted, fall back to Drive conversion (slower but handles image-heavy/complex PDFs). Benchmarked: Drive extracts 100-1000x more content from complex PDFs. PyMuPDF tested but offers no quality advantage over markitdown and has AGPL license. |
 | **MCP SDK v1.x not v2** | Pin to `>=1.23.0,<2.0.0` | v2 is pre-alpha (Q1 2026 expected stable). Core FastMCP patterns are identical; migration will be version bump not rewrite. |
-| **3 verbs not 17 tools** | search, fetch, create | v1 had 17 tools. Claude doesn't need that many levers. Unified search + polymorphic fetch covers 95% of use cases. Documentation via MCP Resources, not a tool. |
+| **3 verbs not 17 tools** | search, fetch, create | v1 had 17 tools. Claude doesn't need that many levers. Unified search + polymorphic fetch (with auto-enriched comments) covers 95% of use cases. Documentation via MCP Resources, not a tool. |
 | **ID auto-detection** | fetch(id) figures out type | Gmail thread IDs look different from Drive file IDs. Server detects, no explicit source param needed. |
 | **Pre-exfil detection** | Check "Email Attachments" folder | User runs background extractor. Value isn't speed (Gmail is 3x faster); value is Drive fullText indexes PDF *content*. |
 | **Sync adapters, async tools** | Adapters sync, tools can wrap | Google API client is synchronous. Adapters stay sync. For MCP v2 tasks (async dispatch), tools layer wraps with `asyncio.to_thread()`. Avoids rewriting adapters. |

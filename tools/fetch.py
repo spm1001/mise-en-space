@@ -25,20 +25,36 @@ from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id
 from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata
 
 
-def _get_open_comment_count(file_id: str) -> int | None:
+def _enrich_with_comments(file_id: str, folder: Any) -> tuple[int, str | None]:
     """
-    Get count of open (unresolved) comments on a file.
+    Fetch open comments and write to deposit folder.
 
-    Returns None if comments not supported for this file type.
-    Fails silently — comment count is optional metadata.
+    Sous-chef philosophy: bring everything chef needs without being asked.
+
+    Args:
+        file_id: Drive file ID
+        folder: Deposit folder path
+
+    Returns:
+        Tuple of (open_comment_count, comments_md or None)
+        Fails silently — comments are optional enrichment.
     """
     try:
         data = fetch_file_comments(file_id, include_resolved=False, max_results=100)
-        return data.comment_count
+        if not data.comments:
+            return (0, None)
+
+        # Extract to markdown
+        comments_md = extract_comments_content(data)
+
+        # Write to deposit folder
+        write_content(folder, comments_md, filename="comments.md")
+
+        return (data.comment_count, comments_md)
     except MiseError:
-        return None
+        return (0, None)
     except Exception:
-        return None
+        return (0, None)
 
 
 # Text MIME types that can be downloaded and deposited directly
@@ -360,19 +376,21 @@ def _build_email_context_metadata(email_context: EmailContext | None) -> dict[st
 
 
 def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
-    """Fetch Google Doc."""
+    """Fetch Google Doc with open comments included."""
     doc_data = fetch_document(doc_id)
     content = extract_doc_content(doc_data)
 
     folder = get_deposit_folder("doc", title, doc_id)
     content_path = write_content(folder, content)
+
+    # Enrich with open comments (sous-chef philosophy)
+    open_comment_count, _ = _enrich_with_comments(doc_id, folder)
+
     extra: dict[str, Any] = {"tab_count": len(doc_data.tabs) if doc_data.tabs else 1}
     if doc_data.warnings:
         extra["warnings"] = doc_data.warnings
-    # Add open comment count (optional, fails silently)
-    open_comments = _get_open_comment_count(doc_id)
-    if open_comments is not None:
-        extra["open_comment_count"] = open_comments
+    if open_comment_count > 0:
+        extra["open_comment_count"] = open_comment_count
     write_manifest(folder, "doc", title, doc_id, extra=extra)
 
     result_metadata: dict[str, Any] = {"title": title, "mimeType": metadata.get("mimeType")}
@@ -389,7 +407,7 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: 
 
 
 def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
-    """Fetch Google Sheet with charts rendered as PNGs."""
+    """Fetch Google Sheet with charts rendered as PNGs and open comments included."""
     sheet_data = fetch_spreadsheet(sheet_id)
     content = extract_sheets_content(sheet_data)
 
@@ -417,6 +435,9 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
     if charts_meta:
         write_charts_metadata(folder, charts_meta)
 
+    # Enrich with open comments (sous-chef philosophy)
+    open_comment_count, _ = _enrich_with_comments(sheet_id, folder)
+
     # Build manifest extras
     extra: dict[str, Any] = {"sheet_count": len(sheet_data.sheets)}
     if chart_count > 0:
@@ -424,10 +445,8 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
         extra["chart_render_time_ms"] = sheet_data.chart_render_time_ms
     if sheet_data.warnings:
         extra["warnings"] = sheet_data.warnings
-    # Add open comment count (optional, fails silently)
-    open_comments = _get_open_comment_count(sheet_id)
-    if open_comments is not None:
-        extra["open_comment_count"] = open_comments
+    if open_comment_count > 0:
+        extra["open_comment_count"] = open_comment_count
     write_manifest(folder, "sheet", title, sheet_id, extra=extra)
 
     result_meta: dict[str, Any] = {
@@ -450,7 +469,7 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
 
 
 def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
-    """Fetch Google Slides."""
+    """Fetch Google Slides with open comments included."""
     # Enable thumbnails - selective logic in adapter skips stock photos/text-only
     presentation_data = fetch_presentation(presentation_id, include_thumbnails=True)
     content = extract_slides_content(presentation_data)
@@ -469,6 +488,9 @@ def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], ema
             # Thumbnail was requested but not received
             thumbnail_failures.append(slide.index + 1)  # 1-indexed for humans
 
+    # Enrich with open comments (sous-chef philosophy)
+    open_comment_count, _ = _enrich_with_comments(presentation_id, folder)
+
     extra: dict[str, Any] = {
         "slide_count": len(presentation_data.slides),
         "has_thumbnails": thumbnail_count > 0,
@@ -478,10 +500,8 @@ def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], ema
         extra["thumbnail_failures"] = thumbnail_failures
     if presentation_data.warnings:
         extra["warnings"] = presentation_data.warnings
-    # Add open comment count (optional, fails silently)
-    open_comments = _get_open_comment_count(presentation_id)
-    if open_comments is not None:
-        extra["open_comment_count"] = open_comments
+    if open_comment_count > 0:
+        extra["open_comment_count"] = open_comment_count
     write_manifest(folder, "slides", title, presentation_id, extra=extra)
 
     result_meta: dict[str, Any] = {
