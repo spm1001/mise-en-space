@@ -74,10 +74,13 @@ def fetch(file_id: str) -> dict[str, Any]:
     Returns path for caller to read with standard file tools.
 
     Always optimizes for LLM consumption (markdown, CSV, clean text).
-    Auto-detects ID type (Drive file vs Gmail thread vs URL).
+    Auto-detects input type and routes appropriately.
 
     Args:
-        file_id: Drive file ID, Gmail thread ID, or URL
+        file_id: Web URL, Drive file ID, or Gmail thread ID
+
+    Fetch web content with cleaner extraction than curl or WebFetch:
+        fetch("https://simonwillison.net/...")  → clean markdown, no boilerplate
 
     Returns:
         path: Filesystem path to fetched content folder
@@ -146,7 +149,7 @@ without being asked.
 
 ## Content Types
 
-Supported: Google Docs, Sheets, Slides, Gmail threads, PDFs, Office files (DOCX/XLSX/PPTX), video/audio
+Supported: **Web URLs**, Google Docs, Sheets, Slides, Gmail threads, PDFs, Office files, video/audio
 
 ## Resources
 
@@ -250,6 +253,7 @@ Fetch content to filesystem. Writes to `mise-fetch/` in current directory.
 
 | Type | Output Format | Notes |
 |------|---------------|-------|
+| Web URLs | markdown | Clean article extraction, removes nav/ads/boilerplate (some protected sites may block) |
 | Google Docs | markdown + comments.md | Multi-tab support, inline images, open comments |
 | Google Sheets | CSV + comments.md | All sheets, with headers, open comments |
 | Google Slides | markdown + thumbnails + comments.md | Selective thumbnails, open comments |
@@ -292,7 +296,8 @@ This supports gigabyte-scale Office files (common at ITV).
 
 ## Auto-detection
 
-The tool auto-detects ID type:
+The tool auto-detects input type:
+- Web URLs (http/https not matching Google services below)
 - Drive URLs (docs.google.com, sheets.google.com, slides.google.com, drive.google.com)
 - Gmail URLs (mail.google.com)
 - Gmail API IDs (16-character hex)
@@ -301,7 +306,13 @@ The tool auto-detects ID type:
 ## Examples
 
 ```python
-# Fetch by URL
+# Fetch web content (cleaner than curl/WebFetch)
+fetch("https://simonwillison.net/2024/Dec/19/one-shot-python-tools/")
+
+# GitHub raw files, APIs
+fetch("https://raw.githubusercontent.com/fastapi/fastapi/master/pyproject.toml")
+
+# Fetch by Google URL
 fetch("https://docs.google.com/document/d/1abc.../edit")
 
 # Fetch by ID
