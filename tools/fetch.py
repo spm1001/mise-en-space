@@ -4,6 +4,7 @@ Fetch tool implementation.
 Routes by ID type, extracts content, deposits to workspace.
 """
 
+import hashlib
 from adapters.drive import get_file_metadata, _parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME, fetch_file_comments
 from adapters.gmail import fetch_thread, download_attachment
 from adapters.docs import fetch_document
@@ -14,11 +15,13 @@ from adapters.cdp import is_cdp_available
 from adapters.pdf import fetch_and_extract_pdf
 from adapters.office import fetch_and_extract_office, get_office_type_from_mime, OfficeType
 from adapters.image import fetch_image as adapter_fetch_image, is_image_file, is_svg
+from adapters.web import fetch_web_content, is_web_url
 from extractors.docs import extract_doc_content
 from extractors.sheets import extract_sheets_content
 from extractors.slides import extract_slides_content
 from extractors.gmail import extract_thread_content
 from extractors.comments import extract_comments_content
+from extractors.web import extract_web_content, extract_title
 from typing import Any, Literal
 from models import MiseError, FetchResult, FetchError, EmailContext
 from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id
@@ -85,10 +88,10 @@ def is_text_file(mime_type: str) -> bool:
 
 def detect_id_type(input_id: str) -> tuple[str, str]:
     """
-    Detect whether input is Gmail or Drive, and normalize the ID.
+    Detect whether input is Gmail, Drive, or web URL, and normalize the ID.
 
     Returns:
-        Tuple of (source, normalized_id) where source is 'gmail' or 'drive'
+        Tuple of (source, normalized_id) where source is 'gmail', 'drive', or 'web'
     """
     input_id = input_id.strip()
 
@@ -99,6 +102,10 @@ def detect_id_type(input_id: str) -> tuple[str, str]:
     # Drive URL (docs, sheets, slides, drive)
     if any(domain in input_id for domain in ["docs.google.com", "sheets.google.com", "slides.google.com", "drive.google.com"]):
         return ("drive", extract_drive_file_id(input_id))
+
+    # Web URL (non-Google HTTP/HTTPS)
+    if is_web_url(input_id):
+        return ("web", input_id)
 
     # Gmail API ID (16-char hex)
     if is_gmail_api_id(input_id):
@@ -808,6 +815,73 @@ def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_c
     )
 
 
+def fetch_web(url: str) -> FetchResult:
+    """
+    Fetch web page, extract content, deposit to workspace.
+
+    Uses tiered extraction strategy:
+    1. HTTP fetch (fast path)
+    2. Browser rendering fallback for JS-rendered content
+    3. trafilatura for content extraction
+
+    Args:
+        url: Web URL to fetch
+
+    Returns:
+        FetchResult with path to deposited content
+    """
+    # Fetch HTML via adapter
+    web_data = fetch_web_content(url)
+
+    # Extract content via extractor (pure function)
+    content = extract_web_content(web_data)
+
+    # Extract title for folder naming
+    title = extract_title(web_data.html) or "web-page"
+
+    # Generate stable ID from URL for deduplication
+    url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
+
+    # Deposit to workspace
+    folder = get_deposit_folder(
+        content_type="web",
+        title=title,
+        resource_id=url_hash,
+    )
+    content_path = write_content(folder, content)
+
+    # Build manifest extras
+    extra: dict[str, Any] = {
+        "url": url,
+        "final_url": web_data.final_url,
+        "render_method": web_data.render_method,
+        "word_count": len(content.split()),
+    }
+    if web_data.warnings:
+        extra["warnings"] = web_data.warnings
+
+    write_manifest(folder, "web", title, url_hash, extra=extra)
+
+    # Build result metadata
+    result_meta: dict[str, Any] = {
+        "title": title,
+        "url": url,
+        "final_url": web_data.final_url,
+        "render_method": web_data.render_method,
+        "word_count": len(content.split()),
+    }
+    if web_data.warnings:
+        result_meta["warnings"] = web_data.warnings
+
+    return FetchResult(
+        path=str(folder),
+        content_file=str(content_path),
+        format="markdown",
+        type="web",
+        metadata=result_meta,
+    )
+
+
 def do_fetch(file_id: str) -> FetchResult | FetchError:
     """
     Main fetch entry point.
@@ -821,6 +895,8 @@ def do_fetch(file_id: str) -> FetchResult | FetchError:
         # Route to appropriate fetcher
         if source == "gmail":
             return fetch_gmail(normalized_id)
+        elif source == "web":
+            return fetch_web(normalized_id)
         else:
             return fetch_drive(normalized_id)
 

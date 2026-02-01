@@ -19,6 +19,9 @@ dependencies = [
     "pytz>=2023.3",
     "regex>=2025.11.3",
     "websockets>=16.0",
+    # Web content extraction
+    "trafilatura>=2.0.0",
+    "httpx>=0.28.0",
 ]
 
 [project.optional-dependencies]

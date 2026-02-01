@@ -98,6 +98,7 @@ class TestLayerBoundaries:
             # Extraction utilities (no API calls, just data transformation)
             "markitdown",  # HTML/PDF/Office → markdown conversion
             "regex",       # Enhanced regex (talon needs duplicate named groups)
+            "trafilatura",  # Web content extraction (HTML → text)
         }
 
         violations = []

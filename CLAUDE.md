@@ -49,6 +49,7 @@ The key invariant is extractors never perform I/O.
 | `adapters/office.py` | Office files (DOCX/XLSX/PPTX via Drive conversion) |
 | `adapters/image.py` | Image files (raster + SVG→PNG rendering) |
 | `adapters/genai.py` | Video summaries via internal GenAI API |
+| `adapters/web.py` | Web content fetching (HTTP + browser fallback) |
 
 **Layered pattern:** `pdf.py` and `office.py` use `conversion.py` for the shared Drive conversion logic. This keeps the specific adapters thin while centralizing temp file management.
 
@@ -73,6 +74,46 @@ chrome-debug    # Start Chrome with debug port enabled
 **Why cookies?** Google's video summary API is internal (not OAuth-accessible). It requires browser session cookies, not API tokens. The `websockets` dependency is for CDP communication.
 
 **Caveat:** The GenAI endpoint (`appsgenaiserver-pa.clients6.google.com`) is undocumented and may change without notice.
+
+## Web Content Fetching
+
+`fetch` also handles web URLs (any `http://` or `https://` URL that isn't a Google service). This makes mise-en-space a first-class web content extraction tool for agents.
+
+**How it works:**
+1. `fetch` detects web URLs by prefix (http:// or https://)
+2. Tries fast HTTP fetch first
+3. Detects if content needs browser rendering (JS-rendered pages)
+4. Falls back to browser via `webctl` if available and needed
+5. Extracts clean markdown via `trafilatura`
+6. Deposits to `mise-fetch/web--{title}--{url-hash}/`
+
+**Example:**
+```python
+result = fetch("https://trafilatura.readthedocs.io/en/latest/")
+# → mise-fetch/web--a-python-package-command-line-tool--3364f7aa45b8/content.md
+```
+
+**Content extraction uses trafilatura**, which:
+- Removes boilerplate (headers, footers, navigation)
+- Preserves main article content
+- Converts to clean markdown with links, images, tables
+- Recovers code block language hints where possible
+
+**Auth detection:** Automatically detects common auth patterns:
+- HTTP 401/403 responses
+- Login page redirects
+- Soft paywalls ("subscribe to continue")
+- CAPTCHA challenges (Cloudflare, reCAPTCHA)
+
+**Browser fallback:** For JS-rendered content (React SPAs, Next.js sites):
+- Requires `webctl` daemon running (`webctl start`)
+- Uses Playwright for full browser rendering
+- Inherits browser session cookies for authenticated content
+
+**Limitations:**
+- No automatic cookie injection yet (Phase 2)
+- Browser fallback requires webctl installed and running
+- Some heavily protected sites may still block extraction
 
 ## MCP Tool Surface (3 verbs)
 

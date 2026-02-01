@@ -22,10 +22,13 @@ from typing import Any
 class ErrorKind(Enum):
     """Categories of errors for consistent handling."""
     AUTH_EXPIRED = "auth_expired"        # Token needs refresh
+    AUTH_REQUIRED = "auth_required"      # Web page requires authentication
     NOT_FOUND = "not_found"              # Resource doesn't exist
     PERMISSION_DENIED = "permission_denied"  # No access to resource
     RATE_LIMITED = "rate_limited"        # Hit API quota
     NETWORK_ERROR = "network_error"      # Connection failed
+    TIMEOUT = "timeout"                  # Request timed out
+    CAPTCHA = "captcha"                  # CAPTCHA challenge detected
     INVALID_INPUT = "invalid_input"      # Bad parameters
     EXTRACTION_FAILED = "extraction_failed"  # Couldn't process content
     UNKNOWN = "unknown"                  # Unexpected error
@@ -299,6 +302,30 @@ class PresentationData:
     locale: str | None = None
 
     # Warnings aggregated from all slides
+    warnings: list[str] = field(default_factory=list)
+
+
+# ============================================================================
+# WEB TYPES
+# ============================================================================
+
+@dataclass
+class WebData:
+    """
+    Assembled web page data for the web extractor.
+
+    Adapter fetches HTML (via HTTP or browser rendering), assembles this structure.
+    Extractor receives this, returns clean markdown.
+    """
+    url: str
+    html: str
+    final_url: str  # After redirects
+    status_code: int
+    content_type: str
+    cookies_used: bool
+    render_method: str  # 'http' or 'browser'
+
+    # Warnings during fetch (redirects, fallbacks, etc.)
     warnings: list[str] = field(default_factory=list)
 
 
