@@ -563,5 +563,16 @@ def tool_resource(tool_name: str) -> str:
 # SERVER ENTRY POINT
 # ============================================================================
 
+import signal
+import sys
+
+
+def _shutdown_handler(signum: int, frame: object) -> None:
+    """Handle termination signals by exiting cleanly."""
+    sys.exit(0)
+
+
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, _shutdown_handler)
+    signal.signal(signal.SIGINT, _shutdown_handler)
     mcp.run()
