@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-**mise-en-space** — Google Workspace MCP with mise-en-place philosophy: everything prepped, in its place, ready for Claude to cook with.
+**mise-en-space** — Content fetching MCP (web URLs, Google Drive, Gmail) with mise-en-place philosophy: everything prepped, in its place, ready for Claude to cook with.
 
 ## What This Is
 
@@ -582,6 +582,14 @@ The adapter pre-checks known unsupported MIME types and gives a clear error befo
 | **Google Groups** | No read API exists. Groups Migration API is write-only (import). Google Takeout can export but has no programmatic API. Web scraping works but is impractically slow (~3s per topic). | Request Vault export from IT (requires license), or access group content via individual Gmail subscriptions (incomplete). |
 
 **Research (Jan 2026):** Confirmed with Jay Lee (GAM creator) that Google has never provided a Groups content read API. This is a known gap Google hasn't addressed in 3-5 years.
+
+## Field Reports
+
+`field-reports/` captures real-world skill/tool gaps discovered during use. Pattern:
+1. Notice gap while working (skill didn't trigger, output incomplete, workflow wrong)
+2. Write field report: `field-reports/YYYY-MM-DD-context.md`
+3. Fix the gap (update docs, skill, or code)
+4. Commit together — field report explains *why* the change was needed
 
 ## Research References
 
