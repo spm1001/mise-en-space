@@ -24,7 +24,7 @@ from extractors.comments import extract_comments_content
 from extractors.web import extract_web_content, extract_title
 from typing import Any, Literal
 from models import MiseError, FetchResult, FetchError, EmailContext
-from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id
+from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id, GMAIL_WEB_ID_PREFIXES
 from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata
 
 
@@ -110,6 +110,11 @@ def detect_id_type(input_id: str) -> tuple[str, str]:
     # Gmail API ID (16-char hex)
     if is_gmail_api_id(input_id):
         return ("gmail", input_id)
+
+    # Gmail web ID (FMfcg..., KtbxL..., etc.) — needs conversion
+    # Only match known prefixes; is_gmail_web_id fallback is too broad for bare IDs
+    if input_id.startswith(GMAIL_WEB_ID_PREFIXES):
+        return ("gmail", extract_gmail_id(input_id))
 
     # Default to Drive
     return ("drive", input_id)
