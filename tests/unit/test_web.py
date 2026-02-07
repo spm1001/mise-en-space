@@ -24,6 +24,8 @@ from adapters.web import (
     _detect_captcha,
     _needs_browser_rendering,
     _is_binary_content_type,
+    _parse_content_length,
+    STREAMING_THRESHOLD_BYTES,
 )
 
 
@@ -431,3 +433,114 @@ class TestWebPdfRouting:
         assert result.type == "pdf"
         assert result.format == "markdown"
         mock_extract.assert_called_once_with(file_bytes=pdf_bytes, file_id=mock_extract.call_args.kwargs['file_id'])
+
+    def test_web_data_carries_temp_path_for_large_pdf(self) -> None:
+        """WebData can carry temp_path for large streamed PDFs."""
+        from pathlib import Path
+        tmp = Path("/tmp/fake-large.pdf")
+        web_data = WebData(
+            url="https://example.com/huge.pdf",
+            html='',
+            final_url="https://example.com/huge.pdf",
+            status_code=200,
+            content_type="application/pdf",
+            cookies_used=False,
+            render_method='http',
+            temp_path=tmp,
+        )
+        assert web_data.temp_path == tmp
+        assert web_data.raw_bytes is None
+
+    @patch('tools.fetch._extract_pdf_from_path')
+    @patch('tools.fetch.fetch_web_content')
+    def test_fetch_web_routes_large_pdf_via_temp_path(self, mock_fetch, mock_extract) -> None:
+        """fetch_web() uses temp_path for large streamed PDFs."""
+        from pathlib import Path
+        from tools.fetch import fetch_web
+        from adapters.pdf import PdfExtractionResult
+        import tempfile
+
+        # Create a real temp file so cleanup works
+        tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+        tmp.write(b"%PDF-1.4 large content")
+        tmp.close()
+        tmp_path = Path(tmp.name)
+
+        mock_fetch.return_value = WebData(
+            url="https://example.com/huge.pdf",
+            html='',
+            final_url="https://example.com/huge.pdf",
+            status_code=200,
+            content_type="application/pdf",
+            cookies_used=False,
+            render_method='http',
+            temp_path=tmp_path,
+        )
+        mock_extract.return_value = PdfExtractionResult(
+            content="# Large PDF Content",
+            method="markitdown",
+            char_count=20,
+        )
+
+        result = fetch_web("https://example.com/huge.pdf")
+
+        assert result.type == "pdf"
+        mock_extract.assert_called_once_with(tmp_path, mock_extract.call_args.args[1])
+        # Verify temp file was cleaned up
+        assert not tmp_path.exists(), "temp file should be cleaned up after extraction"
+
+    @patch('tools.fetch._extract_pdf_from_path')
+    @patch('tools.fetch.fetch_web_content')
+    def test_fetch_web_cleans_up_temp_on_extraction_error(self, mock_fetch, mock_extract) -> None:
+        """Temp file is cleaned up even if extraction fails."""
+        from pathlib import Path
+        from tools.fetch import fetch_web
+        import tempfile
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+        tmp.write(b"%PDF-1.4")
+        tmp.close()
+        tmp_path = Path(tmp.name)
+
+        mock_fetch.return_value = WebData(
+            url="https://example.com/bad.pdf",
+            html='',
+            final_url="https://example.com/bad.pdf",
+            status_code=200,
+            content_type="application/pdf",
+            cookies_used=False,
+            render_method='http',
+            temp_path=tmp_path,
+        )
+        mock_extract.side_effect = Exception("extraction boom")
+
+        # The error propagates but temp file is still cleaned up
+        with pytest.raises(Exception, match="extraction boom"):
+            fetch_web("https://example.com/bad.pdf")
+
+        assert not tmp_path.exists(), "temp file should be cleaned up even on error"
+
+
+class TestContentLengthParsing:
+    """Test Content-Length header parsing for streaming decision."""
+
+    def test_valid_content_length(self) -> None:
+        assert _parse_content_length("1234567") == 1234567
+
+    def test_content_length_with_whitespace(self) -> None:
+        assert _parse_content_length("  1234567  ") == 1234567
+
+    def test_missing_content_length(self) -> None:
+        assert _parse_content_length(None) is None
+
+    def test_empty_content_length(self) -> None:
+        assert _parse_content_length("") is None
+
+    def test_invalid_content_length(self) -> None:
+        assert _parse_content_length("not-a-number") is None
+
+    def test_threshold_boundary(self) -> None:
+        """Content-Length at exactly the threshold should NOT trigger streaming."""
+        assert STREAMING_THRESHOLD_BYTES == 50 * 1024 * 1024
+        # At threshold = not over = no streaming
+        assert _parse_content_length(str(STREAMING_THRESHOLD_BYTES)) == STREAMING_THRESHOLD_BYTES

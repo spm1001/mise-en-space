@@ -12,6 +12,7 @@ These types make the adapter→extractor contract explicit and IDE-checkable.
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 
@@ -332,7 +333,11 @@ class WebData:
     # Warnings during fetch (redirects, fallbacks, etc.)
     warnings: list[str] = field(default_factory=list)
     # Raw bytes for non-HTML responses (PDFs, images, etc.)
+    # Only populated for small responses (below STREAMING_THRESHOLD_BYTES).
     raw_bytes: bytes | None = None
+    # Temp file path for large binary responses (above STREAMING_THRESHOLD_BYTES).
+    # Caller is responsible for cleanup (unlink when done).
+    temp_path: Path | None = None
 
 
 # ============================================================================

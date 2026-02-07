@@ -5,6 +5,7 @@ Routes by ID type, extracts content, deposits to workspace.
 """
 
 import hashlib
+from pathlib import Path
 from urllib.parse import unquote, urlparse
 from adapters.drive import get_file_metadata, _parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME, fetch_file_comments
 from adapters.gmail import fetch_thread, download_attachment
@@ -821,20 +822,73 @@ def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_c
     )
 
 
+def _extract_pdf_from_path(pdf_path: 'Path', file_id: str) -> 'PdfExtractionResult':
+    """
+    Extract PDF content from a file on disk (no memory load).
+
+    Uses markitdown directly on the path. Falls back to Drive conversion
+    if markitdown extracts too little (same threshold as extract_pdf_content).
+    """
+    from adapters.pdf import DEFAULT_MIN_CHARS_THRESHOLD, PdfExtractionResult
+    from adapters.conversion import convert_via_drive
+    from markitdown import MarkItDown
+
+    warnings: list[str] = ["Large file: extracted from temp file"]
+
+    md = MarkItDown()
+    result = md.convert_local(str(pdf_path))
+    content = result.text_content or ""
+    char_count = len(content.strip())
+
+    if char_count >= DEFAULT_MIN_CHARS_THRESHOLD:
+        return PdfExtractionResult(
+            content=content,
+            method="markitdown",
+            char_count=char_count,
+            warnings=warnings,
+        )
+
+    # Markitdown failed — fall back to Drive conversion from path
+    warnings.append(
+        f"Markitdown extracted only {char_count} chars, falling back to Drive conversion"
+    )
+    conversion_result = convert_via_drive(
+        file_path=pdf_path,
+        source_mime="application/pdf",
+        target_type="doc",
+        export_format="markdown",
+        file_id_hint=file_id,
+    )
+    warnings.extend(conversion_result.warnings)
+
+    return PdfExtractionResult(
+        content=conversion_result.content,
+        method="drive",
+        char_count=len(conversion_result.content.strip()),
+        warnings=warnings,
+    )
+
+
 def _fetch_web_pdf(url: str, web_data: WebData) -> FetchResult:
     """
     Handle a web URL that returned application/pdf Content-Type.
 
-    Uses raw_bytes captured by the adapter (single fetch, no re-download)
-    and routes through the standard PDF extraction pipeline.
-    """
-    if not web_data.raw_bytes:
-        raise MiseError(ErrorKind.EXTRACTION_FAILED, f"No PDF content received from {url}")
-    pdf_bytes = web_data.raw_bytes
+    Two paths depending on response size:
+    - Small PDFs: raw_bytes in memory → extract_pdf_content(file_bytes=...)
+    - Large PDFs: temp_path on disk → markitdown from path (no memory load)
 
-    # Extract via standard PDF pipeline (markitdown → Drive fallback)
+    Caller (fetch_web) is responsible for temp_path cleanup via finally block.
+    """
     url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
-    result = extract_pdf_content(file_bytes=pdf_bytes, file_id=url_hash)
+
+    if web_data.temp_path:
+        # Large PDF: extract directly from temp file (memory-safe)
+        result = _extract_pdf_from_path(web_data.temp_path, url_hash)
+    elif web_data.raw_bytes:
+        # Small PDF: extract from memory
+        result = extract_pdf_content(file_bytes=web_data.raw_bytes, file_id=url_hash)
+    else:
+        raise MiseError(ErrorKind.EXTRACTION_FAILED, f"No PDF content received from {url}")
 
     # Use filename from URL or fallback
     url_path = urlparse(url).path
@@ -892,7 +946,12 @@ def fetch_web(url: str) -> FetchResult:
 
     # If server returned a PDF, route to PDF extraction instead of HTML
     if 'application/pdf' in web_data.content_type.lower():
-        return _fetch_web_pdf(url, web_data)
+        try:
+            return _fetch_web_pdf(url, web_data)
+        finally:
+            # Clean up temp file if streaming was used
+            if web_data.temp_path:
+                web_data.temp_path.unlink(missing_ok=True)
 
     # Extract content via extractor (pure function)
     content = extract_web_content(web_data)

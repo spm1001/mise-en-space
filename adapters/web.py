@@ -11,7 +11,9 @@ This adapter returns raw HTML. Extraction to markdown is done by extractors/web.
 
 import re
 import subprocess
+import tempfile
 from functools import lru_cache
+from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
@@ -59,6 +61,11 @@ LOGIN_URL_PATTERNS = [
 # Minimum characters for valid extraction
 MIN_CONTENT_THRESHOLD = 100
 
+# Size threshold for streaming binary content to disk (bytes).
+# Matches Drive adapter's default. Below this: load into memory (raw_bytes).
+# Above this: stream to temp file (temp_path). Prevents OOM on large web PDFs.
+STREAMING_THRESHOLD_BYTES = 50 * 1024 * 1024  # 50 MB
+
 # Content types that are binary (not HTML) — captured as raw bytes.
 # Only include types we have extractors for — don't capture what we can't process.
 BINARY_CONTENT_TYPES = [
@@ -70,6 +77,75 @@ def _is_binary_content_type(content_type: str) -> bool:
     """Check if Content-Type indicates binary (non-HTML) content."""
     ct = content_type.lower().split(';')[0].strip()
     return ct in BINARY_CONTENT_TYPES
+
+
+def _parse_content_length(header_value: str | None) -> int | None:
+    """Parse Content-Length header, returning None if missing or invalid."""
+    if not header_value:
+        return None
+    try:
+        return int(header_value.strip())
+    except (ValueError, TypeError):
+        return None
+
+
+def _stream_binary_to_temp(url: str, content_type: str) -> Path:
+    """
+    Re-fetch URL with streaming and write to temp file.
+
+    The initial non-streaming response is discarded — we only used it
+    for Content-Type/Content-Length inspection. This is a second HTTP request,
+    but only triggers for large files where the memory savings justify it.
+
+    Args:
+        url: URL to stream
+        content_type: Content-Type (used for file extension)
+
+    Returns:
+        Path to temp file (caller must clean up)
+
+    Raises:
+        MiseError: On streaming failure
+    """
+    # Pick extension from content type
+    ext_map = {'application/pdf': '.pdf'}
+    suffix = ext_map.get(content_type.lower().split(';')[0].strip(), '.bin')
+
+    try:
+        with httpx.Client(
+            follow_redirects=True,
+            timeout=httpx.Timeout(HTTP_TIMEOUT * 4),  # Longer timeout for large files
+        ) as client:
+            with client.stream(
+                "GET",
+                url,
+                headers={
+                    'User-Agent': USER_AGENT,
+                    'Accept': '*/*',
+                },
+            ) as response:
+                response.raise_for_status()
+
+                tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+                try:
+                    for chunk in response.iter_bytes(chunk_size=64 * 1024):
+                        tmp.write(chunk)
+                    tmp.close()
+                    return Path(tmp.name)
+                except Exception:
+                    tmp.close()
+                    Path(tmp.name).unlink(missing_ok=True)
+                    raise
+
+    except httpx.TimeoutException:
+        raise MiseError(ErrorKind.TIMEOUT, f"Streaming download timed out: {url}")
+    except httpx.HTTPStatusError as e:
+        raise MiseError(
+            ErrorKind.NETWORK_ERROR,
+            f"Streaming download failed ({e.response.status_code}): {url}"
+        )
+    except httpx.RequestError as e:
+        raise MiseError(ErrorKind.NETWORK_ERROR, f"Streaming download failed: {url} - {e}")
 
 
 def is_web_url(url: str) -> bool:
@@ -327,19 +403,42 @@ def fetch_web_content(url: str, use_browser: bool = False) -> WebData:
     if response.status_code == 404:
         raise MiseError(ErrorKind.NOT_FOUND, f"Page not found: {url}")
 
-    # Binary content (PDFs, etc.) — capture raw bytes, skip HTML inspection
+    # Binary content (PDFs, etc.) — capture bytes or stream to temp, skip HTML inspection
     if _is_binary_content_type(content_type):
-        return WebData(
-            url=url,
-            html='',
-            final_url=final_url,
-            status_code=response.status_code,
-            content_type=content_type,
-            cookies_used=False,
-            render_method='http',
-            warnings=warnings,
-            raw_bytes=response.content,
-        )
+        # Check Content-Length to decide: memory vs temp file
+        content_length = _parse_content_length(response.headers.get('content-length'))
+
+        if content_length is not None and content_length > STREAMING_THRESHOLD_BYTES:
+            # Large binary: stream to temp file to avoid OOM
+            warnings.append(
+                f"Large binary response ({content_length / 1024 / 1024:.0f} MB), "
+                "streaming to temp file"
+            )
+            temp_path = _stream_binary_to_temp(url, content_type)
+            return WebData(
+                url=url,
+                html='',
+                final_url=final_url,
+                status_code=response.status_code,
+                content_type=content_type,
+                cookies_used=False,
+                render_method='http',
+                warnings=warnings,
+                temp_path=temp_path,
+            )
+        else:
+            # Small binary (or unknown size): load into memory
+            return WebData(
+                url=url,
+                html='',
+                final_url=final_url,
+                status_code=response.status_code,
+                content_type=content_type,
+                cookies_used=False,
+                render_method='http',
+                warnings=warnings,
+                raw_bytes=response.content,
+            )
 
     # === HTML PATH — content inspection ===
     html = response.text
