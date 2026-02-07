@@ -59,6 +59,18 @@ LOGIN_URL_PATTERNS = [
 # Minimum characters for valid extraction
 MIN_CONTENT_THRESHOLD = 100
 
+# Content types that are binary (not HTML) — captured as raw bytes.
+# Only include types we have extractors for — don't capture what we can't process.
+BINARY_CONTENT_TYPES = [
+    'application/pdf',
+]
+
+
+def _is_binary_content_type(content_type: str) -> bool:
+    """Check if Content-Type indicates binary (non-HTML) content."""
+    ct = content_type.lower().split(';')[0].strip()
+    return ct in BINARY_CONTENT_TYPES
+
 
 def is_web_url(url: str) -> bool:
     """
@@ -289,12 +301,48 @@ def fetch_web_content(url: str, use_browser: bool = False) -> WebData:
     except httpx.RequestError as e:
         raise MiseError(ErrorKind.NETWORK_ERROR, f"Request failed: {url} - {e}")
 
-    html = response.text
     final_url = str(response.url)
+    content_type = response.headers.get('content-type', '')
 
     # Track redirect
     if final_url != url:
         warnings.append(f"Redirected: {url} → {final_url}")
+
+    # Check for rate limiting (before content inspection — applies to all types)
+    if response.status_code == 429:
+        raise MiseError(
+            ErrorKind.RATE_LIMITED,
+            f"Rate limited by {domain}. Try again later.",
+            retryable=True
+        )
+
+    # Check for server errors
+    if response.status_code >= 500:
+        raise MiseError(
+            ErrorKind.NETWORK_ERROR,
+            f"Server error ({response.status_code}) from {domain}"
+        )
+
+    # Check for not found
+    if response.status_code == 404:
+        raise MiseError(ErrorKind.NOT_FOUND, f"Page not found: {url}")
+
+    # Binary content (PDFs, etc.) — capture raw bytes, skip HTML inspection
+    if _is_binary_content_type(content_type):
+        return WebData(
+            url=url,
+            html='',
+            final_url=final_url,
+            status_code=response.status_code,
+            content_type=content_type,
+            cookies_used=False,
+            render_method='http',
+            warnings=warnings,
+            raw_bytes=response.content,
+        )
+
+    # === HTML PATH — content inspection ===
+    html = response.text
 
     # Check for CAPTCHA
     if _detect_captcha(html):
@@ -331,31 +379,12 @@ def fetch_web_content(url: str, use_browser: bool = False) -> WebData:
                 "Content may be incomplete."
             )
 
-    # Check for rate limiting
-    if response.status_code == 429:
-        raise MiseError(
-            ErrorKind.RATE_LIMITED,
-            f"Rate limited by {domain}. Try again later.",
-            retryable=True
-        )
-
-    # Check for server errors
-    if response.status_code >= 500:
-        raise MiseError(
-            ErrorKind.NETWORK_ERROR,
-            f"Server error ({response.status_code}) from {domain}"
-        )
-
-    # Check for not found
-    if response.status_code == 404:
-        raise MiseError(ErrorKind.NOT_FOUND, f"Page not found: {url}")
-
     return WebData(
         url=url,
         html=html,
         final_url=final_url,
         status_code=response.status_code,
-        content_type=response.headers.get('content-type', ''),
+        content_type=content_type,
         cookies_used=False,
         render_method='http',
         warnings=warnings,

@@ -511,6 +511,7 @@ Decisions made during planning (Jan 2026) that future Claude should understand:
 | **Web: trafilatura not Defuddle** | trafilatura (Python) | Best F1 score (0.883) in benchmarks, Python-native (no Node subprocess), battle-tested at scale. Defuddle (JS) preserves code hints better but requires Node. We work around trafilatura's code block mangling via pre-process/restore pattern instead of forking. |
 | **Web: code block preservation** | Pre-process/restore | Extract `<pre>` blocks before trafilatura, replace with placeholders, restore after. Avoids forking trafilatura while preserving language hints. |
 | **Web: raw text handling** | Detect and pass through | GitHub raw URLs, JSON APIs return non-HTML. Detect via Content-Type + URL extension, format appropriately (code fences for code, pass-through for markdown). |
+| **Web: binary Content-Type routing** | Adapter captures raw bytes, tool routes by type | Web URLs that return `application/pdf` (or other binary types) are detected via Content-Type in the adapter, which captures `raw_bytes` on `WebData` and skips HTML inspection. Tool layer checks Content-Type and routes to the appropriate extractor (e.g., `extract_pdf_content`). Status code checks (404, 429, 500) run *before* binary detection. Only types with working extractors are in `BINARY_CONTENT_TYPES` — don't add types we can't process. |
 
 ### Per-Service API Patterns
 

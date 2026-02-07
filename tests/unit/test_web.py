@@ -23,6 +23,7 @@ from adapters.web import (
     _detect_auth_required,
     _detect_captcha,
     _needs_browser_rendering,
+    _is_binary_content_type,
 )
 
 
@@ -341,3 +342,92 @@ class TestUrlDetectionInFetch:
 
         # But detect_id_type routes it to gmail, not web
         # (This test verifies the routing priority, not the extraction)
+
+
+class TestBinaryContentTypeDetection:
+    """Test binary Content-Type detection for non-HTML responses."""
+
+    def test_pdf_content_type(self) -> None:
+        assert _is_binary_content_type("application/pdf")
+
+    def test_pdf_with_charset(self) -> None:
+        assert _is_binary_content_type("application/pdf; charset=utf-8")
+
+    def test_octet_stream_not_binary(self) -> None:
+        """octet-stream is too ambiguous — only match types we can extract."""
+        assert not _is_binary_content_type("application/octet-stream")
+
+    def test_html_not_binary(self) -> None:
+        assert not _is_binary_content_type("text/html")
+
+    def test_html_with_charset_not_binary(self) -> None:
+        assert not _is_binary_content_type("text/html; charset=utf-8")
+
+    def test_json_not_binary(self) -> None:
+        assert not _is_binary_content_type("application/json")
+
+    def test_empty_not_binary(self) -> None:
+        assert not _is_binary_content_type("")
+
+
+class TestWebPdfRouting:
+    """Test that web URLs returning PDF Content-Type route to PDF extraction."""
+
+    def test_web_data_carries_raw_bytes_for_pdf(self) -> None:
+        """Adapter populates raw_bytes for PDF content type."""
+        pdf_bytes = b"%PDF-1.4 fake pdf content here"
+        web_data = WebData(
+            url="https://example.com/report.pdf",
+            html='',
+            final_url="https://example.com/report.pdf",
+            status_code=200,
+            content_type="application/pdf",
+            cookies_used=False,
+            render_method='http',
+            raw_bytes=pdf_bytes,
+        )
+        assert web_data.raw_bytes == pdf_bytes
+        assert web_data.html == ''
+
+    def test_web_data_no_raw_bytes_for_html(self) -> None:
+        """Adapter does not populate raw_bytes for HTML content."""
+        web_data = WebData(
+            url="https://example.com/page",
+            html='<html><body>Hello</body></html>',
+            final_url="https://example.com/page",
+            status_code=200,
+            content_type="text/html",
+            cookies_used=False,
+            render_method='http',
+        )
+        assert web_data.raw_bytes is None
+
+    @patch('tools.fetch.extract_pdf_content')
+    @patch('tools.fetch.fetch_web_content')
+    def test_fetch_web_routes_pdf_to_extraction(self, mock_fetch, mock_extract) -> None:
+        """fetch_web() detects PDF content type and routes to PDF extraction."""
+        from tools.fetch import fetch_web
+        from adapters.pdf import PdfExtractionResult
+
+        pdf_bytes = b"%PDF-1.4 test content"
+        mock_fetch.return_value = WebData(
+            url="https://example.com/report.pdf",
+            html='',
+            final_url="https://example.com/report.pdf",
+            status_code=200,
+            content_type="application/pdf",
+            cookies_used=False,
+            render_method='http',
+            raw_bytes=pdf_bytes,
+        )
+        mock_extract.return_value = PdfExtractionResult(
+            content="# Extracted PDF Content",
+            method="markitdown",
+            char_count=25,
+        )
+
+        result = fetch_web("https://example.com/report.pdf")
+
+        assert result.type == "pdf"
+        assert result.format == "markdown"
+        mock_extract.assert_called_once_with(file_bytes=pdf_bytes, file_id=mock_extract.call_args.kwargs['file_id'])

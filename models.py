@@ -316,6 +316,10 @@ class WebData:
 
     Adapter fetches HTML (via HTTP or browser rendering), assembles this structure.
     Extractor receives this, returns clean markdown.
+
+    For non-HTML responses (PDFs, etc.), raw_bytes carries the binary content
+    and html will be empty. The tool layer checks content_type to route
+    binary content to the appropriate extractor.
     """
     url: str
     html: str
@@ -327,6 +331,8 @@ class WebData:
 
     # Warnings during fetch (redirects, fallbacks, etc.)
     warnings: list[str] = field(default_factory=list)
+    # Raw bytes for non-HTML responses (PDFs, images, etc.)
+    raw_bytes: bytes | None = None
 
 
 # ============================================================================

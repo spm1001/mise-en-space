@@ -5,6 +5,7 @@ Routes by ID type, extracts content, deposits to workspace.
 """
 
 import hashlib
+from urllib.parse import unquote, urlparse
 from adapters.drive import get_file_metadata, _parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME, fetch_file_comments
 from adapters.gmail import fetch_thread, download_attachment
 from adapters.docs import fetch_document
@@ -12,7 +13,7 @@ from adapters.sheets import fetch_spreadsheet
 from adapters.slides import fetch_presentation
 from adapters.genai import get_video_summary, is_media_file
 from adapters.cdp import is_cdp_available
-from adapters.pdf import fetch_and_extract_pdf
+from adapters.pdf import fetch_and_extract_pdf, extract_pdf_content
 from adapters.office import fetch_and_extract_office, get_office_type_from_mime, OfficeType
 from adapters.image import fetch_image as adapter_fetch_image, is_image_file, is_svg
 from adapters.web import fetch_web_content, is_web_url
@@ -23,7 +24,7 @@ from extractors.gmail import extract_thread_content
 from extractors.comments import extract_comments_content
 from extractors.web import extract_web_content, extract_title
 from typing import Any, Literal
-from models import MiseError, FetchResult, FetchError, EmailContext
+from models import MiseError, FetchResult, FetchError, EmailContext, WebData
 from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id, GMAIL_WEB_ID_PREFIXES
 from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata
 
@@ -820,6 +821,57 @@ def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_c
     )
 
 
+def _fetch_web_pdf(url: str, web_data: WebData) -> FetchResult:
+    """
+    Handle a web URL that returned application/pdf Content-Type.
+
+    Uses raw_bytes captured by the adapter (single fetch, no re-download)
+    and routes through the standard PDF extraction pipeline.
+    """
+    if not web_data.raw_bytes:
+        raise MiseError(ErrorKind.EXTRACTION_FAILED, f"No PDF content received from {url}")
+    pdf_bytes = web_data.raw_bytes
+
+    # Extract via standard PDF pipeline (markitdown → Drive fallback)
+    url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
+    result = extract_pdf_content(file_bytes=pdf_bytes, file_id=url_hash)
+
+    # Use filename from URL or fallback
+    url_path = urlparse(url).path
+    filename = unquote(url_path.rsplit('/', 1)[-1])
+    title = filename.removesuffix('.pdf').strip() or "web-pdf"
+
+    # Deposit to workspace
+    folder = get_deposit_folder("pdf", title, url_hash)
+    content_path = write_content(folder, result.content)
+
+    extra: dict[str, Any] = {
+        "url": url,
+        "char_count": result.char_count,
+        "extraction_method": result.method,
+    }
+    if result.warnings:
+        extra["warnings"] = result.warnings
+    write_manifest(folder, "pdf", title, url_hash, extra=extra)
+
+    result_meta: dict[str, Any] = {
+        "title": title,
+        "url": url,
+        "extraction_method": result.method,
+        "char_count": result.char_count,
+    }
+    if result.warnings:
+        result_meta["warnings"] = result.warnings
+
+    return FetchResult(
+        path=str(folder),
+        content_file=str(content_path),
+        format="markdown",
+        type="pdf",
+        metadata=result_meta,
+    )
+
+
 def fetch_web(url: str) -> FetchResult:
     """
     Fetch web page, extract content, deposit to workspace.
@@ -835,8 +887,12 @@ def fetch_web(url: str) -> FetchResult:
     Returns:
         FetchResult with path to deposited content
     """
-    # Fetch HTML via adapter
+    # Fetch via adapter (probes URL, captures Content-Type)
     web_data = fetch_web_content(url)
+
+    # If server returned a PDF, route to PDF extraction instead of HTML
+    if 'application/pdf' in web_data.content_type.lower():
+        return _fetch_web_pdf(url, web_data)
 
     # Extract content via extractor (pure function)
     content = extract_web_content(web_data)
