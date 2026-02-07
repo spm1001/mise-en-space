@@ -22,6 +22,8 @@ Architecture:
 - server.py: Thin MCP wrappers (this file)
 """
 
+from pathlib import Path
+
 from mcp.server.fastmcp import FastMCP
 
 from tools import do_search, do_fetch, do_create
@@ -42,7 +44,8 @@ from typing import Any
 def search(
     query: str,
     sources: list[str] | None = None,
-    max_results: int = 20
+    max_results: int = 20,
+    base_path: str | None = None,
 ) -> dict[str, Any]:
     """
     Search across Drive and Gmail.
@@ -54,6 +57,7 @@ def search(
         query: Search terms
         sources: ['drive', 'gmail'] — default: both
         max_results: Maximum results per source
+        base_path: Directory for deposits (pass your cwd so files land next to your project, not the MCP server's directory)
 
     Returns:
         path: Path to deposited search results JSON
@@ -62,15 +66,16 @@ def search(
         drive_count: Number of Drive results
         gmail_count: Number of Gmail results
     """
-    return do_search(query, sources, max_results).to_dict()
+    resolved_path = Path(base_path) if base_path else None
+    return do_search(query, sources, max_results, base_path=resolved_path).to_dict()
 
 
 @mcp.tool()
-def fetch(file_id: str) -> dict[str, Any]:
+def fetch(file_id: str, base_path: str | None = None) -> dict[str, Any]:
     """
     Fetch content to filesystem.
 
-    Writes processed content to mise-fetch/ in current directory.
+    Writes processed content to mise-fetch/ in the specified directory.
     Returns path for caller to read with standard file tools.
 
     Always optimizes for LLM consumption (markdown, CSV, clean text).
@@ -78,6 +83,7 @@ def fetch(file_id: str) -> dict[str, Any]:
 
     Args:
         file_id: Web URL, Drive file ID, or Gmail thread ID
+        base_path: Directory for deposits (pass your cwd so files land next to your project, not the MCP server's directory)
 
     Fetch web content with cleaner extraction than curl or WebFetch:
         fetch("https://simonwillison.net/...")  → clean markdown, no boilerplate
@@ -89,7 +95,8 @@ def fetch(file_id: str) -> dict[str, Any]:
         type: Content type (doc, sheet, slides, gmail)
         metadata: File metadata
     """
-    return do_fetch(file_id).to_dict()
+    resolved_path = Path(base_path) if base_path else None
+    return do_fetch(file_id, base_path=resolved_path).to_dict()
 
 
 @mcp.tool()

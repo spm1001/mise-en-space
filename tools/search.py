@@ -5,6 +5,7 @@ Unified search across Drive and Gmail.
 Deposits results to file (filesystem-first pattern).
 """
 
+from pathlib import Path
 from typing import Any
 
 from adapters.drive import search_files
@@ -57,6 +58,7 @@ def do_search(
     query: str,
     sources: list[str] | None = None,
     max_results: int = 20,
+    base_path: Path | None = None,
 ) -> SearchResult:
     """
     Search across Drive and Gmail.
@@ -68,6 +70,7 @@ def do_search(
         query: Search terms
         sources: List of sources to search (default: ['drive', 'gmail'])
         max_results: Maximum results per source
+        base_path: Base directory for deposits (defaults to cwd)
 
     Returns:
         SearchResult with path to deposited file and result counts
@@ -101,7 +104,7 @@ def do_search(
             result.errors.append(f"Gmail search failed: {str(e)}")
 
     # Deposit results to file (filesystem-first pattern)
-    path = write_search_results(query, result.full_results())
+    path = write_search_results(query, result.full_results(), base_path=base_path)
     result.path = str(path)
 
     return result

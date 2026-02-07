@@ -30,7 +30,7 @@ from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id,
 from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata
 
 
-def _enrich_with_comments(file_id: str, folder: Any) -> tuple[int, str | None]:
+def _enrich_with_comments(file_id: str, folder: Path) -> tuple[int, str | None]:
     """
     Fetch open comments and write to deposit folder.
 
@@ -222,7 +222,7 @@ def _extract_attachment_content(
         return None
 
 
-def fetch_gmail(thread_id: str) -> FetchResult:
+def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
     """
     Fetch Gmail thread, extract content and attachments, deposit to workspace.
 
@@ -244,6 +244,7 @@ def fetch_gmail(thread_id: str) -> FetchResult:
         content_type="gmail",
         title=thread_data.subject or "email-thread",
         resource_id=thread_id,
+        base_path=base_path,
     )
 
     # Collect attachments and drive_links from all messages
@@ -340,7 +341,7 @@ def fetch_gmail(thread_id: str) -> FetchResult:
     )
 
 
-def fetch_drive(file_id: str) -> FetchResult | FetchError:
+def fetch_drive(file_id: str, base_path: Path | None = None) -> FetchResult | FetchError:
     """Fetch Drive file, route by type, extract content, deposit to workspace."""
     # Get metadata to determine type
     metadata = get_file_metadata(file_id)
@@ -352,21 +353,21 @@ def fetch_drive(file_id: str) -> FetchResult | FetchError:
 
     # Route by MIME type
     if mime_type == GOOGLE_DOC_MIME:
-        return fetch_doc(file_id, title, metadata, email_context)
+        return fetch_doc(file_id, title, metadata, email_context, base_path=base_path)
     elif mime_type == GOOGLE_SHEET_MIME:
-        return fetch_sheet(file_id, title, metadata, email_context)
+        return fetch_sheet(file_id, title, metadata, email_context, base_path=base_path)
     elif mime_type == GOOGLE_SLIDES_MIME:
-        return fetch_slides(file_id, title, metadata, email_context)
+        return fetch_slides(file_id, title, metadata, email_context, base_path=base_path)
     elif is_media_file(mime_type):
-        return fetch_video(file_id, title, metadata, email_context)
+        return fetch_video(file_id, title, metadata, email_context, base_path=base_path)
     elif mime_type == "application/pdf":
-        return fetch_pdf(file_id, title, metadata, email_context)
+        return fetch_pdf(file_id, title, metadata, email_context, base_path=base_path)
     elif (office_type := get_office_type_from_mime(mime_type)):
-        return fetch_office(file_id, title, metadata, office_type, email_context)
+        return fetch_office(file_id, title, metadata, office_type, email_context, base_path=base_path)
     elif is_text_file(mime_type):
-        return fetch_text(file_id, title, metadata, email_context)
+        return fetch_text(file_id, title, metadata, email_context, base_path=base_path)
     elif is_image_file(mime_type):
-        return fetch_image_file(file_id, title, metadata, email_context)
+        return fetch_image_file(file_id, title, metadata, email_context, base_path=base_path)
     else:
         # Return error for unsupported types
         return FetchError(
@@ -389,12 +390,12 @@ def _build_email_context_metadata(email_context: EmailContext | None) -> dict[st
     }
 
 
-def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
+def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
     """Fetch Google Doc with open comments included."""
     doc_data = fetch_document(doc_id)
     content = extract_doc_content(doc_data)
 
-    folder = get_deposit_folder("doc", title, doc_id)
+    folder = get_deposit_folder("doc", title, doc_id, base_path=base_path)
     content_path = write_content(folder, content)
 
     # Enrich with open comments (sous-chef philosophy)
@@ -420,12 +421,12 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: 
     )
 
 
-def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
+def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
     """Fetch Google Sheet with charts rendered as PNGs and open comments included."""
     sheet_data = fetch_spreadsheet(sheet_id)
     content = extract_sheets_content(sheet_data)
 
-    folder = get_deposit_folder("sheet", title, sheet_id)
+    folder = get_deposit_folder("sheet", title, sheet_id, base_path=base_path)
     content_path = write_content(folder, content, filename="content.csv")
 
     # Write chart PNGs
@@ -482,13 +483,13 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
     )
 
 
-def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
+def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
     """Fetch Google Slides with open comments included."""
     # Enable thumbnails - selective logic in adapter skips stock photos/text-only
     presentation_data = fetch_presentation(presentation_id, include_thumbnails=True)
     content = extract_slides_content(presentation_data)
 
-    folder = get_deposit_folder("slides", title, presentation_id)
+    folder = get_deposit_folder("slides", title, presentation_id, base_path=base_path)
     content_path = write_content(folder, content)
 
     # Write thumbnails if available, track failures
@@ -535,7 +536,7 @@ def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], ema
     )
 
 
-def fetch_video(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
+def fetch_video(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
     """
     Fetch video/audio file with AI summary if available.
 
@@ -600,7 +601,7 @@ def fetch_video(file_id: str, title: str, metadata: dict[str, Any], email_contex
     content = "\n".join(content_lines)
 
     # Deposit to workspace
-    folder = get_deposit_folder("video", title, file_id)
+    folder = get_deposit_folder("video", title, file_id, base_path=base_path)
     content_path = write_content(folder, content)
 
     extra = {
@@ -628,7 +629,7 @@ def fetch_video(file_id: str, title: str, metadata: dict[str, Any], email_contex
     )
 
 
-def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
+def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
     """
     Fetch PDF file with hybrid extraction strategy.
 
@@ -639,7 +640,7 @@ def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context:
     result = fetch_and_extract_pdf(file_id)
 
     # Deposit to workspace
-    folder = get_deposit_folder("pdf", title, file_id)
+    folder = get_deposit_folder("pdf", title, file_id, base_path=base_path)
     content_path = write_content(folder, result.content)
 
     extra: dict[str, Any] = {
@@ -666,7 +667,7 @@ def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context:
     )
 
 
-def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type: OfficeType, email_context: EmailContext | None = None) -> FetchResult:
+def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type: OfficeType, email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
     """
     Fetch Office file via Drive conversion.
 
@@ -680,7 +681,7 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
     filename = f"content.{result.extension}"
 
     # Deposit to workspace
-    folder = get_deposit_folder(office_type, title, file_id)
+    folder = get_deposit_folder(office_type, title, file_id, base_path=base_path)
     content_path = write_content(folder, result.content, filename=filename)
 
     extra_office: dict[str, Any] = {}
@@ -703,7 +704,7 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
     )
 
 
-def fetch_text(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
+def fetch_text(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
     """
     Fetch text-based file (txt, csv, json, etc.) by downloading directly.
 
@@ -729,7 +730,7 @@ def fetch_text(file_id: str, title: str, metadata: dict[str, Any], email_context
     filename = f"content.{ext}"
 
     # Deposit to workspace
-    folder = get_deposit_folder("text", title, file_id)
+    folder = get_deposit_folder("text", title, file_id, base_path=base_path)
     content_path = write_content(folder, content, filename=filename)
 
     extra: dict[str, Any] = {
@@ -755,7 +756,7 @@ def fetch_text(file_id: str, title: str, metadata: dict[str, Any], email_context
     )
 
 
-def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None) -> FetchResult:
+def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
     """
     Fetch image file (PNG, JPEG, GIF, WEBP, SVG, etc.).
 
@@ -768,7 +769,7 @@ def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_c
     result = adapter_fetch_image(file_id, title, mime_type)
 
     # Deposit to workspace
-    folder = get_deposit_folder("image", title, file_id)
+    folder = get_deposit_folder("image", title, file_id, base_path=base_path)
 
     # Write the original image
     image_path = write_image(folder, result.image_bytes, result.filename)
@@ -822,7 +823,7 @@ def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_c
     )
 
 
-def _fetch_web_pdf(url: str, web_data: WebData) -> FetchResult:
+def _fetch_web_pdf(url: str, web_data: WebData, base_path: Path | None = None) -> FetchResult:
     """
     Handle a web URL that returned application/pdf Content-Type.
 
@@ -849,7 +850,7 @@ def _fetch_web_pdf(url: str, web_data: WebData) -> FetchResult:
     title = filename.removesuffix('.pdf').strip() or "web-pdf"
 
     # Deposit to workspace
-    folder = get_deposit_folder("pdf", title, url_hash)
+    folder = get_deposit_folder("pdf", title, url_hash, base_path=base_path)
     content_path = write_content(folder, result.content)
 
     extra: dict[str, Any] = {
@@ -879,7 +880,7 @@ def _fetch_web_pdf(url: str, web_data: WebData) -> FetchResult:
     )
 
 
-def _fetch_web_office(url: str, web_data: WebData, office_type: OfficeType) -> FetchResult:
+def _fetch_web_office(url: str, web_data: WebData, office_type: OfficeType, base_path: Path | None = None) -> FetchResult:
     """
     Handle a web URL that returned an Office Content-Type.
 
@@ -922,7 +923,7 @@ def _fetch_web_office(url: str, web_data: WebData, office_type: OfficeType) -> F
     content_filename = f"content.{result.extension}"
 
     # Deposit to workspace
-    folder = get_deposit_folder(office_type, title, url_hash)
+    folder = get_deposit_folder(office_type, title, url_hash, base_path=base_path)
     content_path = write_content(folder, result.content, filename=content_filename)
 
     extra: dict[str, Any] = {
@@ -949,7 +950,7 @@ def _fetch_web_office(url: str, web_data: WebData, office_type: OfficeType) -> F
     )
 
 
-def fetch_web(url: str) -> FetchResult:
+def fetch_web(url: str, base_path: Path | None = None) -> FetchResult:
     """
     Fetch web page, extract content, deposit to workspace.
 
@@ -973,7 +974,7 @@ def fetch_web(url: str) -> FetchResult:
     # PDF
     if 'application/pdf' in ct:
         try:
-            return _fetch_web_pdf(url, web_data)
+            return _fetch_web_pdf(url, web_data, base_path=base_path)
         finally:
             if web_data.temp_path:
                 web_data.temp_path.unlink(missing_ok=True)
@@ -983,7 +984,7 @@ def fetch_web(url: str) -> FetchResult:
     office_type = get_office_type_from_mime(ct_bare)
     if office_type:
         try:
-            return _fetch_web_office(url, web_data, office_type)
+            return _fetch_web_office(url, web_data, office_type, base_path=base_path)
         finally:
             if web_data.temp_path:
                 web_data.temp_path.unlink(missing_ok=True)
@@ -1002,6 +1003,7 @@ def fetch_web(url: str) -> FetchResult:
         content_type="web",
         title=title,
         resource_id=url_hash,
+        base_path=base_path,
     )
     content_path = write_content(folder, content)
 
@@ -1037,11 +1039,15 @@ def fetch_web(url: str) -> FetchResult:
     )
 
 
-def do_fetch(file_id: str) -> FetchResult | FetchError:
+def do_fetch(file_id: str, base_path: Path | None = None) -> FetchResult | FetchError:
     """
     Main fetch entry point.
 
     Detects ID type, routes to appropriate fetcher, handles errors.
+
+    Args:
+        file_id: Drive file ID, Gmail thread ID, or URL
+        base_path: Base directory for deposits (defaults to cwd)
     """
     try:
         # Detect ID type and normalize
@@ -1049,11 +1055,11 @@ def do_fetch(file_id: str) -> FetchResult | FetchError:
 
         # Route to appropriate fetcher
         if source == "gmail":
-            return fetch_gmail(normalized_id)
+            return fetch_gmail(normalized_id, base_path=base_path)
         elif source == "web":
-            return fetch_web(normalized_id)
+            return fetch_web(normalized_id, base_path=base_path)
         else:
-            return fetch_drive(normalized_id)
+            return fetch_drive(normalized_id, base_path=base_path)
 
     except MiseError as e:
         return FetchError(kind=e.kind.value, message=e.message)

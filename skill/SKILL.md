@@ -21,7 +21,21 @@ mise-en-space exposes 3 tools:
 | `fetch` | Extract content | Path to deposit folder with content.md, comments.md |
 | `create` | Make new docs | File ID + URL |
 
-**Filesystem-first:** Results go to `mise-fetch/` in cwd. Read what you need.
+**Filesystem-first:** Results go to `mise-fetch/` in the specified directory. Read what you need.
+
+### Critical: Always Pass base_path
+
+**MCP servers run as separate processes.** Without `base_path`, deposits land in the MCP server's directory — not yours.
+
+```python
+# ALWAYS pass base_path when calling via MCP
+search("Q4 planning", base_path="/Users/modha/Repos/my-project")
+fetch("1abc...", base_path="/Users/modha/Repos/my-project")
+```
+
+This puts `mise-fetch/` next to your project where you can read it. Without it, files disappear into the server's install directory.
+
+**CLI users:** `mise search` / `mise fetch` from the command line use your shell's cwd automatically — no `base_path` needed.
 
 ## The Exploration Loop
 
@@ -121,18 +135,17 @@ See `references/filtering-results.md` for patterns.
 
 ### Search (parallel across sources)
 ```python
-search("Q4 planning")                           # Both Drive + Gmail
-search("budget 2026", sources=["drive"])        # Drive only
-search("from:boss@co.com", sources=["gmail"])   # Gmail only
+search("Q4 planning", base_path="/path/to/project")              # Both Drive + Gmail
+search("budget 2026", sources=["drive"], base_path="/path/to/project")  # Drive only
+search("from:boss@co.com", sources=["gmail"], base_path="/path/to/project")  # Gmail only
 ```
 
 ### Fetch (auto-detects type)
 ```python
-fetch("1abc...")                                # Drive file ID
-fetch("https://docs.google.com/...")            # Drive URL
-fetch("18f3a4b5c6d7e8f9")                       # Gmail thread ID
-fetch("https://example.com/blog/post")          # Web URL
-fetch("https://raw.githubusercontent.com/.../README.md")  # Raw text
+fetch("1abc...", base_path="/path/to/project")                    # Drive file ID
+fetch("https://docs.google.com/...", base_path="/path/to/project")  # Drive URL
+fetch("18f3a4b5c6d7e8f9", base_path="/path/to/project")          # Gmail thread ID
+fetch("https://example.com/blog/post", base_path="/path/to/project")  # Web URL
 ```
 
 ### Create (markdown → Google Doc)
