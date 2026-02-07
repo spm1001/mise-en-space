@@ -1,0 +1,16 @@
+name: Question
+description: How does something work, or should I do X this way?
+labels: ["question"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What are you trying to understand or decide?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What you've already looked at or tried. Include file paths if relevant.

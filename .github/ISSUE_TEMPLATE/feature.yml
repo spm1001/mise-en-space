@@ -1,0 +1,27 @@
+name: Feature Request
+description: New content type, extraction improvement, or capability
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: What problem does this solve? What's the use case?
+      placeholder: "When fetching a Google Form, mise returns an error. Forms are used for team surveys and the results need to be accessible."
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+      description: What would the solution look like? If you know the implementation path (adapter + extractor + tool wiring), sketch it.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: How do we know this is complete? Concrete, verifiable criteria.
+      placeholder: "mise fetch <form-id> deposits a content.md with question text and response summary"
+    validations:
+      required: true

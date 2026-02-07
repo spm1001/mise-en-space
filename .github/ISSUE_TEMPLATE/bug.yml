@@ -1,0 +1,38 @@
+name: Bug Report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: input
+    id: where
+    attributes:
+      label: Where
+      description: File path and function name (e.g. extractors/sheets.py → extract_sheets_content)
+      placeholder: adapters/web.py → fetch_web()
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Include the input that triggered it (file ID, URL, content description) and any error messages.
+      placeholder: |
+        Fetching spreadsheet 1abc123 with merged cells in rows 3-5.
+        Expected: markdown table with merged content
+        Got: empty string
+
+        Traceback:
+        ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What should have happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else — fixture data, related arc items, screenshots.
