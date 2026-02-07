@@ -6,6 +6,7 @@ This produces cleaner output than local conversion tools, especially for XLSX.
 """
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal, cast
 
 from adapters.conversion import convert_via_drive
@@ -49,16 +50,21 @@ class OfficeExtractionResult:
 
 
 def extract_office_content(
-    file_bytes: bytes,
     office_type: OfficeType,
+    file_bytes: bytes | None = None,
+    file_path: Path | None = None,
     file_id: str = "",
 ) -> OfficeExtractionResult:
     """
     Extract content from Office file via Drive conversion.
 
+    Accepts either file_bytes (in-memory) or file_path (from disk).
+    Use file_path for large files to avoid memory issues.
+
     Args:
-        file_bytes: Raw Office file content
         office_type: 'docx', 'xlsx', or 'pptx'
+        file_bytes: Raw Office file content (mutually exclusive with file_path)
+        file_path: Path to Office file on disk (mutually exclusive with file_bytes)
         file_id: Optional file ID (for temp file naming)
 
     Returns:
@@ -66,10 +72,11 @@ def extract_office_content(
     """
     source_mime, target_type, export_format, extension = OFFICE_FORMATS[office_type]
 
-    # Convert via Drive
+    # Convert via Drive (validates exactly one of file_bytes/file_path)
     # Cast to Literal types (OFFICE_FORMATS values are constants)
     conversion_result = convert_via_drive(
         file_bytes=file_bytes,
+        file_path=file_path,
         source_mime=source_mime,
         target_type=cast(Literal["doc", "sheet", "slides"], target_type),
         export_format=cast(Literal["markdown", "csv", "plain"], export_format),

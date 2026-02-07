@@ -26,7 +26,7 @@ class TestOfficeExtraction:
             warnings=[],
         )
 
-        result = extract_office_content(b"fake docx bytes", "docx", "file123")
+        result = extract_office_content("docx", file_bytes=b"fake docx bytes", file_id="file123")
 
         assert result.source_type == "docx"
         assert result.export_format == "markdown"
@@ -49,7 +49,7 @@ class TestOfficeExtraction:
             warnings=[],
         )
 
-        result = extract_office_content(b"fake xlsx bytes", "xlsx", "file123")
+        result = extract_office_content("xlsx", file_bytes=b"fake xlsx bytes", file_id="file123")
 
         assert result.source_type == "xlsx"
         assert result.export_format == "csv"
@@ -70,7 +70,7 @@ class TestOfficeExtraction:
             warnings=[],
         )
 
-        result = extract_office_content(b"fake pptx bytes", "pptx", "file123")
+        result = extract_office_content("pptx", file_bytes=b"fake pptx bytes", file_id="file123")
 
         assert result.source_type == "pptx"
         assert result.export_format == "plain"
@@ -90,7 +90,7 @@ class TestOfficeExtraction:
             warnings=["Failed to delete temp file"],
         )
 
-        result = extract_office_content(b"bytes", "docx", "file123")
+        result = extract_office_content("docx", file_bytes=b"bytes", file_id="file123")
 
         assert "Failed to delete temp file" in result.warnings
 

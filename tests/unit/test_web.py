@@ -5,6 +5,7 @@ Tests the web adapter and extractor with mocked HTTP responses.
 """
 
 import pytest
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from models import WebData, MiseError, ErrorKind
@@ -371,6 +372,26 @@ class TestBinaryContentTypeDetection:
     def test_empty_not_binary(self) -> None:
         assert not _is_binary_content_type("")
 
+    def test_docx_content_type(self) -> None:
+        assert _is_binary_content_type(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+
+    def test_xlsx_content_type(self) -> None:
+        assert _is_binary_content_type(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    def test_pptx_content_type(self) -> None:
+        assert _is_binary_content_type(
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        )
+
+    def test_docx_with_charset(self) -> None:
+        assert _is_binary_content_type(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document; charset=utf-8"
+        )
+
 
 class TestWebPdfRouting:
     """Test that web URLs returning PDF Content-Type route to PDF extraction."""
@@ -544,3 +565,243 @@ class TestContentLengthParsing:
         assert STREAMING_THRESHOLD_BYTES == 50 * 1024 * 1024
         # At threshold = not over = no streaming
         assert _parse_content_length(str(STREAMING_THRESHOLD_BYTES)) == STREAMING_THRESHOLD_BYTES
+
+
+class TestWebOfficeRouting:
+    """Test that web URLs returning Office Content-Types route to Office extraction."""
+
+    DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
+    def test_web_data_carries_raw_bytes_for_docx(self) -> None:
+        """Adapter populates raw_bytes for DOCX content type."""
+        docx_bytes = b"PK\x03\x04 fake docx"
+        web_data = WebData(
+            url="https://example.com/report.docx",
+            html='',
+            final_url="https://example.com/report.docx",
+            status_code=200,
+            content_type=self.DOCX_MIME,
+            cookies_used=False,
+            render_method='http',
+            raw_bytes=docx_bytes,
+        )
+        assert web_data.raw_bytes == docx_bytes
+        assert web_data.html == ''
+
+    @patch('tools.fetch.extract_office_content')
+    @patch('tools.fetch.fetch_web_content')
+    def test_fetch_web_routes_docx_to_extraction(self, mock_fetch, mock_extract) -> None:
+        """fetch_web() detects DOCX content type and routes to Office extraction."""
+        from tools.fetch import fetch_web
+        from adapters.office import OfficeExtractionResult
+
+        docx_bytes = b"PK\x03\x04 fake docx"
+        mock_fetch.return_value = WebData(
+            url="https://example.com/report.docx",
+            html='',
+            final_url="https://example.com/report.docx",
+            status_code=200,
+            content_type=self.DOCX_MIME,
+            cookies_used=False,
+            render_method='http',
+            raw_bytes=docx_bytes,
+        )
+        mock_extract.return_value = OfficeExtractionResult(
+            content="# Report Content",
+            source_type="docx",
+            export_format="markdown",
+            extension="md",
+        )
+
+        result = fetch_web("https://example.com/report.docx")
+
+        assert result.type == "docx"
+        assert result.format == "markdown"
+        assert result.metadata["title"] == "report"
+        mock_extract.assert_called_once()
+        call_args = mock_extract.call_args
+        assert call_args.args[0] == "docx"
+        assert call_args.kwargs["file_bytes"] == docx_bytes
+
+    @patch('tools.fetch.extract_office_content')
+    @patch('tools.fetch.fetch_web_content')
+    def test_fetch_web_routes_xlsx_to_extraction(self, mock_fetch, mock_extract) -> None:
+        """fetch_web() detects XLSX content type and routes to Office extraction."""
+        from tools.fetch import fetch_web
+        from adapters.office import OfficeExtractionResult
+
+        xlsx_bytes = b"PK\x03\x04 fake xlsx"
+        mock_fetch.return_value = WebData(
+            url="https://example.com/data.xlsx",
+            html='',
+            final_url="https://example.com/data.xlsx",
+            status_code=200,
+            content_type=self.XLSX_MIME,
+            cookies_used=False,
+            render_method='http',
+            raw_bytes=xlsx_bytes,
+        )
+        mock_extract.return_value = OfficeExtractionResult(
+            content="Name,Value\nAlice,100",
+            source_type="xlsx",
+            export_format="csv",
+            extension="csv",
+        )
+
+        result = fetch_web("https://example.com/data.xlsx")
+
+        assert result.type == "xlsx"
+        assert result.format == "csv"
+        assert result.metadata["title"] == "data"
+        mock_extract.assert_called_once()
+        assert mock_extract.call_args.args[0] == "xlsx"
+
+    @patch('tools.fetch.extract_office_content')
+    @patch('tools.fetch.fetch_web_content')
+    def test_fetch_web_routes_pptx_to_extraction(self, mock_fetch, mock_extract) -> None:
+        """fetch_web() detects PPTX content type and routes to Office extraction."""
+        from tools.fetch import fetch_web
+        from adapters.office import OfficeExtractionResult
+
+        pptx_bytes = b"PK\x03\x04 fake pptx"
+        mock_fetch.return_value = WebData(
+            url="https://example.com/slides.pptx",
+            html='',
+            final_url="https://example.com/slides.pptx",
+            status_code=200,
+            content_type=self.PPTX_MIME,
+            cookies_used=False,
+            render_method='http',
+            raw_bytes=pptx_bytes,
+        )
+        mock_extract.return_value = OfficeExtractionResult(
+            content="Slide 1: Title",
+            source_type="pptx",
+            export_format="plain",
+            extension="txt",
+        )
+
+        result = fetch_web("https://example.com/slides.pptx")
+
+        assert result.type == "pptx"
+        assert result.format == "markdown"  # non-xlsx → markdown
+        assert result.metadata["title"] == "slides"
+
+    @patch('tools.fetch.extract_office_content')
+    @patch('tools.fetch.fetch_web_content')
+    def test_fetch_web_routes_large_office_via_temp_path(self, mock_fetch, mock_extract) -> None:
+        """fetch_web() uses temp_path for large streamed Office files."""
+        from tools.fetch import fetch_web
+        from adapters.office import OfficeExtractionResult
+        import tempfile
+
+        # Create a real temp file so cleanup works
+        tmp = tempfile.NamedTemporaryFile(suffix=".docx", delete=False)
+        tmp.write(b"PK\x03\x04 large docx")
+        tmp.close()
+        tmp_path = Path(tmp.name)
+
+        mock_fetch.return_value = WebData(
+            url="https://example.com/huge-report.docx",
+            html='',
+            final_url="https://example.com/huge-report.docx",
+            status_code=200,
+            content_type=self.DOCX_MIME,
+            cookies_used=False,
+            render_method='http',
+            temp_path=tmp_path,
+        )
+        mock_extract.return_value = OfficeExtractionResult(
+            content="# Huge Report",
+            source_type="docx",
+            export_format="markdown",
+            extension="md",
+        )
+
+        result = fetch_web("https://example.com/huge-report.docx")
+
+        assert result.type == "docx"
+        mock_extract.assert_called_once()
+        assert mock_extract.call_args.kwargs["file_path"] == tmp_path
+        assert "file_bytes" not in mock_extract.call_args.kwargs
+        # Verify temp file was cleaned up
+        assert not tmp_path.exists(), "temp file should be cleaned up after extraction"
+
+    @patch('tools.fetch.extract_office_content')
+    @patch('tools.fetch.fetch_web_content')
+    def test_fetch_web_cleans_up_office_temp_on_error(self, mock_fetch, mock_extract) -> None:
+        """Temp file is cleaned up even if Office extraction fails."""
+        from tools.fetch import fetch_web
+        import tempfile
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+        tmp.write(b"PK\x03\x04")
+        tmp.close()
+        tmp_path = Path(tmp.name)
+
+        mock_fetch.return_value = WebData(
+            url="https://example.com/bad.xlsx",
+            html='',
+            final_url="https://example.com/bad.xlsx",
+            status_code=200,
+            content_type=self.XLSX_MIME,
+            cookies_used=False,
+            render_method='http',
+            temp_path=tmp_path,
+        )
+        mock_extract.side_effect = Exception("conversion boom")
+
+        with pytest.raises(Exception, match="conversion boom"):
+            fetch_web("https://example.com/bad.xlsx")
+
+        assert not tmp_path.exists(), "temp file should be cleaned up even on error"
+
+    @patch('tools.fetch.extract_office_content')
+    @patch('tools.fetch.fetch_web_content')
+    def test_fetch_web_office_no_content_raises(self, mock_fetch, mock_extract) -> None:
+        """fetch_web() raises MiseError when Office response has neither bytes nor temp_path."""
+        from tools.fetch import fetch_web
+
+        mock_fetch.return_value = WebData(
+            url="https://example.com/empty.docx",
+            html='',
+            final_url="https://example.com/empty.docx",
+            status_code=200,
+            content_type=self.DOCX_MIME,
+            cookies_used=False,
+            render_method='http',
+            # No raw_bytes, no temp_path
+        )
+
+        with pytest.raises(MiseError, match="No Office content received"):
+            fetch_web("https://example.com/empty.docx")
+
+    @patch('tools.fetch.extract_office_content')
+    @patch('tools.fetch.fetch_web_content')
+    def test_fetch_web_office_content_type_with_charset(self, mock_fetch, mock_extract) -> None:
+        """Office Content-Type with charset parameter still routes correctly."""
+        from tools.fetch import fetch_web
+        from adapters.office import OfficeExtractionResult
+
+        mock_fetch.return_value = WebData(
+            url="https://example.com/report.docx",
+            html='',
+            final_url="https://example.com/report.docx",
+            status_code=200,
+            content_type=f"{self.DOCX_MIME}; charset=utf-8",
+            cookies_used=False,
+            render_method='http',
+            raw_bytes=b"PK\x03\x04 docx",
+        )
+        mock_extract.return_value = OfficeExtractionResult(
+            content="# Report",
+            source_type="docx",
+            export_format="markdown",
+            extension="md",
+        )
+
+        result = fetch_web("https://example.com/report.docx")
+
+        assert result.type == "docx"

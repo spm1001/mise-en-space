@@ -70,6 +70,9 @@ STREAMING_THRESHOLD_BYTES = 50 * 1024 * 1024  # 50 MB
 # Only include types we have extractors for — don't capture what we can't process.
 BINARY_CONTENT_TYPES = [
     'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',    # docx
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',          # xlsx
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',  # pptx
 ]
 
 
@@ -108,7 +111,12 @@ def _stream_binary_to_temp(url: str, content_type: str) -> Path:
         MiseError: On streaming failure
     """
     # Pick extension from content type
-    ext_map = {'application/pdf': '.pdf'}
+    ext_map = {
+        'application/pdf': '.pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+    }
     suffix = ext_map.get(content_type.lower().split(';')[0].strip(), '.bin')
 
     try:

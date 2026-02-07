@@ -15,7 +15,7 @@ from adapters.slides import fetch_presentation
 from adapters.genai import get_video_summary, is_media_file
 from adapters.cdp import is_cdp_available
 from adapters.pdf import fetch_and_extract_pdf, extract_pdf_content
-from adapters.office import fetch_and_extract_office, get_office_type_from_mime, OfficeType
+from adapters.office import fetch_and_extract_office, extract_office_content, get_office_type_from_mime, OfficeType, OfficeExtractionResult
 from adapters.image import fetch_image as adapter_fetch_image, is_image_file, is_svg
 from adapters.web import fetch_web_content, is_web_url
 from extractors.docs import extract_doc_content
@@ -25,7 +25,7 @@ from extractors.gmail import extract_thread_content
 from extractors.comments import extract_comments_content
 from extractors.web import extract_web_content, extract_title
 from typing import Any, Literal
-from models import MiseError, FetchResult, FetchError, EmailContext, WebData
+from models import MiseError, ErrorKind, FetchResult, FetchError, EmailContext, WebData
 from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id, GMAIL_WEB_ID_PREFIXES
 from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata
 
@@ -926,6 +926,76 @@ def _fetch_web_pdf(url: str, web_data: WebData) -> FetchResult:
     )
 
 
+def _fetch_web_office(url: str, web_data: WebData, office_type: OfficeType) -> FetchResult:
+    """
+    Handle a web URL that returned an Office Content-Type.
+
+    Two paths depending on response size:
+    - Small files: raw_bytes in memory → extract_office_content(file_bytes=...)
+    - Large files: temp_path on disk → extract_office_content(file_path=...)
+
+    Caller (fetch_web) is responsible for temp_path cleanup via finally block.
+    """
+    url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
+
+    if web_data.temp_path:
+        # Large file: convert directly from disk (memory-safe)
+        result = extract_office_content(
+            office_type,
+            file_path=web_data.temp_path,
+            file_id=url_hash,
+        )
+        result.warnings.insert(0, "Large file: extracted from temp file")
+    elif web_data.raw_bytes:
+        # Small file: convert from memory
+        result = extract_office_content(
+            office_type,
+            file_bytes=web_data.raw_bytes,
+            file_id=url_hash,
+        )
+    else:
+        raise MiseError(
+            ErrorKind.EXTRACTION_FAILED,
+            f"No Office content received from {url}",
+        )
+
+    # Use filename from URL or fallback
+    url_path = urlparse(url).path
+    filename = unquote(url_path.rsplit('/', 1)[-1])
+    title = filename.rsplit('.', 1)[0].strip() or f"web-{office_type}"
+
+    # Determine output format
+    output_format = "csv" if office_type == "xlsx" else "markdown"
+    content_filename = f"content.{result.extension}"
+
+    # Deposit to workspace
+    folder = get_deposit_folder(office_type, title, url_hash)
+    content_path = write_content(folder, result.content, filename=content_filename)
+
+    extra: dict[str, Any] = {
+        "url": url,
+    }
+    if result.warnings:
+        extra["warnings"] = result.warnings
+    write_manifest(folder, office_type, title, url_hash, extra=extra)
+
+    result_meta: dict[str, Any] = {
+        "title": title,
+        "url": url,
+        "office_type": office_type,
+    }
+    if result.warnings:
+        result_meta["warnings"] = result.warnings
+
+    return FetchResult(
+        path=str(folder),
+        content_file=str(content_path),
+        format=output_format,
+        type=office_type,
+        metadata=result_meta,
+    )
+
+
 def fetch_web(url: str) -> FetchResult:
     """
     Fetch web page, extract content, deposit to workspace.
@@ -944,12 +1014,24 @@ def fetch_web(url: str) -> FetchResult:
     # Fetch via adapter (probes URL, captures Content-Type)
     web_data = fetch_web_content(url)
 
-    # If server returned a PDF, route to PDF extraction instead of HTML
-    if 'application/pdf' in web_data.content_type.lower():
+    ct = web_data.content_type.lower()
+
+    # Route binary content to appropriate extractors instead of HTML path
+    # PDF
+    if 'application/pdf' in ct:
         try:
             return _fetch_web_pdf(url, web_data)
         finally:
-            # Clean up temp file if streaming was used
+            if web_data.temp_path:
+                web_data.temp_path.unlink(missing_ok=True)
+
+    # Office (DOCX, XLSX, PPTX)
+    ct_bare = ct.split(';')[0].strip()
+    office_type = get_office_type_from_mime(ct_bare)
+    if office_type:
+        try:
+            return _fetch_web_office(url, web_data, office_type)
+        finally:
             if web_data.temp_path:
                 web_data.temp_path.unlink(missing_ok=True)
 
