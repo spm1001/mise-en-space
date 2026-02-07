@@ -1,18 +1,28 @@
 # mise-en-space
 
-Google Workspace MCP server — *mise en place* for knowledge work. Everything prepped, in its place, ready for Claude to cook with.
+An MCP sous-chef for Google Workspace that provides a *mise en place* for knowledge work. Peel and pith removed, everything prepped and in its place, ready for Claude to cook with.
 
-## Why
+## Why another tool for LLMs to use Google Workspace?
 
-We tested every Google Workspace MCP we could find. The official one has 50 tools and requires multiple round-trips for basic tasks — search Gmail, get back a list of IDs, call again for each message. Our v1 had rich metadata but messy architecture and 21 tools eating ~17k tokens of context just by existing.
+[Google's official Workspace MCP](https://github.com/gemini-cli-extensions/workspace) ![Stars](https://img.shields.io/github/stars/gemini-cli-extensions/workspace?style=social) has 50 tools and requires multiple round-trips for basic tasks — search Gmail, get back a list of IDs, call again for each message, all of it burning context. Because it's essentially a thin wrapper over the Workspace APIs, the tool definitions alone take up ~15k of tokens every session.
 
-mise-en-space is what came out of that bakeoff:
+Looking around for others, I found plenty of inspiration, but also some snags:
+    
+ - [taylorwilsdon/google_workspace_mcp](https://github.com/taylorwilsdon/google_workspace_mcp) ![Stars](https://img.shields.io/github/stars/taylorwilsdon/google_workspace_mcp?style=social) covers every Google service, but returns all content inline — a 70-slide deck or 30-message thread lands straight in your context window
+ - [felores/gdrive-mcp-server](https://github.com/felores/gdrive-mcp-server) ![Stars](https://img.shields.io/github/stars/felores/gdrive-mcp-server?style=social) deposits files to disk (Docs→Markdown, Sheets→CSV) the way I wanted, and also used a clever trick to get Drive to do high quality conversions, but only does Google Drive, so its coverage was limited for my needs
+ - [GongRzhe/Gmail-MCP-Server](https://github.com/GongRzhe/Gmail-MCP-Server) ![Stars](https://img.shields.io/github/stars/GongRzhe/Gmail-MCP-Server?style=social) — pre-built Gmail filter templates. Good ergonomics for a single source, but again, just a single source. 
+- [aaronsb/google-workspace-mcp](https://github.com/aaronsb/google-workspace-mcp) ![Stars](https://img.shields.io/github/stars/aaronsb/google-workspace-mcp?style=social) — deposits files to disk with per-account folders. The right idea for file handling IMO - don't spam the caller's context window, but I didn't need multi-account support
+- [a-bonus/google-docs-mcp](https://github.com/a-bonus/google-docs-mcp) ![Stars](https://img.shields.io/github/stars/a-bonus/google-docs-mcp?style=social) — tab-aware Docs extraction. Everyone else ignores multi-tab documents.
 
-- **3 tools, not 50.** Search, fetch, create. ~3k tokens of tool definitions. Everything routes through the same three verbs.
-- **Filesystem-first.** Content goes to disk as markdown/CSV, not into the context window. Claude reads what it needs.
+I wanted something that had the best of all these ideas:
+
 - **Sous-chef philosophy.** Fetch a doc and get the comments too. Fetch an email and get the attachments extracted. Don't make the chef ask for every ingredient separately.
+- **Clean extraction.** Web pages arrive as clean markdown without nav bars. PDFs use hybrid extraction ([markitdown](https://github.com/microsoft/markitdown) → Drive OCR fallback). Office files convert automatically.
+- **Opinionated, LLM-first control surface** 3 tools not 50 - search, fetch, create. ~3k tokens of tool definitions and everything routes through the same three verbs.
 - **One call, rich results.** Gmail search returns subjects, senders, snippets, and attachment names — not a bag of IDs requiring N+1 follow-ups.
-- **Clean extraction.** Web pages arrive as clean markdown without nav bars. PDFs use hybrid extraction (markitdown → Drive OCR fallback). Office files convert automatically.
+- **Filesystem-deposits.** Content goes to disk as markdown/CSV, not into the context window. Claude reads (and greps) what it needs.
+- **Companion Skill.** I like the pattern where we provide a tool and a companion [Skill](https://docs.anthropic.com/en/docs/claude-code/skills) that acts as the instruction manual on how to use it.
+- **[MCP](https://modelcontextprotocol.io) Optional.** Option for CLI based interactions e.g. if you want to use a different agent harness like pi.
 
 ## The 3 Verbs
 
@@ -22,19 +32,50 @@ mise-en-space is what came out of that bakeoff:
 | `fetch` | Extract content to `mise-fetch/` as markdown/CSV | Yes — content folder |
 | `create` | Make a new Doc/Sheet/Slides from markdown | No |
 
+## CLI
+
+Same 3 verbs, for agents without MCP support:
+
+```bash
+mise search "quarterly reports"
+mise search "from:alice budget" --sources gmail
+mise fetch 1abc123def456
+mise fetch "https://simonwillison.net/..."
+mise create "Title" --content "# Markdown content"
+```
+
 ## Supported Content Types
 
-| Source | What you get |
+| What's in the larder | What the chef gets |
 |--------|-------------|
 | Google Docs | Markdown + open comments |
 | Google Sheets | CSV + chart PNGs + open comments |
 | Google Slides | Markdown + selective thumbnails + open comments |
-| Gmail threads | Markdown with signature stripping, attachment extraction |
-| PDFs | Markdown (markitdown → Drive OCR fallback) |
+| Gmail threads | Markdown with signature stripping via [talon](https://github.com/mailgun/talon), attachment extraction |
+| PDFs | Markdown ([markitdown](https://github.com/microsoft/markitdown) → Drive OCR fallback) |
 | Office files (DOCX/XLSX/PPTX) | Markdown or CSV via Drive conversion |
-| Web URLs | Clean article extraction, JS rendering fallback |
-| Video/Audio | AI summary + metadata (requires chrome-debug) |
+| Web URLs | Clean article extraction as markdown using [trafilatura](https://github.com/adbar/trafilatura), JS rendering fallback |
+| Video/Audio | AI summary + metadata (requires claude-suite) |
 | Images | Deposited as-is; SVG rendered to PNG |
+
+## Architecture
+
+```
+server.py       MCP server (thin wrappers around tools)
+cli.py          CLI interface (same verbs, same tools)
+tools/          Business logic — routing, orchestration
+adapters/       Thin Google API wrappers (one per service)
+extractors/     Pure functions, no I/O (testable without APIs)
+workspace/      File deposit management
+skill/          Claude skill (symlinked to ~/.claude/skills/mise)
+```
+
+**Layer rules:**
+- Extractors never import from adapters (no I/O)
+- Tools wire adapters → extractors → workspace
+- Server and CLI are both thin wrappers around tools
+
+Adding a new content type means: adapter (API call), extractor (parse), tool (wire + deposit). The layers are independent.
 
 ## Setup
 
@@ -43,7 +84,7 @@ mise-en-space is what came out of that bakeoff:
 ```bash
 git clone https://github.com/spm1001/mise-en-space.git
 cd mise-en-space
-uv sync
+uv sync    # requires uv — https://docs.astral.sh/uv/
 ```
 
 ### 2. Google OAuth
@@ -85,43 +126,3 @@ ln -s /path/to/mise-en-space/skill ~/.pi/agent/skills/mise
 
 Without the skill, Claude can call the tools but won't know the patterns that make them useful (like following `email_context` hints or filtering large results with jq).
 
-## CLI
-
-Same 3 verbs, for agents without MCP support:
-
-```bash
-mise search "quarterly reports"
-mise search "from:alice budget" --sources gmail
-mise fetch 1abc123def456
-mise fetch "https://simonwillison.net/..."
-mise create "Title" --content "# Markdown content"
-```
-
-## Architecture
-
-```
-server.py       MCP server (thin wrappers around tools)
-cli.py          CLI interface (same verbs, same tools)
-tools/          Business logic — routing, orchestration
-adapters/       Thin Google API wrappers (one per service)
-extractors/     Pure functions, no I/O (testable without APIs)
-workspace/      File deposit management
-skill/          Claude skill (symlinked to ~/.claude/skills/mise)
-```
-
-**Layer rules:**
-- Extractors never import from adapters (no I/O)
-- Tools wire adapters → extractors → workspace
-- Server and CLI are both thin wrappers around tools
-
-Adding a new content type means: adapter (API call), extractor (parse), tool (wire + deposit). The layers are independent.
-
-## Design Decisions
-
-**Why filesystem-first?** A 70-slide presentation or 30-message Gmail thread can be 50k+ tokens. Dumping that into the MCP response wastes context. Writing to disk lets Claude read selectively — `head -50`, `grep`, or read the whole thing.
-
-**Why 3 tools?** Every MCP tool definition costs tokens just by existing. 50 tools × ~300 tokens each = 15k tokens before Claude does anything. 3 tools × ~1k each = 3k tokens. The routing happens server-side.
-
-**Why sous-chef?** When you fetch a document, you almost always want the comments too. When you fetch an email, you want the attachments extracted. Requiring separate calls for predictable follow-ups wastes round-trips.
-
-**Why `base_path`?** MCP servers run as separate processes. Without `base_path`, deposits land in the server's directory, not Claude's working directory. Always pass `base_path` when calling via MCP.
