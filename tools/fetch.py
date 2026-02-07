@@ -822,60 +822,13 @@ def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_c
     )
 
 
-def _extract_pdf_from_path(pdf_path: 'Path', file_id: str) -> 'PdfExtractionResult':
-    """
-    Extract PDF content from a file on disk (no memory load).
-
-    Uses markitdown directly on the path. Falls back to Drive conversion
-    if markitdown extracts too little (same threshold as extract_pdf_content).
-    """
-    from adapters.pdf import DEFAULT_MIN_CHARS_THRESHOLD, PdfExtractionResult
-    from adapters.conversion import convert_via_drive
-    from markitdown import MarkItDown
-
-    warnings: list[str] = ["Large file: extracted from temp file"]
-
-    md = MarkItDown()
-    result = md.convert_local(str(pdf_path))
-    content = result.text_content or ""
-    char_count = len(content.strip())
-
-    if char_count >= DEFAULT_MIN_CHARS_THRESHOLD:
-        return PdfExtractionResult(
-            content=content,
-            method="markitdown",
-            char_count=char_count,
-            warnings=warnings,
-        )
-
-    # Markitdown failed — fall back to Drive conversion from path
-    warnings.append(
-        f"Markitdown extracted only {char_count} chars, falling back to Drive conversion"
-    )
-    conversion_result = convert_via_drive(
-        file_path=pdf_path,
-        source_mime="application/pdf",
-        target_type="doc",
-        export_format="markdown",
-        file_id_hint=file_id,
-    )
-    warnings.extend(conversion_result.warnings)
-
-    return PdfExtractionResult(
-        content=conversion_result.content,
-        method="drive",
-        char_count=len(conversion_result.content.strip()),
-        warnings=warnings,
-    )
-
-
 def _fetch_web_pdf(url: str, web_data: WebData) -> FetchResult:
     """
     Handle a web URL that returned application/pdf Content-Type.
 
     Two paths depending on response size:
     - Small PDFs: raw_bytes in memory → extract_pdf_content(file_bytes=...)
-    - Large PDFs: temp_path on disk → markitdown from path (no memory load)
+    - Large PDFs: temp_path on disk → extract_pdf_content(file_path=...)
 
     Caller (fetch_web) is responsible for temp_path cleanup via finally block.
     """
@@ -883,7 +836,7 @@ def _fetch_web_pdf(url: str, web_data: WebData) -> FetchResult:
 
     if web_data.temp_path:
         # Large PDF: extract directly from temp file (memory-safe)
-        result = _extract_pdf_from_path(web_data.temp_path, url_hash)
+        result = extract_pdf_content(file_id=url_hash, file_path=web_data.temp_path)
     elif web_data.raw_bytes:
         # Small PDF: extract from memory
         result = extract_pdf_content(file_bytes=web_data.raw_bytes, file_id=url_hash)

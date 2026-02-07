@@ -41,25 +41,41 @@ class PdfExtractionResult:
 
 
 def extract_pdf_content(
-    file_bytes: bytes,
+    file_bytes: bytes | None = None,
     file_id: str = "",
     min_chars_threshold: int = DEFAULT_MIN_CHARS_THRESHOLD,
+    *,
+    file_path: Path | None = None,
 ) -> PdfExtractionResult:
     """
     Extract text from PDF using hybrid strategy.
 
+    Accepts either file_bytes (in-memory) or file_path (from disk).
+    Use file_path for large files to avoid memory issues.
+
     Args:
-        file_bytes: Raw PDF content
+        file_bytes: Raw PDF content (mutually exclusive with file_path)
         file_id: Optional file ID (for temp file naming if Drive fallback needed)
         min_chars_threshold: Minimum chars to consider markitdown successful
+        file_path: Path to PDF on disk (mutually exclusive with file_bytes)
 
     Returns:
         PdfExtractionResult with content and extraction method used
     """
+    if file_bytes is None and file_path is None:
+        raise ValueError("Must provide either file_bytes or file_path")
+    if file_bytes is not None and file_path is not None:
+        raise ValueError("Cannot provide both file_bytes and file_path")
+
     warnings: list[str] = []
 
     # 1. Try markitdown first (fast path)
-    content = _extract_with_markitdown(file_bytes)
+    if file_path is not None:
+        md = MarkItDown()
+        result = md.convert_local(str(file_path))
+        content = result.text_content or ""
+    else:
+        content = _extract_with_markitdown(file_bytes)
     char_count = len(content.strip())
 
     # 2. If markitdown produced enough content, we're done
@@ -79,6 +95,7 @@ def extract_pdf_content(
 
     conversion_result = convert_via_drive(
         file_bytes=file_bytes,
+        file_path=file_path,
         source_mime="application/pdf",
         target_type="doc",
         export_format="markdown",
@@ -136,51 +153,19 @@ def _fetch_and_extract_pdf_large(
     """
     Extract large PDF using streaming download.
 
-    Downloads to temp file, extracts with markitdown (which needs a path anyway),
+    Downloads to temp file, delegates to extract_pdf_content(file_path=...),
     then cleans up.
     """
-    warnings: list[str] = []
-    warnings.append("Large file: using streaming download")
-
-    # Download to temp file
     tmp_path = download_file_to_temp(file_id, suffix=".pdf")
 
     try:
-        # Extract with markitdown (which needs a file path)
-        md = MarkItDown()
-        result = md.convert_local(str(tmp_path))
-        content = result.text_content or ""
-        char_count = len(content.strip())
-
-        if char_count >= min_chars_threshold:
-            return PdfExtractionResult(
-                content=content,
-                method="markitdown",
-                char_count=char_count,
-                warnings=warnings,
-            )
-
-        # Markitdown failed — need Drive conversion
-        # For large files, stream directly from disk (no memory load)
-        warnings.append(
-            f"Markitdown extracted only {char_count} chars, falling back to Drive conversion"
-        )
-
-        conversion_result = convert_via_drive(
+        result = extract_pdf_content(
+            file_id=file_id,
+            min_chars_threshold=min_chars_threshold,
             file_path=tmp_path,
-            source_mime="application/pdf",
-            target_type="doc",
-            export_format="markdown",
-            file_id_hint=file_id,
         )
-        warnings.extend(conversion_result.warnings)
-
-        return PdfExtractionResult(
-            content=conversion_result.content,
-            method="drive",
-            char_count=len(conversion_result.content.strip()),
-            warnings=warnings,
-        )
+        result.warnings.insert(0, "Large file: using streaming download")
+        return result
     finally:
         tmp_path.unlink(missing_ok=True)
 

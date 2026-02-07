@@ -472,11 +472,10 @@ class TestWebPdfRouting:
         assert web_data.temp_path == tmp
         assert web_data.raw_bytes is None
 
-    @patch('tools.fetch._extract_pdf_from_path')
+    @patch('tools.fetch.extract_pdf_content')
     @patch('tools.fetch.fetch_web_content')
     def test_fetch_web_routes_large_pdf_via_temp_path(self, mock_fetch, mock_extract) -> None:
         """fetch_web() uses temp_path for large streamed PDFs."""
-        from pathlib import Path
         from tools.fetch import fetch_web
         from adapters.pdf import PdfExtractionResult
         import tempfile
@@ -506,15 +505,16 @@ class TestWebPdfRouting:
         result = fetch_web("https://example.com/huge.pdf")
 
         assert result.type == "pdf"
-        mock_extract.assert_called_once_with(tmp_path, mock_extract.call_args.args[1])
+        mock_extract.assert_called_once()
+        assert mock_extract.call_args.kwargs["file_path"] == tmp_path
+        assert "file_bytes" not in mock_extract.call_args.kwargs
         # Verify temp file was cleaned up
         assert not tmp_path.exists(), "temp file should be cleaned up after extraction"
 
-    @patch('tools.fetch._extract_pdf_from_path')
+    @patch('tools.fetch.extract_pdf_content')
     @patch('tools.fetch.fetch_web_content')
     def test_fetch_web_cleans_up_temp_on_extraction_error(self, mock_fetch, mock_extract) -> None:
         """Temp file is cleaned up even if extraction fails."""
-        from pathlib import Path
         from tools.fetch import fetch_web
         import tempfile
 
