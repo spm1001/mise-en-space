@@ -3,7 +3,11 @@
     "allow": [
       "mcp__workspace__create_doc_from_markdown",
       "mcp__workspace__get_working_set",
-      "Skill(webctl)"
+      "Skill(webctl)",
+      "mcp__workspace__get_message",
+      "mcp__workspace__get_comments",
+      "mcp__mise__search",
+      "mcp__mise__fetch"
     ]
   },
   "enableAllProjectMcpServers": true,

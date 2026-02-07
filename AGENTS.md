@@ -1,40 +1,69 @@
 # Agent Instructions
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+**mise-en-space** — Content fetching for Google Workspace (web URLs, Google Drive, Gmail).
 
 ## Quick Reference
 
 ```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --status in_progress  # Claim work
-bd close <id>         # Complete work
-bd sync               # Sync with git
+# CLI (for pi and other non-MCP agents)
+mise search "quarterly reports"
+mise search "from:alice budget" --sources gmail
+mise fetch 1abc123def456
+mise fetch "https://simonwillison.net/..."
+mise create "Title" --content "# Markdown"
+
+# Development
+uv run pytest               # Run tests
+uv run python server.py     # Run MCP server
 ```
 
-## Landing the Plane (Session Completion)
+## Work Tracking
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+This project uses **arc** for issue tracking.
 
-**MANDATORY WORKFLOW:**
+```bash
+arc list --ready            # Find available work
+arc show <id>               # View issue details
+arc done <id>               # Complete work
+```
 
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
+## Architecture
+
+```
+adapters/       Google API wrappers (thin, async)
+extractors/     Pure functions (no I/O, testable)
+tools/          Tool implementations (business logic)
+workspace/      File deposit management
+server.py       MCP server (thin wrappers)
+cli.py          CLI interface (pi-compatible)
+```
+
+**Layer rules:**
+- Extractors NEVER import from adapters (no I/O)
+- Adapters MAY import parsing utilities from extractors
+- Tools wire adapters → extractors → workspace
+
+## CLI vs MCP
+
+Both provide the same 3 verbs:
+
+| Verb | CLI | MCP |
+|------|-----|-----|
+| search | `mise search "query"` | `mcp__mise__search(query)` |
+| fetch | `mise fetch <id>` | `mcp__mise__fetch(file_id)` |
+| create | `mise create "Title"` | `mcp__mise__create(content, title)` |
+
+The CLI is for agents without MCP support (like pi). Same functionality, different invocation.
+
+## Session Completion
+
+**When ending a work session:**
+
+1. Create issues for remaining work
+2. Run quality gates (if code changed): `uv run pytest`
+3. Update issue status
+4. Push to remote:
    ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
+   git pull --rebase && git push
    ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-
+5. Verify: `git status` shows "up to date"

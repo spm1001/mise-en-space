@@ -21,6 +21,9 @@ dependencies = [
     "httpx>=0.28.0",
 ]
 
+[project.scripts]
+mise = "cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
@@ -46,6 +49,7 @@ packages = ["extractors", "adapters", "tools", "workspace"]
 "retry.py" = "retry.py"
 "oauth_config.py" = "oauth_config.py"
 "auth.py" = "auth.py"
+"cli.py" = "cli.py"
 
 [tool.black]
 line-length = 100
