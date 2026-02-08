@@ -158,6 +158,46 @@ def _is_extractable_attachment(mime_type: str) -> bool:
     return False
 
 
+def _match_exfil_file(
+    att_filename: str,
+    exfil_files: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """
+    Match Gmail attachment to pre-exfil'd Drive file with fallbacks.
+
+    The exfil script may modify filenames:
+    - ensureExtension: "report" → "report.pdf"
+    - smartFilename: UUID names get date+sender prefix
+
+    Strategies (in order):
+    1. Exact name match
+    2. Stem match (strip extensions, catches ensureExtension case)
+    3. Single-file fallback (message ID already proved provenance)
+    """
+    if not exfil_files:
+        return None
+
+    # 1. Exact name match
+    by_name = {f["name"]: f for f in exfil_files}
+    if att_filename in by_name:
+        return by_name[att_filename]
+
+    # 2. Stem match — handles ensureExtension() adding .pdf/.xlsx etc.
+    att_stem = att_filename.rsplit(".", 1)[0] if "." in att_filename else att_filename
+    for f in exfil_files:
+        drive_name = f["name"]
+        drive_stem = drive_name.rsplit(".", 1)[0] if "." in drive_name else drive_name
+        if att_stem == drive_stem:
+            return f
+
+    # 3. Single-file fallback — if only one exfil file for this message,
+    # the message ID lookup already proved provenance
+    if len(exfil_files) == 1:
+        return exfil_files[0]
+
+    return None
+
+
 def _deposit_attachment_content(
     content_bytes: bytes,
     filename: str,
@@ -186,6 +226,7 @@ def _deposit_attachment_content(
             "extraction_method": result.method,
             "content_file": content_filename,
             "char_count": result.char_count,
+            "extracted_text": result.content,
         }
 
     elif mime_type.startswith("image/"):
@@ -296,7 +337,6 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
     for msg in thread_data.messages:
         # Get Drive files matching this message's attachments
         exfil_files = exfiltrated.get(msg.message_id, [])
-        exfil_by_name = {f["name"]: f for f in exfil_files}
 
         for att in msg.attachments:
             att_info = {
@@ -320,7 +360,7 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
                 continue
 
             # Try pre-exfil'd Drive copy first (faster, already indexed)
-            exfil_match = exfil_by_name.get(att.filename)
+            exfil_match = _match_exfil_file(att.filename, exfil_files)
             if exfil_match and _is_extractable_attachment(att.mime_type):
                 result = _extract_from_drive(
                     file_id=exfil_match["file_id"],
@@ -350,7 +390,19 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
 
         all_drive_links.extend(msg.drive_links)
 
-    # Write thread content
+    # Append extracted attachment content inline (sous-chef: one file to read)
+    inline_sections: list[str] = []
+    for att_result in extracted_attachments:
+        extracted_text = att_result.pop("extracted_text", None)
+        if extracted_text:
+            inline_sections.append(
+                f"\n---\n\n## Attachment: {att_result['filename']}\n\n{extracted_text}"
+            )
+
+    if inline_sections:
+        content = content + "\n" + "\n".join(inline_sections)
+
+    # Write thread content (with inline attachments appended)
     content_path = write_content(folder, content)
 
     # Build manifest extras
