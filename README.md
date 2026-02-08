@@ -126,3 +126,26 @@ ln -s /path/to/mise-en-space/skill ~/.pi/agent/skills/mise
 
 Without the skill, Claude can call the tools but won't know the patterns that make them useful (like following `email_context` hints or filtering large results with jq).
 
+## What to Expect (Latency)
+
+MCP server startup is ~1s. After that:
+
+| Operation | Typical | Notes |
+|-----------|---------|-------|
+| **Search (Drive + Gmail)** | 1-2s | Parallel — faster than either alone |
+| **Search (single source)** | 1.5-2.5s | Drive slightly faster than Gmail |
+| **Fetch: Gmail thread** | ~250ms | Fastest path |
+| **Fetch: Google Doc** | ~1.7s | API latency |
+| **Fetch: Google Sheet** | ~1s | 2 API calls (meta + values) |
+| **Fetch: Slides (no thumbnails)** | ~2.7s | Text-only slides skip thumbnails |
+| **Fetch: Slides (with thumbnails)** | ~5s | ~0.5s per thumbnail, sequential |
+| **Fetch: PDF (simple)** | ~0.5-1s | markitdown handles most PDFs |
+| **Fetch: PDF (complex/scanned)** | 5-15s | Falls back to Drive OCR |
+| **Fetch: Office file** | 5-10s | Drive conversion (upload→convert→export) |
+| **Fetch: Web page** | 0.5-4s | Depends on site speed and content size |
+| **Fetch: Image** | ~100ms | Direct download, no extraction |
+
+**The slow paths:** Office files and complex PDFs are unavoidably slow — both require Drive to do server-side conversion. Email attachments that are Office files are listed but not auto-extracted for this reason.
+
+Detailed timing data and flow diagrams: [`docs/information-flow.md`](docs/information-flow.md)
+
