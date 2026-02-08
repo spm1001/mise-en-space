@@ -7,7 +7,7 @@ Routes by ID type, extracts content, deposits to workspace.
 import hashlib
 from pathlib import Path
 from urllib.parse import unquote, urlparse
-from adapters.drive import get_file_metadata, _parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME, fetch_file_comments
+from adapters.drive import get_file_metadata, _parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME, fetch_file_comments, lookup_exfiltrated
 from adapters.gmail import fetch_thread, download_attachment
 from adapters.docs import fetch_document
 from adapters.sheets import fetch_spreadsheet
@@ -158,6 +158,57 @@ def _is_extractable_attachment(mime_type: str) -> bool:
     return False
 
 
+def _extract_from_drive(
+    file_id: str,
+    filename: str,
+    mime_type: str,
+    folder: Any,  # Path
+    warnings: list[str],
+) -> dict[str, Any] | None:
+    """
+    Extract content from a pre-exfiltrated Drive file.
+
+    Uses the same extraction logic as Gmail attachments but fetches
+    from Drive instead of Gmail API. Faster when the file is already
+    in Drive (e.g. from background exfiltration script).
+    """
+    try:
+        content_bytes = download_file(file_id)
+
+        if mime_type == "application/pdf":
+            from adapters.pdf import extract_pdf_content
+            result = extract_pdf_content(content_bytes, file_id=file_id)
+
+            content_filename = f"{filename}.md"
+            write_content(folder, result.content, filename=content_filename)
+            write_image(folder, content_bytes, filename)
+
+            return {
+                "filename": filename,
+                "mime_type": mime_type,
+                "extracted": True,
+                "extraction_method": result.method,
+                "content_file": content_filename,
+                "char_count": result.char_count,
+            }
+
+        elif mime_type.startswith("image/"):
+            write_image(folder, content_bytes, filename)
+
+            return {
+                "filename": filename,
+                "mime_type": mime_type,
+                "extracted": True,
+                "deposited_as": filename,
+            }
+
+        return None
+
+    except Exception as e:
+        warnings.append(f"Drive exfil fallback failed for {filename}: {str(e)}")
+        return None
+
+
 def _extract_attachment_content(
     message_id: str,
     att: Any,  # EmailAttachment
@@ -255,7 +306,16 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
     extraction_warnings: list[str] = []
     extracted_count = 0
 
+    # Pre-exfil lookup: check if attachments already exist in Drive
+    # (indexed by fullText, faster than Gmail download + extraction)
+    message_ids = [msg.message_id for msg in thread_data.messages]
+    exfiltrated = lookup_exfiltrated(message_ids)
+
     for msg in thread_data.messages:
+        # Get Drive files matching this message's attachments
+        exfil_files = exfiltrated.get(msg.message_id, [])
+        exfil_by_name = {f["name"]: f for f in exfil_files}
+
         for att in msg.attachments:
             att_info = {
                 "filename": att.filename,
@@ -277,7 +337,23 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
                 )
                 continue
 
-            # Try to extract extractable types
+            # Try pre-exfil'd Drive copy first (faster, already indexed)
+            exfil_match = exfil_by_name.get(att.filename)
+            if exfil_match and _is_extractable_attachment(att.mime_type):
+                result = _extract_from_drive(
+                    file_id=exfil_match["file_id"],
+                    filename=att.filename,
+                    mime_type=att.mime_type,
+                    folder=folder,
+                    warnings=extraction_warnings,
+                )
+                if result:
+                    result["source"] = "drive_exfil"
+                    extracted_attachments.append(result)
+                    extracted_count += 1
+                    continue
+
+            # Fall back to Gmail download
             if _is_extractable_attachment(att.mime_type):
                 result = _extract_attachment_content(
                     message_id=msg.message_id,
@@ -286,6 +362,7 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
                     warnings=extraction_warnings,
                 )
                 if result:
+                    result["source"] = "gmail"
                     extracted_attachments.append(result)
                     extracted_count += 1
 
