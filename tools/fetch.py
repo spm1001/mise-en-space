@@ -158,6 +158,49 @@ def _is_extractable_attachment(mime_type: str) -> bool:
     return False
 
 
+def _deposit_attachment_content(
+    content_bytes: bytes,
+    filename: str,
+    mime_type: str,
+    file_id: str,
+    folder: Any,  # Path
+) -> dict[str, Any] | None:
+    """
+    Route attachment bytes by MIME type and deposit to folder.
+
+    Shared by both Drive (pre-exfil) and Gmail download paths.
+    Returns extraction result dict or None if type not handled.
+    """
+    if mime_type == "application/pdf":
+        from adapters.pdf import extract_pdf_content
+        result = extract_pdf_content(content_bytes, file_id=file_id)
+
+        content_filename = f"{filename}.md"
+        write_content(folder, result.content, filename=content_filename)
+        write_image(folder, content_bytes, filename)
+
+        return {
+            "filename": filename,
+            "mime_type": mime_type,
+            "extracted": True,
+            "extraction_method": result.method,
+            "content_file": content_filename,
+            "char_count": result.char_count,
+        }
+
+    elif mime_type.startswith("image/"):
+        write_image(folder, content_bytes, filename)
+
+        return {
+            "filename": filename,
+            "mime_type": mime_type,
+            "extracted": True,
+            "deposited_as": filename,
+        }
+
+    return None
+
+
 def _extract_from_drive(
     file_id: str,
     filename: str,
@@ -168,42 +211,11 @@ def _extract_from_drive(
     """
     Extract content from a pre-exfiltrated Drive file.
 
-    Uses the same extraction logic as Gmail attachments but fetches
-    from Drive instead of Gmail API. Faster when the file is already
-    in Drive (e.g. from background exfiltration script).
+    Faster when the file is already in Drive (background exfiltration).
     """
     try:
         content_bytes = download_file(file_id)
-
-        if mime_type == "application/pdf":
-            from adapters.pdf import extract_pdf_content
-            result = extract_pdf_content(content_bytes, file_id=file_id)
-
-            content_filename = f"{filename}.md"
-            write_content(folder, result.content, filename=content_filename)
-            write_image(folder, content_bytes, filename)
-
-            return {
-                "filename": filename,
-                "mime_type": mime_type,
-                "extracted": True,
-                "extraction_method": result.method,
-                "content_file": content_filename,
-                "char_count": result.char_count,
-            }
-
-        elif mime_type.startswith("image/"):
-            write_image(folder, content_bytes, filename)
-
-            return {
-                "filename": filename,
-                "mime_type": mime_type,
-                "extracted": True,
-                "deposited_as": filename,
-            }
-
-        return None
-
+        return _deposit_attachment_content(content_bytes, filename, mime_type, file_id, folder)
     except Exception as e:
         warnings.append(f"Drive exfil fallback failed for {filename}: {str(e)}")
         return None
@@ -216,12 +228,11 @@ def _extract_attachment_content(
     warnings: list[str],
 ) -> dict[str, Any] | None:
     """
-    Download and extract content from a single attachment.
+    Download and extract content from a single Gmail attachment.
 
     Returns extraction result dict or None on failure.
     """
     try:
-        # Download attachment
         download = download_attachment(
             message_id=message_id,
             attachment_id=att.attachment_id,
@@ -229,44 +240,15 @@ def _extract_attachment_content(
             mime_type=att.mime_type,
         )
 
-        # Route by MIME type
-        if att.mime_type == "application/pdf":
-            # Extract PDF text via adapter
-            from adapters.pdf import extract_pdf_content
-            result = extract_pdf_content(download.content, file_id=att.attachment_id)
+        result = _deposit_attachment_content(
+            download.content, att.filename, att.mime_type, att.attachment_id, folder
+        )
 
-            # Write extracted content to folder
-            content_filename = f"{att.filename}.md"
-            write_content(folder, result.content, filename=content_filename)
-
-            # Also write raw PDF for reference
-            write_image(folder, download.content, att.filename)
-
-            return {
-                "filename": att.filename,
-                "mime_type": att.mime_type,
-                "extracted": True,
-                "extraction_method": result.method,
-                "content_file": content_filename,
-                "char_count": result.char_count,
-            }
-
-        elif att.mime_type.startswith("image/"):
-            # Deposit image as-is (Claude can view images)
-            write_image(folder, download.content, att.filename)
-
-            return {
-                "filename": att.filename,
-                "mime_type": att.mime_type,
-                "extracted": True,
-                "deposited_as": att.filename,
-            }
-
-        # Clean up temp file if created
-        if download.temp_path:
+        # Clean up temp file if created and type not handled
+        if result is None and download.temp_path:
             download.temp_path.unlink(missing_ok=True)
 
-        return None
+        return result
 
     except Exception as e:
         warnings.append(f"Failed to extract {att.filename}: {str(e)}")

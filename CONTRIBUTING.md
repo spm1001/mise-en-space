@@ -75,4 +75,5 @@ arc new "extract_sheets_content returns empty for merged cells" \
 
 - **CLAUDE.md** — full architecture docs, design decisions, API patterns
 - **docs/information-flow.md** — how data flows from APIs through extraction to deposit
+- **docs/test-design.md** — what's tested, known gaps, patterns for adding tests
 - **README.md** — what this project is and why it exists
