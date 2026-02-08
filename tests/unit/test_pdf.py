@@ -400,3 +400,26 @@ class TestConvertViaDriveValidation:
                 source_mime="application/pdf",
                 target_type="doc",
             )
+
+    @patch("adapters.conversion.get_drive_service")
+    def test_source_file_id_uses_copy_not_upload(self, mock_service_fn):
+        """source_file_id uses files().copy() instead of files().create()."""
+        from adapters.conversion import convert_via_drive
+
+        mock_service = MagicMock()
+        mock_service_fn.return_value = mock_service
+        mock_service.files().copy().execute.return_value = {"id": "temp_copy_id"}
+        mock_service.files().export().execute.return_value = b"converted content"
+        mock_service.files().delete().execute.return_value = None
+
+        result = convert_via_drive(
+            source_file_id="existing_drive_file",
+            target_type="doc",
+            export_format="markdown",
+        )
+
+        # copy() called, create() not called
+        mock_service.files().copy.assert_called()
+        copy_kwargs = mock_service.files().copy.call_args
+        assert copy_kwargs.kwargs["fileId"] == "existing_drive_file"
+        assert result.content == "converted content"

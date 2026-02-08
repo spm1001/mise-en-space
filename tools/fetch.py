@@ -487,7 +487,7 @@ def fetch_attachment(
     for msg in thread_data.messages:
         for att in msg.attachments:
             all_attachment_names.append(att.filename)
-            if att.filename == attachment_name:
+            if att.filename.lower() == attachment_name.lower():
                 target_att = att
                 target_msg = msg
                 break
@@ -568,7 +568,9 @@ def fetch_attachment(
             },
         )
 
-    # PDF and images need bytes (no copy-convert shortcut)
+    # PDF and images need bytes — no copy-convert shortcut because:
+    # PDF: markitdown runs locally first (needs bytes), Drive is fallback only
+    # Images: deposited as files for Claude to view (need bytes on disk)
     # Download from pre-exfil Drive or Gmail as appropriate
     if mime_type == "application/pdf" or mime_type.startswith("image/"):
         content_bytes = None

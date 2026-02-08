@@ -513,6 +513,37 @@ class TestFetchAttachment:
         assert "budget.xlsx" in result.message
 
     @patch("tools.fetch.fetch_thread")
+    @patch("tools.fetch.lookup_exfiltrated", return_value={})
+    @patch("tools.fetch.download_attachment")
+    @patch("tools.fetch.extract_office_content")
+    @patch("tools.fetch.get_deposit_folder", return_value="/tmp/test-deposit")
+    @patch("tools.fetch.write_content", return_value="/tmp/test-deposit/content.csv")
+    @patch("tools.fetch.write_manifest")
+    def test_case_insensitive_filename_match(
+        self, mock_manifest, mock_write, mock_folder,
+        mock_office, mock_download, mock_lookup, mock_fetch
+    ):
+        """Filename matching is case-insensitive."""
+        xlsx_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        att = EmailAttachment(
+            filename="Budget.xlsx", mime_type=xlsx_mime,
+            size=5000, attachment_id="att_1",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+        mock_download.return_value = AttachmentDownload(
+            filename="Budget.xlsx", mime_type=xlsx_mime,
+            size=5000, content=b"fake xlsx bytes",
+        )
+        mock_office.return_value = OfficeExtractionResult(
+            content="data", source_type="xlsx", export_format="csv", extension="csv",
+        )
+
+        result = fetch_attachment("thread_xyz", "budget.xlsx")  # lowercase
+
+        assert isinstance(result, FetchResult)
+        assert result.type == "xlsx"
+
+    @patch("tools.fetch.fetch_thread")
     def test_no_attachments_lists_none(self, mock_fetch):
         """Thread with no attachments returns helpful error."""
         mock_fetch.return_value = _make_thread_data([])
