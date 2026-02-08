@@ -331,7 +331,7 @@ class TestMatchExfilFile:
         mock_gmail_extract.assert_not_called()
 
 
-class TestInlineAttachmentEmbedding:
+class TestAttachmentExtractionSummary:
     """Tests for embedding extracted attachment content in content.md."""
 
     @patch("tools.fetch.fetch_thread")
@@ -341,11 +341,11 @@ class TestInlineAttachmentEmbedding:
     @patch("tools.fetch.write_content")
     @patch("tools.fetch.write_manifest")
     @patch("tools.fetch.extract_thread_content", return_value="Thread content here")
-    def test_pdf_text_appended_to_content(
+    def test_pdf_extraction_summary_in_content(
         self, mock_extract, mock_manifest, mock_write, mock_folder,
         mock_drive_extract, mock_lookup, mock_fetch
     ):
-        """Extracted PDF text is appended to content.md."""
+        """Extracted PDF gets a pointer in content.md (not inline text)."""
         att = EmailAttachment(
             filename="report.pdf", mime_type="application/pdf",
             size=1000, attachment_id="att_123",
@@ -361,16 +361,13 @@ class TestInlineAttachmentEmbedding:
             "extraction_method": "markitdown",
             "content_file": "report.pdf.md",
             "char_count": 42,
-            "extracted_text": "PDF content about budgets.",
         }
 
         fetch_gmail("thread_xyz")
 
-        # Check the content written includes both thread text and PDF text
         written_content = mock_write.call_args[0][1]
         assert "Thread content here" in written_content
-        assert "## Attachment: report.pdf" in written_content
-        assert "PDF content about budgets." in written_content
+        assert "report.pdf → `report.pdf.md`" in written_content
 
     @patch("tools.fetch.fetch_thread")
     @patch("tools.fetch.lookup_exfiltrated")
@@ -379,11 +376,11 @@ class TestInlineAttachmentEmbedding:
     @patch("tools.fetch.write_content")
     @patch("tools.fetch.write_manifest")
     @patch("tools.fetch.extract_thread_content", return_value="Thread content")
-    def test_extracted_text_not_in_metadata(
+    def test_no_extracted_text_in_metadata(
         self, mock_extract, mock_manifest, mock_write, mock_folder,
         mock_drive_extract, mock_lookup, mock_fetch
     ):
-        """extracted_text is stripped from metadata (not returned to Claude)."""
+        """extracted_text is never set on result metadata."""
         att = EmailAttachment(
             filename="report.pdf", mime_type="application/pdf",
             size=1000, attachment_id="att_123",
@@ -396,12 +393,11 @@ class TestInlineAttachmentEmbedding:
         mock_drive_extract.return_value = {
             "filename": "report.pdf",
             "extracted": True,
-            "extracted_text": "Secret PDF text",
+            "content_file": "report.pdf.md",
         }
 
         result = fetch_gmail("thread_xyz")
 
-        # extracted_text should be popped, not in result metadata
         for att_meta in result.metadata.get("extracted", []):
             assert "extracted_text" not in att_meta
 
@@ -412,11 +408,11 @@ class TestInlineAttachmentEmbedding:
     @patch("tools.fetch.write_content")
     @patch("tools.fetch.write_manifest")
     @patch("tools.fetch.extract_thread_content", return_value="Thread content")
-    def test_image_attachments_no_inline_text(
+    def test_image_attachments_listed_in_summary(
         self, mock_extract, mock_manifest, mock_write, mock_folder,
         mock_drive_extract, mock_lookup, mock_fetch
     ):
-        """Image attachments don't add inline text sections."""
+        """Image attachments appear in extraction summary as deposited files."""
         att = EmailAttachment(
             filename="photo.png", mime_type="image/png",
             size=5000, attachment_id="att_789",
@@ -435,7 +431,7 @@ class TestInlineAttachmentEmbedding:
         fetch_gmail("thread_xyz")
 
         written_content = mock_write.call_args[0][1]
-        assert "## Attachment:" not in written_content
+        assert "photo.png (deposited as file)" in written_content
 
     @patch("tools.fetch.fetch_thread")
     @patch("tools.fetch.lookup_exfiltrated")
@@ -444,11 +440,11 @@ class TestInlineAttachmentEmbedding:
     @patch("tools.fetch.write_content")
     @patch("tools.fetch.write_manifest")
     @patch("tools.fetch.extract_thread_content", return_value="Thread content")
-    def test_multiple_pdfs_all_embedded(
+    def test_multiple_pdfs_all_listed_in_summary(
         self, mock_extract, mock_manifest, mock_write, mock_folder,
         mock_drive_extract, mock_lookup, mock_fetch
     ):
-        """Multiple PDF attachments each get their own inline section."""
+        """Multiple PDF attachments each get a pointer in the extraction summary."""
         att1 = EmailAttachment(
             filename="report.pdf", mime_type="application/pdf",
             size=1000, attachment_id="att_1",
@@ -466,14 +462,12 @@ class TestInlineAttachmentEmbedding:
             ]
         }
         mock_drive_extract.side_effect = [
-            {"filename": "report.pdf", "extracted": True, "extracted_text": "Report text"},
-            {"filename": "invoice.pdf", "extracted": True, "extracted_text": "Invoice text"},
+            {"filename": "report.pdf", "extracted": True, "content_file": "report.pdf.md"},
+            {"filename": "invoice.pdf", "extracted": True, "content_file": "invoice.pdf.md"},
         ]
 
         fetch_gmail("thread_xyz")
 
         written_content = mock_write.call_args[0][1]
-        assert "## Attachment: report.pdf" in written_content
-        assert "Report text" in written_content
-        assert "## Attachment: invoice.pdf" in written_content
-        assert "Invoice text" in written_content
+        assert "report.pdf → `report.pdf.md`" in written_content
+        assert "invoice.pdf → `invoice.pdf.md`" in written_content

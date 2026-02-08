@@ -226,7 +226,6 @@ def _deposit_attachment_content(
             "extraction_method": result.method,
             "content_file": content_filename,
             "char_count": result.char_count,
-            "extracted_text": result.content,
         }
 
     elif mime_type.startswith("image/"):
@@ -390,19 +389,22 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
 
         all_drive_links.extend(msg.drive_links)
 
-    # Append extracted attachment content inline (sous-chef: one file to read)
-    inline_sections: list[str] = []
-    for att_result in extracted_attachments:
-        extracted_text = att_result.pop("extracted_text", None)
-        if extracted_text:
-            inline_sections.append(
-                f"\n---\n\n## Attachment: {att_result['filename']}\n\n{extracted_text}"
-            )
+    # Append extraction summary so caller knows which files were extracted
+    if extracted_attachments:
+        extraction_lines = ["\n---\n\n**Extracted attachments:**"]
+        for att_result in extracted_attachments:
+            content_file = att_result.get("content_file")
+            if content_file:
+                extraction_lines.append(
+                    f"- {att_result['filename']} → `{content_file}`"
+                )
+            else:
+                extraction_lines.append(
+                    f"- {att_result['filename']} (deposited as file)"
+                )
+        content = content + "\n".join(extraction_lines) + "\n"
 
-    if inline_sections:
-        content = content + "\n" + "\n".join(inline_sections)
-
-    # Write thread content (with inline attachments appended)
+    # Write thread content
     content_path = write_content(folder, content)
 
     # Build manifest extras
