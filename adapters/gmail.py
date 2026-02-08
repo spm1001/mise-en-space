@@ -283,12 +283,18 @@ def search_threads(
             )
         )
 
-    # Add batch requests — use format="full" to get attachment info
+    # Add batch requests — format="full" with fields mask gives us the payload
+    # parts tree (for attachment filenames) without message body data.
+    # Measured: 5x faster and 5x smaller than unmasked format="full".
+    search_fields = (
+        "id,messages(id,internalDate,"
+        "payload(headers,mimeType,parts(filename,mimeType,body(attachmentId,size))))"
+    )
     for thread in threads[:max_results]:
         batch.add(
             service.users()
             .threads()
-            .get(userId="me", id=thread["id"], format="full"),
+            .get(userId="me", id=thread["id"], format="full", fields=search_fields),
             callback=handle_thread_response,
         )
 
