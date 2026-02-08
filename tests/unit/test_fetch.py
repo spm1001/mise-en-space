@@ -592,16 +592,15 @@ class TestFetchAttachment:
 
     @patch("tools.fetch.fetch_thread")
     @patch("tools.fetch.lookup_exfiltrated")
-    @patch("tools.fetch.download_file")
     @patch("tools.fetch.extract_office_content")
     @patch("tools.fetch.get_deposit_folder", return_value="/tmp/test-deposit")
     @patch("tools.fetch.write_content", return_value="/tmp/test-deposit/content.csv")
     @patch("tools.fetch.write_manifest")
     def test_preexfil_preferred(
         self, mock_manifest, mock_write, mock_folder,
-        mock_office, mock_drive_dl, mock_lookup, mock_fetch
+        mock_office, mock_lookup, mock_fetch
     ):
-        """Pre-exfil Drive copy used when available."""
+        """Pre-exfil Drive copy uses source_file_id (no download)."""
         xlsx_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         att = EmailAttachment(
             filename="budget.xlsx", mime_type=xlsx_mime,
@@ -611,7 +610,6 @@ class TestFetchAttachment:
         mock_lookup.return_value = {
             "msg_abc123": [{"file_id": "drive_99", "name": "budget.xlsx", "mimeType": xlsx_mime}]
         }
-        mock_drive_dl.return_value = b"drive xlsx bytes"
         mock_office.return_value = OfficeExtractionResult(
             content="Sheet1\ncol1,col2\n1,2",
             source_type="xlsx", export_format="csv", extension="csv",
@@ -621,11 +619,11 @@ class TestFetchAttachment:
 
         assert isinstance(result, FetchResult)
         assert result.metadata["source"] == "drive_exfil"
-        mock_drive_dl.assert_called_once_with("drive_99")
+        # source_file_id passed — no download needed
+        assert mock_office.call_args.kwargs["source_file_id"] == "drive_99"
 
     @patch("tools.fetch.fetch_thread")
     @patch("tools.fetch.lookup_exfiltrated")
-    @patch("tools.fetch.download_file")
     @patch("tools.fetch.download_attachment")
     @patch("tools.fetch.extract_office_content")
     @patch("tools.fetch.get_deposit_folder", return_value="/tmp/test-deposit")
@@ -633,9 +631,9 @@ class TestFetchAttachment:
     @patch("tools.fetch.write_manifest")
     def test_preexfil_fallback_to_gmail(
         self, mock_manifest, mock_write, mock_folder,
-        mock_office, mock_gmail_dl, mock_drive_dl, mock_lookup, mock_fetch
+        mock_office, mock_gmail_dl, mock_lookup, mock_fetch
     ):
-        """Falls back to Gmail when pre-exfil Drive download fails."""
+        """Falls back to Gmail when pre-exfil Drive conversion fails."""
         xlsx_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         att = EmailAttachment(
             filename="budget.xlsx", mime_type=xlsx_mime,
@@ -645,14 +643,15 @@ class TestFetchAttachment:
         mock_lookup.return_value = {
             "msg_abc123": [{"file_id": "drive_99", "name": "budget.xlsx", "mimeType": xlsx_mime}]
         }
-        mock_drive_dl.side_effect = Exception("Drive error")
+        office_result = OfficeExtractionResult(
+            content="Sheet1\ncol1,col2\n1,2",
+            source_type="xlsx", export_format="csv", extension="csv",
+        )
+        # First call (source_file_id) fails, second call (file_bytes) succeeds
+        mock_office.side_effect = [Exception("Drive conversion error"), office_result]
         mock_gmail_dl.return_value = AttachmentDownload(
             filename="budget.xlsx", mime_type=xlsx_mime,
             size=5000, content=b"gmail xlsx bytes",
-        )
-        mock_office.return_value = OfficeExtractionResult(
-            content="Sheet1\ncol1,col2\n1,2",
-            source_type="xlsx", export_format="csv", extension="csv",
         )
 
         result = fetch_attachment("thread_xyz", "budget.xlsx")
@@ -660,3 +659,48 @@ class TestFetchAttachment:
         assert isinstance(result, FetchResult)
         assert result.metadata["source"] == "gmail"
         mock_gmail_dl.assert_called_once()
+        assert mock_office.call_count == 2
+
+    @patch("tools.fetch.fetch_thread")
+    @patch("tools.fetch.lookup_exfiltrated", return_value={})
+    @patch("tools.fetch.download_attachment")
+    @patch("tools.fetch.get_deposit_folder", return_value="/tmp/test-deposit")
+    @patch("tools.fetch.write_image", return_value="/tmp/test-deposit/logo.png")
+    @patch("tools.fetch.write_manifest")
+    def test_image_attachment_deposited(
+        self, mock_manifest, mock_write_img, mock_folder,
+        mock_download, mock_lookup, mock_fetch
+    ):
+        """Image attachment is deposited as file."""
+        att = EmailAttachment(
+            filename="logo.png", mime_type="image/png",
+            size=2000, attachment_id="att_3",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+        mock_download.return_value = AttachmentDownload(
+            filename="logo.png", mime_type="image/png",
+            size=2000, content=b"fake png bytes",
+        )
+
+        result = fetch_attachment("thread_xyz", "logo.png")
+
+        assert isinstance(result, FetchResult)
+        assert result.type == "image"
+        assert result.format == "image"
+        mock_write_img.assert_called_once()
+
+    @patch("tools.fetch.fetch_thread")
+    @patch("tools.fetch.lookup_exfiltrated", return_value={})
+    def test_unsupported_mime_returns_error(self, mock_lookup, mock_fetch):
+        """Unsupported MIME type returns extraction_failed error."""
+        att = EmailAttachment(
+            filename="archive.zip", mime_type="application/zip",
+            size=10000, attachment_id="att_4",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+
+        result = fetch_attachment("thread_xyz", "archive.zip")
+
+        assert isinstance(result, FetchError)
+        assert result.kind == "extraction_failed"
+        assert "application/zip" in result.message

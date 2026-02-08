@@ -52,6 +52,7 @@ def convert_via_drive(
     temp_name_prefix: str = "_mise_temp_",
     file_id_hint: str = "",
     file_path: Path | None = None,
+    source_file_id: str | None = None,
 ) -> ConversionResult:
     """
     Convert file via Drive: upload with conversion, export, delete temp.
@@ -59,53 +60,68 @@ def convert_via_drive(
     This leverages Drive's implicit conversion — when you upload a file with
     a Google Workspace mimeType as target, Drive converts automatically.
 
-    Accepts either file_bytes (in-memory) or file_path (streaming from disk).
-    Use file_path for large files to avoid memory issues.
+    Accepts either file_bytes (in-memory), file_path (streaming from disk),
+    or source_file_id (file already in Drive — copies with conversion,
+    skipping both download and upload).
 
     Args:
-        file_bytes: Raw file content (mutually exclusive with file_path)
+        file_bytes: Raw file content (mutually exclusive with file_path/source_file_id)
         source_mime: Original file MIME type (e.g., 'application/pdf')
         target_type: Google format to convert to ('doc', 'sheet', 'slides')
         export_format: Format to export as ('markdown', 'csv', 'plain')
         temp_name_prefix: Prefix for temp file name (for debugging orphans)
         file_id_hint: Optional ID hint for temp file naming
-        file_path: Path to file on disk (mutually exclusive with file_bytes)
+        file_path: Path to file on disk (mutually exclusive with file_bytes/source_file_id)
+        source_file_id: Drive file ID to copy+convert (skips upload entirely)
 
     Returns:
         ConversionResult with content and cleanup status
 
     Raises:
-        ValueError: If neither or both of file_bytes/file_path provided
+        ValueError: If no source provided or conflicting sources
     """
-    # Validate: exactly one of file_bytes or file_path
-    if file_bytes is None and file_path is None:
-        raise ValueError("Must provide either file_bytes or file_path")
-    if file_bytes is not None and file_path is not None:
-        raise ValueError("Cannot provide both file_bytes and file_path")
-
     service = get_drive_service()
     warnings: list[str] = []
 
     target_mime = CONVERSION_TARGETS[target_type]
     export_mime = EXPORT_MIMES[export_format]
-
-    # 1. Upload with conversion (streaming from disk or in-memory)
     temp_name = f"{temp_name_prefix}{file_id_hint}" if file_id_hint else temp_name_prefix
-    if file_path is not None:
-        media = MediaFileUpload(str(file_path), mimetype=source_mime, resumable=True)
-    else:
-        media = MediaInMemoryUpload(file_bytes, mimetype=source_mime)
 
-    uploaded = (
-        service.files()
-        .create(
-            body={"name": temp_name, "mimeType": target_mime},
-            media_body=media,
-            fields="id",
+    # 1. Get file into Drive as Google format
+    if source_file_id:
+        # File already in Drive — copy with conversion (no upload needed)
+        copied = (
+            service.files()
+            .copy(
+                fileId=source_file_id,
+                body={"name": temp_name, "mimeType": target_mime},
+                fields="id",
+            )
+            .execute()
         )
-        .execute()
-    )
-    temp_id = uploaded["id"]
+        temp_id = copied["id"]
+    else:
+        # Upload with conversion (streaming from disk or in-memory)
+        if file_bytes is None and file_path is None:
+            raise ValueError("Must provide file_bytes, file_path, or source_file_id")
+        if file_bytes is not None and file_path is not None:
+            raise ValueError("Cannot provide both file_bytes and file_path")
+
+        if file_path is not None:
+            media = MediaFileUpload(str(file_path), mimetype=source_mime, resumable=True)
+        else:
+            media = MediaInMemoryUpload(file_bytes, mimetype=source_mime)
+
+        uploaded = (
+            service.files()
+            .create(
+                body={"name": temp_name, "mimeType": target_mime},
+                media_body=media,
+                fields="id",
+            )
+            .execute()
+        )
+        temp_id = uploaded["id"]
 
     try:
         # 2. Export to target format

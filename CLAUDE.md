@@ -131,6 +131,7 @@ Documentation is provided via MCP Resources (static content), not a tool.
 - `search` returns metadata only — Claude triages before fetching
 - `fetch` writes to `mise-fetch/` in cwd, returns path
 - `fetch` auto-detects ID type (Drive file ID vs Gmail thread ID vs URL)
+- `fetch` accepts optional `attachment` param for extracting a specific Gmail attachment (including Office files skipped during eager extraction)
 - **Comments are included automatically** — when fetching docs/sheets/slides, open comments are deposited as `comments.md` (sous-chef philosophy)
 - Filenames use IDs for deduplication
 - Pagination is opaque (cursors managed internally)

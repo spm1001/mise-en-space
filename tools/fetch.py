@@ -439,10 +439,10 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
         metadata["extracted"] = extracted_attachments
     if skipped_office:
         metadata["skipped_office"] = skipped_office
-        first_skipped = skipped_office[0]
+        examples = [f"fetch('{thread_id}', attachment='{f}')" for f in skipped_office]
         metadata["skipped_office_hint"] = (
             f"Office files take 5-10s each. "
-            f"To extract: fetch('{thread_id}', attachment='{first_skipped}')"
+            f"To extract: {'; '.join(examples)}"
         )
 
     return FetchResult(
@@ -452,6 +452,17 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
         type="gmail",
         metadata=metadata,
     )
+
+
+def _download_attachment_bytes(msg: Any, att: Any, mime_type: str) -> bytes:
+    """Download attachment bytes from Gmail."""
+    dl = download_attachment(
+        message_id=msg.message_id,
+        attachment_id=att.attachment_id,
+        filename=att.filename,
+        mime_type=mime_type,
+    )
+    return dl.content
 
 
 def fetch_attachment(
@@ -493,45 +504,46 @@ def fetch_attachment(
     mime_type = target_att.mime_type
     warnings: list[str] = []
 
-    # 3. Try pre-exfil Drive copy first
-    content_bytes = None
+    # 3. Check pre-exfil Drive copy
+    exfil_file_id: str | None = None
     source_label = "gmail"
 
     try:
         exfiltrated = lookup_exfiltrated([target_msg.message_id])
         exfil_files = exfiltrated.get(target_msg.message_id, [])
         exfil_match = _match_exfil_file(target_att.filename, exfil_files)
-
         if exfil_match:
-            try:
-                content_bytes = download_file(exfil_match["file_id"])
-                source_label = "drive_exfil"
-            except Exception as e:
-                warnings.append(f"Drive exfil download failed, falling back to Gmail: {e}")
+            exfil_file_id = exfil_match["file_id"]
+            source_label = "drive_exfil"
     except Exception:
         pass  # Pre-exfil is optional optimization
 
-    # 4. Fall back to Gmail download
-    if content_bytes is None:
-        download = download_attachment(
-            message_id=target_msg.message_id,
-            attachment_id=target_att.attachment_id,
-            filename=target_att.filename,
-            mime_type=mime_type,
-        )
-        content_bytes = download.content
-
-    # 5. Route to extractor by MIME type and deposit
+    # 4. Route to extractor by MIME type and deposit
     title = attachment_name.rsplit(".", 1)[0] if "." in attachment_name else attachment_name
 
     # Office files (the primary use case for this feature)
+    # Pre-exfil optimization: copy+convert in Drive without downloading
     office_type = get_office_type_from_mime(mime_type)
     if office_type:
-        result = extract_office_content(
-            office_type=office_type,
-            file_bytes=content_bytes,
-            file_id=thread_id,
-        )
+        if exfil_file_id:
+            try:
+                result = extract_office_content(
+                    office_type=office_type,
+                    source_file_id=exfil_file_id,
+                    file_id=thread_id,
+                )
+            except Exception as e:
+                warnings.append(f"Drive exfil conversion failed, falling back to Gmail: {e}")
+                exfil_file_id = None
+                source_label = "gmail"
+
+        if not exfil_file_id:
+            content_bytes = _download_attachment_bytes(target_msg, target_att, mime_type)
+            result = extract_office_content(
+                office_type=office_type,
+                file_bytes=content_bytes,
+                file_id=thread_id,
+            )
         output_format = "csv" if office_type == "xlsx" else "markdown"
         content_filename = f"content.{result.extension}"
 
@@ -555,6 +567,21 @@ def fetch_attachment(
                 "gmail_thread_id": thread_id,
             },
         )
+
+    # PDF and images need bytes (no copy-convert shortcut)
+    # Download from pre-exfil Drive or Gmail as appropriate
+    if mime_type == "application/pdf" or mime_type.startswith("image/"):
+        content_bytes = None
+        if exfil_file_id:
+            try:
+                content_bytes = download_file(exfil_file_id)
+            except Exception as e:
+                warnings.append(f"Drive exfil download failed, falling back to Gmail: {e}")
+                source_label = "gmail"
+
+        if content_bytes is None:
+            content_bytes = _download_attachment_bytes(target_msg, target_att, mime_type)
+            source_label = "gmail"
 
     # PDF
     if mime_type == "application/pdf":

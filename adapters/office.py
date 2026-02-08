@@ -54,25 +54,27 @@ def extract_office_content(
     file_bytes: bytes | None = None,
     file_path: Path | None = None,
     file_id: str = "",
+    source_file_id: str | None = None,
 ) -> OfficeExtractionResult:
     """
     Extract content from Office file via Drive conversion.
 
-    Accepts either file_bytes (in-memory) or file_path (from disk).
-    Use file_path for large files to avoid memory issues.
+    Accepts file_bytes (in-memory), file_path (from disk), or source_file_id
+    (file already in Drive — copies with conversion, skipping upload entirely).
 
     Args:
         office_type: 'docx', 'xlsx', or 'pptx'
-        file_bytes: Raw Office file content (mutually exclusive with file_path)
-        file_path: Path to Office file on disk (mutually exclusive with file_bytes)
+        file_bytes: Raw Office file content
+        file_path: Path to Office file on disk
         file_id: Optional file ID (for temp file naming)
+        source_file_id: Drive file ID to copy+convert (skips upload)
 
     Returns:
         OfficeExtractionResult with content and format info
     """
     source_mime, target_type, export_format, extension = OFFICE_FORMATS[office_type]
 
-    # Convert via Drive (validates exactly one of file_bytes/file_path)
+    # Convert via Drive
     # Cast to Literal types (OFFICE_FORMATS values are constants)
     conversion_result = convert_via_drive(
         file_bytes=file_bytes,
@@ -81,6 +83,7 @@ def extract_office_content(
         target_type=cast(Literal["doc", "sheet", "slides"], target_type),
         export_format=cast(Literal["markdown", "csv", "plain"], export_format),
         file_id_hint=file_id,
+        source_file_id=source_file_id,
     )
 
     return OfficeExtractionResult(

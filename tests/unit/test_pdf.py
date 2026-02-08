@@ -376,12 +376,12 @@ class TestConvertViaDriveValidation:
     """Tests for convert_via_drive input validation."""
 
     def test_requires_either_bytes_or_path(self):
-        """Must provide at least one of file_bytes or file_path."""
+        """Must provide at least one of file_bytes, file_path, or source_file_id."""
         from adapters.conversion import convert_via_drive
         from models import MiseError
 
         # Retry decorator converts ValueError to MiseError
-        with pytest.raises(MiseError, match="Must provide either file_bytes or file_path"):
+        with pytest.raises(MiseError, match="Must provide file_bytes, file_path, or source_file_id"):
             convert_via_drive(source_mime="application/pdf", target_type="doc")
 
     def test_rejects_both_bytes_and_path(self, tmp_path: Path):
