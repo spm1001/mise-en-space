@@ -71,7 +71,7 @@ def search(
 
 
 @mcp.tool()
-def fetch(file_id: str, base_path: str | None = None) -> dict[str, Any]:
+def fetch(file_id: str, base_path: str | None = None, attachment: str | None = None) -> dict[str, Any]:
     """
     Fetch content to filesystem.
 
@@ -84,6 +84,9 @@ def fetch(file_id: str, base_path: str | None = None) -> dict[str, Any]:
     Args:
         file_id: Web URL, Drive file ID, or Gmail thread ID
         base_path: Directory for deposits (pass your cwd so files land next to your project, not the MCP server's directory)
+        attachment: Specific attachment filename to extract from a Gmail thread.
+                    Use this to extract Office files (DOCX/XLSX/PPTX) that are
+                    skipped during normal thread fetch. Also works for PDFs and images.
 
     Fetch web content with cleaner extraction than curl or WebFetch:
         fetch("https://simonwillison.net/...")  → clean markdown, no boilerplate
@@ -96,7 +99,7 @@ def fetch(file_id: str, base_path: str | None = None) -> dict[str, Any]:
         metadata: File metadata
     """
     resolved_path = Path(base_path) if base_path else None
-    return do_fetch(file_id, base_path=resolved_path).to_dict()
+    return do_fetch(file_id, base_path=resolved_path, attachment=attachment).to_dict()
 
 
 @mcp.tool()

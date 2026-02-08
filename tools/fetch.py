@@ -439,10 +439,10 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
         metadata["extracted"] = extracted_attachments
     if skipped_office:
         metadata["skipped_office"] = skipped_office
+        first_skipped = skipped_office[0]
         metadata["skipped_office_hint"] = (
-            "Office files take 5-10s each to extract. "
-            "To access: 1) Search Drive for the filename if exfiltrated, "
-            "or 2) Download manually from Gmail web UI."
+            f"Office files take 5-10s each. "
+            f"To extract: fetch('{thread_id}', attachment='{first_skipped}')"
         )
 
     return FetchResult(
@@ -451,6 +451,168 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
         format="markdown",
         type="gmail",
         metadata=metadata,
+    )
+
+
+def fetch_attachment(
+    thread_id: str,
+    attachment_name: str,
+    base_path: Path | None = None,
+) -> FetchResult | FetchError:
+    """
+    Fetch a single named attachment from a Gmail thread.
+
+    Supports all extractable types including Office files (DOCX/XLSX/PPTX)
+    that are skipped during eager thread extraction.
+    """
+    # 1. Fetch thread to find the attachment
+    thread_data = fetch_thread(thread_id)
+
+    # 2. Scan all messages for matching attachment
+    target_att = None
+    target_msg = None
+    all_attachment_names: list[str] = []
+
+    for msg in thread_data.messages:
+        for att in msg.attachments:
+            all_attachment_names.append(att.filename)
+            if att.filename == attachment_name:
+                target_att = att
+                target_msg = msg
+                break
+        if target_att:
+            break
+
+    if not target_att or not target_msg:
+        available = ", ".join(all_attachment_names) if all_attachment_names else "(none)"
+        return FetchError(
+            kind="not_found",
+            message=f"No attachment named '{attachment_name}' in thread. Available: {available}",
+        )
+
+    mime_type = target_att.mime_type
+    warnings: list[str] = []
+
+    # 3. Try pre-exfil Drive copy first
+    content_bytes = None
+    source_label = "gmail"
+
+    try:
+        exfiltrated = lookup_exfiltrated([target_msg.message_id])
+        exfil_files = exfiltrated.get(target_msg.message_id, [])
+        exfil_match = _match_exfil_file(target_att.filename, exfil_files)
+
+        if exfil_match:
+            try:
+                content_bytes = download_file(exfil_match["file_id"])
+                source_label = "drive_exfil"
+            except Exception as e:
+                warnings.append(f"Drive exfil download failed, falling back to Gmail: {e}")
+    except Exception:
+        pass  # Pre-exfil is optional optimization
+
+    # 4. Fall back to Gmail download
+    if content_bytes is None:
+        download = download_attachment(
+            message_id=target_msg.message_id,
+            attachment_id=target_att.attachment_id,
+            filename=target_att.filename,
+            mime_type=mime_type,
+        )
+        content_bytes = download.content
+
+    # 5. Route to extractor by MIME type and deposit
+    title = attachment_name.rsplit(".", 1)[0] if "." in attachment_name else attachment_name
+
+    # Office files (the primary use case for this feature)
+    office_type = get_office_type_from_mime(mime_type)
+    if office_type:
+        result = extract_office_content(
+            office_type=office_type,
+            file_bytes=content_bytes,
+            file_id=thread_id,
+        )
+        output_format = "csv" if office_type == "xlsx" else "markdown"
+        content_filename = f"content.{result.extension}"
+
+        folder = get_deposit_folder(office_type, title, thread_id, base_path=base_path)
+        content_path = write_content(folder, result.content, filename=content_filename)
+
+        all_warnings = warnings + result.warnings
+        extra: dict[str, Any] = {"source": source_label, "gmail_thread_id": thread_id}
+        if all_warnings:
+            extra["warnings"] = all_warnings
+        write_manifest(folder, office_type, title, thread_id, extra=extra)
+
+        return FetchResult(
+            path=str(folder),
+            content_file=str(content_path),
+            format=output_format,
+            type=office_type,
+            metadata={
+                "title": attachment_name,
+                "source": source_label,
+                "gmail_thread_id": thread_id,
+            },
+        )
+
+    # PDF
+    if mime_type == "application/pdf":
+        pdf_result = extract_pdf_content(file_bytes=content_bytes, file_id=thread_id)
+
+        folder = get_deposit_folder("pdf", title, thread_id, base_path=base_path)
+        content_path = write_content(folder, pdf_result.content)
+
+        all_warnings = warnings + pdf_result.warnings
+        extra = {
+            "source": source_label,
+            "gmail_thread_id": thread_id,
+            "extraction_method": pdf_result.method,
+            "char_count": pdf_result.char_count,
+        }
+        if all_warnings:
+            extra["warnings"] = all_warnings
+        write_manifest(folder, "pdf", title, thread_id, extra=extra)
+
+        return FetchResult(
+            path=str(folder),
+            content_file=str(content_path),
+            format="markdown",
+            type="pdf",
+            metadata={
+                "title": attachment_name,
+                "source": source_label,
+                "gmail_thread_id": thread_id,
+                "extraction_method": pdf_result.method,
+            },
+        )
+
+    # Images
+    if mime_type.startswith("image/"):
+        folder = get_deposit_folder("image", title, thread_id, base_path=base_path)
+        image_path = write_image(folder, content_bytes, attachment_name)
+
+        extra = {"source": source_label, "gmail_thread_id": thread_id}
+        if warnings:
+            extra["warnings"] = warnings
+        write_manifest(folder, "image", title, thread_id, extra=extra)
+
+        return FetchResult(
+            path=str(folder),
+            content_file=str(image_path),
+            format="image",
+            type="image",
+            metadata={
+                "title": attachment_name,
+                "source": source_label,
+                "gmail_thread_id": thread_id,
+            },
+        )
+
+    # Unsupported type
+    return FetchError(
+        kind="extraction_failed",
+        message=f"Cannot extract attachment with MIME type: {mime_type}",
     )
 
 
@@ -1152,7 +1314,7 @@ def fetch_web(url: str, base_path: Path | None = None) -> FetchResult:
     )
 
 
-def do_fetch(file_id: str, base_path: Path | None = None) -> FetchResult | FetchError:
+def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None = None) -> FetchResult | FetchError:
     """
     Main fetch entry point.
 
@@ -1161,10 +1323,20 @@ def do_fetch(file_id: str, base_path: Path | None = None) -> FetchResult | Fetch
     Args:
         file_id: Drive file ID, Gmail thread ID, or URL
         base_path: Base directory for deposits (defaults to cwd)
+        attachment: Specific attachment filename to extract from Gmail thread
     """
     try:
         # Detect ID type and normalize
         source, normalized_id = detect_id_type(file_id)
+
+        # Single-attachment fetch (Gmail only)
+        if attachment:
+            if source != "gmail":
+                return FetchError(
+                    kind="invalid_input",
+                    message="attachment parameter only works with Gmail thread/message IDs",
+                )
+            return fetch_attachment(normalized_id, attachment, base_path=base_path)
 
         # Route to appropriate fetcher
         if source == "gmail":
