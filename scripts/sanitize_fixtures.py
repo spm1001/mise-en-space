@@ -98,6 +98,10 @@ def sanitize_string(text: str) -> str:
 
     text = EMAIL_PATTERN.sub(replace_email, text)
 
+    # Replace known names from NAME_MAP (standalone, not paired with email)
+    for real_name, sanitized_name in NAME_MAP.items():
+        text = re.sub(re.escape(real_name), sanitized_name, text, flags=re.IGNORECASE)
+
     # Replace IP addresses with documentation range
     text = re.sub(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', '192.0.2.1', text)
 
@@ -120,6 +124,26 @@ def sanitize_value(value):
         return value
 
 
+def _collect_author_names(data) -> None:
+    """Pre-scan fixture for author/actor names and add them to NAME_MAP."""
+    if isinstance(data, dict):
+        # Comment/reply author names
+        if "author_name" in data:
+            name = data["author_name"]
+            if name and name != "Unknown":
+                get_sanitized_name(name)
+        # Activity actor names
+        if "actor_name" in data:
+            name = data["actor_name"]
+            if name and name != "Unknown":
+                get_sanitized_name(name)
+        for v in data.values():
+            _collect_author_names(v)
+    elif isinstance(data, list):
+        for item in data:
+            _collect_author_names(item)
+
+
 def sanitize_fixture(filepath: Path) -> None:
     """Sanitize a single fixture file."""
     print(f"Sanitizing: {filepath.name}")
@@ -130,6 +154,9 @@ def sanitize_fixture(filepath: Path) -> None:
     # Reset mappings for consistent results per file
     EMAIL_MAP.clear()
     NAME_MAP.clear()
+
+    # Pre-scan for standalone author names (not paired with emails)
+    _collect_author_names(data)
 
     sanitized = sanitize_value(data)
 
@@ -154,6 +181,12 @@ def main():
     activity_dir = FIXTURES_DIR / "activity"
     if activity_dir.exists():
         for filepath in activity_dir.glob("*.json"):
+            sanitize_fixture(filepath)
+
+    # Comment fixtures contain author names and emails
+    comments_dir = FIXTURES_DIR / "comments"
+    if comments_dir.exists():
+        for filepath in comments_dir.glob("real_*.json"):
             sanitize_fixture(filepath)
 
     # Docs/Sheets/Slides might have user info in metadata

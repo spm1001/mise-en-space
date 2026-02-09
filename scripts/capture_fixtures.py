@@ -36,8 +36,8 @@ TEST_IDS = {
     "docs_single_tab": "1bREiVmvgSsRKJLjamTOE0Wasq1ze7R3bIPOdtJMomKM",
     "sheets": "1UlWoEsfjzqbuS_tKD6Drm4wmbPLeGOKWVBVip5AI-xw",
     "slides": "1ZrknZXSsyDtWuWq0cXV7UMZ-7WHClm3fJa61uZY2pwY",
-    # Use the Innovid doc which has good comment examples
-    "comments": "1u5HAOwh0dGQPdELj4OSHIWoJURvK9o1m",
+    # Purpose-built test doc with rich comment edge cases
+    "comments": "1GoplGgcHK1aT47kFYB1nRwqyOdIlGKXzMX9qOxoW_To",
 }
 
 
@@ -195,7 +195,8 @@ def capture_comments(file_id: str, output_name: str) -> dict:
             "author(displayName,emailAddress),"
             "createdTime,modifiedTime,"
             "resolved,quotedFileContent,"
-            "replies(id,content,author(displayName,emailAddress),createdTime,modifiedTime)"
+            "mentionedEmailAddresses,"
+            "replies(id,content,author(displayName,emailAddress),createdTime,modifiedTime,mentionedEmailAddresses)"
             ")"
         ),
         pageSize=100,
@@ -220,6 +221,7 @@ def capture_comments(file_id: str, output_name: str) -> dict:
             "modified_time": comment.get("modifiedTime"),
             "resolved": comment.get("resolved", False),
             "quoted_text": comment.get("quotedFileContent", {}).get("value", ""),
+            "mentioned_emails": comment.get("mentionedEmailAddresses", []),
             "replies": [],
         }
 
@@ -232,6 +234,7 @@ def capture_comments(file_id: str, output_name: str) -> dict:
                 "author_email": reply_author.get("emailAddress"),
                 "created_time": reply.get("createdTime"),
                 "modified_time": reply.get("modifiedTime"),
+                "mentioned_emails": reply.get("mentionedEmailAddresses", []),
             })
 
         fixture["comments"].append(parsed_comment)

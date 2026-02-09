@@ -147,27 +147,36 @@ def _format_comment(comment: CommentData) -> str:
     if comment.mentioned_emails:
         parts.append(_format_mentions(comment.mentioned_emails))
 
-    # Quoted text (anchor)
+    # Quoted text (anchor) — truncate long anchors
     if comment.quoted_text:
-        parts.append(f"\n> {comment.quoted_text}\n")
+        anchor = comment.quoted_text
+        if len(anchor) > 200:
+            anchor = anchor[:200] + "…"
+        parts.append(f"\n> {anchor}\n")
 
     # Comment content
     if comment.content:
         parts.append(f"\n{comment.content}\n")
 
     # Replies
-    if comment.replies:
+    non_empty_replies = [r for r in comment.replies if r.content.strip()]
+    if non_empty_replies:
         parts.append("\n**Replies:**\n")
-        for reply in comment.replies:
+        for reply in non_empty_replies:
             reply_author = _format_author(reply.author_name, reply.author_email)
             reply_date = _format_date(reply.created_time)
             # Include mentions in reply if present
             mentions_suffix = ""
             if reply.mentioned_emails:
                 mentions_suffix = f" *[@{', @'.join(reply.mentioned_emails)}]*"
+            # Indent continuation lines to keep multi-line content in list item
+            content = reply.content
+            if "\n" in content:
+                lines = content.split("\n")
+                content = lines[0] + "\n" + "\n".join("  " + line for line in lines[1:])
             if reply_date:
-                parts.append(f"- **[{reply_author}]** ({reply_date}): {reply.content}{mentions_suffix}\n")
+                parts.append(f"- **[{reply_author}]** ({reply_date}): {content}{mentions_suffix}\n")
             else:
-                parts.append(f"- **[{reply_author}]**: {reply.content}{mentions_suffix}\n")
+                parts.append(f"- **[{reply_author}]**: {content}{mentions_suffix}\n")
 
     return "".join(parts)

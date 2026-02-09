@@ -130,6 +130,42 @@ def comments_response() -> FileCommentsData:
     )
 
 
+@pytest.fixture
+def real_comments_response() -> FileCommentsData:
+    """Real comments data with edge cases: rich text, resolved, long anchor, multi-mention, empty reply."""
+    raw = load_fixture("comments", "real_comments")
+    return FileCommentsData(
+        file_id=raw["file_id"],
+        file_name=raw["file_name"],
+        comments=[
+            CommentData(
+                id=c["id"],
+                content=c["content"],
+                author_name=c["author_name"],
+                author_email=c.get("author_email"),
+                created_time=c.get("created_time"),
+                modified_time=c.get("modified_time"),
+                resolved=c.get("resolved", False),
+                quoted_text=c.get("quoted_text", ""),
+                mentioned_emails=c.get("mentioned_emails", []),
+                replies=[
+                    CommentReply(
+                        id=r["id"],
+                        content=r["content"],
+                        author_name=r["author_name"],
+                        author_email=r.get("author_email"),
+                        created_time=r.get("created_time"),
+                        modified_time=r.get("modified_time"),
+                        mentioned_emails=r.get("mentioned_emails", []),
+                    )
+                    for r in c.get("replies", [])
+                ],
+            )
+            for c in raw["comments"]
+        ],
+    )
+
+
 # ============================================================================
 # Gmail Fixtures
 # ============================================================================

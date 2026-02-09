@@ -1,65 +1,118 @@
 {
-  "file_id": "1u5HAOwh0dGQPdELj4OSHIWoJURvK9o1m",
-  "file_name": "Vendor Proposed Amendment 2025-26.docx",
-  "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "file_id": "1GoplGgcHK1aT47kFYB1nRwqyOdIlGKXzMX9qOxoW_To",
+  "file_name": "Comments test",
+  "mime_type": "application/vnd.google-apps.document",
   "comments": [
     {
-      "id": "AAABk9Wm44k",
-      "content": "@alice@example.com this means the term expires the earlier of (i) completion of services; or (ii) 30 June 2026. You might want to look at this clause because it also states that the parties will discuss how to treat any un-used pre-paid fees at the Expiration Date. This was how the team wanted it drafted last year. Let me know if this has changed.",
-      "author_name": "Jane Smith",
+      "id": "AAAB0AXLuhU",
+      "content": "@alice@example.com @bob@example.com Ignore - this is a test comment with multiple people - needed as a fixture for mise-en-space",
+      "author_name": "Alice Smith",
       "author_email": null,
-      "created_time": "2025-07-01T12:26:41.000Z",
-      "modified_time": "2025-07-10T09:07:39.066Z",
+      "created_time": "2026-02-09T11:08:34.525Z",
+      "modified_time": "2026-02-09T11:08:34.525Z",
       "resolved": false,
-      "quoted_text": "",
+      "quoted_text": "Title",
+      "mentioned_emails": [
+        "alice@example.com",
+        "bob@example.com"
+      ],
+      "replies": []
+    },
+    {
+      "id": "AAAB0AXLug8",
+      "content": "Long anchor is annoying but sometimes happens.",
+      "author_name": "Alice Smith",
+      "author_email": null,
+      "created_time": "2026-02-09T11:06:21.237Z",
+      "modified_time": "2026-02-09T11:06:21.237Z",
+      "resolved": false,
+      "quoted_text": "This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the comments. This is some text to anchor the co\u2026",
+      "mentioned_emails": [],
+      "replies": []
+    },
+    {
+      "id": "AAAB0AXLugk",
+      "content": "this is @carol@example.com\u00a0 and resolved",
+      "author_name": "Alice Smith",
+      "author_email": null,
+      "created_time": "2026-02-09T11:04:37.778Z",
+      "modified_time": "2026-02-09T11:04:41.692Z",
+      "resolved": true,
+      "quoted_text": "text",
+      "mentioned_emails": [
+        "carol@example.com"
+      ],
       "replies": [
         {
-          "id": "AAABk9Wm44o",
-          "content": "No changes - happy with this.",
-          "author_name": "Alice Johnson",
+          "id": "AAAB0AXLugs",
+          "content": "",
+          "author_name": "Alice Smith",
           "author_email": null,
-          "created_time": "2025-07-03T14:56:41.000Z",
-          "modified_time": "2025-07-10T09:07:39.064Z"
+          "created_time": "2026-02-09T11:04:41.692Z",
+          "modified_time": "2026-02-09T11:04:41.692Z",
+          "mentioned_emails": []
         }
       ]
     },
     {
-      "id": "AAABm3ArDmc",
-      "content": "@alice@example.com Have we agreed that pricing models in the Services Agreement (see pages 17/18) will be the fixed prices for any spend above £100,000 until 30 June 2026?",
-      "author_name": "Jane Smith",
+      "id": "AAAB0AXLuf8",
+      "content": "This is an annoying singleton comment on TAB 2 - do we find it?",
+      "author_name": "Alice Smith",
       "author_email": null,
-      "created_time": "2025-07-01T12:21:54.204Z",
-      "modified_time": "2025-07-03T14:57:54.484Z",
+      "created_time": "2026-02-09T11:01:08.631Z",
+      "modified_time": "2026-02-09T11:01:08.631Z",
       "resolved": false,
-      "quoted_text": "",
-      "replies": [
-        {
-          "id": "AAABm7MOgbA",
-          "content": "No - good shout - tbh it's an unlikely scenario but in the event I'd either want to (a) negotiate a totally different structure or (b) keep them fixed.",
-          "author_name": "Alice Johnson",
-          "author_email": null,
-          "created_time": "2025-07-03T14:57:54.484Z",
-          "modified_time": "2025-07-03T14:57:54.484Z"
-        }
-      ]
+      "quoted_text": "Heading 1",
+      "mentioned_emails": [],
+      "replies": []
     },
     {
-      "id": "AAABm3ArDmQ",
-      "content": "@alice@example.com Have we agreed with the vendor that we will continue on the same pricing models as currently agreed in the Services Agreement (pages 17/18) for the remaining £100,000?",
-      "author_name": "Jane Smith",
+      "id": "AAAB0AXLuf0",
+      "content": "This is a comment with *rich* formatting but otherwise vanilla",
+      "author_name": "Alice Smith",
       "author_email": null,
-      "created_time": "2025-07-01T12:20:17.680Z",
-      "modified_time": "2025-07-03T14:57:12.970Z",
+      "created_time": "2026-02-09T10:59:54.644Z",
+      "modified_time": "2026-02-09T10:59:54.644Z",
       "resolved": false,
-      "quoted_text": "",
+      "quoted_text": "some",
+      "mentioned_emails": [],
+      "replies": []
+    },
+    {
+      "id": "AAAB0AXLufw",
+      "content": "@carol@example.com this is 'atted' and also assigned",
+      "author_name": "Alice Smith",
+      "author_email": null,
+      "created_time": "2026-02-09T10:59:36.102Z",
+      "modified_time": "2026-02-09T10:59:36.102Z",
+      "resolved": false,
+      "quoted_text": "anchor",
+      "mentioned_emails": [
+        "carol@example.com"
+      ],
+      "replies": []
+    },
+    {
+      "id": "AAAB0AXLufo",
+      "content": "@carol@example.com this is a comment with an email 'at' to direct it to someone",
+      "author_name": "Alice Smith",
+      "author_email": null,
+      "created_time": "2026-02-09T10:59:24.402Z",
+      "modified_time": "2026-02-09T11:00:23.256Z",
+      "resolved": false,
+      "quoted_text": "comments",
+      "mentioned_emails": [
+        "carol@example.com"
+      ],
       "replies": [
         {
-          "id": "AAABm7MOga8",
-          "content": "Yes - in theory we could change this but it would be a hellscape. It's OK as is.",
-          "author_name": "Alice Johnson",
+          "id": "AAAB0AXLuf4",
+          "content": "this is a reply to the comment to see how that plays\n\nAnd **rich text** for fun",
+          "author_name": "Alice Smith",
           "author_email": null,
-          "created_time": "2025-07-03T14:57:12.970Z",
-          "modified_time": "2025-07-03T14:57:12.970Z"
+          "created_time": "2026-02-09T11:00:23.256Z",
+          "modified_time": "2026-02-09T11:00:23.256Z",
+          "mentioned_emails": []
         }
       ]
     }

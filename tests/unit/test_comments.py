@@ -190,6 +190,68 @@ Consider adding a fallback strategy here.\
         assert len(data.warnings) == 0
 
 
+class TestRealCommentsEdgeCases:
+    """Tests for edge cases found in purpose-built test doc."""
+
+    def test_long_anchor_truncated(self, real_comments_response):
+        """Long anchor text should be truncated at 200 chars."""
+        result = extract_comments_content(real_comments_response)
+        # The fixture has an 800+ char anchor — should be truncated
+        assert "…" in result
+        # No single blockquote line should exceed ~210 chars (200 + ellipsis + formatting)
+        for line in result.split("\n"):
+            if line.startswith("> "):
+                assert len(line) <= 210, f"Anchor too long: {len(line)} chars"
+
+    def test_empty_reply_skipped(self, real_comments_response):
+        """Empty replies (resolved markers) should not appear in output."""
+        result = extract_comments_content(real_comments_response)
+        # The resolved comment has an empty reply — should be skipped
+        # Find the RESOLVED section
+        resolved_idx = result.index("[RESOLVED]")
+        # Get the section between RESOLVED and next ---
+        next_sep = result.index("---", resolved_idx)
+        resolved_section = result[resolved_idx:next_sep]
+        assert "Replies:" not in resolved_section
+
+    def test_multiline_reply_stays_in_list(self, real_comments_response):
+        """Reply with newlines should stay within the list item."""
+        result = extract_comments_content(real_comments_response)
+        # Find the reply with rich text
+        assert "this is a reply to the comment" in result
+        assert "And **rich text** for fun" in result
+        # The continuation should be indented (part of list item)
+        lines = result.split("\n")
+        for i, line in enumerate(lines):
+            if "And **rich text** for fun" in line:
+                assert line.startswith("  "), f"Continuation not indented: '{line}'"
+                break
+        else:
+            pytest.fail("Rich text continuation line not found")
+
+    def test_multiple_mentions(self, real_comments_response):
+        """Comment with multiple @mentions should list all."""
+        result = extract_comments_content(real_comments_response)
+        # The multi-mention comment has two emails
+        assert "@alice@example.com" in result
+        assert "@bob@example.com" in result
+
+    def test_resolved_comment_marked(self, real_comments_response):
+        """Resolved comment should show [RESOLVED] indicator."""
+        result = extract_comments_content(real_comments_response)
+        assert "[RESOLVED]" in result
+
+    def test_total_count_includes_all(self, real_comments_response):
+        """Header should show total count of all comments."""
+        result = extract_comments_content(real_comments_response)
+        assert "7 total" in result
+
+    def test_rich_text_in_content_preserved(self, real_comments_response):
+        """Markdown-like formatting in comment content should pass through."""
+        result = extract_comments_content(real_comments_response)
+        assert "*rich*" in result
+
+
 class TestCommentDataModel:
     """Tests for the comment data models."""
 
