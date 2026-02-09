@@ -24,6 +24,7 @@ from adapters.services import (
     get_slides_service,
     get_gmail_service,
     get_drive_service,
+    get_activity_service,
 )
 from validation import extract_gmail_id
 
@@ -249,6 +250,76 @@ def capture_comments(file_id: str, output_name: str) -> dict:
     return fixture
 
 
+def capture_comment_activities(output_name: str, page_size: int = 20) -> dict:
+    """Capture Drive Activity API response for comment activities (global search)."""
+    print(f"Fetching comment activities (page_size={page_size})...")
+    service = get_activity_service()
+
+    response = service.activity().query(body={
+        "pageSize": page_size,
+        "filter": "detail.action_detail_case:COMMENT",
+    }).execute()
+
+    # Save raw response
+    output_path = FIXTURES_DIR / "activity" / f"{output_name}.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, "w") as f:
+        json.dump(response, f, indent=2)
+
+    activities = response.get("activities", [])
+    print(f"  Saved: {output_path}")
+    print(f"  Activities: {len(activities)}")
+    if activities:
+        # Show action types for quick sanity check
+        types = set()
+        for act in activities:
+            detail = act.get("primaryActionDetail", {})
+            comment = detail.get("comment", {})
+            for key in ("post", "assignment", "suggestion"):
+                sub = comment.get(key, {})
+                if sub:
+                    types.add(f"{key}:{sub.get('subtype', '?')}")
+        print(f"  Action types: {', '.join(sorted(types))}")
+
+    return response
+
+
+def capture_file_activities(file_id: str, output_name: str, page_size: int = 20) -> dict:
+    """Capture Drive Activity API response for a specific file."""
+    print(f"Fetching file activities: {file_id} (page_size={page_size})...")
+    service = get_activity_service()
+
+    # No filter — capture all activity types (comments, edits, creates, etc.)
+    response = service.activity().query(body={
+        "pageSize": page_size,
+        "itemName": f"items/{file_id}",
+    }).execute()
+
+    # Save raw response
+    output_path = FIXTURES_DIR / "activity" / f"{output_name}.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, "w") as f:
+        json.dump(response, f, indent=2)
+
+    activities = response.get("activities", [])
+    print(f"  Saved: {output_path}")
+    print(f"  Activities: {len(activities)}")
+    if activities:
+        # Show action types for quick sanity check
+        types = []
+        for act in activities:
+            detail = act.get("primaryActionDetail", {})
+            for key in detail:
+                types.append(key)
+        from collections import Counter
+        counts = Counter(types)
+        print(f"  Action types: {dict(counts)}")
+
+    return response
+
+
 def run_sanitize():
     """Run sanitization on captured fixtures."""
     from scripts.sanitize_fixtures import main as sanitize_main
@@ -290,6 +361,11 @@ def main():
 
     # Comments
     capture_comments(TEST_IDS["comments"], "real_comments")
+    print()
+
+    # Activity
+    capture_comment_activities("comment_activities")
+    capture_file_activities(TEST_IDS["comments"], "file_activities")
 
     print("\n=== Capture Done ===")
 

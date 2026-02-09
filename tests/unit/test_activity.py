@@ -207,6 +207,11 @@ class TestParseActor:
         actor = _parse_actor({"user": {"knownUser": {"personName": ""}}})
         assert actor.name == "Unknown"
 
+    def test_people_id_treated_as_unknown(self) -> None:
+        """Activity API often returns people/ID instead of display name."""
+        actor = _parse_actor({"user": {"knownUser": {"personName": "people/110715600041008489780"}}})
+        assert actor.name == "Unknown"
+
 
 class TestParseTarget:
     """Test _parse_target with various target structures."""
@@ -279,6 +284,32 @@ class TestParseTarget:
         assert target.file_name == ""
         assert target.mime_type == ""
         assert target.web_link == "https://drive.google.com/file/d/id123/view"
+
+    def test_file_comment_target(self) -> None:
+        """Comment activities use fileComment with drive item in parent."""
+        target = _parse_target({
+            "fileComment": {
+                "legacyCommentId": "AAAB_comment_001",
+                "legacyDiscussionId": "AAAB_discussion_001",
+                "parent": {
+                    "name": "items/abc123",
+                    "title": "Q4 Budget Report.docx",
+                    "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                }
+            }
+        })
+        assert target is not None
+        assert target.file_id == "abc123"
+        assert target.file_name == "Q4 Budget Report.docx"
+        assert target.web_link == "https://drive.google.com/file/d/abc123/view"
+
+    def test_file_comment_empty_parent(self) -> None:
+        """fileComment with empty parent → None."""
+        assert _parse_target({"fileComment": {"parent": {}}}) is None
+
+    def test_file_comment_no_parent(self) -> None:
+        """fileComment without parent key → None."""
+        assert _parse_target({"fileComment": {}}) is None
 
 
 class TestParseCommentAction:

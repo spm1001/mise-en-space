@@ -24,9 +24,10 @@ def _parse_actor(actor_data: dict[str, Any]) -> ActivityActor:
     known_user = user.get("knownUser", {})
 
     # Try to get person name from knownUser
+    # Note: Activity API often returns people/ID format instead of display names
     person_name = known_user.get("personName", "")
-    # Email might not be exposed depending on privacy settings
-    # The isCurrentUser field tells us if it's the authenticated user
+    if person_name.startswith("people/"):
+        person_name = ""  # Not a display name — treat as unknown
 
     # Fallback to displayName from other actor types
     if not person_name:
@@ -47,8 +48,17 @@ def _parse_actor(actor_data: dict[str, Any]) -> ActivityActor:
 
 
 def _parse_target(target_data: dict[str, Any]) -> ActivityTarget | None:
-    """Parse target from Activity API response."""
+    """Parse target from Activity API response.
+
+    Handles two target types:
+    - driveItem: used for edits, creates, moves, renames, etc.
+    - fileComment: used for comment activities (parent has same shape as driveItem)
+    """
     drive_item = target_data.get("driveItem", {})
+    if not drive_item:
+        # Comment activities use fileComment with drive item nested in parent
+        file_comment = target_data.get("fileComment", {})
+        drive_item = file_comment.get("parent", {})
     if not drive_item:
         return None
 

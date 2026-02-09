@@ -1,0 +1,2032 @@
+{
+  "activities": [
+    {
+      "primaryActionDetail": {
+        "edit": {}
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000001"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "edit": {}
+          }
+        }
+      ],
+      "targets": [
+        {
+          "driveItem": {
+            "name": "items/fakeFileId_file_001",
+            "title": "Vendor Contract Amendment 2025.docx",
+            "file": {},
+            "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "owner": {
+              "teamDrive": {
+                "name": "teamDrives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              },
+              "domain": {
+                "name": "example.org",
+                "legacyId": "100000000000000000000"
+              },
+              "drive": {
+                "name": "drives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              }
+            },
+            "driveFile": {}
+          }
+        }
+      ],
+      "timestamp": "2025-07-15T09:40:55.288Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "ADDED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000001"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "ADDED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABnXdaS-o",
+            "legacyDiscussionId": "AAABnXdaS-o",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABnXdaS-o",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-15T09:39:00.310Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "DELETED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000001"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "DELETED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABnXdaS80",
+            "legacyDiscussionId": "AAABnXdaS80",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABnXdaS80",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-15T09:38:52.645Z"
+    },
+    {
+      "primaryActionDetail": {
+        "edit": {}
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000001"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "edit": {}
+          }
+        }
+      ],
+      "targets": [
+        {
+          "driveItem": {
+            "name": "items/fakeFileId_file_001",
+            "title": "Vendor Contract Amendment 2025.docx",
+            "file": {},
+            "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "owner": {
+              "teamDrive": {
+                "name": "teamDrives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              },
+              "domain": {
+                "name": "example.org",
+                "legacyId": "100000000000000000000"
+              },
+              "drive": {
+                "name": "drives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              }
+            },
+            "driveFile": {}
+          }
+        }
+      ],
+      "timestamp": "2025-07-15T09:37:49.083Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "ADDED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000001"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "ADDED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABnXdaS80",
+            "legacyDiscussionId": "AAABnXdaS80",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABnXdaS80",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-15T09:32:29.948Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "ADDED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000001"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "ADDED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABnXdaS8w",
+            "legacyDiscussionId": "AAABnXdaS8w",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABnXdaS8w",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-15T09:32:01.389Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "ADDED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000001"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "ADDED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABnXdaS8s",
+            "legacyDiscussionId": "AAABnXdaS8s",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABnXdaS8s",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-15T09:31:57.258Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "ADDED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000001"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "ADDED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABnXdaS8o",
+            "legacyDiscussionId": "AAABnXdaS8o",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABnXdaS8o",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-15T09:31:03.705Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "ADDED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000001"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "ADDED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABnXdaS8k",
+            "legacyDiscussionId": "AAABnXdaS8k",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABnXdaS8k",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-15T09:30:59.157Z"
+    },
+    {
+      "primaryActionDetail": {
+        "edit": {}
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000001"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "edit": {}
+          }
+        }
+      ],
+      "targets": [
+        {
+          "driveItem": {
+            "name": "items/fakeFileId_file_001",
+            "title": "Vendor Contract Amendment 2025.docx",
+            "file": {},
+            "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "owner": {
+              "teamDrive": {
+                "name": "teamDrives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              },
+              "domain": {
+                "name": "example.org",
+                "legacyId": "100000000000000000000"
+              },
+              "drive": {
+                "name": "drives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              }
+            },
+            "driveFile": {}
+          }
+        }
+      ],
+      "timestamp": "2025-07-15T09:30:22.067Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "post": {
+            "subtype": "REPLY_ADDED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000003"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "post": {
+                "subtype": "REPLY_ADDED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABnUYZ4lY",
+            "legacyDiscussionId": "AAABnUYZ2DQ",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABnUYZ2DQ",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-14T15:41:17.398Z"
+    },
+    {
+      "primaryActionDetail": {
+        "edit": {}
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000001"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "edit": {}
+          }
+        }
+      ],
+      "targets": [
+        {
+          "driveItem": {
+            "name": "items/fakeFileId_file_001",
+            "title": "Vendor Contract Amendment 2025.docx",
+            "file": {},
+            "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "owner": {
+              "teamDrive": {
+                "name": "teamDrives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              },
+              "domain": {
+                "name": "example.org",
+                "legacyId": "100000000000000000000"
+              },
+              "drive": {
+                "name": "drives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              }
+            },
+            "driveFile": {}
+          }
+        }
+      ],
+      "timestamp": "2025-07-14T15:27:33.882Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "post": {
+            "subtype": "ADDED"
+          },
+          "mentionedUsers": [
+            {
+              "knownUser": {
+                "personName": "people/100000000000000000003"
+              }
+            }
+          ]
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000001"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "post": {
+                "subtype": "ADDED"
+              },
+              "mentionedUsers": [
+                {
+                  "knownUser": {
+                    "personName": "people/100000000000000000003"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABnUYZ2DQ",
+            "legacyDiscussionId": "AAABnUYZ2DQ",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABnUYZ2DQ",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-14T15:27:31.091Z"
+    },
+    {
+      "primaryActionDetail": {
+        "edit": {}
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000001"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "edit": {}
+          }
+        }
+      ],
+      "targets": [
+        {
+          "driveItem": {
+            "name": "items/fakeFileId_file_001",
+            "title": "Vendor Contract Amendment 2025.docx",
+            "file": {},
+            "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "owner": {
+              "teamDrive": {
+                "name": "teamDrives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              },
+              "domain": {
+                "name": "example.org",
+                "legacyId": "100000000000000000000"
+              },
+              "drive": {
+                "name": "drives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              }
+            },
+            "driveFile": {}
+          }
+        }
+      ],
+      "timestamp": "2025-07-14T15:24:29.782Z"
+    },
+    {
+      "primaryActionDetail": {
+        "edit": {}
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000001"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "edit": {}
+          }
+        }
+      ],
+      "targets": [
+        {
+          "driveItem": {
+            "name": "items/fakeFileId_file_001",
+            "title": "Vendor Contract Amendment 2025.docx",
+            "file": {},
+            "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "owner": {
+              "teamDrive": {
+                "name": "teamDrives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              },
+              "domain": {
+                "name": "example.org",
+                "legacyId": "100000000000000000000"
+              },
+              "drive": {
+                "name": "drives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              }
+            },
+            "driveFile": {}
+          }
+        }
+      ],
+      "timestamp": "2025-07-14T15:21:24.101Z"
+    },
+    {
+      "primaryActionDetail": {
+        "permissionChange": {
+          "addedPermissions": [
+            {
+              "role": "EDITOR",
+              "user": {
+                "knownUser": {
+                  "personName": "people/100000000000000000001"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000002",
+              "isCurrentUser": true
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "permissionChange": {
+              "addedPermissions": [
+                {
+                  "role": "EDITOR",
+                  "user": {
+                    "knownUser": {
+                      "personName": "people/100000000000000000001"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "detail": {
+            "edit": {}
+          }
+        }
+      ],
+      "targets": [
+        {
+          "driveItem": {
+            "name": "items/fakeFileId_file_001",
+            "title": "Vendor Contract Amendment 2025.docx",
+            "file": {},
+            "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "owner": {
+              "teamDrive": {
+                "name": "teamDrives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              },
+              "domain": {
+                "name": "example.org",
+                "legacyId": "100000000000000000000"
+              },
+              "drive": {
+                "name": "drives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              }
+            },
+            "driveFile": {}
+          }
+        }
+      ],
+      "timestamp": "2025-07-09T20:16:43.249Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "post": {
+            "subtype": "REPLY_ADDED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000002",
+              "isCurrentUser": true
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "post": {
+                "subtype": "REPLY_ADDED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABm7MOgbA",
+            "legacyDiscussionId": "AAABm3ArDmc",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABm3ArDmc",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-03T14:57:54.484Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "assignment": {
+            "subtype": "REPLY_ADDED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000002",
+              "isCurrentUser": true
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "assignment": {
+                "subtype": "REPLY_ADDED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABm7MOga8",
+            "legacyDiscussionId": "AAABm3ArDmQ",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABm3ArDmQ",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-03T14:57:12.970Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "REPLY_ADDED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000002",
+              "isCurrentUser": true
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "REPLY_ADDED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABm7MOga4",
+            "legacyDiscussionId": "AAABm3ArDmk",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABm3ArDmk",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-03T14:56:41.373Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "REPLY_ADDED"
+          },
+          "mentionedUsers": [
+            {
+              "knownUser": {
+                "personName": "people/100000000000000000002",
+                "isCurrentUser": true
+              }
+            }
+          ]
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000003"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "REPLY_ADDED"
+              },
+              "mentionedUsers": [
+                {
+                  "knownUser": {
+                    "personName": "people/100000000000000000002",
+                    "isCurrentUser": true
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABm3ArDng",
+            "legacyDiscussionId": "AAABm3ArDmk",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABm3ArDmk",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-01T12:26:41.338Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "ADDED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000003"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "ADDED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABm3ArDmw",
+            "legacyDiscussionId": "AAABm3ArDmw",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABm3ArDmw",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-01T12:24:10.364Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "ADDED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000003"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "ADDED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABm3ArDms",
+            "legacyDiscussionId": "AAABm3ArDms",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABm3ArDms",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-01T12:24:08.121Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "ADDED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000003"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "ADDED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABm3ArDmo",
+            "legacyDiscussionId": "AAABm3ArDmo",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABm3ArDmo",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-01T12:23:58.037Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "ADDED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000003"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "ADDED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABm3ArDmk",
+            "legacyDiscussionId": "AAABm3ArDmk",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABm3ArDmk",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-01T12:23:27.522Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "DELETED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000003"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "DELETED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABm3ArDmg",
+            "legacyDiscussionId": "AAABm3ArDmg",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABm3ArDmg",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-01T12:23:25.292Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "ADDED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000003"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "ADDED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABm3ArDmg",
+            "legacyDiscussionId": "AAABm3ArDmg",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABm3ArDmg",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-01T12:23:18.773Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "post": {
+            "subtype": "ADDED"
+          },
+          "mentionedUsers": [
+            {
+              "knownUser": {
+                "personName": "people/100000000000000000002",
+                "isCurrentUser": true
+              }
+            }
+          ]
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000003"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "post": {
+                "subtype": "ADDED"
+              },
+              "mentionedUsers": [
+                {
+                  "knownUser": {
+                    "personName": "people/100000000000000000002",
+                    "isCurrentUser": true
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABm3ArDmc",
+            "legacyDiscussionId": "AAABm3ArDmc",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABm3ArDmc",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-01T12:21:54.204Z"
+    },
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "assignment": {
+            "subtype": "ADDED",
+            "assignedUser": {
+              "knownUser": {
+                "personName": "people/100000000000000000002",
+                "isCurrentUser": true
+              }
+            }
+          },
+          "mentionedUsers": [
+            {
+              "knownUser": {
+                "personName": "people/100000000000000000002",
+                "isCurrentUser": true
+              }
+            }
+          ]
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000003"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "assignment": {
+                "subtype": "ADDED",
+                "assignedUser": {
+                  "knownUser": {
+                    "personName": "people/100000000000000000002",
+                    "isCurrentUser": true
+                  }
+                }
+              },
+              "mentionedUsers": [
+                {
+                  "knownUser": {
+                    "personName": "people/100000000000000000002",
+                    "isCurrentUser": true
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAABm3ArDmQ",
+            "legacyDiscussionId": "AAABm3ArDmQ",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_file_001/edit?disco=AAABm3ArDmQ",
+            "parent": {
+              "name": "items/fakeFileId_file_001",
+              "title": "Vendor Contract Amendment 2025.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "teamDrive": {
+                  "name": "teamDrives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                },
+                "drive": {
+                  "name": "drives/fakeTeamDriveId_001",
+                  "title": "Team Shared Drive"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2025-07-01T12:20:17.680Z"
+    },
+    {
+      "primaryActionDetail": {
+        "permissionChange": {
+          "addedPermissions": [
+            {
+              "role": "EDITOR",
+              "user": {
+                "knownUser": {
+                  "personName": "people/100000000000000000003"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000002",
+              "isCurrentUser": true
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "permissionChange": {
+              "addedPermissions": [
+                {
+                  "role": "EDITOR",
+                  "user": {
+                    "knownUser": {
+                      "personName": "people/100000000000000000003"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "detail": {
+            "edit": {}
+          }
+        }
+      ],
+      "targets": [
+        {
+          "driveItem": {
+            "name": "items/fakeFileId_file_001",
+            "title": "Vendor Contract Amendment 2025.docx",
+            "file": {},
+            "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "owner": {
+              "teamDrive": {
+                "name": "teamDrives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              },
+              "domain": {
+                "name": "example.org",
+                "legacyId": "100000000000000000000"
+              },
+              "drive": {
+                "name": "drives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              }
+            },
+            "driveFile": {}
+          }
+        }
+      ],
+      "timestamp": "2025-07-01T11:50:00.849Z"
+    },
+    {
+      "primaryActionDetail": {
+        "rename": {
+          "oldTitle": "Amendment (ITV) 2025-26.docx",
+          "newTitle": "Vendor Contract Amendment 2025.docx"
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000002",
+              "isCurrentUser": true
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "rename": {
+              "oldTitle": "Amendment (ITV) 2025-26.docx",
+              "newTitle": "Vendor Contract Amendment 2025.docx"
+            }
+          }
+        },
+        {
+          "detail": {
+            "edit": {}
+          }
+        }
+      ],
+      "targets": [
+        {
+          "driveItem": {
+            "name": "items/fakeFileId_file_001",
+            "title": "Vendor Contract Amendment 2025.docx",
+            "file": {},
+            "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "owner": {
+              "teamDrive": {
+                "name": "teamDrives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              },
+              "domain": {
+                "name": "example.org",
+                "legacyId": "100000000000000000000"
+              },
+              "drive": {
+                "name": "drives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              }
+            },
+            "driveFile": {}
+          }
+        }
+      ],
+      "timestamp": "2025-06-22T12:18:10.076Z"
+    },
+    {
+      "primaryActionDetail": {
+        "move": {
+          "addedParents": [
+            {
+              "driveItem": {
+                "name": "items/127hFUorvWkkAlKYf7iEZRR8yTw8PIV3R",
+                "title": "ITV Shared Reference",
+                "folder": {
+                  "type": "STANDARD_FOLDER"
+                },
+                "driveFolder": {
+                  "type": "STANDARD_FOLDER"
+                }
+              }
+            }
+          ],
+          "removedParents": [
+            {
+              "driveItem": {
+                "name": "items/0AKk5ew6SUxWwUk9PVA",
+                "folder": {
+                  "type": "MY_DRIVE_ROOT"
+                },
+                "driveFolder": {
+                  "type": "MY_DRIVE_ROOT"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000002",
+              "isCurrentUser": true
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "move": {
+              "addedParents": [
+                {
+                  "driveItem": {
+                    "name": "items/127hFUorvWkkAlKYf7iEZRR8yTw8PIV3R",
+                    "title": "ITV Shared Reference",
+                    "folder": {
+                      "type": "STANDARD_FOLDER"
+                    },
+                    "driveFolder": {
+                      "type": "STANDARD_FOLDER"
+                    }
+                  }
+                }
+              ],
+              "removedParents": [
+                {
+                  "driveItem": {
+                    "name": "items/0AKk5ew6SUxWwUk9PVA",
+                    "folder": {
+                      "type": "MY_DRIVE_ROOT"
+                    },
+                    "driveFolder": {
+                      "type": "MY_DRIVE_ROOT"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "detail": {
+            "edit": {}
+          }
+        },
+        {
+          "detail": {
+            "permissionChange": {
+              "removedPermissions": [
+                {
+                  "role": "OWNER",
+                  "user": {
+                    "knownUser": {
+                      "personName": "people/100000000000000000002",
+                      "isCurrentUser": true
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "driveItem": {
+            "name": "items/fakeFileId_file_001",
+            "title": "Amendment (ITV) 2025-26.docx",
+            "file": {},
+            "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "owner": {
+              "teamDrive": {
+                "name": "teamDrives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              },
+              "domain": {
+                "name": "example.org",
+                "legacyId": "100000000000000000000"
+              },
+              "drive": {
+                "name": "drives/fakeTeamDriveId_001",
+                "title": "Team Shared Drive"
+              }
+            },
+            "driveFile": {}
+          }
+        }
+      ],
+      "timestamp": "2025-06-22T12:16:57.585Z"
+    },
+    {
+      "primaryActionDetail": {
+        "create": {
+          "new": {}
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000002",
+              "isCurrentUser": true
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "create": {
+              "new": {}
+            }
+          }
+        },
+        {
+          "detail": {
+            "edit": {}
+          }
+        },
+        {
+          "detail": {
+            "move": {
+              "addedParents": [
+                {
+                  "driveItem": {
+                    "name": "items/0AKk5ew6SUxWwUk9PVA",
+                    "folder": {
+                      "type": "MY_DRIVE_ROOT"
+                    },
+                    "driveFolder": {
+                      "type": "MY_DRIVE_ROOT"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "driveItem": {
+            "name": "items/fakeFileId_file_001",
+            "title": "Amendment (ITV) 2025-26.docx",
+            "file": {},
+            "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "owner": {
+              "user": {
+                "knownUser": {
+                  "personName": "people/100000000000000000002",
+                  "isCurrentUser": true
+                }
+              },
+              "domain": {
+                "name": "example.org",
+                "legacyId": "100000000000000000000"
+              }
+            },
+            "driveFile": {}
+          }
+        }
+      ],
+      "timestamp": "2025-06-22T12:16:41.660Z"
+    }
+  ]
+}

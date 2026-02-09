@@ -150,6 +150,12 @@ def main():
         for filepath in gmail_dir.glob("*.json"):
             sanitize_fixture(filepath)
 
+    # Activity fixtures contain person names
+    activity_dir = FIXTURES_DIR / "activity"
+    if activity_dir.exists():
+        for filepath in activity_dir.glob("*.json"):
+            sanitize_fixture(filepath)
+
     # Docs/Sheets/Slides might have user info in metadata
     for subdir in ["docs", "sheets", "slides"]:
         dir_path = FIXTURES_DIR / subdir

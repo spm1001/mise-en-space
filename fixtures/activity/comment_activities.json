@@ -1,0 +1,63 @@
+{
+  "activities": [
+    {
+      "primaryActionDetail": {
+        "comment": {
+          "suggestion": {
+            "subtype": "ACCEPTED"
+          }
+        }
+      },
+      "actors": [
+        {
+          "user": {
+            "knownUser": {
+              "personName": "people/100000000000000000001"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "detail": {
+            "comment": {
+              "suggestion": {
+                "subtype": "ACCEPTED"
+              }
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "fileComment": {
+            "legacyCommentId": "AAAB_comment_001",
+            "legacyDiscussionId": "AAAB_discussion_001",
+            "linkToDiscussion": "https://docs.google.com/document/d/fakeFileId_comment_001/edit?disco=AAAB_discussion_001",
+            "parent": {
+              "name": "items/fakeFileId_comment_001",
+              "title": "Q4 Budget Report.docx",
+              "file": {},
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "owner": {
+                "user": {
+                  "knownUser": {
+                    "personName": "people/100000000000000000002",
+                    "isCurrentUser": true
+                  }
+                },
+                "domain": {
+                  "name": "example.org",
+                  "legacyId": "100000000000000000000"
+                }
+              },
+              "driveFile": {}
+            }
+          }
+        }
+      ],
+      "timestamp": "2026-02-04T13:22:17.325Z"
+    }
+  ],
+  "nextPageToken": "dGVzdF9wYWdlX3Rva2VuXzE="
+}
