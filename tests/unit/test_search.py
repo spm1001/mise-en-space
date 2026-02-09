@@ -263,6 +263,20 @@ class TestDoSearch:
     @patch('tools.search.write_search_results')
     @patch('tools.search.search_threads')
     @patch('tools.search.search_files')
+    def test_gmail_mise_error_captured(self, mock_drive, mock_gmail, mock_write) -> None:
+        """Gmail MiseError uses e.message in error string."""
+        mock_drive.return_value = []
+        mock_gmail.side_effect = MiseError(ErrorKind.RATE_LIMITED, "quota exceeded")
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test")
+
+        assert len(result.errors) == 1
+        assert "quota exceeded" in result.errors[0]
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
     def test_both_fail_returns_errors(self, mock_drive, mock_gmail, mock_write) -> None:
         """Both sources failing returns both errors."""
         mock_drive.side_effect = Exception("drive boom")

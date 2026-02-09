@@ -8,11 +8,15 @@ from workspace import (
     get_deposit_folder,
     write_content,
     write_thumbnail,
+    write_image,
+    write_chart,
+    write_charts_metadata,
     write_manifest,
     list_deposit_folders,
     parse_folder_name,
     get_deposit_summary,
 )
+from workspace.manager import write_search_results
 
 
 class TestSlugify:
@@ -293,5 +297,97 @@ class TestGetDepositSummary:
         assert summary["type"] == "doc"
         assert summary["content_file"] == "content.md"
         assert "thumbnails" not in summary
+
+    def test_summary_with_charts(self, tmp_path: Path) -> None:
+        """Summary includes chart info when charts present."""
+        folder = get_deposit_folder("sheet", "Data", "abc123", tmp_path)
+        write_content(folder, "# Data")
+        write_chart(folder, b"chart1", 0)
+        write_chart(folder, b"chart2", 1)
+
+        summary = get_deposit_summary(folder)
+
+        assert summary["chart_count"] == 2
+        assert "chart_01.png" in summary["charts"]
+        assert "chart_02.png" in summary["charts"]
+
+
+class TestWriteImage:
+    """Tests for image writing."""
+
+    def test_writes_png(self, tmp_path: Path) -> None:
+        folder = get_deposit_folder("image", "Photo", "img1", tmp_path)
+        path = write_image(folder, b"\x89PNG data", "image.png")
+
+        assert path.exists()
+        assert path.name == "image.png"
+        assert path.read_bytes() == b"\x89PNG data"
+
+    def test_writes_svg(self, tmp_path: Path) -> None:
+        folder = get_deposit_folder("image", "Diagram", "img2", tmp_path)
+        path = write_image(folder, b"<svg>...</svg>", "image.svg")
+
+        assert path.name == "image.svg"
+
+
+class TestWriteChart:
+    """Tests for chart PNG writing."""
+
+    def test_writes_chart(self, tmp_path: Path) -> None:
+        folder = get_deposit_folder("sheet", "Data", "s1", tmp_path)
+        path = write_chart(folder, b"chart data", chart_index=0)
+
+        assert path.exists()
+        assert path.name == "chart_01.png"
+        assert path.read_bytes() == b"chart data"
+
+    def test_index_formatting(self, tmp_path: Path) -> None:
+        folder = get_deposit_folder("sheet", "Data", "s1", tmp_path)
+        path = write_chart(folder, b"x", chart_index=9)
+
+        assert path.name == "chart_10.png"
+
+
+class TestWriteChartsMetadata:
+    """Tests for charts.json writing."""
+
+    def test_writes_metadata(self, tmp_path: Path) -> None:
+        import json
+
+        folder = get_deposit_folder("sheet", "Data", "s1", tmp_path)
+        charts = [
+            {"title": "Revenue", "type": "LINE", "sheet_name": "Sheet1"},
+            {"title": "Costs", "type": "BAR", "sheet_name": "Sheet2"},
+        ]
+        path = write_charts_metadata(folder, charts)
+
+        assert path.exists()
+        assert path.name == "charts.json"
+        data = json.loads(path.read_text())
+        assert len(data) == 2
+        assert data[0]["title"] == "Revenue"
+
+
+class TestWriteSearchResults:
+    """Tests for search result deposition."""
+
+    def test_writes_search_json(self, tmp_path: Path) -> None:
+        import json
+
+        results = {"drive_results": [{"id": "d1"}], "gmail_results": []}
+        path = write_search_results("Q4 planning", results, base_path=tmp_path)
+
+        assert path.exists()
+        assert path.parent.name == "mise-fetch"
+        assert path.name.startswith("search--q4-planning--")
+        assert path.suffix == ".json"
+
+        data = json.loads(path.read_text())
+        assert data["drive_results"][0]["id"] == "d1"
+
+    def test_creates_mise_fetch_dir(self, tmp_path: Path) -> None:
+        """mise-fetch/ created if it doesn't exist."""
+        path = write_search_results("test", {}, base_path=tmp_path)
+        assert (tmp_path / "mise-fetch").is_dir()
 
 
