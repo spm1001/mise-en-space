@@ -454,19 +454,35 @@ class SearchResult:
             result["errors"] = self.errors
         return result
 
-    def _build_preview(self, max_per_source: int = 3) -> dict[str, Any]:
+    def _build_preview(self, max_per_source: int = 5) -> dict[str, Any]:
         """Build compact preview of top results for each source."""
         preview: dict[str, Any] = {}
         if self.drive_results:
-            preview["drive"] = [
-                {"name": r.get("name", ""), "id": r.get("id", ""), "mimeType": r.get("mimeType", "")}
-                for r in self.drive_results[:max_per_source]
-            ]
+            drive_items = []
+            for r in self.drive_results[:max_per_source]:
+                item: dict[str, Any] = {
+                    "name": r.get("name", ""),
+                    "id": r.get("id", ""),
+                    "mimeType": r.get("mimeType", ""),
+                }
+                if r.get("email_context"):
+                    item["email_context"] = r["email_context"]
+                drive_items.append(item)
+            preview["drive"] = drive_items
         if self.gmail_results:
-            preview["gmail"] = [
-                {"subject": r.get("subject", ""), "thread_id": r.get("thread_id", ""), "from": r.get("from", "")}
-                for r in self.gmail_results[:max_per_source]
-            ]
+            gmail_items = []
+            for r in self.gmail_results[:max_per_source]:
+                item = {
+                    "subject": r.get("subject", ""),
+                    "thread_id": r.get("thread_id", ""),
+                    "from": r.get("from", ""),
+                    "message_count": r.get("message_count", 1),
+                }
+                att_names = r.get("attachment_names")
+                if att_names:
+                    item["attachment_names"] = att_names
+                gmail_items.append(item)
+            preview["gmail"] = gmail_items
         return preview
 
     def to_dict(self) -> dict[str, Any]:

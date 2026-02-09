@@ -355,7 +355,7 @@ class TestSearchResultPreview:
     """Tests for preview in search responses."""
 
     def test_preview_with_drive_results(self) -> None:
-        """Drive results preview shows name, id, mimeType."""
+        """Drive results preview shows name, id, mimeType (top 5)."""
         result = SearchResult(
             query="Q4 planning",
             sources=["drive"],
@@ -364,25 +364,46 @@ class TestSearchResultPreview:
                 {"name": "Q4 Budget.xlsx", "id": "def456", "mimeType": "application/vnd.google-apps.spreadsheet"},
                 {"name": "Q4 Deck.pptx", "id": "ghi789", "mimeType": "application/vnd.google-apps.presentation"},
                 {"name": "Q4 Notes.docx", "id": "jkl012", "mimeType": "application/vnd.google-apps.document"},
+                {"name": "Q4 Review.docx", "id": "mno345", "mimeType": "application/vnd.google-apps.document"},
+                {"name": "Q4 Extra.docx", "id": "pqr678", "mimeType": "application/vnd.google-apps.document"},
             ],
             path="/tmp/search.json",
         )
         d = result.to_dict()
 
         assert "preview" in d
-        assert len(d["preview"]["drive"]) == 3  # max_per_source=3
+        assert len(d["preview"]["drive"]) == 5  # max_per_source=5
         assert d["preview"]["drive"][0]["name"] == "Q4 Plan.docx"
         assert d["preview"]["drive"][0]["id"] == "abc123"
         assert d["preview"]["drive"][0]["mimeType"] == "application/vnd.google-apps.document"
 
+    def test_preview_drive_includes_email_context(self) -> None:
+        """Drive preview includes email_context when present (exfil'd files)."""
+        result = SearchResult(
+            query="report",
+            sources=["drive"],
+            drive_results=[
+                {
+                    "name": "report.pdf", "id": "abc123", "mimeType": "application/pdf",
+                    "email_context": {"message_id": "19c058", "from": "alice@co.com", "subject": "Q4 report"},
+                },
+                {"name": "notes.docx", "id": "def456", "mimeType": "application/vnd.google-apps.document"},
+            ],
+            path="/tmp/search.json",
+        )
+        d = result.to_dict()
+
+        assert d["preview"]["drive"][0]["email_context"]["message_id"] == "19c058"
+        assert "email_context" not in d["preview"]["drive"][1]
+
     def test_preview_with_gmail_results(self) -> None:
-        """Gmail results preview shows subject, thread_id, from."""
+        """Gmail results preview shows subject, thread_id, from, message_count."""
         result = SearchResult(
             query="budget",
             sources=["gmail"],
             gmail_results=[
-                {"subject": "Re: Budget", "thread_id": "19c058", "from": "alice@example.com"},
-                {"subject": "Budget v2", "thread_id": "19c059", "from": "bob@example.com"},
+                {"subject": "Re: Budget", "thread_id": "19c058", "from": "alice@example.com", "message_count": 4, "attachment_names": ["report.pdf"]},
+                {"subject": "Budget v2", "thread_id": "19c059", "from": "bob@example.com", "message_count": 1},
             ],
             path="/tmp/search.json",
         )
@@ -393,6 +414,10 @@ class TestSearchResultPreview:
         assert d["preview"]["gmail"][0]["subject"] == "Re: Budget"
         assert d["preview"]["gmail"][0]["thread_id"] == "19c058"
         assert d["preview"]["gmail"][0]["from"] == "alice@example.com"
+        assert d["preview"]["gmail"][0]["message_count"] == 4
+        assert d["preview"]["gmail"][0]["attachment_names"] == ["report.pdf"]
+        assert d["preview"]["gmail"][1]["message_count"] == 1
+        assert "attachment_names" not in d["preview"]["gmail"][1]  # absent when empty
 
     def test_preview_with_both_sources(self) -> None:
         """Both sources produce separate preview sections."""
