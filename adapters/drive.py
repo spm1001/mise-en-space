@@ -349,7 +349,10 @@ def is_google_workspace_file(mime_type: str) -> bool:
 from functools import lru_cache
 
 
-@lru_cache(maxsize=1)
+_email_attachments_folder_id: str | None = None
+_email_attachments_folder_checked: bool = False
+
+
 def _get_email_attachments_folder_id() -> str | None:
     """
     Get the Email Attachments folder ID.
@@ -359,11 +362,19 @@ def _get_email_attachments_folder_id() -> str | None:
     2. Auto-discover folder named "Email Attachments" in Drive
 
     Returns None if not configured and can't auto-discover.
-    Cached for thread-safe, efficient access.
+    Cached manually (not lru_cache) so None results aren't cached permanently —
+    allows re-discovery if the folder is created after server start.
     """
+    global _email_attachments_folder_id, _email_attachments_folder_checked
+
+    if _email_attachments_folder_checked:
+        return _email_attachments_folder_id
+
     # Check env var first
     folder_id = os.environ.get("MISE_EMAIL_ATTACHMENTS_FOLDER_ID")
     if folder_id:
+        _email_attachments_folder_id = folder_id
+        _email_attachments_folder_checked = True
         return folder_id
 
     # Auto-discover by name
@@ -381,9 +392,11 @@ def _get_email_attachments_folder_id() -> str | None:
         files = response.get("files", [])
         if files:
             discovered_id: str = files[0]["id"]
+            _email_attachments_folder_id = discovered_id
+            _email_attachments_folder_checked = True
             return discovered_id
     except Exception:
-        pass
+        pass  # Don't cache failures — retry next call
 
     return None
 
@@ -429,12 +442,14 @@ def lookup_exfiltrated(message_ids: list[str]) -> dict[str, list[dict[str, Any]]
     # Query for all message IDs at once using fullText search
     # Message IDs are unique (Gmail's hex format)
     # Files are in dated subfolders, so search globally (not just direct children)
+    # Escape message IDs to prevent query injection via crafted descriptions
+    from validation import escape_drive_query
     if len(message_ids) == 1:
-        query = f"fullText contains 'Message ID: {message_ids[0]}'"
+        query = f"fullText contains 'Message ID: {escape_drive_query(message_ids[0])}'"
     else:
         # Batch query with OR
         id_clauses = " or ".join(
-            f"fullText contains 'Message ID: {mid}'" for mid in message_ids
+            f"fullText contains 'Message ID: {escape_drive_query(mid)}'" for mid in message_ids
         )
         query = f"({id_clauses})"
 

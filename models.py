@@ -401,15 +401,16 @@ class FetchResult:
     cues: dict[str, Any] = field(default_factory=dict)  # Decision-tree signals
 
     def to_dict(self) -> dict[str, Any]:
-        result = {
+        result: dict[str, Any] = {
             "path": self.path,
             "content_file": self.content_file,
             "format": self.format,
             "type": self.type,
             "metadata": self.metadata,
         }
-        if self.cues:
-            result["cues"] = self.cues
+        # Always include cues — explicit-null principle: empty cues means
+        # "we checked, nothing to signal" not "cues not implemented"
+        result["cues"] = self.cues
         return result
 
 

@@ -11,7 +11,7 @@ from googleapiclient.http import MediaIoBaseUpload
 
 from adapters.services import get_drive_service
 from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
-from models import CreateResult, CreateError
+from models import CreateResult, CreateError, MiseError
 from retry import with_retry
 
 
@@ -55,7 +55,10 @@ def do_create(
             message=f"Creating {doc_type} is not yet implemented. Only 'doc' is supported.",
         )
 
-    return _create_doc(content, title, folder_id)
+    try:
+        return _create_doc(content, title, folder_id)
+    except MiseError as e:
+        return CreateError(kind=e.kind.value, message=e.message)
 
 
 @with_retry(max_attempts=3, delay_ms=1000)

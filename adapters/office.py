@@ -117,12 +117,11 @@ def fetch_and_extract_office(
     suffix = f".{office_type}"
 
     if file_size > STREAMING_THRESHOLD_BYTES:
-        # Large file: stream to temp
+        # Large file: stream to temp, pass path (not bytes) to avoid OOM
         tmp_path = download_file_to_temp(file_id, suffix=suffix)
         try:
-            file_bytes = tmp_path.read_bytes()
             result = extract_office_content(
-                file_bytes=file_bytes,
+                file_path=tmp_path,
                 office_type=office_type,
                 file_id=file_id,
             )

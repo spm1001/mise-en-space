@@ -22,7 +22,10 @@ Architecture:
 - server.py: Thin MCP wrappers (this file)
 """
 
+import signal
+import sys
 from pathlib import Path
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -36,9 +39,6 @@ mcp = FastMCP("Google Workspace v2")
 # ============================================================================
 # TOOLS — Verb Model (thin wrappers)
 # ============================================================================
-
-from typing import Any
-
 
 @mcp.tool()
 def search(
@@ -583,10 +583,6 @@ def tool_resource(tool_name: str) -> str:
 # ============================================================================
 # SERVER ENTRY POINT
 # ============================================================================
-
-import signal
-import sys
-
 
 def _shutdown_handler(signum: int, frame: object) -> None:
     """Handle termination signals by exiting cleanly."""

@@ -927,8 +927,10 @@ class TestGetEmailAttachmentsFolderId:
     """Test _get_email_attachments_folder_id with env var and auto-discover."""
 
     def setup_method(self) -> None:
-        """Clear lru_cache before each test."""
-        _get_email_attachments_folder_id.cache_clear()
+        """Reset manual cache before each test."""
+        import adapters.drive as _drive_mod
+        _drive_mod._email_attachments_folder_id = None
+        _drive_mod._email_attachments_folder_checked = False
 
     @patch.dict("os.environ", {"MISE_EMAIL_ATTACHMENTS_FOLDER_ID": "env_folder_id"})
     def test_env_var_takes_priority(self) -> None:
@@ -982,7 +984,9 @@ class TestLookupExfiltrated:
     """Test lookup_exfiltrated with mocked Drive API."""
 
     def setup_method(self) -> None:
-        _get_email_attachments_folder_id.cache_clear()
+        import adapters.drive as _drive_mod
+        _drive_mod._email_attachments_folder_id = None
+        _drive_mod._email_attachments_folder_checked = False
 
     @patch("retry.time.sleep")
     @patch("adapters.drive._get_email_attachments_folder_id", return_value="folder123")

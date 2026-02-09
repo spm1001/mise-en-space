@@ -54,35 +54,35 @@ def _get_authorized_http(creds: Credentials) -> google_auth_httplib2.AuthorizedH
     return google_auth_httplib2.AuthorizedHttp(creds, http=http)
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=1)
 def get_sheets_service() -> Resource:
     """Get authenticated Google Sheets API service (cached, thread-safe)."""
     creds = _get_credentials()
     return build("sheets", "v4", http=_get_authorized_http(creds))
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=1)
 def get_drive_service() -> Resource:
     """Get authenticated Google Drive API service (cached, thread-safe)."""
     creds = _get_credentials()
     return build("drive", "v3", http=_get_authorized_http(creds))
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=1)
 def get_docs_service() -> Resource:
     """Get authenticated Google Docs API service (cached, thread-safe)."""
     creds = _get_credentials()
     return build("docs", "v1", http=_get_authorized_http(creds))
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=1)
 def get_gmail_service() -> Resource:
     """Get authenticated Gmail API service (cached, thread-safe)."""
     creds = _get_credentials()
     return build("gmail", "v1", http=_get_authorized_http(creds))
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=1)
 def get_slides_service() -> Resource:
     """Get authenticated Google Slides API service (cached, thread-safe)."""
     creds = _get_credentials()
@@ -100,28 +100,28 @@ def build_slides_service() -> Resource:
     return build("slides", "v1", http=_get_authorized_http(creds))
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=1)
 def get_activity_service() -> Resource:
     """Get authenticated Drive Activity API v2 service (cached, thread-safe)."""
     creds = _get_credentials()
     return build("driveactivity", "v2", http=_get_authorized_http(creds))
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=1)
 def get_tasks_service() -> Resource:
     """Get authenticated Google Tasks API service (cached, thread-safe)."""
     creds = _get_credentials()
     return build("tasks", "v1", http=_get_authorized_http(creds))
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=1)
 def get_calendar_service() -> Resource:
     """Get authenticated Google Calendar API service (cached, thread-safe)."""
     creds = _get_credentials()
     return build("calendar", "v3", http=_get_authorized_http(creds))
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=1)
 def get_labels_service() -> Resource:
     """Get authenticated Drive Labels API v2 service (cached, thread-safe)."""
     creds = _get_credentials()

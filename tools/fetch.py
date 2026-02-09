@@ -25,7 +25,7 @@ from extractors.gmail import extract_thread_content
 from extractors.comments import extract_comments_content
 from extractors.web import extract_web_content, extract_title
 from typing import Any, Literal
-from models import MiseError, ErrorKind, FetchResult, FetchError, EmailContext, WebData
+from models import MiseError, ErrorKind, FetchResult, FetchError, EmailContext, EmailAttachment, WebData
 from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id, GMAIL_WEB_ID_PREFIXES
 from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata
 
@@ -81,16 +81,16 @@ def _build_cues(
     """
     folder_path = Path(folder) if isinstance(folder, str) else folder
 
-    # List files in deposit folder (avoids Glob)
-    files = sorted(f.name for f in folder_path.iterdir() if f.is_file()) if folder_path.exists() else []
-
-    # Content length from content file
+    # Single pass: list files and find content length
+    file_names: list[str] = []
     content_length = 0
     if folder_path.exists():
         for f in folder_path.iterdir():
-            if f.name.startswith("content."):
-                content_length = f.stat().st_size
-                break
+            if f.is_file():
+                file_names.append(f.name)
+                if f.name.startswith("content."):
+                    content_length = f.stat().st_size
+    files = sorted(file_names)
 
     cues: dict[str, Any] = {
         "files": files,
@@ -254,7 +254,7 @@ def _deposit_attachment_content(
     filename: str,
     mime_type: str,
     file_id: str,
-    folder: Any,  # Path
+    folder: Path,
 ) -> dict[str, Any] | None:
     """
     Route attachment bytes by MIME type and deposit to folder.
@@ -296,7 +296,7 @@ def _extract_from_drive(
     file_id: str,
     filename: str,
     mime_type: str,
-    folder: Any,  # Path
+    folder: Path,
     warnings: list[str],
 ) -> dict[str, Any] | None:
     """
@@ -314,8 +314,8 @@ def _extract_from_drive(
 
 def _extract_attachment_content(
     message_id: str,
-    att: Any,  # EmailAttachment
-    folder: Any,  # Path
+    att: EmailAttachment,
+    folder: Path,
     warnings: list[str],
 ) -> dict[str, Any] | None:
     """
