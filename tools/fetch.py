@@ -62,6 +62,57 @@ def _enrich_with_comments(file_id: str, folder: Path) -> tuple[int, str | None]:
         return (0, None)
 
 
+def _build_cues(
+    folder: Path | str,
+    *,
+    open_comment_count: int = 0,
+    warnings: list[str] | None = None,
+    email_context: EmailContext | None = None,
+    participants: list[str] | None = None,
+    has_attachments: bool | None = None,
+    date_range: str | None = None,
+) -> dict[str, Any]:
+    """
+    Build cues dict for FetchResult — decision-tree signals for the caller.
+
+    Cues surface actionable information so callers don't need to read
+    manifest.json or Glob the deposit folder. Explicit nulls mean
+    "we checked, nothing found" (not "we didn't check").
+    """
+    folder_path = Path(folder) if isinstance(folder, str) else folder
+
+    # List files in deposit folder (avoids Glob)
+    files = sorted(f.name for f in folder_path.iterdir() if f.is_file()) if folder_path.exists() else []
+
+    # Content length from content file
+    content_length = 0
+    if folder_path.exists():
+        for f in folder_path.iterdir():
+            if f.name.startswith("content."):
+                content_length = f.stat().st_size
+                break
+
+    cues: dict[str, Any] = {
+        "files": files,
+        "open_comment_count": open_comment_count,
+        "warnings": warnings or [],
+        "content_length": content_length,
+        "email_context": (
+            _build_email_context_metadata(email_context) if email_context else None
+        ),
+    }
+
+    # Gmail-specific cues
+    if participants is not None:
+        cues["participants"] = participants
+    if has_attachments is not None:
+        cues["has_attachments"] = has_attachments
+    if date_range is not None:
+        cues["date_range"] = date_range
+
+    return cues
+
+
 # Text MIME types that can be downloaded and deposited directly
 TEXT_MIME_TYPES = {
     "text/plain",
@@ -445,12 +496,41 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
             f"To extract: {'; '.join(examples)}"
         )
 
+    # Build participants list (unique, ordered by first appearance)
+    seen_participants: set[str] = set()
+    participants: list[str] = []
+    for msg in thread_data.messages:
+        if msg.from_address and msg.from_address not in seen_participants:
+            seen_participants.add(msg.from_address)
+            participants.append(msg.from_address)
+
+    # Date range
+    all_warnings = (thread_data.warnings or []) + extraction_warnings
+    dates = [msg.date for msg in thread_data.messages if hasattr(msg, "date") and msg.date]
+    date_range = None
+    if dates:
+        first = min(dates)
+        last = max(dates)
+        if first == last:
+            date_range = first.strftime("%Y-%m-%d") if hasattr(first, "strftime") else str(first)[:10]
+        else:
+            date_range = f"{first.strftime('%Y-%m-%d') if hasattr(first, 'strftime') else str(first)[:10]} to {last.strftime('%Y-%m-%d') if hasattr(last, 'strftime') else str(last)[:10]}"
+
+    cues = _build_cues(
+        folder,
+        warnings=all_warnings if all_warnings else None,
+        participants=participants,
+        has_attachments=thread_data.has_attachments,
+        date_range=date_range,
+    )
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format="markdown",
         type="gmail",
         metadata=metadata,
+        cues=cues,
     )
 
 
@@ -556,6 +636,8 @@ def fetch_attachment(
             extra["warnings"] = all_warnings
         write_manifest(folder, office_type, title, thread_id, extra=extra)
 
+        cues = _build_cues(folder, warnings=all_warnings if all_warnings else None)
+
         return FetchResult(
             path=str(folder),
             content_file=str(content_path),
@@ -566,6 +648,7 @@ def fetch_attachment(
                 "source": source_label,
                 "gmail_thread_id": thread_id,
             },
+            cues=cues,
         )
 
     # PDF and images need bytes — no copy-convert shortcut because:
@@ -603,6 +686,8 @@ def fetch_attachment(
             extra["warnings"] = all_warnings
         write_manifest(folder, "pdf", title, thread_id, extra=extra)
 
+        cues = _build_cues(folder, warnings=all_warnings if all_warnings else None)
+
         return FetchResult(
             path=str(folder),
             content_file=str(content_path),
@@ -614,6 +699,7 @@ def fetch_attachment(
                 "gmail_thread_id": thread_id,
                 "extraction_method": pdf_result.method,
             },
+            cues=cues,
         )
 
     # Images
@@ -626,6 +712,8 @@ def fetch_attachment(
             extra["warnings"] = warnings
         write_manifest(folder, "image", title, thread_id, extra=extra)
 
+        cues = _build_cues(folder, warnings=warnings if warnings else None)
+
         return FetchResult(
             path=str(folder),
             content_file=str(image_path),
@@ -636,6 +724,7 @@ def fetch_attachment(
                 "source": source_label,
                 "gmail_thread_id": thread_id,
             },
+            cues=cues,
         )
 
     # Unsupported type
@@ -716,12 +805,20 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: 
     if email_context:
         result_metadata["email_context"] = _build_email_context_metadata(email_context)
 
+    cues = _build_cues(
+        folder,
+        open_comment_count=open_comment_count,
+        warnings=doc_data.warnings,
+        email_context=email_context,
+    )
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format="markdown",
         type="doc",
         metadata=result_metadata,
+        cues=cues,
     )
 
 
@@ -778,12 +875,20 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
     if email_context:
         result_meta["email_context"] = _build_email_context_metadata(email_context)
 
+    cues = _build_cues(
+        folder,
+        open_comment_count=open_comment_count,
+        warnings=sheet_data.warnings,
+        email_context=email_context,
+    )
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format="csv",
         type="sheet",
         metadata=result_meta,
+        cues=cues,
     )
 
 
@@ -831,12 +936,20 @@ def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], ema
     if email_context:
         result_meta["email_context"] = _build_email_context_metadata(email_context)
 
+    cues = _build_cues(
+        folder,
+        open_comment_count=open_comment_count,
+        warnings=presentation_data.warnings,
+        email_context=email_context,
+    )
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format="markdown",
         type="slides",
         metadata=result_meta,
+        cues=cues,
     )
 
 
@@ -924,12 +1037,15 @@ def fetch_video(file_id: str, title: str, metadata: dict[str, Any], email_contex
     if email_context:
         result_meta["email_context"] = _build_email_context_metadata(email_context)
 
+    cues = _build_cues(folder, email_context=email_context)
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format="markdown",
         type="video",
         metadata=result_meta,
+        cues=cues,
     )
 
 
@@ -962,12 +1078,19 @@ def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context:
     if email_context:
         result_meta["email_context"] = _build_email_context_metadata(email_context)
 
+    cues = _build_cues(
+        folder,
+        warnings=result.warnings,
+        email_context=email_context,
+    )
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format="markdown",
         type="pdf",
         metadata=result_meta,
+        cues=cues,
     )
 
 
@@ -999,12 +1122,19 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
     if email_context:
         result_meta["email_context"] = _build_email_context_metadata(email_context)
 
+    cues = _build_cues(
+        folder,
+        warnings=result.warnings,
+        email_context=email_context,
+    )
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format=output_format,
         type=office_type,
         metadata=result_meta,
+        cues=cues,
     )
 
 
@@ -1051,12 +1181,15 @@ def fetch_text(file_id: str, title: str, metadata: dict[str, Any], email_context
     if email_context:
         result_meta["email_context"] = _build_email_context_metadata(email_context)
 
+    cues = _build_cues(folder, email_context=email_context)
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format=output_format,
         type="text",
         metadata=result_meta,
+        cues=cues,
     )
 
 
@@ -1118,12 +1251,19 @@ def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_c
     # Content file is the original image (or rendered PNG for SVG if available)
     content_file = str(folder / rendered_png_filename) if rendered_png_filename else str(image_path)
 
+    cues = _build_cues(
+        folder,
+        warnings=result.warnings,
+        email_context=email_context,
+    )
+
     return FetchResult(
         path=str(folder),
         content_file=content_file,
         format="image",
         type="image",
         metadata=result_meta,
+        cues=cues,
     )
 
 
@@ -1189,12 +1329,15 @@ def _fetch_web_pdf(url: str, web_data: WebData, base_path: Path | None = None) -
     if result.warnings:
         result_meta["warnings"] = result.warnings
 
+    cues = _build_cues(folder, warnings=result.warnings)
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format="markdown",
         type="pdf",
         metadata=result_meta,
+        cues=cues,
     )
 
 
@@ -1259,12 +1402,15 @@ def _fetch_web_office(url: str, web_data: WebData, office_type: OfficeType, base
     if result.warnings:
         result_meta["warnings"] = result.warnings
 
+    cues = _build_cues(folder, warnings=result.warnings)
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format=output_format,
         type=office_type,
         metadata=result_meta,
+        cues=cues,
     )
 
 
@@ -1348,12 +1494,15 @@ def fetch_web(url: str, base_path: Path | None = None) -> FetchResult:
     if web_data.warnings:
         result_meta["warnings"] = web_data.warnings
 
+    cues = _build_cues(folder, warnings=web_data.warnings)
+
     return FetchResult(
         path=str(folder),
         content_file=str(content_path),
         format="markdown",
         type="web",
         metadata=result_meta,
+        cues=cues,
     )
 
 

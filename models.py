@@ -398,15 +398,19 @@ class FetchResult:
     format: str                  # 'markdown', 'csv'
     type: str                    # 'doc', 'sheet', 'slides', 'gmail'
     metadata: dict[str, Any]     # Type-specific metadata
+    cues: dict[str, Any] = field(default_factory=dict)  # Decision-tree signals
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "path": self.path,
             "content_file": self.content_file,
             "format": self.format,
             "type": self.type,
             "metadata": self.metadata,
         }
+        if self.cues:
+            result["cues"] = self.cues
+        return result
 
 
 @dataclass
@@ -449,15 +453,30 @@ class SearchResult:
             result["errors"] = self.errors
         return result
 
+    def _build_preview(self, max_per_source: int = 3) -> dict[str, Any]:
+        """Build compact preview of top results for each source."""
+        preview: dict[str, Any] = {}
+        if self.drive_results:
+            preview["drive"] = [
+                {"name": r.get("name", ""), "id": r.get("id", ""), "mimeType": r.get("mimeType", "")}
+                for r in self.drive_results[:max_per_source]
+            ]
+        if self.gmail_results:
+            preview["gmail"] = [
+                {"subject": r.get("subject", ""), "thread_id": r.get("thread_id", ""), "from": r.get("from", "")}
+                for r in self.gmail_results[:max_per_source]
+            ]
+        return preview
+
     def to_dict(self) -> dict[str, Any]:
         """
         Get MCP response dict.
 
-        If path is set, returns path + summary (filesystem-first pattern).
+        If path is set, returns path + summary + preview (filesystem-first pattern).
         Otherwise returns full results inline (legacy/testing).
         """
         if self.path:
-            # Filesystem-first: return path + summary
+            # Filesystem-first: return path + summary + preview
             result: dict[str, Any] = {
                 "path": self.path,
                 "query": self.query,
@@ -465,6 +484,9 @@ class SearchResult:
                 "drive_count": len(self.drive_results) if "drive" in self.sources else 0,
                 "gmail_count": len(self.gmail_results) if "gmail" in self.sources else 0,
             }
+            preview = self._build_preview()
+            if preview:
+                result["preview"] = preview
             if self.errors:
                 result["errors"] = self.errors
             return result

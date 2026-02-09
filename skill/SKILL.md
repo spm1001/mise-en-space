@@ -37,11 +37,27 @@ fetch("1abc...", base_path="/Users/modha/Repos/my-project")
 
 **This checklist applies to all workflows — quick fetch, research, everything.**
 
-1. Read `content.md`
-2. **Check for `comments.md`** — the real discussion often lives here
-3. Check `manifest.json` for `open_comment_count`, warnings, attachment list
-4. For Gmail: read `*.pdf.md` files for extracted attachment text
-5. Check for `email_context` in manifest — if present, the file came from an email thread worth fetching
+The fetch response includes a `cues` block with decision-tree signals — check it BEFORE reading files:
+
+```json
+"cues": {
+  "files": ["content.md", "comments.md", "manifest.json"],
+  "open_comment_count": 3,
+  "warnings": [],
+  "content_length": 4280,
+  "email_context": null,
+  "participants": ["Rupa Jones", "Ella Collis"]  // Gmail only
+}
+```
+
+1. **Read `cues` first** — it tells you what's in the deposit and what to act on
+2. If `open_comment_count > 0` → read `comments.md` (the real discussion lives here)
+3. If `email_context` is populated → the file was shared via email; consider fetching that thread
+4. If `warnings` is non-empty → note extraction issues
+5. Read `content.md`
+6. For Gmail: check `cues.files` for `*.pdf.md` (extracted attachment text)
+
+`manifest.json` is still on disk for scripts/jq, but `cues` surfaces the actionable signals so you don't need to read it separately.
 
 See `references/deposit-structure.md` for folder layout and attachment patterns.
 
