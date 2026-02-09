@@ -9,6 +9,8 @@ import httplib2
 import pytest
 from googleapiclient.errors import HttpError
 
+from tests.helpers import mock_api_chain
+
 from models import (
     EmailContext,
     DriveSearchResult,
@@ -129,7 +131,7 @@ class TestExportFile:
         """export_file returns bytes from API."""
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
-        mock_service.files().export().execute.return_value = b"# Exported Markdown"
+        mock_api_chain(mock_service, "files.export.execute", b"# Exported Markdown")
 
         with patch('retry.time.sleep'):
             result = export_file("doc123", "text/markdown")
@@ -147,9 +149,9 @@ class TestDownloadFile:
         mock_get_service.return_value = mock_service
 
         # Size check returns small file
-        mock_service.files().get().execute.return_value = {"size": "1024"}
+        mock_api_chain(mock_service, "files.get.execute", {"size": "1024"})
         # Download returns content
-        mock_service.files().get_media().execute.return_value = b"file content"
+        mock_api_chain(mock_service, "files.get_media.execute", b"file content")
 
         with patch('retry.time.sleep'):
             result = download_file("file123")
@@ -164,7 +166,7 @@ class TestDownloadFile:
 
         # Size check returns huge file
         huge_size = 100 * 1024 * 1024  # 100MB
-        mock_service.files().get().execute.return_value = {"size": str(huge_size)}
+        mock_api_chain(mock_service, "files.get.execute", {"size": str(huge_size)})
 
         with patch('retry.time.sleep'):
             with pytest.raises(MiseError) as exc_info:
@@ -181,7 +183,7 @@ class TestGetFileSize:
     def test_returns_size(self, mock_get_service) -> None:
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
-        mock_service.files().get().execute.return_value = {"size": "12345"}
+        mock_api_chain(mock_service, "files.get.execute", {"size": "12345"})
 
         result = get_file_size("file123")
         assert result == 12345
@@ -190,7 +192,7 @@ class TestGetFileSize:
     def test_missing_size_returns_zero(self, mock_get_service) -> None:
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
-        mock_service.files().get().execute.return_value = {}
+        mock_api_chain(mock_service, "files.get.execute", {})
 
         result = get_file_size("folder123")
         assert result == 0
@@ -205,7 +207,7 @@ class TestSearchFiles:
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
 
-        mock_service.files().list().execute.return_value = {
+        mock_api_chain(mock_service, "files.list.execute", {
             "files": [
                 {
                     "id": "doc1",
@@ -222,7 +224,7 @@ class TestSearchFiles:
                     "owners": [{"displayName": "Bob"}],
                 },
             ],
-        }
+        })
 
         with patch('retry.time.sleep'):
             results = search_files("fullText contains 'budget'")
@@ -242,7 +244,7 @@ class TestSearchFiles:
         """Empty search returns empty list."""
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
-        mock_service.files().list().execute.return_value = {"files": []}
+        mock_api_chain(mock_service, "files.list.execute", {"files": []})
 
         with patch('retry.time.sleep'):
             results = search_files("nonexistent")
@@ -255,7 +257,7 @@ class TestSearchFiles:
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
 
-        mock_service.files().list().execute.return_value = {
+        mock_api_chain(mock_service, "files.list.execute", {
             "files": [{
                 "id": "pdf1",
                 "name": "report.pdf",
@@ -266,7 +268,7 @@ class TestSearchFiles:
                     "Message ID: 18f4a5b6c7d8e9f0"
                 ),
             }],
-        }
+        })
 
         with patch('retry.time.sleep'):
             results = search_files("report")
@@ -281,7 +283,7 @@ class TestSearchFiles:
         """API pageSize capped at 100 even if max_results is higher."""
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
-        mock_service.files().list().execute.return_value = {"files": []}
+        mock_api_chain(mock_service, "files.list.execute", {"files": []})
 
         with patch('retry.time.sleep'):
             search_files("test", max_results=200)
@@ -370,7 +372,7 @@ class TestFetchFileComments:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.comments().list().execute.return_value = {
+        mock_api_chain(mock_service, "comments.list.execute", {
             "comments": [
                 _api_comment(
                     id="c1",
@@ -381,7 +383,7 @@ class TestFetchFileComments:
                     mentioned_emails=["bob@example.com"],
                 ),
             ],
-        }
+        })
 
         result = fetch_file_comments("doc123")
 
@@ -409,7 +411,7 @@ class TestFetchFileComments:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.comments().list().execute.return_value = {
+        mock_api_chain(mock_service, "comments.list.execute", {
             "comments": [
                 _api_comment(
                     id="c1",
@@ -426,7 +428,7 @@ class TestFetchFileComments:
                     ],
                 ),
             ],
-        }
+        })
 
         result = fetch_file_comments("doc123")
 
@@ -448,7 +450,7 @@ class TestFetchFileComments:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.comments().list().execute.return_value = {
+        mock_api_chain(mock_service, "comments.list.execute", {
             "comments": [
                 {
                     "id": "c1",
@@ -460,7 +462,7 @@ class TestFetchFileComments:
                     "replies": [],
                 },
             ],
-        }
+        })
 
         result = fetch_file_comments("doc123")
 
@@ -477,7 +479,7 @@ class TestFetchFileComments:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.comments().list().execute.return_value = {
+        mock_api_chain(mock_service, "comments.list.execute", {
             "comments": [
                 _api_comment(
                     replies=[
@@ -491,7 +493,7 @@ class TestFetchFileComments:
                     ],
                 ),
             ],
-        }
+        })
 
         result = fetch_file_comments("doc123")
 
@@ -509,12 +511,12 @@ class TestFetchFileComments:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.comments().list().execute.return_value = {
+        mock_api_chain(mock_service, "comments.list.execute", {
             "comments": [
                 _api_comment(id="c1", resolved=False),
                 _api_comment(id="c2", resolved=True),
             ],
-        }
+        })
 
         result = fetch_file_comments("doc123")
 
@@ -532,13 +534,13 @@ class TestFetchFileComments:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.comments().list().execute.return_value = {
+        mock_api_chain(mock_service, "comments.list.execute", {
             "comments": [
                 _api_comment(id="c1", resolved=False, content="Open"),
                 _api_comment(id="c2", resolved=True, content="Done"),
                 _api_comment(id="c3", resolved=False, content="Also open"),
             ],
-        }
+        })
 
         result = fetch_file_comments("doc123", include_resolved=False)
 
@@ -554,7 +556,7 @@ class TestFetchFileComments:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.comments().list().execute.return_value = {"comments": []}
+        mock_api_chain(mock_service, "comments.list.execute", {"comments": []})
 
         result = fetch_file_comments("doc123")
 
@@ -572,7 +574,7 @@ class TestFetchFileComments:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.comments().list().execute.return_value = {
+        mock_api_chain(mock_service, "comments.list.execute", {
             "comments": [
                 {
                     "id": "c1",
@@ -584,7 +586,7 @@ class TestFetchFileComments:
                     "replies": [],
                 },
             ],
-        }
+        })
 
         result = fetch_file_comments("doc123")
 
@@ -622,7 +624,7 @@ class TestFetchFileComments:
         """404 from comments API → INVALID_INPUT (unsupported file type)."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.comments().list().execute.side_effect = _make_http_error(404)
+        mock_api_chain(mock_service, "comments.list.execute", side_effect=_make_http_error(404))
 
         with pytest.raises(MiseError) as exc_info:
             fetch_file_comments("file123")
@@ -639,7 +641,7 @@ class TestFetchFileComments:
         """403 → PERMISSION_DENIED."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.comments().list().execute.side_effect = _make_http_error(403)
+        mock_api_chain(mock_service, "comments.list.execute", side_effect=_make_http_error(403))
 
         with pytest.raises(MiseError) as exc_info:
             fetch_file_comments("file123")
@@ -655,7 +657,7 @@ class TestFetchFileComments:
         """429 → RATE_LIMITED with retryable=True."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.comments().list().execute.side_effect = _make_http_error(429)
+        mock_api_chain(mock_service, "comments.list.execute", side_effect=_make_http_error(429))
 
         with pytest.raises(MiseError) as exc_info:
             fetch_file_comments("file123")
@@ -672,7 +674,7 @@ class TestFetchFileComments:
         """5xx → NETWORK_ERROR with retryable=True."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.comments().list().execute.side_effect = _make_http_error(503)
+        mock_api_chain(mock_service, "comments.list.execute", side_effect=_make_http_error(503))
 
         with pytest.raises(MiseError) as exc_info:
             fetch_file_comments("file123")
@@ -689,7 +691,7 @@ class TestFetchFileComments:
         """Unexpected HTTP status (e.g. 400) → NETWORK_ERROR, not retryable."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.comments().list().execute.side_effect = _make_http_error(400)
+        mock_api_chain(mock_service, "comments.list.execute", side_effect=_make_http_error(400))
 
         with pytest.raises(MiseError) as exc_info:
             fetch_file_comments("file123")
@@ -710,7 +712,7 @@ class TestFetchFileComments:
         mock_svc.return_value = mock_service
 
         # First page returns token, second page is final
-        mock_service.comments().list().execute.side_effect = [
+        mock_api_chain(mock_service, "comments.list.execute", side_effect=[
             {
                 "comments": [_api_comment(id="c1")],
                 "nextPageToken": "page2_token",
@@ -718,7 +720,7 @@ class TestFetchFileComments:
             {
                 "comments": [_api_comment(id="c2")],
             },
-        ]
+        ])
 
         result = fetch_file_comments("doc123")
 
@@ -736,10 +738,10 @@ class TestFetchFileComments:
         mock_svc.return_value = mock_service
 
         # First page fills max_results — shouldn't request page 2
-        mock_service.comments().list().execute.return_value = {
+        mock_api_chain(mock_service, "comments.list.execute", {
             "comments": [_api_comment(id=f"c{i}") for i in range(3)],
             "nextPageToken": "more_exist",
-        }
+        })
 
         result = fetch_file_comments("doc123", max_results=3)
 
@@ -756,7 +758,7 @@ class TestFetchFileComments:
         """pageSize sent to API is min(remaining, 100)."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.comments().list().execute.return_value = {"comments": []}
+        mock_api_chain(mock_service, "comments.list.execute", {"comments": []})
 
         fetch_file_comments("doc123", max_results=25)
 
@@ -776,14 +778,14 @@ class TestFetchFileComments:
         mock_svc.return_value = mock_service
 
         # Minimal comment — only author displayName present
-        mock_service.comments().list().execute.return_value = {
+        mock_api_chain(mock_service, "comments.list.execute", {
             "comments": [
                 {
                     "author": {"displayName": "Alice"},
                     "replies": [],
                 },
             ],
-        }
+        })
 
         result = fetch_file_comments("doc123")
 
@@ -806,7 +808,7 @@ class TestFetchFileComments:
         """include_deleted flag forwarded to API call."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.comments().list().execute.return_value = {"comments": []}
+        mock_api_chain(mock_service, "comments.list.execute", {"comments": []})
 
         fetch_file_comments("doc123", include_deleted=True)
 
@@ -855,11 +857,11 @@ class TestGetFileMetadata:
     def test_returns_metadata_dict(self, mock_svc, _sleep) -> None:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.files().get().execute.return_value = {
+        mock_api_chain(mock_service, "files.get.execute", {
             "id": "doc123",
             "name": "Test",
             "mimeType": "application/vnd.google-apps.document",
-        }
+        })
 
         result = get_file_metadata("doc123")
 
@@ -939,9 +941,9 @@ class TestGetEmailAttachmentsFolderId:
         """Finds folder by name when env var not set."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.files().list().execute.return_value = {
+        mock_api_chain(mock_service, "files.list.execute", {
             "files": [{"id": "discovered_id"}]
-        }
+        })
 
         result = _get_email_attachments_folder_id()
 
@@ -953,7 +955,7 @@ class TestGetEmailAttachmentsFolderId:
         """Returns None when no folder found and no env var."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.files().list().execute.return_value = {"files": []}
+        mock_api_chain(mock_service, "files.list.execute", {"files": []})
 
         result = _get_email_attachments_folder_id()
 
@@ -989,7 +991,7 @@ class TestLookupExfiltrated:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.files().list().execute.return_value = {
+        mock_api_chain(mock_service, "files.list.execute", {
             "files": [
                 {
                     "id": "drive_file_1",
@@ -1004,7 +1006,7 @@ class TestLookupExfiltrated:
                     "description": "Message ID: msg_bbb",
                 },
             ],
-        }
+        })
 
         result = lookup_exfiltrated(["msg_aaa", "msg_bbb"])
 
@@ -1024,7 +1026,7 @@ class TestLookupExfiltrated:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.files().list().execute.return_value = {
+        mock_api_chain(mock_service, "files.list.execute", {
             "files": [
                 {
                     "id": "f1",
@@ -1033,7 +1035,7 @@ class TestLookupExfiltrated:
                     "description": "Message ID: msg_zzz",
                 },
             ],
-        }
+        })
 
         result = lookup_exfiltrated(["msg_aaa"])
 
@@ -1057,7 +1059,7 @@ class TestLookupExfiltrated:
         """API failure silently returns empty dict (pre-exfil is optional)."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.files().list().execute.side_effect = RuntimeError("API down")
+        mock_api_chain(mock_service, "files.list.execute", side_effect=RuntimeError("API down"))
 
         result = lookup_exfiltrated(["msg_aaa"])
 
@@ -1072,7 +1074,7 @@ class TestLookupExfiltrated:
         """Single message ID doesn't use OR query (optimization)."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.files().list().execute.return_value = {"files": []}
+        mock_api_chain(mock_service, "files.list.execute", {"files": []})
 
         lookup_exfiltrated(["msg_aaa"])
 
@@ -1089,7 +1091,7 @@ class TestLookupExfiltrated:
         """Multiple message IDs batch with OR query."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.files().list().execute.return_value = {"files": []}
+        mock_api_chain(mock_service, "files.list.execute", {"files": []})
 
         lookup_exfiltrated(["msg_aaa", "msg_bbb"])
 
@@ -1106,7 +1108,7 @@ class TestLookupExfiltrated:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.files().list().execute.return_value = {
+        mock_api_chain(mock_service, "files.list.execute", {
             "files": [
                 {
                     "id": "f1",
@@ -1121,7 +1123,7 @@ class TestLookupExfiltrated:
                     "description": "Message ID: msg_aaa",
                 },
             ],
-        }
+        })
 
         result = lookup_exfiltrated(["msg_aaa"])
 

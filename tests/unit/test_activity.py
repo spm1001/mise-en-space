@@ -5,6 +5,8 @@ Tests for Activity API adapter and models.
 import pytest
 from unittest.mock import patch, MagicMock
 
+from tests.helpers import mock_api_chain
+
 from models import (
     ActivityActor,
     ActivityTarget,
@@ -472,14 +474,14 @@ class TestSearchCommentActivities:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.activity().query().execute.return_value = {
+        mock_api_chain(mock_service, "activity.query.execute", {
             "activities": [
                 _api_activity(
                     name="act/1",
                     timestamp="2026-01-20T10:00:00Z",
                 ),
             ],
-        }
+        })
 
         result = search_comment_activities()
 
@@ -498,7 +500,7 @@ class TestSearchCommentActivities:
     def test_empty_response(self, mock_svc, _sleep) -> None:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {}
+        mock_api_chain(mock_service, "activity.query.execute", {})
 
         result = search_comment_activities()
 
@@ -510,10 +512,10 @@ class TestSearchCommentActivities:
     def test_pagination_token_returned(self, mock_svc, _sleep) -> None:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {
+        mock_api_chain(mock_service, "activity.query.execute", {
             "activities": [_api_activity()],
             "nextPageToken": "page2",
-        }
+        })
 
         result = search_comment_activities()
 
@@ -525,7 +527,7 @@ class TestSearchCommentActivities:
         """page_token forwarded to API request body."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {"activities": []}
+        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
 
         search_comment_activities(page_token="tok123")
 
@@ -538,7 +540,7 @@ class TestSearchCommentActivities:
     def test_page_size_capped_at_100(self, mock_svc, _sleep) -> None:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {"activities": []}
+        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
 
         search_comment_activities(page_size=200)
 
@@ -553,7 +555,7 @@ class TestSearchCommentActivities:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.activity().query().execute.return_value = {
+        mock_api_chain(mock_service, "activity.query.execute", {
             "activities": [
                 {
                     "name": "act/orphan",
@@ -563,7 +565,7 @@ class TestSearchCommentActivities:
                     "targets": [{}],  # Empty target → _parse_target returns None
                 },
             ],
-        }
+        })
 
         result = search_comment_activities()
 
@@ -579,9 +581,9 @@ class TestSearchCommentActivities:
 
         activity = _api_activity()
         activity["actors"] = []
-        mock_service.activity().query().execute.return_value = {
+        mock_api_chain(mock_service, "activity.query.execute", {
             "activities": [activity],
-        }
+        })
 
         result = search_comment_activities()
 
@@ -593,7 +595,7 @@ class TestSearchCommentActivities:
         """Request includes COMMENT filter."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {"activities": []}
+        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
 
         search_comment_activities()
 
@@ -616,13 +618,13 @@ class TestGetFileActivities:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.activity().query().execute.return_value = {
+        mock_api_chain(mock_service, "activity.query.execute", {
             "activities": [
                 _api_activity(
                     action_detail={"comment": {"post": {"subtype": "ADDED"}}},
                 ),
             ],
-        }
+        })
 
         result = get_file_activities("doc123")
 
@@ -635,11 +637,11 @@ class TestGetFileActivities:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.activity().query().execute.return_value = {
+        mock_api_chain(mock_service, "activity.query.execute", {
             "activities": [
                 _api_activity(action_detail={"edit": {}}),
             ],
-        }
+        })
 
         result = get_file_activities("doc123")
 
@@ -650,9 +652,9 @@ class TestGetFileActivities:
     def test_create_activity(self, mock_svc, _sleep) -> None:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {
+        mock_api_chain(mock_service, "activity.query.execute", {
             "activities": [_api_activity(action_detail={"create": {}})],
-        }
+        })
 
         result = get_file_activities("doc123")
         assert result.activities[0].action_type == "create"
@@ -662,9 +664,9 @@ class TestGetFileActivities:
     def test_move_activity(self, mock_svc, _sleep) -> None:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {
+        mock_api_chain(mock_service, "activity.query.execute", {
             "activities": [_api_activity(action_detail={"move": {}})],
-        }
+        })
 
         result = get_file_activities("doc123")
         assert result.activities[0].action_type == "move"
@@ -674,9 +676,9 @@ class TestGetFileActivities:
     def test_rename_activity(self, mock_svc, _sleep) -> None:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {
+        mock_api_chain(mock_service, "activity.query.execute", {
             "activities": [_api_activity(action_detail={"rename": {}})],
-        }
+        })
 
         result = get_file_activities("doc123")
         assert result.activities[0].action_type == "rename"
@@ -686,9 +688,9 @@ class TestGetFileActivities:
     def test_delete_activity(self, mock_svc, _sleep) -> None:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {
+        mock_api_chain(mock_service, "activity.query.execute", {
             "activities": [_api_activity(action_detail={"delete": {}})],
-        }
+        })
 
         result = get_file_activities("doc123")
         assert result.activities[0].action_type == "delete"
@@ -698,9 +700,9 @@ class TestGetFileActivities:
     def test_restore_activity(self, mock_svc, _sleep) -> None:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {
+        mock_api_chain(mock_service, "activity.query.execute", {
             "activities": [_api_activity(action_detail={"restore": {}})],
-        }
+        })
 
         result = get_file_activities("doc123")
         assert result.activities[0].action_type == "restore"
@@ -711,9 +713,9 @@ class TestGetFileActivities:
         """Unknown action type → 'other'."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {
+        mock_api_chain(mock_service, "activity.query.execute", {
             "activities": [_api_activity(action_detail={"permissionChange": {}})],
-        }
+        })
 
         result = get_file_activities("doc123")
         assert result.activities[0].action_type == "other"
@@ -727,9 +729,9 @@ class TestGetFileActivities:
 
         activity = _api_activity()
         activity["targets"] = [{}]  # Empty → _parse_target returns None
-        mock_service.activity().query().execute.return_value = {
+        mock_api_chain(mock_service, "activity.query.execute", {
             "activities": [activity],
-        }
+        })
 
         result = get_file_activities("myfile")
 
@@ -743,7 +745,7 @@ class TestGetFileActivities:
         """filter_type='comments' adds COMMENT filter."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {"activities": []}
+        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
 
         get_file_activities("doc123", filter_type="comments")
 
@@ -757,7 +759,7 @@ class TestGetFileActivities:
         """filter_type='edits' adds EDIT filter."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {"activities": []}
+        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
 
         get_file_activities("doc123", filter_type="edits")
 
@@ -771,7 +773,7 @@ class TestGetFileActivities:
         """filter_type=None → no filter in request body."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {"activities": []}
+        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
 
         get_file_activities("doc123", filter_type=None)
 
@@ -785,7 +787,7 @@ class TestGetFileActivities:
         """File ID is formatted as items/{file_id} in request."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {"activities": []}
+        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
 
         get_file_activities("abc123")
 
@@ -798,7 +800,7 @@ class TestGetFileActivities:
     def test_page_size_capped(self, mock_svc, _sleep) -> None:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-        mock_service.activity().query().execute.return_value = {"activities": []}
+        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
 
         get_file_activities("doc123", page_size=500)
 
@@ -813,13 +815,13 @@ class TestGetFileActivities:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        mock_service.activity().query().execute.return_value = {
+        mock_api_chain(mock_service, "activity.query.execute", {
             "activities": [
                 _api_activity(name="a1", action_detail={"comment": {"post": {"subtype": "ADDED"}}}),
                 _api_activity(name="a2", action_detail={"edit": {}}),
                 _api_activity(name="a3", action_detail={"comment": {"post": {"subtype": "RESOLVED"}}}),
             ],
-        }
+        })
 
         result = get_file_activities("doc123", filter_type=None)
 
@@ -835,9 +837,9 @@ class TestGetFileActivities:
 
         activity = _api_activity()
         activity["actors"] = []
-        mock_service.activity().query().execute.return_value = {
+        mock_api_chain(mock_service, "activity.query.execute", {
             "activities": [activity],
-        }
+        })
 
         result = get_file_activities("doc123")
         assert result.activities[0].actor.name == "Unknown"

@@ -39,6 +39,18 @@ from adapters.web import (
 )
 
 
+def _wire_httpx_client(mock_client_cls: MagicMock) -> MagicMock:
+    """Wire up httpx.Client context manager mock and return the client instance.
+
+    Replaces the repetitive 3-line pattern:
+        mock_client = _wire_httpx_client(mock_client_cls)
+    """
+    mock_client = MagicMock()
+    mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
+    mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+    return mock_client
+
+
 class TestIsWebUrl:
     """Test URL detection."""
 
@@ -1204,9 +1216,7 @@ class TestFetchWebContentHTTPErrors:
 
     @patch("adapters.web.httpx.Client")
     def test_timeout_raises(self, mock_client_cls) -> None:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.side_effect = httpx.TimeoutException("timed out")
 
         with pytest.raises(MiseError) as exc_info:
@@ -1215,9 +1225,7 @@ class TestFetchWebContentHTTPErrors:
 
     @patch("adapters.web.httpx.Client")
     def test_connect_error_raises(self, mock_client_cls) -> None:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.side_effect = httpx.ConnectError("refused")
 
         with pytest.raises(MiseError) as exc_info:
@@ -1226,9 +1234,7 @@ class TestFetchWebContentHTTPErrors:
 
     @patch("adapters.web.httpx.Client")
     def test_request_error_raises(self, mock_client_cls) -> None:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.side_effect = httpx.RequestError("DNS fail")
 
         with pytest.raises(MiseError) as exc_info:
@@ -1241,9 +1247,7 @@ class TestFetchWebContentStatusCodes:
 
     @patch("adapters.web.httpx.Client")
     def test_429_raises_rate_limited(self, mock_client_cls) -> None:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.return_value = _mock_response(status_code=429)
 
         with pytest.raises(MiseError) as exc_info:
@@ -1253,9 +1257,7 @@ class TestFetchWebContentStatusCodes:
 
     @patch("adapters.web.httpx.Client")
     def test_500_raises_network_error(self, mock_client_cls) -> None:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.return_value = _mock_response(status_code=500)
 
         with pytest.raises(MiseError) as exc_info:
@@ -1264,9 +1266,7 @@ class TestFetchWebContentStatusCodes:
 
     @patch("adapters.web.httpx.Client")
     def test_502_raises_network_error(self, mock_client_cls) -> None:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.return_value = _mock_response(status_code=502)
 
         with pytest.raises(MiseError) as exc_info:
@@ -1275,9 +1275,7 @@ class TestFetchWebContentStatusCodes:
 
     @patch("adapters.web.httpx.Client")
     def test_404_raises_not_found(self, mock_client_cls) -> None:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.return_value = _mock_response(status_code=404)
 
         with pytest.raises(MiseError) as exc_info:
@@ -1291,9 +1289,7 @@ class TestFetchWebContentBinary:
     @patch("adapters.web.httpx.Client")
     def test_pdf_response_captures_raw_bytes(self, mock_client_cls) -> None:
         """PDF Content-Type → raw_bytes populated, html empty."""
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
 
         pdf_bytes = b"%PDF-1.4 content here"
         mock_client.get.return_value = _mock_response(
@@ -1313,9 +1309,7 @@ class TestFetchWebContentBinary:
     @patch("adapters.web.httpx.Client")
     def test_large_pdf_streams_to_temp(self, mock_client_cls, mock_stream) -> None:
         """Binary over threshold → streams to temp file."""
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
 
         big_size = str(STREAMING_THRESHOLD_BYTES + 1)
         mock_client.get.return_value = _mock_response(
@@ -1341,9 +1335,7 @@ class TestFetchWebContentBinary:
         self, mock_client_cls
     ) -> None:
         """Binary with no Content-Length → loads into memory (safe default)."""
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
 
         mock_client.get.return_value = _mock_response(
             status_code=200,
@@ -1360,9 +1352,7 @@ class TestFetchWebContentBinary:
     @patch("adapters.web.httpx.Client")
     def test_docx_response_captures_raw_bytes(self, mock_client_cls) -> None:
         """DOCX Content-Type → raw_bytes populated."""
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
 
         docx_bytes = b"PK\x03\x04 fake docx"
         mock_client.get.return_value = _mock_response(
@@ -1384,9 +1374,7 @@ class TestFetchWebContentHTML:
 
     @patch("adapters.web.httpx.Client")
     def test_captcha_raises(self, mock_client_cls) -> None:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.return_value = _mock_response(
             text='<html><div class="cf-challenge">Checking your browser</div></html>',
         )
@@ -1397,9 +1385,7 @@ class TestFetchWebContentHTML:
 
     @patch("adapters.web.httpx.Client")
     def test_auth_401_raises(self, mock_client_cls) -> None:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.return_value = _mock_response(status_code=401)
 
         with pytest.raises(MiseError) as exc_info:
@@ -1408,9 +1394,7 @@ class TestFetchWebContentHTML:
 
     @patch("adapters.web.httpx.Client")
     def test_paywall_raises(self, mock_client_cls) -> None:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.return_value = _mock_response(
             text="<html><body>" + "x" * 600 + " subscribe to continue reading</body></html>",
         )
@@ -1423,9 +1407,7 @@ class TestFetchWebContentHTML:
     @patch("adapters.web.httpx.Client")
     def test_js_rendered_no_webctl_warns(self, mock_client_cls, _webctl) -> None:
         """JS-rendered content without webctl returns HTML with warning."""
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         # Short content triggers JS detection
         mock_client.get.return_value = _mock_response(
             text='<html><script id="__NEXT_DATA__">{}</script><body>tiny</body></html>',
@@ -1444,9 +1426,7 @@ class TestFetchWebContentHTML:
         self, mock_client_cls, _webctl, mock_browser
     ) -> None:
         """JS-rendered + webctl available → falls back to browser."""
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.return_value = _mock_response(
             text='<html><script id="__NEXT_DATA__">{}</script><body>tiny</body></html>',
         )
@@ -1462,9 +1442,7 @@ class TestFetchWebContentHTML:
     @patch("adapters.web.httpx.Client")
     def test_normal_html_returns_webdata(self, mock_client_cls) -> None:
         """Normal static HTML → WebData with http render method."""
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         html = "<html><body>" + "Content " * 200 + "</body></html>"
         mock_client.get.return_value = _mock_response(text=html)
 
@@ -1478,9 +1456,7 @@ class TestFetchWebContentHTML:
     @patch("adapters.web.httpx.Client")
     def test_redirect_tracked_in_warnings(self, mock_client_cls) -> None:
         """Redirect from original URL to final URL generates a warning."""
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.return_value = _mock_response(
             url="https://www.example.com/article",  # Different from request URL
         )
@@ -1493,9 +1469,7 @@ class TestFetchWebContentHTML:
     @patch("adapters.web.httpx.Client")
     def test_no_redirect_no_warning(self, mock_client_cls) -> None:
         """Same final URL → no redirect warning."""
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.return_value = _mock_response(
             url="https://example.com/page",
         )
@@ -1642,9 +1616,7 @@ class TestStreamBinaryToTemp:
     @patch("adapters.web.httpx.Client")
     def test_streams_pdf_to_temp(self, mock_client_cls) -> None:
         """Streaming download creates temp file with correct suffix."""
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
 
         mock_response = MagicMock()
         mock_response.iter_bytes.return_value = [b"%PDF-1.4 chunk1", b" chunk2"]
@@ -1667,9 +1639,7 @@ class TestStreamBinaryToTemp:
     @patch("adapters.web.httpx.Client")
     def test_iter_bytes_error_cleans_up_temp(self, mock_client_cls) -> None:
         """If iter_bytes fails mid-write, temp file is cleaned up."""
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
 
         def exploding_iter(*args, **kwargs):
             yield b"partial data"
@@ -1686,9 +1656,7 @@ class TestStreamBinaryToTemp:
 
     @patch("adapters.web.httpx.Client")
     def test_timeout_raises_mise_error(self, mock_client_cls) -> None:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.stream.side_effect = httpx.TimeoutException("slow")
 
         with pytest.raises(MiseError) as exc_info:
@@ -1697,9 +1665,7 @@ class TestStreamBinaryToTemp:
 
     @patch("adapters.web.httpx.Client")
     def test_http_error_raises_mise_error(self, mock_client_cls) -> None:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
 
         mock_response = MagicMock()
         mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
@@ -1714,9 +1680,7 @@ class TestStreamBinaryToTemp:
 
     @patch("adapters.web.httpx.Client")
     def test_request_error_raises_mise_error(self, mock_client_cls) -> None:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.stream.side_effect = httpx.RequestError("DNS fail")
 
         with pytest.raises(MiseError) as exc_info:
@@ -1726,9 +1690,7 @@ class TestStreamBinaryToTemp:
     @patch("adapters.web.httpx.Client")
     def test_docx_suffix(self, mock_client_cls) -> None:
         """DOCX content type gets .docx suffix."""
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
 
         mock_response = MagicMock()
         mock_response.iter_bytes.return_value = [b"PK"]
@@ -1747,9 +1709,7 @@ class TestStreamBinaryToTemp:
     @patch("adapters.web.httpx.Client")
     def test_unknown_content_type_uses_bin_suffix(self, mock_client_cls) -> None:
         """Unknown content type falls back to .bin suffix."""
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+        mock_client = _wire_httpx_client(mock_client_cls)
 
         mock_response = MagicMock()
         mock_response.iter_bytes.return_value = [b"data"]
