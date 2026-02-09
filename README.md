@@ -133,7 +133,7 @@ MCP server startup is ~1.3s (import + first auth). After that, the server stays 
 | Operation | Typical | Range | Notes |
 |-----------|---------|-------|-------|
 | **Search (single source)** | ~1s | 0.2–1.3s | Drive and Gmail similar |
-| **Search (Drive + Gmail)** | ~2.3s | 1.1–3.1s | Sequential (parallel would halve this) |
+| **Search (Drive + Gmail)** | ~0.8s | 0.6–1.1s | Parallel — faster than either alone |
 | **Fetch: Web page** | ~0.1s | 0.0–0.2s | HTTP direct, fastest path |
 | **Fetch: Google Doc** | ~2s | 1.7–3.1s | Single API call |
 | **Fetch: Gmail thread** | ~2.4s | 1.8–3.0s | Thread + message batch |

@@ -5,6 +5,7 @@ Unified search across Drive and Gmail.
 Deposits results to file (filesystem-first pattern).
 """
 
+from concurrent.futures import ThreadPoolExecutor, Future
 from pathlib import Path
 from typing import Any
 
@@ -80,24 +81,45 @@ def do_search(
 
     result = SearchResult(query=query, sources=sources)
 
-    # Drive search
-    if "drive" in sources:
+    search_drive = "drive" in sources
+    search_gmail = "gmail" in sources
+
+    def _run_drive() -> list[DriveSearchResult]:
+        escaped_query = escape_drive_query(query)
+        drive_query = f"fullText contains '{escaped_query}' and trashed = false"
+        return search_files(drive_query, max_results=max_results)
+
+    def _run_gmail() -> list[GmailSearchResult]:
+        sanitized_query = sanitize_gmail_query(query)
+        return search_threads(sanitized_query, max_results=max_results)
+
+    # Run searches in parallel when both sources requested
+    drive_future: Future | None = None
+    gmail_future: Future | None = None
+
+    if search_drive and search_gmail:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            drive_future = executor.submit(_run_drive)
+            gmail_future = executor.submit(_run_gmail)
+    elif search_drive:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            drive_future = executor.submit(_run_drive)
+    elif search_gmail:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            gmail_future = executor.submit(_run_gmail)
+
+    # Collect results (errors are independent — one failing doesn't block the other)
+    if drive_future:
         try:
-            escaped_query = escape_drive_query(query)
-            drive_query = f"fullText contains '{escaped_query}' and trashed = false"
-            drive_results = search_files(drive_query, max_results=max_results)
-            result.drive_results = [format_drive_result(r) for r in drive_results]
+            result.drive_results = [format_drive_result(r) for r in drive_future.result()]
         except MiseError as e:
             result.errors.append(f"Drive search failed: {e.message}")
         except Exception as e:
             result.errors.append(f"Drive search failed: {str(e)}")
 
-    # Gmail search
-    if "gmail" in sources:
+    if gmail_future:
         try:
-            sanitized_query = sanitize_gmail_query(query)
-            gmail_results = search_threads(sanitized_query, max_results=max_results)
-            result.gmail_results = [format_gmail_result(r) for r in gmail_results]
+            result.gmail_results = [format_gmail_result(r) for r in gmail_future.result()]
         except MiseError as e:
             result.errors.append(f"Gmail search failed: {e.message}")
         except Exception as e:
