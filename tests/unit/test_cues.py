@@ -160,6 +160,42 @@ class TestBuildCues:
         assert "slide_03.png" in cues["files"]
         assert len(cues["files"]) == 4  # manifest + content + 2 thumbnails
 
+    def test_many_thumbnails_collapsed(self, tmp_path: Path) -> None:
+        """Many thumbnails collapsed into compact summary."""
+        (tmp_path / "manifest.json").write_text("{}")
+        (tmp_path / "content.md").write_text("# Slides")
+        (tmp_path / "comments.md").write_text("# Comments")
+        for i in range(1, 44):
+            (tmp_path / f"slide_{i:02d}.png").write_bytes(b"\x89PNG")
+
+        cues = _build_cues(tmp_path, open_comment_count=0, warnings=[])
+
+        # Non-thumbnail files listed individually
+        assert "content.md" in cues["files"]
+        assert "manifest.json" in cues["files"]
+        assert "comments.md" in cues["files"]
+        # Thumbnails collapsed into summary
+        assert any("43 thumbnails" in f for f in cues["files"])
+        assert "slide_01.png ... slide_43.png (43 thumbnails)" in cues["files"]
+        # No individual slide files
+        assert "slide_01.png" not in cues["files"]
+        assert "slide_22.png" not in cues["files"]
+        # Total: 3 non-thumbnail + 1 summary = 4
+        assert len(cues["files"]) == 4
+
+    def test_three_thumbnails_listed_individually(self, tmp_path: Path) -> None:
+        """Three or fewer thumbnails listed individually (no collapse)."""
+        (tmp_path / "content.md").write_text("# Slides")
+        for i in range(1, 4):
+            (tmp_path / f"slide_{i:02d}.png").write_bytes(b"\x89PNG")
+
+        cues = _build_cues(tmp_path)
+
+        assert "slide_01.png" in cues["files"]
+        assert "slide_02.png" in cues["files"]
+        assert "slide_03.png" in cues["files"]
+        assert len(cues["files"]) == 4  # content + 3 thumbnails
+
     def test_directories_excluded_from_files(self, tmp_path: Path) -> None:
         """Subdirectories not listed in files."""
         (tmp_path / "content.md").write_text("hello")

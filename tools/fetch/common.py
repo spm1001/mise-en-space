@@ -67,14 +67,27 @@ def _build_cues(
 
     # Single pass: list files and find content length
     file_names: list[str] = []
+    thumbnail_names: list[str] = []
     content_length = 0
     if folder_path.exists():
         for f in folder_path.iterdir():
             if f.is_file():
-                file_names.append(f.name)
-                if f.name.startswith("content."):
+                name = f.name
+                if name.startswith("slide_") and name.endswith(".png"):
+                    thumbnail_names.append(name)
+                else:
+                    file_names.append(name)
+                if name.startswith("content."):
                     content_length = f.stat().st_size
+
+    # Collapse thumbnails into a compact summary
     files = sorted(file_names)
+    if thumbnail_names:
+        sorted_thumbs = sorted(thumbnail_names)
+        if len(sorted_thumbs) > 3:
+            files.append(f"{sorted_thumbs[0]} ... {sorted_thumbs[-1]} ({len(sorted_thumbs)} thumbnails)")
+        else:
+            files.extend(sorted_thumbs)
 
     cues: dict[str, Any] = {
         "files": files,
