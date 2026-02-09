@@ -5,231 +5,207 @@ description: Orchestrates content fetching via mcp__mise__ tools. MANDATORY befo
 
 # mise
 
-Guide for content fetching — web URLs, Google Drive, Gmail — using the mise-en-space MCP.
+Content fetching for web URLs, Google Drive, and Gmail — via the mise-en-space MCP.
 
 **Iron Law: Files are artifacts. Emails are meaning.**
 
 A document tells you *what* was decided. The email thread tells you *why*, who pushed back, and what concerns remain.
 
-## The 3-Verb Model
+## Always: Pass base_path
 
-mise-en-space exposes 3 tools:
-
-| Tool | Purpose | Output |
-|------|---------|--------|
-| `search` | Find files/emails | Path to deposited JSON + counts |
-| `fetch` | Extract content | Path to deposit folder with content.md, comments.md |
-| `create` | Make new docs | File ID + URL |
-
-**Filesystem-first:** Results go to `mise-fetch/` in the specified directory. Read what you need.
-
-### Critical: Always Pass base_path
-
-**MCP servers run as separate processes.** Without `base_path`, deposits land in the MCP server's directory — not yours.
+**MCP servers run as separate processes.** Without `base_path`, deposits land in the server's directory — not yours.
 
 ```python
-# ALWAYS pass base_path when calling via MCP
+# ALWAYS include base_path
 search("Q4 planning", base_path="/Users/modha/Repos/my-project")
 fetch("1abc...", base_path="/Users/modha/Repos/my-project")
 ```
 
-This puts `mise-fetch/` next to your project where you can read it. Without it, files disappear into the server's install directory.
+**Deposit accumulation:** `mise-fetch/` grows without bound during a session. Be aware during heavy research — 15+ deposits add up.
 
-**CLI users:** `mise search` / `mise fetch` from the command line use your shell's cwd automatically — no `base_path` needed.
+## The Three Tools
 
-## The Exploration Loop
+| Tool | Purpose | Output |
+|------|---------|--------|
+| `search` | Find files/emails | Path to deposited JSON + counts |
+| `fetch` | Extract content to disk | Deposit folder: content.md, comments.md, manifest.json |
+| `create` | Make new Google Doc/Sheet/Slides | File ID + web URL |
 
-Don't just search→fetch→read. Follow the loop:
-
-```
-1. Search Drive → find file
-2. Check email_context → if present, the file came from an email
-3. Search Gmail filename:X → find the email thread
-4. Read email → discover new terms, people, context
-5. Search again with new terms → repeat
-```
-
-This loop discovers **meaning** (in communications) behind **artifacts** (files).
-
-See `references/exploration-loop.md` for details.
+`fetch` auto-detects input: Drive file ID, Drive URL, Gmail thread ID, or web URL.
 
 ## After Every Fetch
 
-mise automatically deposits alongside your content:
-- `comments.md` — open comments (if any)
-- `manifest.json` — metadata including `open_comment_count`
+**This checklist applies to all workflows — quick fetch, research, everything.**
 
-**Always check for `comments.md`.** The real discussion often lives in comments — disagreements, questions, suggestions that didn't make it into the final text.
+1. Read `content.md`
+2. **Check for `comments.md`** — the real discussion often lives here
+3. Check `manifest.json` for `open_comment_count`, warnings, attachment list
+4. For Gmail: read `*.pdf.md` files for extracted attachment text
+5. Check for `email_context` in manifest — if present, the file came from an email thread worth fetching
 
-```bash
-# What's in my deposit?
-ls mise-fetch/doc--strawman-framework--1abc/
-# content.md  comments.md  manifest.json
+See `references/deposit-structure.md` for folder layout and attachment patterns.
 
-# Don't skip the comments!
-```
+## Workflow 1: Quick Fetch
 
-## Gmail Deposits: Attachment Structure
+**When:** "Get me this doc" / "Fetch this URL" / "Read that email thread"
 
-When fetching Gmail threads, attachments are **separate files** — not inlined into `content.md`.
-
-**What you get:**
-```
-mise-fetch/gmail--re-project-update--abc123/
-├── content.md              # Thread text + pointer summary
-├── quarterly-report.pdf    # Original PDF binary
-├── quarterly-report.pdf.md # Extracted PDF text (separate file)
-├── chart.png               # Image attachment (deposited as-is)
-└── manifest.json           # Metadata + attachment list
-```
-
-**In content.md**, extracted attachments appear as pointers at the bottom:
-```
-**Extracted attachments:**
-- quarterly-report.pdf → `quarterly-report.pdf.md`
-- chart.png (deposited as file)
-```
-
-**To read attachment content:** Read the `.pdf.md` file for extracted text, or view the image file directly. PDFs and images are eagerly extracted; Office files are not.
-
-**Office files (DOCX/XLSX/PPTX) are skipped** during eager extraction (5-10s each). The manifest tells you what was skipped:
 ```python
-# Extract a specific Office attachment on demand
-fetch("thread_id", attachment="budget.xlsx", base_path="/path/to/project")
+fetch("1abc...", base_path="...")                          # Drive file
+fetch("https://docs.google.com/...", base_path="...")      # Drive URL
+fetch("https://example.com/article", base_path="...")      # Web URL
+fetch("18f3a4b...", base_path="...")                       # Gmail thread
+fetch("thread_id", attachment="budget.xlsx", base_path="...")  # Single attachment
 ```
 
-This deposits to its own folder (`mise-fetch/xlsx--budget--thread_id/`).
+**Gmail URL gotcha:** Browser URLs contain web-format IDs (`FMfcgz...`), not API IDs. The MCP converts automatically, but conversion fails for self-sent emails (~2018+). If fetch errors on a Gmail URL, ask the user for the thread ID.
 
-## Gmail Search: Use Operators
+Then follow the **After Every Fetch** checklist above.
 
-**Don't:** Throw keywords at search (keyword soup)
+## Workflow 2: Research
+
+**When:** "Help me prepare for the Lantern meeting" / "What do we know about X?"
+
+This is where the skill earns its keep. Don't just search→fetch→read. Follow the **exploration loop:**
+
+```
+1. Search Drive for topic → find files
+2. Fetch most relevant → read content + comments
+3. Check email_context in results → find the sending thread
+4. Search Gmail filename:X or from:sender → get the email
+5. Read email → discover new terms, people, context
+6. Search again with new terms → expand understanding
+```
+
+**When to stop:** 2-3 iterations usually suffice. Stop when you understand the key decision-makers and their positions, or when new searches return familiar results. Don't exhaust every thread — the goal is understanding, not completeness.
+
+**The loop discovers meaning (in communications) behind artifacts (files).**
+
+See `references/exploration-loop.md` for a worked example.
+
+## Workflow 3: Precision Search
+
+**When:** "Find emails from Elizabeth about contracts" / "Search for the budget spreadsheet"
+
+### Gmail: Use Operators, Not Keyword Soup
+
 ```python
-# BAD
+# BAD — keyword soup returns noise
 search("Elizabeth Kiernan Lantern data privacy contracts")
-```
 
-**Do:** Use Gmail operators for precision
-```python
-# GOOD
-search("from:elizabeth@privacylawunlocked.com after:2025/12/01", sources=["gmail"])
+# GOOD — operators target precisely
+search("from:elizabeth@example.com after:2025/12/01", sources=["gmail"])
 search("filename:strawman from:legal@thinkbox.tv", sources=["gmail"])
+search("has:attachment subject:lantern after:2025/12/01", sources=["gmail"])
 ```
 
-See `references/gmail-operators.md` for full reference.
+Key operators: `from:`, `to:`, `filename:`, `has:attachment`, `after:`, `before:`, `subject:`, `in:sent`
 
-## Web Content Fetching
+See `references/gmail-operators.md` for the full set.
 
-`fetch` also handles web URLs — any `http://` or `https://` that isn't a Google service:
+### Drive: Keywords Only (Different Syntax!)
+
+Drive search uses plain keywords — **not Gmail operators.** `from:`, `is:starred`, `subject:` will return 400 errors on Drive.
 
 ```python
-# Blog posts, documentation, articles
-fetch("https://simonwillison.net/2024/Dec/19/one-shot-python-tools/")
-
-# GitHub raw files (markdown, code, config)
-fetch("https://raw.githubusercontent.com/fastapi/fastapi/master/pyproject.toml")
-
-# API responses (JSON)
-fetch("https://api.github.com/repos/anthropics/anthropic-cookbook")
+search("Q4 budget", sources=["drive"], base_path="...")     # Drive only
+search("budget 2026", base_path="...")                       # Both sources
 ```
 
-**What it handles:**
-- **HTML pages** — Extracts main content via trafilatura, removes boilerplate
-- **Code blocks** — Preserves language hints (`python`, `typescript`, etc.)
-- **Raw text** — Markdown, JSON, Python, TOML passed through directly with code fences
-- **JS-rendered pages** — Falls back to browser (requires `webctl start`)
+### Triage Large Results
 
-**Deposits to:** `mise-fetch/web--{title}--{hash}/content.md`
+When search returns 20+ results, don't read the full JSON. Filter first:
 
-**Limitations:**
-- CAPTCHA-protected sites (Wikipedia, some news) will fail
-- Heavy JS apps may need browser fallback
-- Auth-required pages need cookies (future feature)
-
-## Filtering Large Results
-
-When search returns `drive_count: 20, gmail_count: 15`:
-
-**Don't:** Read the entire 35-result JSON file
-
-**Do:** Filter with jq first
 ```bash
-# Preview top 5
 jq '.drive_results[:5] | .[] | {name, id}' mise-fetch/search--*.json
-
-# Filter by name
 jq '.drive_results[] | select(.name | test("framework"; "i"))' mise-fetch/search--*.json
 ```
 
+Rule of thumb: <10 results → just read. >15 → filter with jq first.
+
 See `references/filtering-results.md` for patterns.
 
-## Quick Reference
+## Workflow 4: Create
 
-### Search (parallel across sources)
-```python
-search("Q4 planning", base_path="/path/to/project")              # Both Drive + Gmail
-search("budget 2026", sources=["drive"], base_path="/path/to/project")  # Drive only
-search("from:boss@co.com", sources=["gmail"], base_path="/path/to/project")  # Gmail only
-```
+**When:** "Make a Google Doc from this" / "Create a slide deck"
 
-### Fetch (auto-detects type)
-```python
-fetch("1abc...", base_path="/path/to/project")                    # Drive file ID
-fetch("https://docs.google.com/...", base_path="/path/to/project")  # Drive URL
-fetch("18f3a4b5c6d7e8f9", base_path="/path/to/project")          # Gmail thread ID
-fetch("https://example.com/blog/post", base_path="/path/to/project")  # Web URL
-fetch("thread_id", attachment="report.xlsx", base_path="/path/to/project")  # Single attachment
-```
-
-### Create (markdown → Google Doc)
 ```python
 create("# Meeting Notes\n\n- Item 1", title="Team Sync")
-create(content, title="Report", folder_id="1xyz...")
+create(content, title="Report", doc_type="doc", folder_id="1xyz...")
 ```
+
+Without `folder_id`, the doc lands in Drive root. Pass a folder ID when the user has a specific destination.
+
+## Web Content
+
+`fetch` handles any `http://` or `https://` URL:
+
+- **HTML** → clean markdown via trafilatura (removes boilerplate, preserves code blocks)
+- **Raw files** (JSON, Python, TOML) → pass-through with code fences
+- **JS-rendered pages** → browser fallback (requires `webctl start`)
+- **PDFs at URLs** → text extraction
+
+Cleaner than `curl` (raw HTML) or `WebFetch` (lossy summary). Deposits to `mise-fetch/web--{title}--{hash}/content.md`.
+
+## Gmail Attachments
+
+PDFs and images are extracted eagerly. **Office files (DOCX/XLSX/PPTX) are skipped** during thread fetch (5-10s each). Extract on demand:
+
+```python
+fetch("thread_id", attachment="budget.xlsx", base_path="...")
+```
+
+See `references/deposit-structure.md` for the full attachment layout.
+
+## Error Handling
+
+| Error | Meaning | What to do |
+|-------|---------|------------|
+| `AUTH_EXPIRED` | OAuth token stale | Tell user to run `uv run python -m auth` in mise-en-space |
+| `NOT_FOUND` | File/thread doesn't exist | Verify the ID; file may have been deleted or moved |
+| `PERMISSION_DENIED` | No access to resource | Tell user they need to request access |
+| `RATE_LIMITED` | Hit API quota | Wait 30s and retry once |
+| `EXTRACTION_FAILED` | Couldn't parse content | Report to user with the file type and error detail |
 
 ## Anti-Patterns
 
 | Pattern | Problem | Fix |
 |---------|---------|-----|
-| Keyword soup in Gmail | Poor precision | Use `from:`, `filename:`, `after:` operators |
-| Read full search JSON | Token waste | Filter with jq first |
-| Skip comments.md | Miss real discussion | Always check after fetch |
-| Ignore email_context | Miss source thread | Fetch the linked email |
-| Stop after first search | Shallow research | Follow the exploration loop |
+| Keyword soup in Gmail | Noisy, imprecise results | Use `from:`, `filename:`, `after:` operators |
+| Gmail operators in Drive search | 400 error from API | Drive uses plain keywords, not `from:`/`is:` |
+| Skip comments.md | Miss the real discussion | Check after every doc/sheet/slides fetch |
+| Ignore email_context | Miss the story behind the file | Follow the exploration loop |
+| Read full search JSON | Token waste on 35 results | Filter with jq first |
+| Stop after first search | Shallow understanding | Loop: new terms → new searches |
+| Omit base_path | Deposits vanish into server directory | Always pass it |
 
-## Large Fetch Deposits
+## Integration
 
-For big email threads (32k+ tokens) or long docs, filter before full Read:
-
-```bash
-# Preview first 50 lines
-head -50 mise-fetch/gmail--re-lantern--abc123/content.md
-
-# Grep for specific topic
-grep -A5 "controllership" mise-fetch/gmail--*/content.md
-
-# Count messages in thread
-grep -c "^## Message" mise-fetch/gmail--*/content.md
-```
+**Composes with:**
+- **arc** — Research tasks often originate as arc actions; findings feed back into arc items
+- **todoist-gtd** — @Claude inbox items may request research; results inform outcomes
+- **filing** — mise fetches context; filing processes and files it
+- **mem** — "Have we researched this before?" Check mem before re-searching
 
 ## When to Use
 
-- Fetching web content (cleaner than curl/WebFetch — extracts article, removes boilerplate)
 - Research tasks involving multiple Drive/Gmail sources
+- Fetching web content (cleaner than curl/WebFetch)
 - Finding context around a document (who sent it, what was discussed)
-- Assembling background for meetings or strategic documents
-- Any task where you need to trace communication threads
+- Creating Google Docs/Sheets/Slides from markdown
+- Any task needing cross-source exploration
 
 ## When NOT to Use
 
-- Single-file operations (just use `fetch` directly)
-- You already know the patterns
-- Simple lookups that don't need exploration
+- Task doesn't involve content fetching (no web, Drive, or Gmail)
+- Pure filesystem operations
 
 ## Success Criteria
 
 This skill works when:
-- You use Gmail operators instead of keyword soup
-- You check `comments.md` after every doc fetch
-- You follow `email_context` hints to find source emails
-- You filter large results before reading
-- You follow the exploration loop for research tasks
+- Gmail searches use operators, not keyword soup
+- Drive searches use keywords, not Gmail operators
+- `comments.md` is checked after every doc/sheet/slides fetch
+- `email_context` hints are followed to source emails
+- Large results are filtered before reading
+- Research tasks follow the exploration loop, not single-search-and-stop
+- Errors are reported with actionable guidance, not just "it failed"
