@@ -5,20 +5,20 @@ Fetches presentation structure and thumbnails.
 Uses extractor's parse_presentation() for response parsing.
 
 NOTE: HTTP batch requests are NOT supported for Workspace editor APIs (Slides,
-Sheets, Docs) — Google disabled this platform feature in 2022. Thumbnails must
-be fetched sequentially. See: github.com/googleapis/google-api-python-client/issues/2085
+Sheets, Docs) — Google disabled this in 2022. However, concurrent individual
+getThumbnail requests DO work when each thread has its own service object
+(isolated httplib2 connections). Shared connections cause SSL corruption.
 """
 
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-from googleapiclient.discovery import Resource
 from googleapiclient.errors import HttpError
 
 from models import PresentationData
 from retry import with_retry
-from adapters.services import get_slides_service
+from adapters.services import get_slides_service, build_slides_service
 from extractors.slides import parse_presentation
 
 
@@ -43,11 +43,11 @@ def fetch_presentation(
 
     Calls:
     1. presentations().get() for structure and text
-    2. Sequential pages().getThumbnail() for each slide (if include_thumbnails=True)
+    2. Concurrent pages().getThumbnail() for slides needing thumbnails
 
-    NOTE: Thumbnail fetching is ~0.5s per slide (API calls must be sequential,
-    but image downloads are parallelized). For a 43-slide deck, expect ~20s.
-    Consider selective thumbnailing for large presentations.
+    Thumbnail API calls use isolated service objects per thread (shared httplib2
+    connections cause SSL corruption). Benchmarked: 2.5x faster than sequential
+    for 7 slides (0.99s vs 2.5s). Image downloads are also parallelized.
 
     Args:
         presentation_id: The presentation ID (from URL or API)
@@ -73,13 +73,12 @@ def fetch_presentation(
 
     # Fetch thumbnails selectively (only for slides that need them)
     if include_thumbnails and data.slides:
-        _fetch_thumbnails_selective(service, presentation_id, data)
+        _fetch_thumbnails_selective(presentation_id, data)
 
     return data
 
 
 def _fetch_thumbnails_selective(
-    service: Resource,
     presentation_id: str,
     data: PresentationData,
 ) -> None:
@@ -90,44 +89,61 @@ def _fetch_thumbnails_selective(
     - needs_thumbnail=False (stock photos, text-only)
     - slide_id is missing
 
-    API calls are sequential (batch not supported for Workspace APIs).
-    Image downloads are parallelized for speed.
+    getThumbnail API calls run concurrently using isolated service objects
+    (one per thread — shared httplib2 connections cause SSL corruption).
+    Image downloads are also parallelized.
 
     Updates data.slides[i].thumbnail_bytes in place.
     """
-    # Step 1: Get thumbnail URLs only for slides that need them
-    thumbnail_urls: list[tuple[str, str]] = []  # (slide_id, url)
+    # Collect slides that need thumbnails
+    target_slides = [
+        s for s in data.slides if s.slide_id and s.needs_thumbnail
+    ]
+    if not target_slides:
+        return
 
-    for slide in data.slides:
-        if not slide.slide_id:
-            continue
-        if not slide.needs_thumbnail:
-            continue  # Skip based on selective logic
+    slide_by_id = {s.slide_id: s for s in data.slides if s.slide_id}
 
+    # Step 1: Get thumbnail URLs — parallel with isolated services
+    # Each thread gets its own Slides service (own httplib2 connection)
+    # to avoid SSL corruption that occurs with shared connections.
+    def get_thumbnail_url(
+        slide_id: str,
+    ) -> tuple[str, str | None, str | None]:
         try:
+            svc = build_slides_service()
             response = (
-                service.presentations()
+                svc.presentations()
                 .pages()
                 .getThumbnail(
                     presentationId=presentation_id,
-                    pageObjectId=slide.slide_id,
+                    pageObjectId=slide_id,
                     thumbnailProperties_thumbnailSize="MEDIUM",
                 )
                 .execute()
             )
-            url = response.get("contentUrl")
-            if url:
-                thumbnail_urls.append((slide.slide_id, url))
+            return slide_id, response.get("contentUrl"), None
         except HttpError as e:
             status = e.resp.status if e.resp else "unknown"
             if status == 403:
-                slide.warnings.append("Thumbnail unavailable: permission denied")
+                return slide_id, None, "Thumbnail unavailable: permission denied"
             elif status == 404:
-                slide.warnings.append("Thumbnail unavailable: not found")
-            else:
-                slide.warnings.append(f"Thumbnail unavailable: HTTP {status}")
+                return slide_id, None, "Thumbnail unavailable: not found"
+            return slide_id, None, f"Thumbnail unavailable: HTTP {status}"
         except Exception as e:
-            slide.warnings.append(f"Thumbnail fetch failed: {type(e).__name__}")
+            return slide_id, None, f"Thumbnail fetch failed: {type(e).__name__}"
+
+    slide_ids = [s.slide_id for s in target_slides]
+    with ThreadPoolExecutor(max_workers=len(slide_ids)) as executor:
+        url_results = list(executor.map(get_thumbnail_url, slide_ids))
+
+    # Collect URLs, record errors
+    thumbnail_urls: list[tuple[str, str]] = []
+    for slide_id, url, error in url_results:
+        if url:
+            thumbnail_urls.append((slide_id, url))
+        elif error and slide_id in slide_by_id:
+            slide_by_id[slide_id].warnings.append(error)
 
     if not thumbnail_urls:
         return
@@ -149,8 +165,6 @@ def _fetch_thumbnails_selective(
         results = list(executor.map(download, thumbnail_urls))
 
     # Step 3: Update slides with downloaded thumbnails and track failures
-    slide_by_id = {s.slide_id: s for s in data.slides if s.slide_id}
-
     for slide_id, image_data, error in results:
         if slide_id not in slide_by_id:
             continue

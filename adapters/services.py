@@ -19,6 +19,7 @@ __all__ = [
     "get_docs_service",
     "get_gmail_service",
     "get_slides_service",
+    "build_slides_service",
     "get_activity_service",
     "get_tasks_service",
     "get_calendar_service",
@@ -84,6 +85,17 @@ def get_gmail_service() -> Resource:
 @lru_cache(maxsize=8)
 def get_slides_service() -> Resource:
     """Get authenticated Google Slides API service (cached, thread-safe)."""
+    creds = _get_credentials()
+    return build("slides", "v1", http=_get_authorized_http(creds))
+
+
+def build_slides_service() -> Resource:
+    """Build a fresh Slides service with its own HTTP connection.
+
+    NOT cached — each call creates a new httplib2 connection.
+    Use for parallel thumbnail fetches where threads need isolated connections
+    (shared httplib2 connections cause SSL corruption under concurrency).
+    """
     creds = _get_credentials()
     return build("slides", "v1", http=_get_authorized_http(creds))
 

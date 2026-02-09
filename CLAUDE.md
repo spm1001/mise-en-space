@@ -435,7 +435,7 @@ Integration tests require `-m integration` flag and real credentials.
 uv run python scripts/slides_timing.py [presentation_id]   # Compare API patterns
 ```
 
-**Key finding (Jan 2026):** HTTP batch requests are NOT supported for Workspace editor APIs (Slides, Sheets, Docs) — Google disabled this platform feature in 2022. Thumbnails must be fetched sequentially (~0.5s per slide).
+**Key finding (Jan 2026):** HTTP batch requests are NOT supported for Workspace editor APIs (Slides, Sheets, Docs) — Google disabled this platform feature in 2022. However, concurrent individual `getThumbnail` requests work with isolated service objects (one per thread). Shared `httplib2` connections cause SSL corruption — each thread needs `build_slides_service()`. Benchmarked (Feb 2026): 2.5x faster than sequential for 7 slides (1.0s vs 2.5s).
 
 **Selective thumbnails (Jan 2026):** Thumbnails are now **enabled by default** because selective logic makes them cheap. The extractor analyzes each slide and sets `needs_thumbnail=True` only for:
 - Charts (visual IS the content)
@@ -524,7 +524,7 @@ Decisions made during planning (Jan 2026) that future Claude should understand:
 |---------|-----------------|-------|-----|
 | **Docs** | `get(includeTabsContent=True)` | 1 | Minimal overhead, all tabs in one response |
 | **Sheets** | `get()` + `values().batchGet()` | 2 | `includeGridData` bloats payload 560x with formatting metadata |
-| **Slides** | `get()` + sequential `getThumbnail()` | 1+N | Batch not supported; ~0.5s per thumbnail |
+| **Slides** | `get()` + concurrent `getThumbnail()` | 1+N | Batch not supported, but concurrent with isolated services works (2.5x faster). Each thread needs its own service object — shared httplib2 causes SSL corruption. |
 | **Gmail** | `threads().get()` + batch `messages().get()` | 2 | Thread metadata + full message bodies |
 
 ### Linked Content in Docs
