@@ -437,6 +437,8 @@ uv run python scripts/slides_timing.py [presentation_id]   # Compare API pattern
 
 **Key finding (Jan 2026):** HTTP batch requests are NOT supported for Workspace editor APIs (Slides, Sheets, Docs) — Google disabled this platform feature in 2022. However, concurrent individual `getThumbnail` requests work with isolated service objects (one per thread). Shared `httplib2` connections cause SSL corruption — each thread needs `build_slides_service()`. Benchmarked (Feb 2026): 2.5x faster than sequential for 7 slides (1.0s vs 2.5s).
 
+**Office conversion profiling (Feb 2026):** Upload+convert dominates at 67-77% of total time (DOCX: 5.7-7.0s, XLSX: 4.4-4.9s). This is server-side conversion inside Google's `files().create()` — nothing we can optimise. Download (7-11%), export (9-21%), and delete (4-7%) are minor. The `source_file_id` copy path (already implemented) skips download+upload entirely — fastest when file is already in Drive.
+
 **Selective thumbnails (Jan 2026):** Thumbnails are now **enabled by default** because selective logic makes them cheap. The extractor analyzes each slide and sets `needs_thumbnail=True` only for:
 - Charts (visual IS the content)
 - Images (unless single large image >50% = stock photo)
