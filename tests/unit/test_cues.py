@@ -446,11 +446,11 @@ def _drive_metadata(mime_type: str) -> dict:
 class TestFetchDocCues:
     """Verify cues are populated correctly during doc fetch."""
 
-    @patch("tools.fetch.fetch_document")
-    @patch("tools.fetch.extract_doc_content", return_value="# Doc Content")
-    @patch("tools.fetch.write_content")
-    @patch("tools.fetch._enrich_with_comments", return_value=(3, "comments"))
-    @patch("tools.fetch.write_manifest")
+    @patch("tools.fetch.drive.fetch_document")
+    @patch("tools.fetch.drive.extract_doc_content", return_value="# Doc Content")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive._enrich_with_comments", return_value=(3, "comments"))
+    @patch("tools.fetch.drive.write_manifest")
     def test_doc_cues_with_comments(
         self, mock_manifest, mock_comments, mock_write, mock_extract, mock_fetch,
         tmp_path: Path,
@@ -466,7 +466,7 @@ class TestFetchDocCues:
         content_file.write_text("# Doc Content")
         mock_write.return_value = content_file
 
-        with patch("tools.fetch.get_deposit_folder", return_value=tmp_path):
+        with patch("tools.fetch.drive.get_deposit_folder", return_value=tmp_path):
             result = fetch_doc("doc1", "My Doc", _drive_metadata("application/vnd.google-apps.document"))
 
         assert isinstance(result, FetchResult)
@@ -480,11 +480,11 @@ class TestFetchDocCues:
         assert "participants" not in cues
         assert "has_attachments" not in cues
 
-    @patch("tools.fetch.fetch_document")
-    @patch("tools.fetch.extract_doc_content", return_value="# Doc")
-    @patch("tools.fetch.write_content")
-    @patch("tools.fetch._enrich_with_comments", return_value=(0, None))
-    @patch("tools.fetch.write_manifest")
+    @patch("tools.fetch.drive.fetch_document")
+    @patch("tools.fetch.drive.extract_doc_content", return_value="# Doc")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
+    @patch("tools.fetch.drive.write_manifest")
     def test_doc_cues_with_email_context(
         self, mock_manifest, mock_comments, mock_write, mock_extract, mock_fetch,
         tmp_path: Path,
@@ -498,7 +498,7 @@ class TestFetchDocCues:
         (tmp_path / "content.md").write_text("# Doc")
         ctx = EmailContext(message_id="m1", from_address="a@b.com", subject="Re: test")
 
-        with patch("tools.fetch.get_deposit_folder", return_value=tmp_path):
+        with patch("tools.fetch.drive.get_deposit_folder", return_value=tmp_path):
             result = fetch_doc("doc1", "My Doc", _drive_metadata("application/vnd.google-apps.document"), email_context=ctx)
 
         ec = result.cues["email_context"]
@@ -519,13 +519,13 @@ from tools.fetch import fetch_doc, fetch_sheet, fetch_slides, fetch_web
 class TestFetchSheetCues:
     """Verify cues are populated correctly during sheet fetch."""
 
-    @patch("tools.fetch.fetch_spreadsheet")
-    @patch("tools.fetch.extract_sheets_content", return_value="col1,col2\n1,2")
-    @patch("tools.fetch.write_content")
-    @patch("tools.fetch.write_chart")
-    @patch("tools.fetch.write_charts_metadata")
-    @patch("tools.fetch._enrich_with_comments", return_value=(1, "comments"))
-    @patch("tools.fetch.write_manifest")
+    @patch("tools.fetch.drive.fetch_spreadsheet")
+    @patch("tools.fetch.drive.extract_sheets_content", return_value="col1,col2\n1,2")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_chart")
+    @patch("tools.fetch.drive.write_charts_metadata")
+    @patch("tools.fetch.drive._enrich_with_comments", return_value=(1, "comments"))
+    @patch("tools.fetch.drive.write_manifest")
     def test_sheet_cues(
         self, mock_manifest, mock_comments, mock_charts_meta, mock_chart,
         mock_write, mock_extract, mock_fetch, tmp_path: Path,
@@ -541,7 +541,7 @@ class TestFetchSheetCues:
         content_file.write_text("col1,col2\n1,2")
         mock_write.return_value = content_file
 
-        with patch("tools.fetch.get_deposit_folder", return_value=tmp_path):
+        with patch("tools.fetch.drive.get_deposit_folder", return_value=tmp_path):
             result = fetch_sheet("sheet1", "My Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
 
         cues = result.cues
@@ -558,12 +558,12 @@ class TestFetchSheetCues:
 class TestFetchSlidesCues:
     """Verify cues are populated correctly during slides fetch."""
 
-    @patch("tools.fetch.fetch_presentation")
-    @patch("tools.fetch.extract_slides_content", return_value="# Slide 1\n\nContent")
-    @patch("tools.fetch.write_content")
-    @patch("tools.fetch.write_thumbnail")
-    @patch("tools.fetch._enrich_with_comments", return_value=(0, None))
-    @patch("tools.fetch.write_manifest")
+    @patch("tools.fetch.drive.fetch_presentation")
+    @patch("tools.fetch.drive.extract_slides_content", return_value="# Slide 1\n\nContent")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_thumbnail")
+    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
+    @patch("tools.fetch.drive.write_manifest")
     def test_slides_cues_with_thumbnails(
         self, mock_manifest, mock_comments, mock_thumb, mock_write,
         mock_extract, mock_fetch, tmp_path: Path,
@@ -588,7 +588,7 @@ class TestFetchSlidesCues:
         # Simulate thumbnail being written
         (tmp_path / "slide_01.png").write_bytes(b"\x89PNG")
 
-        with patch("tools.fetch.get_deposit_folder", return_value=tmp_path):
+        with patch("tools.fetch.drive.get_deposit_folder", return_value=tmp_path):
             result = fetch_slides("pres1", "My Deck", _drive_metadata("application/vnd.google-apps.presentation"))
 
         cues = result.cues
@@ -604,11 +604,11 @@ class TestFetchSlidesCues:
 class TestFetchWebCues:
     """Verify cues are populated correctly during web fetch."""
 
-    @patch("tools.fetch.fetch_web_content")
-    @patch("tools.fetch.extract_web_content", return_value="# Extracted Article")
-    @patch("tools.fetch.extract_title", return_value="Article Title")
-    @patch("tools.fetch.write_content")
-    @patch("tools.fetch.write_manifest")
+    @patch("tools.fetch.web.fetch_web_content")
+    @patch("tools.fetch.web.extract_web_content", return_value="# Extracted Article")
+    @patch("tools.fetch.web.extract_title", return_value="Article Title")
+    @patch("tools.fetch.web.write_content")
+    @patch("tools.fetch.web.write_manifest")
     def test_web_cues_basic(
         self, mock_manifest, mock_write, mock_title, mock_extract, mock_fetch,
         tmp_path: Path,
@@ -629,7 +629,7 @@ class TestFetchWebCues:
         content_file.write_text("# Extracted Article")
         mock_write.return_value = content_file
 
-        with patch("tools.fetch.get_deposit_folder", return_value=tmp_path):
+        with patch("tools.fetch.web.get_deposit_folder", return_value=tmp_path):
             result = fetch_web("https://example.com/article")
 
         cues = result.cues
@@ -640,11 +640,11 @@ class TestFetchWebCues:
         # Web fetches shouldn't have Gmail fields
         assert "participants" not in cues
 
-    @patch("tools.fetch.fetch_web_content")
-    @patch("tools.fetch.extract_web_content", return_value="# Article")
-    @patch("tools.fetch.extract_title", return_value="Title")
-    @patch("tools.fetch.write_content")
-    @patch("tools.fetch.write_manifest")
+    @patch("tools.fetch.web.fetch_web_content")
+    @patch("tools.fetch.web.extract_web_content", return_value="# Article")
+    @patch("tools.fetch.web.extract_title", return_value="Title")
+    @patch("tools.fetch.web.write_content")
+    @patch("tools.fetch.web.write_manifest")
     def test_web_cues_with_warnings(
         self, mock_manifest, mock_write, mock_title, mock_extract, mock_fetch,
         tmp_path: Path,
@@ -664,7 +664,7 @@ class TestFetchWebCues:
         mock_write.return_value = tmp_path / "content.md"
         (tmp_path / "content.md").write_text("# Article")
 
-        with patch("tools.fetch.get_deposit_folder", return_value=tmp_path):
+        with patch("tools.fetch.web.get_deposit_folder", return_value=tmp_path):
             result = fetch_web("https://example.com")
 
         assert "Redirected to different URL" in result.cues["warnings"]

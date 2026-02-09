@@ -189,10 +189,10 @@ class TestRenderSvgToPng:
 class TestFetchImageFile:
     """Tests for fetch_image_file() in tools/fetch.py."""
 
-    @patch("tools.fetch.write_manifest")
-    @patch("tools.fetch.write_image")
-    @patch("tools.fetch.get_deposit_folder")
-    @patch("tools.fetch.adapter_fetch_image")
+    @patch("tools.fetch.drive.write_manifest")
+    @patch("tools.fetch.drive.write_image")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.adapter_fetch_image")
     def test_fetch_png(self, mock_adapter, mock_folder, mock_write, mock_manifest):
         """Fetches PNG image and deposits correctly."""
         png_bytes = b"\x89PNG\r\n\x1a\n"
@@ -214,10 +214,10 @@ class TestFetchImageFile:
         # Original image should be the content_file for raster
         assert "image.png" in result.content_file
 
-    @patch("tools.fetch.write_manifest")
-    @patch("tools.fetch.write_image")
-    @patch("tools.fetch.get_deposit_folder")
-    @patch("tools.fetch.adapter_fetch_image")
+    @patch("tools.fetch.drive.write_manifest")
+    @patch("tools.fetch.drive.write_image")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.adapter_fetch_image")
     def test_fetch_svg_with_render(self, mock_adapter, mock_folder, mock_write, mock_manifest):
         """Fetches SVG with rendered PNG and deposits both."""
         svg_bytes = b"<svg>...</svg>"
@@ -247,10 +247,10 @@ class TestFetchImageFile:
         # Should have written both files
         assert mock_write.call_count == 2
 
-    @patch("tools.fetch.write_manifest")
-    @patch("tools.fetch.write_image")
-    @patch("tools.fetch.get_deposit_folder")
-    @patch("tools.fetch.adapter_fetch_image")
+    @patch("tools.fetch.drive.write_manifest")
+    @patch("tools.fetch.drive.write_image")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.adapter_fetch_image")
     def test_fetch_svg_without_render(self, mock_adapter, mock_folder, mock_write, mock_manifest):
         """Fetches SVG without render (fallback to raw SVG)."""
         svg_bytes = b"<svg>...</svg>"
@@ -274,10 +274,10 @@ class TestFetchImageFile:
         # Should have written only one file
         assert mock_write.call_count == 1
 
-    @patch("tools.fetch.write_manifest")
-    @patch("tools.fetch.write_image")
-    @patch("tools.fetch.get_deposit_folder")
-    @patch("tools.fetch.adapter_fetch_image")
+    @patch("tools.fetch.drive.write_manifest")
+    @patch("tools.fetch.drive.write_image")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.adapter_fetch_image")
     def test_fetch_with_email_context(self, mock_adapter, mock_folder, mock_write, mock_manifest):
         """Includes email_context when provided."""
         from models import EmailContext
@@ -305,8 +305,8 @@ class TestFetchImageFile:
 class TestFetchDriveRouting:
     """Tests for image routing in fetch_drive()."""
 
-    @patch("tools.fetch.get_file_metadata")
-    @patch("tools.fetch.fetch_image_file")
+    @patch("tools.fetch.drive.get_file_metadata")
+    @patch("tools.fetch.drive.fetch_image_file")
     def test_routes_png_to_image_handler(self, mock_fetch_image, mock_metadata):
         """Routes PNG files to image handler."""
         from tools.fetch import fetch_drive
@@ -321,8 +321,8 @@ class TestFetchDriveRouting:
 
         mock_fetch_image.assert_called_once()
 
-    @patch("tools.fetch.get_file_metadata")
-    @patch("tools.fetch.fetch_image_file")
+    @patch("tools.fetch.drive.get_file_metadata")
+    @patch("tools.fetch.drive.fetch_image_file")
     def test_routes_svg_to_image_handler(self, mock_fetch_image, mock_metadata):
         """Routes SVG files to image handler."""
         from tools.fetch import fetch_drive
@@ -337,8 +337,8 @@ class TestFetchDriveRouting:
 
         mock_fetch_image.assert_called_once()
 
-    @patch("tools.fetch.get_file_metadata")
-    @patch("tools.fetch.fetch_image_file")
+    @patch("tools.fetch.drive.get_file_metadata")
+    @patch("tools.fetch.drive.fetch_image_file")
     def test_routes_jpeg_to_image_handler(self, mock_fetch_image, mock_metadata):
         """Routes JPEG files to image handler."""
         from tools.fetch import fetch_drive

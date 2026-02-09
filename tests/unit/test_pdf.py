@@ -200,10 +200,10 @@ class TestPdfExtraction:
 class TestFetchPdf:
     """Tests for PDF fetch tool function."""
 
-    @patch("tools.fetch.fetch_and_extract_pdf")
-    @patch("tools.fetch.get_deposit_folder")
-    @patch("tools.fetch.write_content")
-    @patch("tools.fetch.write_manifest")
+    @patch("tools.fetch.drive.fetch_and_extract_pdf")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
     def test_fetch_pdf_deposits_to_workspace(
         self,
         mock_write_manifest: MagicMock,
@@ -233,10 +233,10 @@ class TestFetchPdf:
         mock_write_content.assert_called_once()
         mock_write_manifest.assert_called_once()
 
-    @patch("tools.fetch.fetch_and_extract_pdf")
-    @patch("tools.fetch.get_deposit_folder")
-    @patch("tools.fetch.write_content")
-    @patch("tools.fetch.write_manifest")
+    @patch("tools.fetch.drive.fetch_and_extract_pdf")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
     def test_fetch_pdf_includes_warnings_in_manifest(
         self,
         mock_write_manifest: MagicMock,

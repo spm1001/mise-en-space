@@ -446,8 +446,8 @@ class TestWebPdfRouting:
         )
         assert web_data.raw_bytes is None
 
-    @patch('tools.fetch.extract_pdf_content')
-    @patch('tools.fetch.fetch_web_content')
+    @patch('tools.fetch.web.extract_pdf_content')
+    @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_routes_pdf_to_extraction(self, mock_fetch, mock_extract) -> None:
         """fetch_web() detects PDF content type and routes to PDF extraction."""
         from tools.fetch import fetch_web
@@ -493,8 +493,8 @@ class TestWebPdfRouting:
         assert web_data.temp_path == tmp
         assert web_data.raw_bytes is None
 
-    @patch('tools.fetch.extract_pdf_content')
-    @patch('tools.fetch.fetch_web_content')
+    @patch('tools.fetch.web.extract_pdf_content')
+    @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_routes_large_pdf_via_temp_path(self, mock_fetch, mock_extract) -> None:
         """fetch_web() uses temp_path for large streamed PDFs."""
         from tools.fetch import fetch_web
@@ -532,8 +532,8 @@ class TestWebPdfRouting:
         # Verify temp file was cleaned up
         assert not tmp_path.exists(), "temp file should be cleaned up after extraction"
 
-    @patch('tools.fetch.extract_pdf_content')
-    @patch('tools.fetch.fetch_web_content')
+    @patch('tools.fetch.web.extract_pdf_content')
+    @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_cleans_up_temp_on_extraction_error(self, mock_fetch, mock_extract) -> None:
         """Temp file is cleaned up even if extraction fails."""
         from tools.fetch import fetch_web
@@ -611,8 +611,8 @@ class TestWebOfficeRouting:
         assert web_data.raw_bytes == docx_bytes
         assert web_data.html == ''
 
-    @patch('tools.fetch.extract_office_content')
-    @patch('tools.fetch.fetch_web_content')
+    @patch('tools.fetch.web.extract_office_content')
+    @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_routes_docx_to_extraction(self, mock_fetch, mock_extract) -> None:
         """fetch_web() detects DOCX content type and routes to Office extraction."""
         from tools.fetch import fetch_web
@@ -646,8 +646,8 @@ class TestWebOfficeRouting:
         assert call_args.args[0] == "docx"
         assert call_args.kwargs["file_bytes"] == docx_bytes
 
-    @patch('tools.fetch.extract_office_content')
-    @patch('tools.fetch.fetch_web_content')
+    @patch('tools.fetch.web.extract_office_content')
+    @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_routes_xlsx_to_extraction(self, mock_fetch, mock_extract) -> None:
         """fetch_web() detects XLSX content type and routes to Office extraction."""
         from tools.fetch import fetch_web
@@ -679,8 +679,8 @@ class TestWebOfficeRouting:
         mock_extract.assert_called_once()
         assert mock_extract.call_args.args[0] == "xlsx"
 
-    @patch('tools.fetch.extract_office_content')
-    @patch('tools.fetch.fetch_web_content')
+    @patch('tools.fetch.web.extract_office_content')
+    @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_routes_pptx_to_extraction(self, mock_fetch, mock_extract) -> None:
         """fetch_web() detects PPTX content type and routes to Office extraction."""
         from tools.fetch import fetch_web
@@ -710,8 +710,8 @@ class TestWebOfficeRouting:
         assert result.format == "markdown"  # non-xlsx → markdown
         assert result.metadata["title"] == "slides"
 
-    @patch('tools.fetch.extract_office_content')
-    @patch('tools.fetch.fetch_web_content')
+    @patch('tools.fetch.web.extract_office_content')
+    @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_routes_large_office_via_temp_path(self, mock_fetch, mock_extract) -> None:
         """fetch_web() uses temp_path for large streamed Office files."""
         from tools.fetch import fetch_web
@@ -750,8 +750,8 @@ class TestWebOfficeRouting:
         # Verify temp file was cleaned up
         assert not tmp_path.exists(), "temp file should be cleaned up after extraction"
 
-    @patch('tools.fetch.extract_office_content')
-    @patch('tools.fetch.fetch_web_content')
+    @patch('tools.fetch.web.extract_office_content')
+    @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_cleans_up_office_temp_on_error(self, mock_fetch, mock_extract) -> None:
         """Temp file is cleaned up even if Office extraction fails."""
         from tools.fetch import fetch_web
@@ -779,8 +779,8 @@ class TestWebOfficeRouting:
 
         assert not tmp_path.exists(), "temp file should be cleaned up even on error"
 
-    @patch('tools.fetch.extract_office_content')
-    @patch('tools.fetch.fetch_web_content')
+    @patch('tools.fetch.web.extract_office_content')
+    @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_office_no_content_raises(self, mock_fetch, mock_extract) -> None:
         """fetch_web() raises MiseError when Office response has neither bytes nor temp_path."""
         from tools.fetch import fetch_web
@@ -799,8 +799,8 @@ class TestWebOfficeRouting:
         with pytest.raises(MiseError, match="No Office content received"):
             fetch_web("https://example.com/empty.docx")
 
-    @patch('tools.fetch.extract_office_content')
-    @patch('tools.fetch.fetch_web_content')
+    @patch('tools.fetch.web.extract_office_content')
+    @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_office_content_type_with_charset(self, mock_fetch, mock_extract) -> None:
         """Office Content-Type with charset parameter still routes correctly."""
         from tools.fetch import fetch_web
@@ -831,7 +831,7 @@ class TestWebOfficeRouting:
 class TestPdfContentTypeMismatch:
     """Test that HTML masquerading as PDF gets a clear error."""
 
-    @patch('tools.fetch.fetch_web_content')
+    @patch('tools.fetch.web.fetch_web_content')
     def test_html_bytes_with_pdf_content_type_raises(self, mock_fetch) -> None:
         """CDN returning HTML with application/pdf Content-Type gets actionable error."""
         from tools.fetch import fetch_web
@@ -855,7 +855,7 @@ class TestPdfContentTypeMismatch:
         assert "not PDF" in exc_info.value.message
         assert "cdn.example.com" in exc_info.value.message
 
-    @patch('tools.fetch.fetch_web_content')
+    @patch('tools.fetch.web.fetch_web_content')
     def test_empty_bytes_with_pdf_content_type_raises(self, mock_fetch) -> None:
         """Empty response with PDF Content-Type gets clear error."""
         from tools.fetch import fetch_web
@@ -877,7 +877,7 @@ class TestPdfContentTypeMismatch:
         assert exc_info.value.kind == ErrorKind.EXTRACTION_FAILED
         assert "No PDF content" in exc_info.value.message
 
-    @patch('tools.fetch.fetch_web_content')
+    @patch('tools.fetch.web.fetch_web_content')
     def test_html_in_large_pdf_temp_path_raises(self, mock_fetch) -> None:
         """Large file with HTML content but PDF Content-Type gets caught."""
         from tools.fetch import fetch_web
@@ -907,8 +907,8 @@ class TestPdfContentTypeMismatch:
         finally:
             tmp_path.unlink(missing_ok=True)
 
-    @patch('tools.fetch.extract_pdf_content')
-    @patch('tools.fetch.fetch_web_content')
+    @patch('tools.fetch.web.extract_pdf_content')
+    @patch('tools.fetch.web.fetch_web_content')
     def test_real_pdf_bytes_pass_through(self, mock_fetch, mock_extract) -> None:
         """Actual PDF bytes pass the magic check and reach extraction."""
         from tools.fetch import fetch_web

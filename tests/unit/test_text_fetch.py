@@ -30,10 +30,10 @@ class TestIsTextFile:
 class TestFetchText:
     """Tests for fetch_text() function."""
 
-    @patch("tools.fetch.download_file")
-    @patch("tools.fetch.get_deposit_folder")
-    @patch("tools.fetch.write_content")
-    @patch("tools.fetch.write_manifest")
+    @patch("tools.fetch.drive.download_file")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
     def test_fetch_plain_text(self, mock_manifest, mock_write, mock_folder, mock_download):
         """Fetches plain text file and deposits correctly."""
         mock_download.return_value = b"Hello, world!"
@@ -51,10 +51,10 @@ class TestFetchText:
         call_args = mock_write.call_args
         assert call_args[1]["filename"] == "content.txt"
 
-    @patch("tools.fetch.download_file")
-    @patch("tools.fetch.get_deposit_folder")
-    @patch("tools.fetch.write_content")
-    @patch("tools.fetch.write_manifest")
+    @patch("tools.fetch.drive.download_file")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
     def test_fetch_json(self, mock_manifest, mock_write, mock_folder, mock_download):
         """Fetches JSON file with correct format and extension."""
         mock_download.return_value = b'{"key": "value"}'
@@ -70,10 +70,10 @@ class TestFetchText:
         call_args = mock_write.call_args
         assert call_args[1]["filename"] == "content.json"
 
-    @patch("tools.fetch.download_file")
-    @patch("tools.fetch.get_deposit_folder")
-    @patch("tools.fetch.write_content")
-    @patch("tools.fetch.write_manifest")
+    @patch("tools.fetch.drive.download_file")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
     def test_fetch_csv(self, mock_manifest, mock_write, mock_folder, mock_download):
         """Fetches CSV file with correct format and extension."""
         mock_download.return_value = b"a,b,c\n1,2,3"
@@ -88,10 +88,10 @@ class TestFetchText:
         call_args = mock_write.call_args
         assert call_args[1]["filename"] == "content.csv"
 
-    @patch("tools.fetch.download_file")
-    @patch("tools.fetch.get_deposit_folder")
-    @patch("tools.fetch.write_content")
-    @patch("tools.fetch.write_manifest")
+    @patch("tools.fetch.drive.download_file")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
     def test_fetch_with_email_context(self, mock_manifest, mock_write, mock_folder, mock_download):
         """Includes email_context when provided."""
         from models import EmailContext
@@ -111,10 +111,10 @@ class TestFetchText:
         assert "email_context" in result.metadata
         assert result.metadata["email_context"]["message_id"] == "msg123"
 
-    @patch("tools.fetch.download_file")
-    @patch("tools.fetch.get_deposit_folder")
-    @patch("tools.fetch.write_content")
-    @patch("tools.fetch.write_manifest")
+    @patch("tools.fetch.drive.download_file")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
     def test_handles_unicode(self, mock_manifest, mock_write, mock_folder, mock_download):
         """Handles Unicode content correctly."""
         mock_download.return_value = "Hello, 世界! 🎉".encode("utf-8")

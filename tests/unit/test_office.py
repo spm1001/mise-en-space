@@ -122,10 +122,10 @@ class TestOfficeTypeDetection:
 class TestFetchOffice:
     """Tests for Office fetch tool function."""
 
-    @patch("tools.fetch.fetch_and_extract_office")
-    @patch("tools.fetch.get_deposit_folder")
-    @patch("tools.fetch.write_content")
-    @patch("tools.fetch.write_manifest")
+    @patch("tools.fetch.drive.fetch_and_extract_office")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
     def test_fetch_office_deposits_to_workspace(
         self,
         mock_write_manifest: MagicMock,
@@ -154,10 +154,10 @@ class TestFetchOffice:
         mock_extract.assert_called_once_with("abc123", "docx")
         mock_write_content.assert_called_once()
 
-    @patch("tools.fetch.fetch_and_extract_office")
-    @patch("tools.fetch.get_deposit_folder")
-    @patch("tools.fetch.write_content")
-    @patch("tools.fetch.write_manifest")
+    @patch("tools.fetch.drive.fetch_and_extract_office")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
     def test_fetch_xlsx_uses_csv_format(
         self,
         mock_write_manifest: MagicMock,
