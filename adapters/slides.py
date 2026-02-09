@@ -46,8 +46,9 @@ def fetch_presentation(
     2. Concurrent pages().getThumbnail() for slides needing thumbnails
 
     Thumbnail API calls use isolated service objects per thread (shared httplib2
-    connections cause SSL corruption). Benchmarked: 2.5x faster than sequential
-    for 7 slides (0.99s vs 2.5s). Image downloads are also parallelized.
+    connections cause SSL corruption). Capped at 2 concurrent workers — Google
+    rate-limits at 3+. Benchmarked: 3.2x faster for 43 slides (22s vs 71s).
+    Image downloads are also parallelized.
 
     Args:
         presentation_id: The presentation ID (from URL or API)
@@ -133,8 +134,11 @@ def _fetch_thumbnails_selective(
         except Exception as e:
             return slide_id, None, f"Thumbnail fetch failed: {type(e).__name__}"
 
+    # Cap at 2 workers — Google rate-limits at 3+ concurrent getThumbnail
+    # calls (tested: 7-slide deck works at any concurrency, 43-slide deck
+    # fails at 3+ workers). 2 workers gives 3.2x speedup on large decks.
     slide_ids = [s.slide_id for s in target_slides]
-    with ThreadPoolExecutor(max_workers=len(slide_ids)) as executor:
+    with ThreadPoolExecutor(max_workers=min(2, len(slide_ids))) as executor:
         url_results = list(executor.map(get_thumbnail_url, slide_ids))
 
     # Collect URLs, record errors

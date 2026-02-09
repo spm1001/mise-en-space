@@ -435,7 +435,7 @@ Integration tests require `-m integration` flag and real credentials.
 uv run python scripts/slides_timing.py [presentation_id]   # Compare API patterns
 ```
 
-**Key finding (Jan 2026):** HTTP batch requests are NOT supported for Workspace editor APIs (Slides, Sheets, Docs) — Google disabled this platform feature in 2022. However, concurrent individual `getThumbnail` requests work with isolated service objects (one per thread). Shared `httplib2` connections cause SSL corruption — each thread needs `build_slides_service()`. Benchmarked (Feb 2026): 2.5x faster than sequential for 7 slides (1.0s vs 2.5s).
+**Key finding (Jan 2026):** HTTP batch requests are NOT supported for Workspace editor APIs (Slides, Sheets, Docs) — Google disabled this platform feature in 2022. However, concurrent individual `getThumbnail` requests work with isolated service objects (one per thread), capped at 2 workers. Google rate-limits at 3+ concurrent calls (tested with 43 slides). Shared `httplib2` connections cause SSL corruption — each thread needs `build_slides_service()`. Benchmarked (Feb 2026): 3.2x faster for 43 slides (22s vs 71s).
 
 **Office conversion profiling (Feb 2026):** Upload+convert dominates at 67-77% of total time (DOCX: 5.7-7.0s, XLSX: 4.4-4.9s). This is server-side conversion inside Google's `files().create()` — nothing we can optimise. Download (7-11%), export (9-21%), and delete (4-7%) are minor. The `source_file_id` copy path (already implemented) skips download+upload entirely — fastest when file is already in Drive.
 
@@ -526,7 +526,7 @@ Decisions made during planning (Jan 2026) that future Claude should understand:
 |---------|-----------------|-------|-----|
 | **Docs** | `get(includeTabsContent=True)` | 1 | Minimal overhead, all tabs in one response |
 | **Sheets** | `get()` + `values().batchGet()` | 2 | `includeGridData` bloats payload 560x with formatting metadata |
-| **Slides** | `get()` + concurrent `getThumbnail()` | 1+N | Batch not supported, but concurrent with isolated services works (2.5x faster). Each thread needs its own service object — shared httplib2 causes SSL corruption. |
+| **Slides** | `get()` + concurrent `getThumbnail()` | 1+N | Batch not supported, but concurrent with isolated services works (3.2x faster at 2 workers). Google rate-limits at 3+ concurrent calls. Each thread needs its own service object — shared httplib2 causes SSL corruption. |
 | **Gmail** | `threads().get()` + batch `messages().get()` | 2 | Thread metadata + full message bodies |
 
 ### Linked Content in Docs
