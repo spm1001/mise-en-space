@@ -7,9 +7,7 @@ These tests verify extractors handle bad data gracefully:
 - Don't crash on null/missing fields
 """
 
-import json
 import pytest
-from pathlib import Path
 from datetime import datetime
 
 from models import (
@@ -22,16 +20,12 @@ from extractors.docs import extract_doc_content
 from extractors.sheets import extract_sheets_content
 from extractors.slides import extract_slides_content, parse_presentation
 from extractors.gmail import extract_thread_content
-
-
-# Load malformed fixtures
-FIXTURES_DIR = Path(__file__).parent.parent.parent / "fixtures" / "malformed"
+from tests.conftest import load_fixture
 
 
 def load_malformed_fixture(name: str) -> dict:
     """Load a malformed fixture by name."""
-    with open(FIXTURES_DIR / f"{name}.json") as f:
-        return json.load(f)
+    return load_fixture("malformed", name)
 
 
 class TestDocsNegativePaths:

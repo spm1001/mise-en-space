@@ -5,15 +5,14 @@ Tests the helper functions that parse API response data,
 and the adapter functions with mocked Gmail service.
 """
 
-import json
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
 
 from models import GmailThreadData, GmailSearchResult, EmailMessage
 from tests.helpers import mock_api_chain
+from tests.conftest import load_fixture
 from adapters.gmail import (
     _parse_headers,
     _parse_address_list,
@@ -27,8 +26,6 @@ from adapters.gmail import (
     AttachmentDownload,
 )
 
-
-FIXTURES_DIR = Path(__file__).parent.parent.parent / "fixtures"
 
 
 # ============================================================================
@@ -166,7 +163,7 @@ class TestBuildMessage:
 
     def test_from_real_fixture(self) -> None:
         """Build message from real Gmail thread fixture — verifies body decoding."""
-        fixture = json.loads((FIXTURES_DIR / "gmail" / "real_thread.json").read_text())
+        fixture = load_fixture("gmail", "real_thread")
         msg = fixture["messages"][0]
 
         result = _build_message(msg)
@@ -185,7 +182,7 @@ class TestBuildMessage:
 
     def test_from_real_fixture_second_message(self) -> None:
         """Build reply message — has both text/html and quoted thread."""
-        fixture = json.loads((FIXTURES_DIR / "gmail" / "real_thread.json").read_text())
+        fixture = load_fixture("gmail", "real_thread")
         msg = fixture["messages"][1]
 
         result = _build_message(msg)
@@ -198,7 +195,7 @@ class TestBuildMessage:
 
     def test_from_real_fixture_attachments(self) -> None:
         """Real fixture message has attachment metadata."""
-        fixture = json.loads((FIXTURES_DIR / "gmail" / "real_thread.json").read_text())
+        fixture = load_fixture("gmail", "real_thread")
         msg = fixture["messages"][0]
 
         result = _build_message(msg)
@@ -210,7 +207,7 @@ class TestBuildMessage:
 
     def test_from_real_fixture_drive_links(self) -> None:
         """Real fixture messages contain Drive links."""
-        fixture = json.loads((FIXTURES_DIR / "gmail" / "real_thread.json").read_text())
+        fixture = load_fixture("gmail", "real_thread")
 
         msg1 = _build_message(fixture["messages"][0])
         assert len(msg1.drive_links) > 0  # Has Test Single Tab Document link
@@ -256,7 +253,7 @@ class TestFetchThread:
     @patch('adapters.gmail.get_gmail_service')
     def test_returns_thread_data(self, mock_get_service) -> None:
         """fetch_thread returns GmailThreadData from API response."""
-        fixture = json.loads((FIXTURES_DIR / "gmail" / "real_thread.json").read_text())
+        fixture = load_fixture("gmail", "real_thread")
 
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
@@ -272,7 +269,7 @@ class TestFetchThread:
     @patch('adapters.gmail.get_gmail_service')
     def test_messages_parsed_from_fixture(self, mock_get_service) -> None:
         """Each message in thread is parsed with decoded bodies."""
-        fixture = json.loads((FIXTURES_DIR / "gmail" / "real_thread.json").read_text())
+        fixture = load_fixture("gmail", "real_thread")
 
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
@@ -303,7 +300,7 @@ class TestFetchMessage:
     @patch('adapters.gmail.get_gmail_service')
     def test_returns_email_message(self, mock_get_service) -> None:
         """fetch_message returns parsed EmailMessage."""
-        fixture = json.loads((FIXTURES_DIR / "gmail" / "real_thread.json").read_text())
+        fixture = load_fixture("gmail", "real_thread")
         msg_data = fixture["messages"][0]
 
         mock_service = MagicMock()

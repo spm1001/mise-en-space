@@ -5,17 +5,13 @@ Mocks the Docs API service, feeds real fixture data,
 and verifies the adapter parses into DocData correctly.
 """
 
-import json
 import pytest
-from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from models import DocData
 from adapters.docs import fetch_document, _build_tab, _build_legacy_tab
 from tests.helpers import mock_api_chain
-
-
-FIXTURES_DIR = Path(__file__).parent.parent.parent / "fixtures"
+from tests.conftest import load_fixture
 
 
 # ============================================================================
@@ -53,7 +49,7 @@ class TestBuildTab:
 
     def test_real_fixture_tab(self) -> None:
         """Build tab from real multi-tab fixture data."""
-        fixture = json.loads((FIXTURES_DIR / "docs" / "real_multi_tab.json").read_text())
+        fixture = load_fixture("docs", "real_multi_tab")
         first_tab = fixture["tabs"][0]
 
         tab = _build_tab(first_tab, 0)
@@ -95,7 +91,7 @@ class TestFetchDocument:
     @patch('adapters.docs.get_docs_service')
     def test_modern_multi_tab(self, mock_get_service) -> None:
         """Modern doc with tabs[] returns multi-tab DocData."""
-        fixture = json.loads((FIXTURES_DIR / "docs" / "real_multi_tab.json").read_text())
+        fixture = load_fixture("docs", "real_multi_tab")
 
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
