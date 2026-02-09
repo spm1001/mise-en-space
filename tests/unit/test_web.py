@@ -805,3 +805,332 @@ class TestWebOfficeRouting:
         result = fetch_web("https://example.com/report.docx")
 
         assert result.type == "docx"
+
+
+class TestPdfContentTypeMismatch:
+    """Test that HTML masquerading as PDF gets a clear error."""
+
+    @patch('tools.fetch.fetch_web_content')
+    def test_html_bytes_with_pdf_content_type_raises(self, mock_fetch) -> None:
+        """CDN returning HTML with application/pdf Content-Type gets actionable error."""
+        from tools.fetch import fetch_web
+
+        html_bytes = b"<html><body>Access Denied</body></html>"
+        mock_fetch.return_value = WebData(
+            url="https://cdn.example.com/report.pdf",
+            html='',
+            final_url="https://cdn.example.com/report.pdf",
+            status_code=200,
+            content_type="application/pdf",
+            cookies_used=False,
+            render_method='http',
+            raw_bytes=html_bytes,
+        )
+
+        with pytest.raises(MiseError) as exc_info:
+            fetch_web("https://cdn.example.com/report.pdf")
+
+        assert exc_info.value.kind == ErrorKind.EXTRACTION_FAILED
+        assert "not PDF" in exc_info.value.message
+        assert "cdn.example.com" in exc_info.value.message
+
+    @patch('tools.fetch.fetch_web_content')
+    def test_empty_bytes_with_pdf_content_type_raises(self, mock_fetch) -> None:
+        """Empty response with PDF Content-Type gets clear error."""
+        from tools.fetch import fetch_web
+
+        mock_fetch.return_value = WebData(
+            url="https://example.com/empty.pdf",
+            html='',
+            final_url="https://example.com/empty.pdf",
+            status_code=200,
+            content_type="application/pdf",
+            cookies_used=False,
+            render_method='http',
+            raw_bytes=b"",  # falsy — hits "no content" branch, not magic bytes
+        )
+
+        with pytest.raises(MiseError) as exc_info:
+            fetch_web("https://example.com/empty.pdf")
+
+        assert exc_info.value.kind == ErrorKind.EXTRACTION_FAILED
+        assert "No PDF content" in exc_info.value.message
+
+    @patch('tools.fetch.fetch_web_content')
+    def test_html_in_large_pdf_temp_path_raises(self, mock_fetch) -> None:
+        """Large file with HTML content but PDF Content-Type gets caught."""
+        from tools.fetch import fetch_web
+        import tempfile
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+        tmp.write(b"<!DOCTYPE html><html><body>Error</body></html>")
+        tmp.close()
+        tmp_path = Path(tmp.name)
+
+        mock_fetch.return_value = WebData(
+            url="https://cdn.example.com/big-report.pdf",
+            html='',
+            final_url="https://cdn.example.com/big-report.pdf",
+            status_code=200,
+            content_type="application/pdf",
+            cookies_used=False,
+            render_method='http',
+            temp_path=tmp_path,
+        )
+
+        try:
+            with pytest.raises(MiseError) as exc_info:
+                fetch_web("https://cdn.example.com/big-report.pdf")
+
+            assert "not PDF" in exc_info.value.message
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    @patch('tools.fetch.extract_pdf_content')
+    @patch('tools.fetch.fetch_web_content')
+    def test_real_pdf_bytes_pass_through(self, mock_fetch, mock_extract) -> None:
+        """Actual PDF bytes pass the magic check and reach extraction."""
+        from tools.fetch import fetch_web
+        from adapters.pdf import PdfExtractionResult
+
+        mock_fetch.return_value = WebData(
+            url="https://example.com/real.pdf",
+            html='',
+            final_url="https://example.com/real.pdf",
+            status_code=200,
+            content_type="application/pdf",
+            cookies_used=False,
+            render_method='http',
+            raw_bytes=b"%PDF-1.4 real pdf content",
+        )
+        mock_extract.return_value = PdfExtractionResult(
+            content="# Real PDF", method="markitdown", char_count=10,
+        )
+
+        result = fetch_web("https://example.com/real.pdf")
+        assert result.type == "pdf"
+        mock_extract.assert_called_once()
+
+
+class TestIsRawText:
+    """Test raw text detection by Content-Type and URL extension."""
+
+    # -- Content-Type detection --
+
+    def test_text_plain(self) -> None:
+        assert _is_raw_text("text/plain", "https://example.com/file")
+
+    def test_application_json(self) -> None:
+        assert _is_raw_text("application/json", "https://api.example.com/data")
+
+    def test_text_markdown(self) -> None:
+        assert _is_raw_text("text/markdown", "https://example.com/readme")
+
+    def test_text_csv(self) -> None:
+        assert _is_raw_text("text/csv", "https://example.com/data")
+
+    def test_application_xml(self) -> None:
+        assert _is_raw_text("application/xml", "https://example.com/feed")
+
+    def test_text_yaml(self) -> None:
+        assert _is_raw_text("text/yaml", "https://example.com/config")
+
+    def test_javascript(self) -> None:
+        assert _is_raw_text("application/javascript", "https://example.com/bundle")
+
+    def test_content_type_with_charset(self) -> None:
+        assert _is_raw_text("application/json; charset=utf-8", "https://example.com/api")
+
+    def test_content_type_case_insensitive(self) -> None:
+        assert _is_raw_text("Application/JSON", "https://example.com/api")
+
+    def test_html_not_raw(self) -> None:
+        assert not _is_raw_text("text/html", "https://example.com/page")
+
+    def test_pdf_not_raw(self) -> None:
+        assert not _is_raw_text("application/pdf", "https://example.com/doc.pdf")
+
+    # -- URL extension detection --
+
+    def test_py_extension(self) -> None:
+        assert _is_raw_text("text/html", "https://raw.githubusercontent.com/user/repo/main/script.py")
+
+    def test_json_extension(self) -> None:
+        assert _is_raw_text("text/html", "https://example.com/config.json")
+
+    def test_md_extension(self) -> None:
+        assert _is_raw_text("text/html", "https://raw.githubusercontent.com/user/repo/main/README.md")
+
+    def test_yaml_extension(self) -> None:
+        assert _is_raw_text("text/html", "https://example.com/config.yaml")
+
+    def test_toml_extension(self) -> None:
+        assert _is_raw_text("text/html", "https://example.com/pyproject.toml")
+
+    def test_sh_extension(self) -> None:
+        assert _is_raw_text("text/html", "https://example.com/install.sh")
+
+    def test_extension_with_query_params(self) -> None:
+        """Query params don't break extension detection."""
+        assert _is_raw_text("text/html", "https://example.com/script.py?v=2")
+
+    def test_html_extension_not_raw(self) -> None:
+        assert not _is_raw_text("text/html", "https://example.com/page.html")
+
+    def test_no_extension_not_raw(self) -> None:
+        assert not _is_raw_text("text/html", "https://example.com/page")
+
+    def test_unknown_extension_not_raw(self) -> None:
+        assert not _is_raw_text("text/html", "https://example.com/image.png")
+
+
+class TestGetLanguageFromUrl:
+    """Test language hint extraction from URL extension."""
+
+    def test_python(self) -> None:
+        assert _get_language_from_url("https://example.com/script.py") == "python"
+
+    def test_javascript(self) -> None:
+        assert _get_language_from_url("https://example.com/app.js") == "javascript"
+
+    def test_typescript(self) -> None:
+        assert _get_language_from_url("https://example.com/app.ts") == "typescript"
+
+    def test_rust(self) -> None:
+        assert _get_language_from_url("https://example.com/main.rs") == "rust"
+
+    def test_yaml(self) -> None:
+        assert _get_language_from_url("https://example.com/config.yaml") == "yaml"
+
+    def test_yml_variant(self) -> None:
+        assert _get_language_from_url("https://example.com/config.yml") == "yaml"
+
+    def test_bash_from_sh(self) -> None:
+        assert _get_language_from_url("https://example.com/install.sh") == "bash"
+
+    def test_no_match(self) -> None:
+        assert _get_language_from_url("https://example.com/page") == ""
+
+    def test_unknown_extension(self) -> None:
+        assert _get_language_from_url("https://example.com/image.png") == ""
+
+
+class TestFormatRawText:
+    """Test raw text formatting for different content types."""
+
+    def test_markdown_passthrough_with_heading(self) -> None:
+        """Markdown with heading passes through unchanged."""
+        content = "# My Doc\n\nSome content here."
+        result = _format_raw_text(content, "https://example.com/README.md", "text/markdown")
+        assert result == content
+
+    def test_markdown_adds_title_when_no_heading(self) -> None:
+        """Markdown without heading gets filename as title."""
+        content = "Some content without a heading."
+        result = _format_raw_text(content, "https://example.com/notes.md", "text/markdown")
+        assert result == "# notes.md\n\nSome content without a heading."
+
+    def test_json_pretty_printed(self) -> None:
+        """Compact JSON gets pretty-printed in a code fence."""
+        content = '{"name":"test","value":42}'
+        result = _format_raw_text(content, "https://api.example.com/data.json", "application/json")
+        assert "```json" in result
+        assert '"name": "test"' in result
+        assert "data.json" in result
+
+    def test_json_invalid_kept_as_is(self) -> None:
+        """Invalid JSON kept verbatim in a code fence."""
+        content = '{broken json'
+        result = _format_raw_text(content, "https://example.com/data.json", "application/json")
+        assert "```json" in result
+        assert "{broken json" in result
+
+    def test_json_by_content_type_not_extension(self) -> None:
+        """JSON detected by Content-Type even without .json extension."""
+        content = '{"key": "value"}'
+        result = _format_raw_text(content, "https://api.example.com/v1/data", "application/json")
+        assert "```json" in result
+
+    def test_python_code_fenced(self) -> None:
+        """Python file wrapped in code fence with language hint."""
+        content = 'def hello():\n    print("hi")'
+        result = _format_raw_text(content, "https://example.com/script.py", "text/plain")
+        assert "```python" in result
+        assert "script.py" in result
+        assert content in result
+
+    def test_rust_code_fenced(self) -> None:
+        content = 'fn main() { println!("hello"); }'
+        result = _format_raw_text(content, "https://example.com/main.rs", "text/plain")
+        assert "```rust" in result
+
+    def test_plain_text_no_fence(self) -> None:
+        """Plain text with unknown extension gets title but no code fence."""
+        content = "Just some text content."
+        result = _format_raw_text(content, "https://example.com/notes.txt", "text/plain")
+        assert "notes.txt" in result
+        assert "```" not in result
+        assert content in result
+
+    def test_filename_extracted_from_url(self) -> None:
+        """Filename extracted from last URL path segment."""
+        result = _format_raw_text("x", "https://example.com/path/to/config.yaml", "text/yaml")
+        assert "config.yaml" in result
+
+    def test_empty_path_fallback(self) -> None:
+        """Empty URL path uses fallback filename."""
+        result = _format_raw_text("x", "https://example.com/", "text/plain")
+        assert len(result) > 0
+
+
+class TestExtractWebContentRawText:
+    """Test extract_web_content raw text branch end-to-end."""
+
+    def test_json_api_response(self) -> None:
+        """JSON content goes through raw text path, not trafilatura."""
+        data = WebData(
+            url="https://api.example.com/v1/users",
+            html='{"users": [{"id": 1}]}',
+            final_url="https://api.example.com/v1/users",
+            status_code=200,
+            content_type="application/json",
+            cookies_used=False,
+            render_method="http",
+            warnings=[],
+        )
+        content = extract_web_content(data)
+        assert "```json" in content
+        assert '"users"' in content
+        assert any("Raw text" in w for w in data.warnings)
+
+    def test_github_raw_python(self) -> None:
+        """GitHub raw URLs detected by extension, fenced as Python."""
+        data = WebData(
+            url="https://raw.githubusercontent.com/user/repo/main/app.py",
+            html='import sys\nprint(sys.argv)',
+            final_url="https://raw.githubusercontent.com/user/repo/main/app.py",
+            status_code=200,
+            content_type="text/plain",
+            cookies_used=False,
+            render_method="http",
+            warnings=[],
+        )
+        content = extract_web_content(data)
+        assert "```python" in content
+        assert "import sys" in content
+
+    def test_markdown_file_passthrough(self) -> None:
+        """Markdown file returned as-is (already markdown)."""
+        md = "# README\n\nThis is a project."
+        data = WebData(
+            url="https://raw.githubusercontent.com/user/repo/main/README.md",
+            html=md,
+            final_url="https://raw.githubusercontent.com/user/repo/main/README.md",
+            status_code=200,
+            content_type="text/plain",
+            cookies_used=False,
+            render_method="http",
+            warnings=[],
+        )
+        content = extract_web_content(data)
+        assert content == md

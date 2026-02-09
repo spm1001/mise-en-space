@@ -1140,10 +1140,24 @@ def _fetch_web_pdf(url: str, web_data: WebData, base_path: Path | None = None) -
     url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
 
     if web_data.temp_path:
-        # Large PDF: extract directly from temp file (memory-safe)
+        # Large PDF: check magic bytes at start of file
+        with open(web_data.temp_path, "rb") as f:
+            magic = f.read(5)
+        if magic != b"%PDF-":
+            raise MiseError(
+                ErrorKind.EXTRACTION_FAILED,
+                f"Content-Type says application/pdf but content is not PDF (starts with {magic[:20]!r}). "
+                f"The server at {urlparse(url).netloc} may be returning an error page.",
+            )
         result = extract_pdf_content(file_id=url_hash, file_path=web_data.temp_path)
     elif web_data.raw_bytes:
-        # Small PDF: extract from memory
+        # Small PDF: check magic bytes before extraction
+        if not web_data.raw_bytes.startswith(b"%PDF-"):
+            raise MiseError(
+                ErrorKind.EXTRACTION_FAILED,
+                f"Content-Type says application/pdf but content is not PDF (starts with {web_data.raw_bytes[:20]!r}). "
+                f"The server at {urlparse(url).netloc} may be returning an error page.",
+            )
         result = extract_pdf_content(file_bytes=web_data.raw_bytes, file_id=url_hash)
     else:
         raise MiseError(ErrorKind.EXTRACTION_FAILED, f"No PDF content received from {url}")
