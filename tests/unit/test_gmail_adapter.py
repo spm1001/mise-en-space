@@ -12,7 +12,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from models import GmailThreadData, EmailMessage
+from models import GmailThreadData, GmailSearchResult, EmailMessage
 from adapters.gmail import (
     _parse_headers,
     _parse_address_list,
@@ -20,6 +20,10 @@ from adapters.gmail import (
     _extract_drive_links,
     _build_message,
     fetch_thread,
+    fetch_message,
+    search_threads,
+    download_attachment,
+    AttachmentDownload,
 )
 
 
@@ -236,3 +240,205 @@ class TestFetchThread:
         for msg in result.messages:
             assert isinstance(msg, EmailMessage)
             assert msg.message_id != ""
+
+
+# ============================================================================
+# FETCH MESSAGE (mocked service)
+# ============================================================================
+
+class TestFetchMessage:
+    """Test fetch_message wiring."""
+
+    @patch('adapters.gmail.get_gmail_service')
+    def test_returns_email_message(self, mock_get_service) -> None:
+        """fetch_message returns parsed EmailMessage."""
+        fixture = json.loads((FIXTURES_DIR / "gmail" / "real_thread.json").read_text())
+        msg_data = fixture["messages"][0]
+
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.users().messages().get().execute.return_value = msg_data
+
+        with patch('retry.time.sleep'):
+            result = fetch_message(msg_data["id"])
+
+        assert isinstance(result, EmailMessage)
+        assert result.message_id == msg_data["id"]
+
+
+# ============================================================================
+# SEARCH THREADS (mocked service with batch callback)
+# ============================================================================
+
+class TestSearchThreads:
+    """Test search_threads with mocked batch API."""
+
+    @patch('adapters.gmail.get_gmail_service')
+    def test_empty_search_returns_empty(self, mock_get_service) -> None:
+        """No matching threads returns empty list."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.users().threads().list().execute.return_value = {
+            "threads": [],
+            "resultSizeEstimate": 0,
+        }
+
+        with patch('retry.time.sleep'):
+            result = search_threads("nonexistent query")
+
+        assert result == []
+
+    @patch('adapters.gmail.get_gmail_service')
+    def test_no_threads_key_returns_empty(self, mock_get_service) -> None:
+        """Response without threads key returns empty list."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.users().threads().list().execute.return_value = {}
+
+        with patch('retry.time.sleep'):
+            result = search_threads("test")
+
+        assert result == []
+
+    @patch('adapters.gmail.get_gmail_service')
+    def test_search_with_results(self, mock_get_service) -> None:
+        """Search with results triggers batch fetch and returns GmailSearchResults."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        # Step 1: threads().list() returns thread IDs
+        mock_service.users().threads().list().execute.return_value = {
+            "threads": [
+                {"id": "t1", "snippet": "Budget discussion"},
+                {"id": "t2", "snippet": "Q4 results"},
+            ],
+        }
+
+        # Step 2: batch.execute() calls the callbacks
+        # We need to capture the callback and invoke it manually
+        batch_mock = MagicMock()
+        mock_service.new_batch_http_request.return_value = batch_mock
+
+        callbacks = []
+
+        def capture_add(request, callback):
+            callbacks.append(callback)
+
+        batch_mock.add.side_effect = capture_add
+
+        def execute_batch():
+            # Simulate batch responses
+            callbacks[0]("0", {
+                "id": "t1",
+                "messages": [{
+                    "id": "m1",
+                    "internalDate": "1706745600000",
+                    "payload": {
+                        "headers": [
+                            {"name": "From", "value": "alice@example.com"},
+                            {"name": "Subject", "value": "Budget"},
+                        ],
+                        "mimeType": "text/plain",
+                    },
+                }],
+            }, None)
+            callbacks[1]("1", {
+                "id": "t2",
+                "messages": [{
+                    "id": "m2",
+                    "internalDate": "1706832000000",
+                    "payload": {
+                        "headers": [
+                            {"name": "From", "value": "bob@example.com"},
+                            {"name": "Subject", "value": "Q4"},
+                        ],
+                        "mimeType": "text/plain",
+                    },
+                }],
+            }, None)
+
+        batch_mock.execute.side_effect = execute_batch
+
+        with patch('retry.time.sleep'):
+            results = search_threads("budget", max_results=10)
+
+        assert len(results) == 2
+        assert all(isinstance(r, GmailSearchResult) for r in results)
+        assert results[0].thread_id == "t1"
+        assert results[0].subject == "Budget"
+        assert results[0].snippet == "Budget discussion"
+        assert results[1].thread_id == "t2"
+
+    @patch('adapters.gmail.get_gmail_service')
+    def test_batch_error_skips_thread(self, mock_get_service) -> None:
+        """Batch callback errors skip individual threads."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        mock_service.users().threads().list().execute.return_value = {
+            "threads": [{"id": "t1", "snippet": "test"}],
+        }
+
+        batch_mock = MagicMock()
+        mock_service.new_batch_http_request.return_value = batch_mock
+
+        callbacks = []
+        batch_mock.add.side_effect = lambda req, callback: callbacks.append(callback)
+
+        def execute_batch():
+            # Simulate error for this thread
+            callbacks[0]("0", None, Exception("API error"))
+
+        batch_mock.execute.side_effect = execute_batch
+
+        with patch('retry.time.sleep'):
+            results = search_threads("test")
+
+        assert results == []  # Error thread skipped
+
+
+# ============================================================================
+# DOWNLOAD ATTACHMENT (mocked service)
+# ============================================================================
+
+class TestDownloadAttachment:
+    """Test attachment download with mocked Gmail API."""
+
+    @patch('adapters.gmail.get_gmail_service')
+    def test_small_attachment_in_memory(self, mock_get_service) -> None:
+        """Small attachment returns content in memory."""
+        import base64
+        content = b"Hello, this is a test attachment"
+        encoded = base64.urlsafe_b64encode(content).decode()
+
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.users().messages().attachments().get().execute.return_value = {
+            "data": encoded,
+        }
+
+        with patch('retry.time.sleep'):
+            result = download_attachment("msg1", "att1", filename="test.txt", mime_type="text/plain")
+
+        assert isinstance(result, AttachmentDownload)
+        assert result.content == content
+        assert result.filename == "test.txt"
+        assert result.mime_type == "text/plain"
+        assert result.size == len(content)
+        assert result.temp_path is None
+
+    @patch('adapters.gmail.get_gmail_service')
+    def test_default_filename_and_mime(self, mock_get_service) -> None:
+        """Missing filename/mime get defaults."""
+        import base64
+        encoded = base64.urlsafe_b64encode(b"data").decode()
+
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_service.users().messages().attachments().get().execute.return_value = {"data": encoded}
+
+        with patch('retry.time.sleep'):
+            result = download_attachment("msg1", "att1")
+
+        assert result.filename == "attachment"
+        assert result.mime_type == "application/octet-stream"
