@@ -63,7 +63,7 @@ target-version = "py311"
 asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = ["integration: tests that hit real Google APIs"]
-addopts = "-m 'not integration'"  # Skip integration tests by default
+addopts = "-m 'not integration' --cov=extractors --cov=adapters --cov=tools --cov=workspace --cov=models --cov=validation --cov=retry --cov-report=term-missing:skip-covered -q"
 
 [tool.mypy]
 python_version = "3.11"
