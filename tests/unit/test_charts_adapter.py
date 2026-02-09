@@ -8,6 +8,7 @@ import requests  # type: ignore[import-untyped]
 
 from models import ChartData
 from adapters.charts import get_charts_from_spreadsheet, render_charts_as_pngs
+from tests.helpers import mock_api_chain
 
 
 class TestGetChartsFromSpreadsheet:
@@ -198,14 +199,11 @@ class TestRenderChartsAsPngs:
         mock_time.time.return_value = 12345
         mock_time.perf_counter.side_effect = [0.0, 1.0]  # For render timing
 
-        # Set up mock chain properly - get the presentations mock first
-        presentations_mock = mock_slides_service.presentations.return_value
-
-        presentations_mock.create.return_value.execute.return_value = {
+        mock_api_chain(mock_slides_service, "presentations.create.execute", {
             "presentationId": "temp-pres-id"
-        }
-        presentations_mock.batchUpdate.return_value.execute.return_value = {}
-        presentations_mock.get.return_value.execute.return_value = {
+        })
+        mock_api_chain(mock_slides_service, "presentations.batchUpdate.execute", {})
+        mock_api_chain(mock_slides_service, "presentations.get.execute", {
             "slides": [
                 {
                     "pageElements": [{
@@ -220,7 +218,7 @@ class TestRenderChartsAsPngs:
                     }]
                 },
             ]
-        }
+        })
 
         with patch("adapters.charts.get_slides_service", return_value=mock_slides_service), \
              patch("adapters.charts.get_drive_service", return_value=mock_drive_service), \
@@ -257,14 +255,12 @@ class TestRenderChartsAsPngs:
         mock_time.time.return_value = 12345
         mock_time.perf_counter.side_effect = [0.0, 1.0]
 
-        presentations_mock = mock_slides_service.presentations.return_value
-        presentations_mock.create.return_value.execute.return_value = {
+        mock_api_chain(mock_slides_service, "presentations.create.execute", {
             "presentationId": "temp-pres-id"
-        }
-        presentations_mock.batchUpdate.return_value.execute.return_value = {}
-
+        })
+        mock_api_chain(mock_slides_service, "presentations.batchUpdate.execute", {})
         # First chart has contentUrl, second doesn't
-        presentations_mock.get.return_value.execute.return_value = {
+        mock_api_chain(mock_slides_service, "presentations.get.execute", {
             "slides": [
                 {
                     "pageElements": [{
@@ -279,7 +275,7 @@ class TestRenderChartsAsPngs:
                     }]
                 },
             ]
-        }
+        })
 
         with patch("adapters.charts.get_slides_service", return_value=mock_slides_service), \
              patch("adapters.charts.get_drive_service", return_value=mock_drive_service), \
@@ -304,18 +300,18 @@ class TestRenderChartsAsPngs:
         """Test that PNG download failure doesn't crash."""
         charts = [ChartData(chart_id=1, title="Chart", sheet_name="Data")]
 
-        mock_slides_service.presentations().create().execute.return_value = {
+        mock_api_chain(mock_slides_service, "presentations.create.execute", {
             "presentationId": "temp-pres-id"
-        }
-        mock_slides_service.presentations().batchUpdate().execute.return_value = {}
-        mock_slides_service.presentations().get().execute.return_value = {
+        })
+        mock_api_chain(mock_slides_service, "presentations.batchUpdate.execute", {})
+        mock_api_chain(mock_slides_service, "presentations.get.execute", {
             "slides": [{
                 "pageElements": [{
                     "objectId": "chart_0_12345",
                     "sheetsChart": {"contentUrl": "http://example.com/chart.png"}
                 }]
             }]
-        }
+        })
 
         with patch("adapters.charts.get_slides_service", return_value=mock_slides_service), \
              patch("adapters.charts.get_drive_service", return_value=mock_drive_service), \
@@ -336,18 +332,18 @@ class TestRenderChartsAsPngs:
         """Test that tiny responses (likely errors) are rejected."""
         charts = [ChartData(chart_id=1, title="Chart", sheet_name="Data")]
 
-        mock_slides_service.presentations().create().execute.return_value = {
+        mock_api_chain(mock_slides_service, "presentations.create.execute", {
             "presentationId": "temp-pres-id"
-        }
-        mock_slides_service.presentations().batchUpdate().execute.return_value = {}
-        mock_slides_service.presentations().get().execute.return_value = {
+        })
+        mock_api_chain(mock_slides_service, "presentations.batchUpdate.execute", {})
+        mock_api_chain(mock_slides_service, "presentations.get.execute", {
             "slides": [{
                 "pageElements": [{
                     "objectId": "chart_0_12345",
                     "sheetsChart": {"contentUrl": "http://example.com/chart.png"}
                 }]
             }]
-        }
+        })
 
         with patch("adapters.charts.get_slides_service", return_value=mock_slides_service), \
              patch("adapters.charts.get_drive_service", return_value=mock_drive_service), \
@@ -370,11 +366,12 @@ class TestRenderChartsAsPngs:
         """Test that temporary presentation is deleted even when error occurs."""
         charts = [ChartData(chart_id=1, title="Chart", sheet_name="Data")]
 
-        mock_slides_service.presentations().create().execute.return_value = {
+        mock_api_chain(mock_slides_service, "presentations.create.execute", {
             "presentationId": "temp-pres-id"
-        }
+        })
         # batchUpdate fails
-        mock_slides_service.presentations().batchUpdate().execute.side_effect = Exception("API error")
+        mock_api_chain(mock_slides_service, "presentations.batchUpdate.execute",
+                       side_effect=Exception("API error"))
 
         with patch("adapters.charts.get_slides_service", return_value=mock_slides_service), \
              patch("adapters.charts.get_drive_service", return_value=mock_drive_service):
@@ -391,7 +388,7 @@ class TestRenderChartsAsPngs:
         """Test error when presentation creation returns no ID."""
         charts = [ChartData(chart_id=1, title="Chart", sheet_name="Data")]
 
-        mock_slides_service.presentations().create().execute.return_value = {}  # No presentationId
+        mock_api_chain(mock_slides_service, "presentations.create.execute", {})  # No presentationId
 
         with patch("adapters.charts.get_slides_service", return_value=mock_slides_service), \
              patch("adapters.charts.get_drive_service", return_value=mock_drive_service):

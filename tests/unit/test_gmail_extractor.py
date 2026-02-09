@@ -263,6 +263,58 @@ class TestThreadExtraction:
         assert "Q4 Planning Meeting Notes" in result
 
 
+class TestRealFixtureRoundTrip:
+    """Round-trip tests: real API fixture → adapter → extractor → content string."""
+
+    def test_extract_message_from_real_fixture(self, real_gmail_thread):
+        """Real fixture message → extract_message_content → meaningful content."""
+        msg = real_gmail_thread.messages[0]
+
+        result, warnings = extract_message_content(msg)
+
+        # Content decoded from base64 and cleaned
+        assert "This is some text" in result
+        assert "Bullet 1" in result
+        assert len(result) > 20  # Not trivially empty
+
+    def test_extract_reply_from_real_fixture(self, real_gmail_thread):
+        """Reply message — new content extracted, quoted original stripped."""
+        msg = real_gmail_thread.messages[1]
+
+        result, warnings = extract_message_content(msg, strip_signature=True)
+
+        assert "building on the thread" in result
+        # Quoted original thread is stripped (starts with "On Fri, 23 Jan...")
+        assert "This is some text" not in result
+
+    def test_extract_thread_from_real_fixture(self, real_gmail_thread):
+        """Full thread extraction — subject, both messages, metadata."""
+        result = extract_thread_content(real_gmail_thread)
+
+        # Subject header
+        assert "Test email" in result
+
+        # Both messages present
+        assert "[1/2]" in result
+        assert "[2/2]" in result
+
+        # Content from first message
+        assert "This is some text" in result
+
+        # Content from reply
+        assert "building on the thread" in result
+
+    def test_html_fallback_when_text_preferred(self, real_gmail_thread):
+        """When both text and HTML are present, plain text is preferred."""
+        msg = real_gmail_thread.messages[0]
+
+        result, _ = extract_message_content(msg)
+
+        # Should use plain text path (no HTML tags in output)
+        assert "<div>" not in result
+        assert "<ul>" not in result
+
+
 class TestPayloadParsing:
     """Tests for Gmail API payload parsing utilities."""
 

@@ -4,7 +4,7 @@ Shared test helpers for mise-en-space.
 Centralizes mock wiring patterns that repeat across test files.
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, seal
 from typing import Any
 
 
@@ -55,6 +55,26 @@ def mock_api_chain(
     elif response is not None:
         final.return_value = response
     return final
+
+
+def seal_service(mock_service: MagicMock) -> None:
+    """Seal a mock service after all mock_api_chain() calls.
+
+    Prevents MagicMock from silently creating new attributes when
+    production code renames an API method. Without seal, a test passes
+    even if the adapter calls files().get_media() but the mock only
+    set up files().get() — MagicMock returns a new MagicMock instead
+    of raising.
+
+    Must be called AFTER all mock_api_chain() calls for this service.
+
+    Example:
+        mock_api_chain(service, "files.get.execute", {"id": "f1"})
+        seal_service(service)
+        # Now service.files().get().execute() works
+        # But service.files().export() raises AttributeError
+    """
+    seal(mock_service)
 
 
 def wire_httpx_client(mock_client_cls: MagicMock) -> MagicMock:

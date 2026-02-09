@@ -212,9 +212,8 @@ class TestRealGmailFixture:
     - First message has inline image, bullets, bold, Drive link
     - Second message is a reply with signature
 
-    Note: The real fixture stores raw API format with base64 bodies.
-    The conftest.py extracts headers but not bodies (that's adapter work).
-    For full extraction testing, use the synthetic gmail/thread.json fixture.
+    The real fixture stores raw API format with base64 bodies.
+    conftest.py decodes bodies via parse_message_payload.
     """
 
     def test_real_gmail_fixture_loads(self, real_gmail_thread):
@@ -251,6 +250,24 @@ class TestRealGmailFixture:
         """Verify each message has unique ID."""
         ids = [m.message_id for m in real_gmail_thread.messages]
         assert len(ids) == len(set(ids))  # All unique
+
+    def test_bodies_decoded_from_base64(self, real_gmail_thread):
+        """Bodies decoded from raw API base64 payload."""
+        for msg in real_gmail_thread.messages:
+            assert msg.body_text is not None, f"Message {msg.message_id} has no body_text"
+            assert msg.body_html is not None, f"Message {msg.message_id} has no body_html"
+
+    def test_first_message_body_content(self, real_gmail_thread):
+        """First message body contains expected text."""
+        msg = real_gmail_thread.messages[0]
+        assert "This is some text" in msg.body_text
+        assert "Bullet 1" in msg.body_text
+        assert "Bullet 2" in msg.body_text
+
+    def test_reply_body_content(self, real_gmail_thread):
+        """Reply message body contains expected text."""
+        msg = real_gmail_thread.messages[1]
+        assert "building on the thread" in msg.body_text
 
 
 class TestRealGmailBodyExtraction:

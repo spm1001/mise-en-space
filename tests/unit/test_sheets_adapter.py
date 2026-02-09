@@ -10,6 +10,7 @@ from unittest.mock import patch, MagicMock
 
 from models import SpreadsheetData
 from adapters.sheets import fetch_spreadsheet, _parse_cell_value, _parse_row
+from tests.helpers import mock_api_chain
 
 
 # ============================================================================
@@ -65,8 +66,7 @@ class TestFetchSpreadsheet:
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
 
-        # API response for spreadsheets().get()
-        mock_service.spreadsheets().get().execute.return_value = {
+        mock_api_chain(mock_service, "spreadsheets.get.execute", {
             "spreadsheetId": "sheet123",
             "properties": {
                 "title": "Test Spreadsheet",
@@ -76,14 +76,12 @@ class TestFetchSpreadsheet:
             "sheets": [
                 {"properties": {"sheetId": 0, "title": "Sheet1", "sheetType": "GRID"}},
             ],
-        }
-
-        # API response for values().batchGet()
-        mock_service.spreadsheets().values().batchGet().execute.return_value = {
+        })
+        mock_api_chain(mock_service, "spreadsheets.values.batchGet.execute", {
             "valueRanges": [
                 {"values": [["Name", "Age"], ["Alice", "30"], ["Bob", "25"]]},
             ],
-        }
+        })
 
         mock_charts.return_value = []
 
@@ -108,20 +106,19 @@ class TestFetchSpreadsheet:
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
 
-        mock_service.spreadsheets().get().execute.return_value = {
+        mock_api_chain(mock_service, "spreadsheets.get.execute", {
             "spreadsheetId": "sheet123",
             "properties": {"title": "Mixed"},
             "sheets": [
                 {"properties": {"sheetId": 0, "title": "Data", "sheetType": "GRID"}},
                 {"properties": {"sheetId": 1, "title": "Chart1", "sheetType": "OBJECT"}},
             ],
-        }
-
-        mock_service.spreadsheets().values().batchGet().execute.return_value = {
+        })
+        mock_api_chain(mock_service, "spreadsheets.values.batchGet.execute", {
             "valueRanges": [
                 {"values": [["x", "y"]]},
             ],
-        }
+        })
 
         mock_charts.return_value = []
 
@@ -146,13 +143,13 @@ class TestFetchSpreadsheet:
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
 
-        mock_service.spreadsheets().get().execute.return_value = {
+        mock_api_chain(mock_service, "spreadsheets.get.execute", {
             "spreadsheetId": "sheet123",
             "properties": {"title": "Charts Only"},
             "sheets": [
                 {"properties": {"sheetId": 0, "title": "Chart1", "sheetType": "OBJECT"}},
             ],
-        }
+        })
 
         mock_charts.return_value = []
 
@@ -172,11 +169,11 @@ class TestFetchSpreadsheet:
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
 
-        mock_service.spreadsheets().get().execute.return_value = {
+        mock_api_chain(mock_service, "spreadsheets.get.execute", {
             "spreadsheetId": "sheet123",
             "properties": {"title": "With Charts"},
             "sheets": [],
-        }
+        })
 
         from models import ChartData
         chart = ChartData(chart_id=1, title="Revenue", chart_type="BAR")
@@ -197,11 +194,11 @@ class TestFetchSpreadsheet:
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
 
-        mock_service.spreadsheets().get().execute.return_value = {
+        mock_api_chain(mock_service, "spreadsheets.get.execute", {
             "spreadsheetId": "sheet123",
             "properties": {"title": "No Render"},
             "sheets": [],
-        }
+        })
 
         from models import ChartData
         mock_charts.return_value = [ChartData(chart_id=1, title="Chart", chart_type="PIE")]

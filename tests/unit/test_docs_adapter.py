@@ -12,6 +12,7 @@ from unittest.mock import patch, MagicMock
 
 from models import DocData
 from adapters.docs import fetch_document, _build_tab, _build_legacy_tab
+from tests.helpers import mock_api_chain
 
 
 FIXTURES_DIR = Path(__file__).parent.parent.parent / "fixtures"
@@ -98,7 +99,7 @@ class TestFetchDocument:
 
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
-        mock_service.documents().get().execute.return_value = fixture
+        mock_api_chain(mock_service, "documents.get.execute", fixture)
 
         with patch('retry.time.sleep'):
             result = fetch_document("1iBsJHoqza53")
@@ -115,11 +116,11 @@ class TestFetchDocument:
         mock_get_service.return_value = mock_service
 
         # Legacy format: body at root level, no tabs[]
-        mock_service.documents().get().execute.return_value = {
+        mock_api_chain(mock_service, "documents.get.execute", {
             "documentId": "legacy123",
             "title": "Legacy Document",
             "body": {"content": [{"paragraph": {"elements": [{"textRun": {"content": "Hello"}}]}}]},
-        }
+        })
 
         with patch('retry.time.sleep'):
             result = fetch_document("legacy123")
@@ -135,9 +136,9 @@ class TestFetchDocument:
         """Document without title gets 'Untitled' default."""
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
-        mock_service.documents().get().execute.return_value = {
+        mock_api_chain(mock_service, "documents.get.execute", {
             "documentId": "notitle",
-        }
+        })
 
         with patch('retry.time.sleep'):
             result = fetch_document("notitle")

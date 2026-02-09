@@ -9,7 +9,7 @@ import httplib2
 import pytest
 from googleapiclient.errors import HttpError
 
-from tests.helpers import mock_api_chain
+from tests.helpers import mock_api_chain, seal_service
 
 from models import (
     EmailContext,
@@ -124,7 +124,7 @@ class TestParseDatetime:
 # ============================================================================
 
 class TestExportFile:
-    """Test export_file with mocked Drive API."""
+    """Test export_file with mocked Drive API (sealed)."""
 
     @patch('adapters.drive.get_drive_service')
     def test_exports_bytes(self, mock_get_service) -> None:
@@ -132,6 +132,7 @@ class TestExportFile:
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
         mock_api_chain(mock_service, "files.export.execute", b"# Exported Markdown")
+        seal_service(mock_service)
 
         with patch('retry.time.sleep'):
             result = export_file("doc123", "text/markdown")
@@ -1131,3 +1132,55 @@ class TestLookupExfiltrated:
         names = [f["name"] for f in result["msg_aaa"]]
         assert "report.pdf" in names
         assert "data.csv" in names
+
+
+# ============================================================================
+# SEAL PROOF OF CONCEPT
+# ============================================================================
+
+class TestSealCatchesRenamedMethods:
+    """Proves seal_service catches silent mock mismatches.
+
+    Without seal, MagicMock silently creates new attributes when
+    production code renames an API method — tests pass, but they're
+    testing nothing. Seal makes these failures loud.
+    """
+
+    def test_renamed_method_fails(self) -> None:
+        """Seal catches files.export → files.export_media rename."""
+        service = MagicMock()
+        mock_api_chain(service, "files.export.execute", b"markdown")
+        seal_service(service)
+
+        # Correct chain still works
+        assert service.files().export().execute() == b"markdown"
+
+        # Renamed method raises immediately
+        with pytest.raises(AttributeError, match="export_media"):
+            service.files().export_media()
+
+    def test_typo_in_resource_fails(self) -> None:
+        """Seal catches typo in resource name (files vs filez)."""
+        service = MagicMock()
+        mock_api_chain(service, "files.get.execute", {"id": "f1"})
+        seal_service(service)
+
+        with pytest.raises(AttributeError, match="filez"):
+            service.filez()
+
+    def test_multiple_chains_all_work(self) -> None:
+        """Seal preserves all set-up chains on the same service."""
+        service = MagicMock()
+        mock_api_chain(service, "files.get.execute", {"id": "f1"})
+        mock_api_chain(service, "files.list.execute", {"files": []})
+        mock_api_chain(service, "comments.list.execute", {"comments": []})
+        seal_service(service)
+
+        # All three chains work
+        assert service.files().get().execute() == {"id": "f1"}
+        assert service.files().list().execute() == {"files": []}
+        assert service.comments().list().execute() == {"comments": []}
+
+        # But a new chain fails
+        with pytest.raises(AttributeError):
+            service.files().copy()

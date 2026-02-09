@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tests.mock_utils import make_http_error
+from tests.helpers import mock_api_chain
 from models import PresentationData, SlideData
 
 
@@ -82,9 +83,8 @@ class TestThumbnailFailureHandling:
         """Test that HTTP 404 errors produce clear warning message."""
         from adapters.slides import _fetch_thumbnails_selective
 
-        mock_slides_service.presentations().pages().getThumbnail().execute.side_effect = (
-            make_http_error(404, "Not found")
-        )
+        mock_api_chain(mock_slides_service, "presentations.pages.getThumbnail.execute",
+                       side_effect=make_http_error(404, "Not found"))
 
         _fetch_thumbnails_selective(mock_slides_service, "test-id", sample_presentation_data)
 
@@ -98,9 +98,9 @@ class TestThumbnailFailureHandling:
         """Test that download timeouts produce clear warning message."""
         from adapters.slides import _fetch_thumbnails_selective
 
-        mock_slides_service.presentations().pages().getThumbnail().execute.return_value = {
+        mock_api_chain(mock_slides_service, "presentations.pages.getThumbnail.execute", {
             "contentUrl": "http://example.com/thumb.png"
-        }
+        })
 
         with patch("adapters.slides.urllib.request.urlopen") as mock_urlopen:
             mock_urlopen.side_effect = TimeoutError()
@@ -117,9 +117,9 @@ class TestThumbnailFailureHandling:
         """Test that download URL errors produce clear warning message."""
         from adapters.slides import _fetch_thumbnails_selective
 
-        mock_slides_service.presentations().pages().getThumbnail().execute.return_value = {
+        mock_api_chain(mock_slides_service, "presentations.pages.getThumbnail.execute", {
             "contentUrl": "http://example.com/thumb.png"
-        }
+        })
 
         with patch("adapters.slides.urllib.request.urlopen") as mock_urlopen:
             mock_urlopen.side_effect = urllib.error.URLError("Connection refused")
@@ -165,9 +165,9 @@ class TestThumbnailFailureHandling:
         """Test that thumbnails_included is set when at least one succeeds."""
         from adapters.slides import _fetch_thumbnails_selective
 
-        mock_slides_service.presentations().pages().getThumbnail().execute.return_value = {
+        mock_api_chain(mock_slides_service, "presentations.pages.getThumbnail.execute", {
             "contentUrl": "http://example.com/thumb.png"
-        }
+        })
 
         with patch("adapters.slides.urllib.request.urlopen") as mock_urlopen:
             mock_response = MagicMock()
@@ -186,9 +186,8 @@ class TestThumbnailFailureHandling:
         """Test that thumbnails_included is False when all fetches fail."""
         from adapters.slides import _fetch_thumbnails_selective
 
-        mock_slides_service.presentations().pages().getThumbnail().execute.side_effect = (
-            make_http_error(500, "Server error")
-        )
+        mock_api_chain(mock_slides_service, "presentations.pages.getThumbnail.execute",
+                       side_effect=make_http_error(500, "Server error"))
 
         _fetch_thumbnails_selective(mock_slides_service, "test-id", sample_presentation_data)
 

@@ -22,6 +22,7 @@ from models import (
     FileCommentsData, CommentData, CommentReply,
 )
 from extractors.slides import parse_presentation
+from extractors.gmail import parse_message_payload
 from datetime import datetime
 
 # Project root for fixture loading
@@ -222,6 +223,8 @@ def real_gmail_thread() -> GmailThreadData:
         for h in payload.get("headers", []):
             headers[h["name"]] = h["value"]
 
+        body_text, body_html = parse_message_payload(payload)
+
         messages.append(EmailMessage(
             message_id=msg.get("id", ""),
             from_address=headers.get("From", ""),
@@ -229,8 +232,8 @@ def real_gmail_thread() -> GmailThreadData:
             cc_addresses=[headers.get("Cc", "")] if headers.get("Cc") else [],
             subject=headers.get("Subject", ""),
             date=None,  # Would need parsing
-            body_text=None,  # Extracted by adapter
-            body_html=None,  # Extracted by adapter
+            body_text=body_text,
+            body_html=body_html,
             attachments=[],
             drive_links=[],
         ))

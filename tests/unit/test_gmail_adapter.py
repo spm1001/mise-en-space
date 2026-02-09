@@ -13,6 +13,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from models import GmailThreadData, GmailSearchResult, EmailMessage
+from tests.helpers import mock_api_chain
 from adapters.gmail import (
     _parse_headers,
     _parse_address_list,
@@ -164,7 +165,7 @@ class TestBuildMessage:
     """Test message construction from API response."""
 
     def test_from_real_fixture(self) -> None:
-        """Build message from real Gmail thread fixture."""
+        """Build message from real Gmail thread fixture — verifies body decoding."""
         fixture = json.loads((FIXTURES_DIR / "gmail" / "real_thread.json").read_text())
         msg = fixture["messages"][0]
 
@@ -172,11 +173,53 @@ class TestBuildMessage:
 
         assert isinstance(result, EmailMessage)
         assert result.message_id == msg["id"]
-        assert result.subject != ""  # Has a subject
-        assert result.from_address != ""  # Has a sender
+        assert result.subject == "Test email"
+        assert "bob@example.com" in result.from_address
+
+        # Bodies decoded from base64 payload
+        assert result.body_text is not None
+        assert "This is some text" in result.body_text
+        assert "Bullet 1" in result.body_text
+        assert result.body_html is not None
+        assert "This is some text" in result.body_html
+
+    def test_from_real_fixture_second_message(self) -> None:
+        """Build reply message — has both text/html and quoted thread."""
+        fixture = json.loads((FIXTURES_DIR / "gmail" / "real_thread.json").read_text())
+        msg = fixture["messages"][1]
+
+        result = _build_message(msg)
+
+        assert result.subject == "Re: Test email"
+        assert result.body_text is not None
+        assert "building on the thread" in result.body_text
+        assert result.body_html is not None
+        assert "building on the thread" in result.body_html
+
+    def test_from_real_fixture_attachments(self) -> None:
+        """Real fixture message has attachment metadata."""
+        fixture = json.loads((FIXTURES_DIR / "gmail" / "real_thread.json").read_text())
+        msg = fixture["messages"][0]
+
+        result = _build_message(msg)
+
+        # Message 1 has a PDF attachment
+        pdf_attachments = [a for a in result.attachments if a.mime_type == "application/pdf"]
+        assert len(pdf_attachments) == 1
+        assert "Consulting proposal" in pdf_attachments[0].filename
+
+    def test_from_real_fixture_drive_links(self) -> None:
+        """Real fixture messages contain Drive links."""
+        fixture = json.loads((FIXTURES_DIR / "gmail" / "real_thread.json").read_text())
+
+        msg1 = _build_message(fixture["messages"][0])
+        assert len(msg1.drive_links) > 0  # Has Test Single Tab Document link
+
+        msg2 = _build_message(fixture["messages"][1])
+        assert len(msg2.drive_links) > 0  # Has Pet resume link
 
     def test_minimal_message(self) -> None:
-        """Message with minimal fields doesn't crash."""
+        """Message with minimal fields — body decoded from base64."""
         msg = {
             "id": "msg123",
             "payload": {
@@ -193,6 +236,7 @@ class TestBuildMessage:
         assert result.message_id == "msg123"
         assert result.from_address == "test@example.com"
         assert result.subject == "Minimal"
+        assert result.body_text == "Hello"
 
     def test_message_without_headers(self) -> None:
         """Message with no headers gets empty defaults."""
@@ -216,7 +260,7 @@ class TestFetchThread:
 
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
-        mock_service.users().threads().get().execute.return_value = fixture
+        mock_api_chain(mock_service, "users.threads.get.execute", fixture)
 
         with patch('retry.time.sleep'):
             result = fetch_thread("19beb7eba557288e")
@@ -227,12 +271,12 @@ class TestFetchThread:
 
     @patch('adapters.gmail.get_gmail_service')
     def test_messages_parsed_from_fixture(self, mock_get_service) -> None:
-        """Each message in thread is parsed into EmailMessage."""
+        """Each message in thread is parsed with decoded bodies."""
         fixture = json.loads((FIXTURES_DIR / "gmail" / "real_thread.json").read_text())
 
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
-        mock_service.users().threads().get().execute.return_value = fixture
+        mock_api_chain(mock_service, "users.threads.get.execute", fixture)
 
         with patch('retry.time.sleep'):
             result = fetch_thread("19beb7eba557288e")
@@ -240,6 +284,13 @@ class TestFetchThread:
         for msg in result.messages:
             assert isinstance(msg, EmailMessage)
             assert msg.message_id != ""
+            # Round-trip: API payload → adapter → decoded bodies
+            assert msg.body_text is not None, f"Message {msg.message_id} has no body_text"
+            assert msg.body_html is not None, f"Message {msg.message_id} has no body_html"
+
+        # Verify specific content survived the round-trip
+        assert "This is some text" in result.messages[0].body_text
+        assert "building on the thread" in result.messages[1].body_text
 
 
 # ============================================================================
@@ -257,7 +308,7 @@ class TestFetchMessage:
 
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
-        mock_service.users().messages().get().execute.return_value = msg_data
+        mock_api_chain(mock_service, "users.messages.get.execute", msg_data)
 
         with patch('retry.time.sleep'):
             result = fetch_message(msg_data["id"])
@@ -278,10 +329,10 @@ class TestSearchThreads:
         """No matching threads returns empty list."""
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
-        mock_service.users().threads().list().execute.return_value = {
+        mock_api_chain(mock_service, "users.threads.list.execute", {
             "threads": [],
             "resultSizeEstimate": 0,
-        }
+        })
 
         with patch('retry.time.sleep'):
             result = search_threads("nonexistent query")
@@ -293,7 +344,7 @@ class TestSearchThreads:
         """Response without threads key returns empty list."""
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
-        mock_service.users().threads().list().execute.return_value = {}
+        mock_api_chain(mock_service, "users.threads.list.execute", {})
 
         with patch('retry.time.sleep'):
             result = search_threads("test")
@@ -307,12 +358,12 @@ class TestSearchThreads:
         mock_get_service.return_value = mock_service
 
         # Step 1: threads().list() returns thread IDs
-        mock_service.users().threads().list().execute.return_value = {
+        mock_api_chain(mock_service, "users.threads.list.execute", {
             "threads": [
                 {"id": "t1", "snippet": "Budget discussion"},
                 {"id": "t2", "snippet": "Q4 results"},
             ],
-        }
+        })
 
         # Step 2: batch.execute() calls the callbacks
         # We need to capture the callback and invoke it manually
@@ -375,9 +426,9 @@ class TestSearchThreads:
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
 
-        mock_service.users().threads().list().execute.return_value = {
+        mock_api_chain(mock_service, "users.threads.list.execute", {
             "threads": [{"id": "t1", "snippet": "test"}],
-        }
+        })
 
         batch_mock = MagicMock()
         mock_service.new_batch_http_request.return_value = batch_mock
@@ -413,9 +464,9 @@ class TestDownloadAttachment:
 
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
-        mock_service.users().messages().attachments().get().execute.return_value = {
+        mock_api_chain(mock_service, "users.messages.attachments.get.execute", {
             "data": encoded,
-        }
+        })
 
         with patch('retry.time.sleep'):
             result = download_attachment("msg1", "att1", filename="test.txt", mime_type="text/plain")
@@ -435,7 +486,7 @@ class TestDownloadAttachment:
 
         mock_service = MagicMock()
         mock_get_service.return_value = mock_service
-        mock_service.users().messages().attachments().get().execute.return_value = {"data": encoded}
+        mock_api_chain(mock_service, "users.messages.attachments.get.execute", {"data": encoded})
 
         with patch('retry.time.sleep'):
             result = download_attachment("msg1", "att1")
