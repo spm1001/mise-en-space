@@ -143,7 +143,7 @@ MCP server startup is ~1.3s (import + first auth). After that, the server stays 
 | **Fetch: XLSX** | ~6s | 6.1–6.7s | Drive upload → convert → export |
 | **Fetch: DOCX** | ~9s | 8.3–9.9s | Same pipeline, larger payloads |
 
-*Benchmarked 9 Feb 2026 at [`bcdd8fd`](../../commit/bcdd8fd), 3 runs each, warm server, London → Google APIs.*
+*Benchmarked 9 Feb 2026 at [`fd5f9d0`](../../commit/fd5f9d0), 3 runs each, warm server, London → Google APIs.*
 
 **The slow paths:** Office files (DOCX/XLSX) are unavoidably slow — Drive does server-side conversion (upload → convert → export → cleanup). Gmail attachments that are Office files are listed but not auto-extracted for this reason; use `fetch(thread_id, attachment="file.xlsx")` on demand.
 

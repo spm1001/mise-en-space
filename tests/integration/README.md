@@ -53,11 +53,21 @@ Example:
 {
   "test_doc_id": "1abc...",
   "test_sheet_id": "1def...",
-  "test_thread_id": "189a..."
+  "test_presentation_id": "1ghi...",
+  "test_thread_id": "189a...",
+  "test_pdf_id": "1jkl...",
+  "test_docx_id": "1mno...",
+  "test_xlsx_id": "1pqr...",
+  "test_doc_with_comments_id": "1abc...",
+  "test_thread_with_pdf_id": "19c3...",
+  "test_thread_with_pdf_filename": "report.pdf",
+  "test_thread_with_office_id": "19c0...",
+  "test_thread_with_office_filename": "data.xlsx",
+  "test_email_attachments_folder_id": "16Ja..."
 }
 ```
 
-Create test files manually, then record their IDs.
+Create test files manually, then record their IDs. Gmail attachment tests need threads with specific attachment types — use `has:attachment filename:pdf` or `filename:xlsx` to find candidates.
 
 ## Best Practices
 
