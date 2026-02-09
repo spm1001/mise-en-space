@@ -377,6 +377,8 @@ uv run python -m auth --manual
 
 **To change the GCP project:** Edit `oauth_config.py` or use `--project` flag.
 
+**Token refresh:** `token.json` contains both access token and refresh token. The Google auth library automatically refreshes expired access tokens using the refresh token on each API call — no manual intervention needed. The retry module's 401 handler (`clear_service_cache`) is a fallback for when the *refresh token itself* is revoked (rare — requires `uv run python -m auth` to re-consent).
+
 ## File Deposit Structure
 
 Fetched content goes to `mise-fetch/` in the current working directory:
@@ -499,7 +501,7 @@ Decisions made during planning (Jan 2026) that future Claude should understand:
 | **No `purpose` parameter** | Always LLM-analysis | This MCP is Claude's sous chef — always preparing for LLM consumption. Archival/editing modes are YAGNI. |
 | **PDF: hybrid extraction** | markitdown → Drive fallback | Try markitdown first (fast, MIT). If <500 chars extracted, fall back to Drive conversion (slower but handles image-heavy/complex PDFs). Benchmarked: Drive extracts 100-1000x more content from complex PDFs. PyMuPDF tested but offers no quality advantage over markitdown and has AGPL license. |
 | **MCP SDK v1.x not v2** | Pin to `>=1.23.0,<2.0.0` | v2 is pre-alpha (Q1 2026 expected stable). Core FastMCP patterns are identical; migration will be version bump not rewrite. |
-| **3 verbs not 17 tools** | search, fetch, create | v1 had 17 tools. Claude doesn't need that many levers. Unified search + polymorphic fetch (with auto-enriched comments) covers 95% of use cases. Documentation via MCP Resources, not a tool. |
+| **3 verbs not 17 tools** | search, fetch, do | v1 had 17 tools. Claude doesn't need that many levers. Unified search + polymorphic fetch covers 95% of use cases. The 3rd verb evolves from `create` → `do(operation=...)` to accommodate move/rename/share (Feb 2026 decision). Current `create` tool stays as-is until a real use case pulls us to implement `do`. |
 | **ID auto-detection** | fetch(id) figures out type | Gmail thread IDs look different from Drive file IDs. Server detects, no explicit source param needed. |
 | **Pre-exfil detection** | Check "Email Attachments" folder | User runs background extractor. Value isn't speed (Gmail is 3x faster); value is Drive fullText indexes PDF *content*. |
 | **Sync adapters, async tools** | Adapters sync, tools can wrap | Google API client is synchronous. Adapters stay sync. For MCP v2 tasks (async dispatch), tools layer wraps with `asyncio.to_thread()`. Avoids rewriting adapters. |
