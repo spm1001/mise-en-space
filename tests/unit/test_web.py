@@ -39,16 +39,7 @@ from adapters.web import (
 )
 
 
-def _wire_httpx_client(mock_client_cls: MagicMock) -> MagicMock:
-    """Wire up httpx.Client context manager mock and return the client instance.
-
-    Replaces the repetitive 3-line pattern:
-        mock_client = _wire_httpx_client(mock_client_cls)
-    """
-    mock_client = MagicMock()
-    mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-    mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
-    return mock_client
+from tests.helpers import wire_httpx_client as _wire_httpx_client
 
 
 class TestIsWebUrl:

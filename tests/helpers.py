@@ -55,3 +55,20 @@ def mock_api_chain(
     elif response is not None:
         final.return_value = response
     return final
+
+
+def wire_httpx_client(mock_client_cls: MagicMock) -> MagicMock:
+    """Wire up httpx.Client context manager mock and return the client instance.
+
+    Replaces the repetitive 3-line pattern:
+        mock_client = MagicMock()
+        mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+    Usage:
+        mock_client = wire_httpx_client(mock_client_cls)
+    """
+    mock_client = MagicMock()
+    mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
+    mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+    return mock_client
