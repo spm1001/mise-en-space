@@ -240,14 +240,71 @@ def strip_signature(msg_body: str) -> str:
     return body
 
 
+_RE_REPLY_PREAMBLE = re.compile(
+    r'^On .{10,80} wrote:\s*$', re.MULTILINE
+)
+
+_RE_URL = re.compile(r'https?://|<http')
+
+
+def _strip_trailing_contact_block(body: str) -> str:
+    """
+    Strip trailing URL-dense blocks that look like contact signatures.
+
+    Catches modern corporate signatures (name/title/links) that talon
+    misses because they lack explicit markers like '--' or 'Thanks'.
+
+    Detection: finds a "name block" pattern — a short line (bare name)
+    preceded by a blank line, followed by another short text line
+    (full name/title), with 3+ URLs in the text below. This avoids
+    false positives on content that happens to contain links.
+
+    Also strips orphaned reply preambles ("On ... wrote:").
+    """
+    # First: strip orphaned reply preamble left after quote removal
+    body = _RE_REPLY_PREAMBLE.sub('', body).rstrip()
+
+    lines = body.split('\n')
+    if len(lines) < 5:
+        return body
+
+    # Look for name-block signature start: blank → short name → text
+    for i in range(1, len(lines) - 2):
+        if lines[i - 1].strip():
+            continue  # Need a blank line before
+
+        line = lines[i].strip()
+        if not line or len(line) >= 30 or _RE_URL.search(line):
+            continue  # Not a short name line
+
+        # Find next non-blank line — should be text, not a URL
+        next_text = None
+        for j in range(i + 1, min(i + 4, len(lines))):
+            if lines[j].strip():
+                next_text = lines[j].strip()
+                break
+
+        if not next_text or _RE_URL.search(next_text) or len(next_text) >= 60:
+            continue  # Next line is a URL or too long — not a name block
+
+        # Check URL density below this point
+        trailing = '\n'.join(lines[i:])
+        url_count = len(_RE_URL.findall(trailing))
+        if url_count >= 3:
+            return '\n'.join(lines[:i]).rstrip()
+
+    return body
+
+
 def strip_signature_and_quotes(msg_body: str) -> str:
     """
     Strip both signatures and quoted reply content from message body.
 
-    Two-pass approach:
+    Three-pass approach:
     1. Strip quoted lines (>) first - these push signatures out of
        talon's detection window in long threads
-    2. Then detect and strip signature from remaining content
+    2. Then detect and strip signature from remaining content (talon)
+    3. Strip trailing URL-dense contact blocks that talon misses
 
     This handles the O(n^2) quoted reply explosion in email threads
     where each reply quotes all previous messages.
@@ -257,5 +314,8 @@ def strip_signature_and_quotes(msg_body: str) -> str:
 
     # Second pass: extract signature from remaining content
     body, _ = extract_signature(without_quotes)
+
+    # Third pass: catch URL-dense contact blocks talon misses
+    body = _strip_trailing_contact_block(body)
 
     return body

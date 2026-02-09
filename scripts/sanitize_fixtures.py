@@ -37,6 +37,23 @@ GENERIC_NAMES = [
     "Eve Davis",
 ]
 
+GENERIC_TITLES = [
+    "Q4 Budget Report",
+    "Project Proposal",
+    "Meeting Notes",
+    "Strategic Plan",
+    "Team Update",
+]
+
+GENERIC_FOLDER_NAMES = [
+    "Shared Folder",
+    "Team Workspace",
+    "Project Files",
+]
+
+# Mapping of real titles/folders to sanitized values (built during processing)
+TITLE_MAP: dict[str, str] = {}
+
 # Patterns to find and replace
 EMAIL_PATTERN = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
 # Common name patterns in email headers: "Name <email>" or just the name part
@@ -63,12 +80,28 @@ def get_sanitized_email(email: str) -> str:
 
 
 def get_sanitized_name(name: str) -> str:
-    """Get or create a sanitized name for a real name."""
+    """Get or create a sanitized name for a real name.
+
+    Also creates a "Last, First" variant for email header formats.
+    """
     name_lower = name.lower()
 
     if name_lower not in NAME_MAP:
         idx = len(NAME_MAP) % len(GENERIC_NAMES)
-        NAME_MAP[name_lower] = GENERIC_NAMES[idx]
+        sanitized = GENERIC_NAMES[idx]
+        NAME_MAP[name_lower] = sanitized
+        # Add variants for "Last, First" and first-name-only
+        parts = name.split()
+        if len(parts) == 2:
+            sanitized_parts = sanitized.split()
+            if len(sanitized_parts) == 2:
+                # "Last, First" variant
+                reversed_name = f"{parts[1]}, {parts[0]}"
+                if reversed_name.lower() not in NAME_MAP:
+                    NAME_MAP[reversed_name.lower()] = f"{sanitized_parts[1]}, {sanitized_parts[0]}"
+                # First-name-only variant
+                if parts[0].lower() not in NAME_MAP:
+                    NAME_MAP[parts[0].lower()] = sanitized_parts[0]
 
     return NAME_MAP[name_lower]
 
@@ -102,6 +135,13 @@ def sanitize_string(text: str) -> str:
     for real_name, sanitized_name in NAME_MAP.items():
         text = re.sub(re.escape(real_name), sanitized_name, text, flags=re.IGNORECASE)
 
+    # Replace known titles from TITLE_MAP
+    for real_title, sanitized_title in TITLE_MAP.items():
+        text = re.sub(re.escape(real_title), sanitized_title, text, flags=re.IGNORECASE)
+
+    # Replace company name in remaining text (e.g. folder names)
+    text = re.sub(r'\bITV\b', 'Acme', text)
+
     # Replace IP addresses with documentation range
     text = re.sub(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', '192.0.2.1', text)
 
@@ -124,19 +164,66 @@ def sanitize_value(value):
         return value
 
 
-def _collect_author_names(data) -> None:
-    """Pre-scan fixture for author/actor names and add them to NAME_MAP."""
+def get_sanitized_title(title: str) -> str:
+    """Get or create a sanitized title for a real file/folder title."""
+    title_lower = title.lower()
+
+    # Skip already-generic titles
+    for generic in GENERIC_TITLES + GENERIC_FOLDER_NAMES:
+        if title_lower == generic.lower():
+            return title
+
+    if title_lower not in TITLE_MAP:
+        # Preserve file extension if present
+        ext = ""
+        base = title
+        if "." in title:
+            parts = title.rsplit(".", 1)
+            if len(parts[1]) <= 5:  # Reasonable extension length
+                base, ext = parts
+                ext = "." + ext
+
+        idx = len(TITLE_MAP) % len(GENERIC_TITLES)
+        TITLE_MAP[title_lower] = GENERIC_TITLES[idx] + ext
+
+    return TITLE_MAP[title_lower]
+
+
+def _collect_titles(data) -> None:
+    """Pre-scan fixture for file/folder titles and add them to TITLE_MAP."""
     if isinstance(data, dict):
-        # Comment/reply author names
-        if "author_name" in data:
-            name = data["author_name"]
-            if name and name != "Unknown":
-                get_sanitized_name(name)
-        # Activity actor names
-        if "actor_name" in data:
-            name = data["actor_name"]
-            if name and name != "Unknown":
-                get_sanitized_name(name)
+        for key in ("title", "oldTitle", "newTitle"):
+            if key in data:
+                val = data[key]
+                if val and isinstance(val, str):
+                    get_sanitized_title(val)
+        for v in data.values():
+            _collect_titles(v)
+    elif isinstance(data, list):
+        for item in data:
+            _collect_titles(item)
+
+
+def _collect_author_names(data) -> None:
+    """Pre-scan fixture for author/actor names and add them to NAME_MAP.
+
+    Also generates "Last, First" variants for email header format.
+    """
+    if isinstance(data, dict):
+        # Check fields that contain person names
+        for key in ("author_name", "actor_name", "name", "displayName"):
+            if key in data:
+                name = data[key]
+                if name and isinstance(name, str) and name != "Unknown":
+                    # Only treat "name" as a person name if it looks like one
+                    # (two+ capitalized words, no file extension)
+                    if key == "name":
+                        words = name.split()
+                        if len(words) < 2 or not all(w[0].isupper() for w in words):
+                            continue
+                        if "." in words[-1]:  # Likely a filename
+                            continue
+                    get_sanitized_name(name)
         for v in data.values():
             _collect_author_names(v)
     elif isinstance(data, list):
@@ -154,9 +241,11 @@ def sanitize_fixture(filepath: Path) -> None:
     # Reset mappings for consistent results per file
     EMAIL_MAP.clear()
     NAME_MAP.clear()
+    TITLE_MAP.clear()
 
-    # Pre-scan for standalone author names (not paired with emails)
+    # Pre-scan for standalone author names and file titles
     _collect_author_names(data)
+    _collect_titles(data)
 
     sanitized = sanitize_value(data)
 
@@ -165,6 +254,8 @@ def sanitize_fixture(filepath: Path) -> None:
 
     print(f"  Emails replaced: {len(EMAIL_MAP)}")
     print(f"  Names replaced: {len(NAME_MAP)}")
+    if TITLE_MAP:
+        print(f"  Titles replaced: {len(TITLE_MAP)}")
 
 
 def main():

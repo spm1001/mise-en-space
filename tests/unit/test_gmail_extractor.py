@@ -68,6 +68,53 @@ class TestSignatureStripping:
         assert "Option A" in result
         assert "Option B" in result
 
+    def test_strips_corporate_contact_block(self):
+        """Strip URL-dense corporate signatures without explicit markers."""
+        text = (
+            "Here's the document you asked for.\n\n"
+            "Project plan\n"
+            "<https://docs.google.com/document/d/abc123>\n\n\n"
+            "Alice\n\n"
+            "Alice Smith (she/her)\n\n"
+            "Innovation Team @ Acme Corp\n"
+            "Visit us at 123 Main St\n"
+            "<https://goo.gl/maps/abc>\n"
+            "Book time at https://calendly.com/alice\n"
+            "Learn about our work\n"
+            "<https://acme.com/innovation>\n"
+            "Phone: +44 1234 567890 <http://+44+1234+567890>\n"
+        )
+        result = strip_signature_and_quotes(text)
+        assert "Here's the document" in result
+        assert "Project plan" in result
+        assert "Alice Smith" not in result
+        assert "Innovation Team" not in result
+
+    def test_strips_reply_preamble(self):
+        """Strip orphaned 'On ... wrote:' after quote removal."""
+        text = (
+            "I agree with this approach.\n\n"
+            "On Mon, 3 Feb 2026 at 09:15, Bob Jones <bob@example.com> wrote:\n\n"
+            "> Original message here"
+        )
+        result = strip_signature_and_quotes(text)
+        assert "I agree" in result
+        assert "wrote:" not in result
+
+    def test_preserves_content_with_urls(self):
+        """Don't strip content just because it contains URLs."""
+        text = (
+            "Check out these resources:\n\n"
+            "1. https://example.com/doc1\n"
+            "2. https://example.com/doc2\n"
+            "3. https://example.com/doc3\n\n"
+            "Let me know what you think."
+        )
+        result = strip_signature_and_quotes(text)
+        assert "resources" in result
+        assert "doc1" in result
+        assert "Let me know" in result
+
 
 class TestHTMLCleaning:
     """Tests for HTML cleaning before markdown conversion."""
