@@ -418,6 +418,57 @@ class TestSearchThreads:
         assert results[1].thread_id == "t2"
 
     @patch('adapters.gmail.get_gmail_service')
+    def test_results_preserve_relevance_order(self, mock_get_service) -> None:
+        """Results arrive in threads().list() order, not batch callback order."""
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        # threads().list() returns t1, t2, t3 in relevance order
+        mock_api_chain(mock_service, "users.threads.list.execute", {
+            "threads": [
+                {"id": "t1", "snippet": "Most relevant"},
+                {"id": "t2", "snippet": "Second"},
+                {"id": "t3", "snippet": "Third"},
+            ],
+        })
+
+        batch_mock = MagicMock()
+        mock_service.new_batch_http_request.return_value = batch_mock
+
+        callbacks = []
+        batch_mock.add.side_effect = lambda req, callback: callbacks.append(callback)
+
+        def execute_batch():
+            # Simulate callbacks in REVERSE order (t3, t1, t2)
+            for tid, subj in [("t3", "Third"), ("t1", "First"), ("t2", "Second")]:
+                callbacks[{"t1": 0, "t2": 1, "t3": 2}[tid]](
+                    "0", {
+                        "id": tid,
+                        "messages": [{
+                            "id": f"m-{tid}",
+                            "internalDate": "1706745600000",
+                            "payload": {
+                                "headers": [
+                                    {"name": "From", "value": f"{tid}@example.com"},
+                                    {"name": "Subject", "value": subj},
+                                ],
+                                "mimeType": "text/plain",
+                            },
+                        }],
+                    }, None)
+
+        batch_mock.execute.side_effect = execute_batch
+
+        with patch('retry.time.sleep'):
+            results = search_threads("test", max_results=10)
+
+        # Must match original relevance order, NOT callback order
+        assert len(results) == 3
+        assert results[0].thread_id == "t1"
+        assert results[1].thread_id == "t2"
+        assert results[2].thread_id == "t3"
+
+    @patch('adapters.gmail.get_gmail_service')
     def test_batch_error_skips_thread(self, mock_get_service) -> None:
         """Batch callback errors skip individual threads."""
         mock_service = MagicMock()

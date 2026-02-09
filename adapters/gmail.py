@@ -241,7 +241,9 @@ def search_threads(
 
     # Step 2: Batch-fetch thread metadata for subject/from/date
     # Gmail batch API works (unlike Slides/Sheets/Docs)
-    results: list[GmailSearchResult] = []
+    # Capture original thread order — batch callbacks arrive in server order, not relevance order
+    thread_order = [t["id"] for t in threads[:max_results]]
+    results_by_id: dict[str, GmailSearchResult] = {}
     batch = service.new_batch_http_request()
 
     def handle_thread_response(request_id: str, response: dict[str, Any], exception: Exception | None) -> None:
@@ -270,17 +272,15 @@ def search_threads(
                     attachment_names.append(att["filename"])
 
         thread_id = response.get("id", "")
-        results.append(
-            GmailSearchResult(
-                thread_id=thread_id,
-                subject=headers.get("Subject", ""),
-                snippet=snippets_by_id.get(thread_id, ""),
-                date=_parse_date(headers.get("Date"), first_msg.get("internalDate")),
-                from_address=headers.get("From"),
-                message_count=len(messages),
-                has_attachments=len(attachment_names) > 0,
-                attachment_names=attachment_names,
-            )
+        results_by_id[thread_id] = GmailSearchResult(
+            thread_id=thread_id,
+            subject=headers.get("Subject", ""),
+            snippet=snippets_by_id.get(thread_id, ""),
+            date=_parse_date(headers.get("Date"), first_msg.get("internalDate")),
+            from_address=headers.get("From"),
+            message_count=len(messages),
+            has_attachments=len(attachment_names) > 0,
+            attachment_names=attachment_names,
         )
 
     # Add batch requests — format="full" with fields mask gives us the payload
@@ -300,7 +300,8 @@ def search_threads(
 
     batch.execute()
 
-    return results
+    # Reorder to match original relevance ranking from threads().list()
+    return [results_by_id[tid] for tid in thread_order if tid in results_by_id]
 
 
 # =============================================================================
