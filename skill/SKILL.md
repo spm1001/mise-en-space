@@ -1,6 +1,6 @@
 ---
 name: mise
-description: MANDATORY before using mcp__mise__ tools. Load FIRST when you see 'fetch this URL', 'get this blog post', 'extract content from', 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace'. Uses file→email→meaning exploration loop plus Gmail operators, comment checking, web content extraction, and result filtering patterns the MCP tools alone don't know. (user)
+description: Orchestrates content fetching via mcp__mise__ tools. MANDATORY before using search/fetch/create — load FIRST when you see 'fetch this URL', 'get this blog post', 'extract content from', 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace'. Prevents keyword-soup searches, missed comments, and orphaned context using file→email→meaning loop pattern, Gmail operators, comment checking, and result filtering the tools alone don't know. (user)
 ---
 
 # mise
@@ -68,6 +68,37 @@ ls mise-fetch/doc--strawman-framework--1abc/
 
 # Don't skip the comments!
 ```
+
+## Gmail Deposits: Attachment Structure
+
+When fetching Gmail threads, attachments are **separate files** — not inlined into `content.md`.
+
+**What you get:**
+```
+mise-fetch/gmail--re-project-update--abc123/
+├── content.md              # Thread text + pointer summary
+├── quarterly-report.pdf    # Original PDF binary
+├── quarterly-report.pdf.md # Extracted PDF text (separate file)
+├── chart.png               # Image attachment (deposited as-is)
+└── manifest.json           # Metadata + attachment list
+```
+
+**In content.md**, extracted attachments appear as pointers at the bottom:
+```
+**Extracted attachments:**
+- quarterly-report.pdf → `quarterly-report.pdf.md`
+- chart.png (deposited as file)
+```
+
+**To read attachment content:** Read the `.pdf.md` file for extracted text, or view the image file directly. PDFs and images are eagerly extracted; Office files are not.
+
+**Office files (DOCX/XLSX/PPTX) are skipped** during eager extraction (5-10s each). The manifest tells you what was skipped:
+```python
+# Extract a specific Office attachment on demand
+fetch("thread_id", attachment="budget.xlsx", base_path="/path/to/project")
+```
+
+This deposits to its own folder (`mise-fetch/xlsx--budget--thread_id/`).
 
 ## Gmail Search: Use Operators
 
@@ -146,6 +177,7 @@ fetch("1abc...", base_path="/path/to/project")                    # Drive file I
 fetch("https://docs.google.com/...", base_path="/path/to/project")  # Drive URL
 fetch("18f3a4b5c6d7e8f9", base_path="/path/to/project")          # Gmail thread ID
 fetch("https://example.com/blog/post", base_path="/path/to/project")  # Web URL
+fetch("thread_id", attachment="report.xlsx", base_path="/path/to/project")  # Single attachment
 ```
 
 ### Create (markdown → Google Doc)

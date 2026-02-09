@@ -128,24 +128,24 @@ Without the skill, Claude can call the tools but won't know the patterns that ma
 
 ## What to Expect (Latency)
 
-MCP server startup is ~1s. After that:
+MCP server startup is ~1.3s (import + first auth). After that, the server stays alive — subsequent calls skip startup.
 
-| Operation | Typical | Notes |
-|-----------|---------|-------|
-| **Search (Drive + Gmail)** | 1-2s | Parallel — faster than either alone |
-| **Search (single source)** | 1.5-2.5s | Drive slightly faster than Gmail |
-| **Fetch: Gmail thread** | ~250ms | Fastest path |
-| **Fetch: Google Doc** | ~1.7s | API latency |
-| **Fetch: Google Sheet** | ~1s | 2 API calls (meta + values) |
-| **Fetch: Slides (no thumbnails)** | ~2.7s | Text-only slides skip thumbnails |
-| **Fetch: Slides (with thumbnails)** | ~5s | ~0.5s per thumbnail, sequential |
-| **Fetch: PDF (simple)** | ~0.5-1s | markitdown handles most PDFs |
-| **Fetch: PDF (complex/scanned)** | 5-15s | Falls back to Drive OCR |
-| **Fetch: Office file** | 5-10s | Drive conversion (upload→convert→export) |
-| **Fetch: Web page** | 0.5-4s | Depends on site speed and content size |
-| **Fetch: Image** | ~100ms | Direct download, no extraction |
+| Operation | Typical | Range | Notes |
+|-----------|---------|-------|-------|
+| **Search (single source)** | ~1s | 0.2–1.3s | Drive and Gmail similar |
+| **Search (Drive + Gmail)** | ~2.3s | 1.1–3.1s | Sequential (parallel would halve this) |
+| **Fetch: Web page** | ~0.1s | 0.0–0.2s | HTTP direct, fastest path |
+| **Fetch: Google Doc** | ~2s | 1.7–3.1s | Single API call |
+| **Fetch: Gmail thread** | ~2.4s | 1.8–3.0s | Thread + message batch |
+| **Fetch: PDF** | ~2.5s | 2.1–3.0s | markitdown; complex PDFs fall back to Drive OCR (5–15s) |
+| **Fetch: Google Sheet** | ~4s | 1.9–5.9s | 2 API calls (metadata + values) |
+| **Fetch: Slides (7 slides)** | ~6s | 3.1–9.3s | ~0.5s per thumbnail, sequential |
+| **Fetch: XLSX** | ~6s | 6.1–6.7s | Drive upload → convert → export |
+| **Fetch: DOCX** | ~9s | 8.3–9.9s | Same pipeline, larger payloads |
 
-**The slow paths:** Office files and complex PDFs are unavoidably slow — both require Drive to do server-side conversion. Email attachments that are Office files are listed but not auto-extracted for this reason.
+*Benchmarked 9 Feb 2026 at [`bcdd8fd`](../../commit/bcdd8fd), 3 runs each, warm server, London → Google APIs.*
+
+**The slow paths:** Office files (DOCX/XLSX) are unavoidably slow — Drive does server-side conversion (upload → convert → export → cleanup). Gmail attachments that are Office files are listed but not auto-extracted for this reason; use `fetch(thread_id, attachment="file.xlsx")` on demand.
 
 Detailed timing data and flow diagrams: [`docs/information-flow.md`](docs/information-flow.md)
 

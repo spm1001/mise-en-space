@@ -267,6 +267,121 @@ def test_fetch_xlsx(integration_ids: dict[str, str], cleanup_mise_fetch) -> None
 # --- Comments Tests ---
 
 
+# --- Gmail Attachment Tests ---
+
+
+@pytest.mark.integration
+def test_fetch_gmail_with_pdf_attachment(integration_ids: dict[str, str], cleanup_mise_fetch) -> None:
+    """Test that fetching a Gmail thread with PDF attachment deposits extracted content."""
+    thread_id = integration_ids.get("test_thread_with_pdf_id")
+    if not thread_id:
+        pytest.skip("test_thread_with_pdf_id not in integration_ids.json")
+
+    result = fetch(thread_id)
+
+    assert "error" not in result, f"Fetch failed: {result}"
+    assert result["type"] == "gmail"
+
+    folder = Path(result["path"])
+    assert folder.exists()
+    assert (folder / "content.md").exists()
+
+    # Should have extracted attachment files
+    content = (folder / "content.md").read_text()
+    assert "Extracted attachments:" in content
+
+    # PDF should be deposited as a separate .pdf.md file
+    pdf_filename = integration_ids.get("test_thread_with_pdf_filename", "")
+    pdf_md = folder / f"{pdf_filename}.md"
+    assert pdf_md.exists(), f"Expected {pdf_md.name} in deposit folder. Found: {list(folder.iterdir())}"
+
+    # Extracted PDF should have real content
+    pdf_content = pdf_md.read_text()
+    assert len(pdf_content) > 100, f"PDF extraction too short ({len(pdf_content)} chars)"
+
+    # Manifest should record the extraction
+    manifest = json.loads((folder / "manifest.json").read_text())
+    assert manifest.get("extracted_attachments", 0) > 0
+
+
+@pytest.mark.integration
+def test_fetch_gmail_attachment_param_office(integration_ids: dict[str, str], cleanup_mise_fetch) -> None:
+    """Test single-attachment fetch for Office file (skipped during eager extraction)."""
+    thread_id = integration_ids.get("test_thread_with_office_id")
+    office_filename = integration_ids.get("test_thread_with_office_filename")
+    if not thread_id or not office_filename:
+        pytest.skip("test_thread_with_office_id/filename not in integration_ids.json")
+
+    result = fetch(thread_id, attachment=office_filename)
+
+    assert "error" not in result, f"Fetch failed: {result}"
+    assert result["type"] == "xlsx"
+    assert "path" in result
+
+    folder = Path(result["path"])
+    assert folder.exists()
+    # Office files deposit as CSV
+    assert (folder / "content.csv").exists()
+    content = (folder / "content.csv").read_text()
+    assert len(content) > 0
+
+
+@pytest.mark.integration
+def test_fetch_gmail_attachment_param_pdf(integration_ids: dict[str, str], cleanup_mise_fetch) -> None:
+    """Test single-attachment fetch for PDF (exercises different path from Office)."""
+    thread_id = integration_ids.get("test_thread_with_pdf_id")
+    pdf_filename = integration_ids.get("test_thread_with_pdf_filename")
+    if not thread_id or not pdf_filename:
+        pytest.skip("test_thread_with_pdf_id/filename not in integration_ids.json")
+
+    result = fetch(thread_id, attachment=pdf_filename)
+
+    assert "error" not in result, f"Fetch failed: {result}"
+    assert result["type"] == "pdf"
+    assert result["format"] == "markdown"
+
+    folder = Path(result["path"])
+    assert folder.exists()
+    assert (folder / "content.md").exists()
+
+    content = (folder / "content.md").read_text()
+    assert len(content) > 100, f"PDF extraction too short ({len(content)} chars)"
+
+    # Should report extraction method
+    manifest = json.loads((folder / "manifest.json").read_text())
+    assert "extraction_method" in manifest
+
+
+@pytest.mark.integration
+def test_fetch_gmail_attachment_param_not_found(integration_ids: dict[str, str], cleanup_mise_fetch) -> None:
+    """Test that attachment param with wrong filename returns error."""
+    thread_id = integration_ids.get("test_thread_with_pdf_id")
+    if not thread_id:
+        pytest.skip("test_thread_with_pdf_id not in integration_ids.json")
+
+    result = fetch(thread_id, attachment="nonexistent-file.pdf")
+
+    assert result.get("error") is True
+    assert "not_found" in result.get("kind", "")
+    assert "Available:" in result.get("message", "")
+
+
+@pytest.mark.integration
+def test_fetch_gmail_skipped_office_hint(integration_ids: dict[str, str], cleanup_mise_fetch) -> None:
+    """Test that thread with Office attachment produces skipped_office hint."""
+    thread_id = integration_ids.get("test_thread_with_office_id")
+    if not thread_id:
+        pytest.skip("test_thread_with_office_id not in integration_ids.json")
+
+    result = fetch(thread_id)
+
+    assert "error" not in result, f"Fetch failed: {result}"
+    metadata = result.get("metadata", {})
+    assert "skipped_office" in metadata, "Expected skipped_office in metadata"
+    assert "skipped_office_hint" in metadata, "Expected skipped_office_hint in metadata"
+    assert "attachment=" in metadata["skipped_office_hint"]
+
+
 @pytest.mark.integration
 def test_fetch_comments(integration_ids: dict[str, str]) -> None:
     """Test fetching comments from a file via tool layer."""
