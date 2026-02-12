@@ -44,8 +44,10 @@ credentials.json
 token.json
 *.env
 .env.*
-*secret*
-*key*
+*_secret*
+*_key*
+*.key
+*.secret
 
 # MCP workspace output
 .mcp-workspace/
