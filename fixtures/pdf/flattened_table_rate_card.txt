@@ -1,0 +1,907 @@
+Alex
+Richter
+Strategy
+
+Marina
+Fischer
+Media Buying Sub-Lead
+(EMEA, APAC, LATAM)
+
+Sarah
+Weber
+Media Buyer
+(DE,AT,CH,MENA)
+
+Thomas
+Bakker
+Media Buyer
+(NL,BE,FR)
+
+•
+•
+•
+•
+•
+•
+•
+•
+
+•
+
+•
+
+•
+
+•
+
+2024
+
+2025
+
+2026
+
+•
+•
+•
+
+→
+
+→
+
+→
+
+Year
+2024
+2025
+YoY
+
+Spend €
+3,238,643
+4,741,714
+Spend
+68%
+
+CPM
+€ 6.5
+€ 6.4
+CPM
+-1%
+
+CPV
+100%
+109%
+CPV
+9%
+
+VPMC
+100%
+91%
+VPMC
+-9%
+
+VPMC and CPV both
+deteriorated YoY despite the
+46% increase in spend
+
+Indexed to avg of respective year
+
+Year/SH
+2024
+SH1
+SH2
+NET1
+2025
+SH1
+SH2
+NET1
+
+CPV
+
+98%
+87%
+119%
+
+91%
+82%
+128%
+
+VPMC
+
+106%
+84%
+120%
+
+109%
+86%
+107%
+
+YoY
+CPV VPMC
+
+-6%
+-5%
+9%
+
+4%
+4%
+-9%
+
+In 2025, the network had YoY deteriorating conversion & CPV in
+comparison to other saleshouses
+
+Spot Length
+20
+30
+
+Spend €
+48%
+52%
+
+CPM
+€ 4.5
+€ 4.5
+
+CPV
+130%
+100%
+
+VPMC
+94%
+100%
+
+30s spot length outperformed
+20s in terms of both
+conversion and CPV
+
+Daypart
+Non-Primetime
+Primetime
+
+Spend €
+43%
+57%
+
+CPM
+€ 4.3
+€ 4.6
+
+CPV
+100%
+101%
+
+VPMC
+80%
+100%
+
+120%
+
+100%
+
+106%
+95%
+
+143%
+
+103%
+
+132%
+
+87%
+
+101%
+
+65%
+
+101%
+
+65%
+
+160%
+
+140%
+
+120%
+
+100%
+
+80%
+
+60%
+
+40%
+
+20%
+
+0%
+
+Breakfast
+
+Westlands
+
+North
+
+Northshire
+
+Eastshire
+
+Midshire
+
+Spend %
+
+CPV
+
+VPMC
+
+40%
+
+35%
+
+30%
+
+25%
+
+20%
+
+15%
+
+10%
+
+5%
+
+0%
+
+•
+
+•
+
+•
+
+•
+
+Spend €
+
+CPV
+
+VPMC
+
+98%
+
+95%
+
+96%
+
+89%
+
+131%
+
+76%
+
+176%
+
+67%
+
+128%
+
+76%
+
+112%
+
+93%
+
+133%
+
+127%
+
+116%
+110%
+
+78%
+
+80%
+
+20%
+
+18%
+
+16%
+
+14%
+
+12%
+
+10%
+
+8%
+
+6%
+
+4%
+
+2%
+
+0%
+
+200%
+
+180%
+
+160%
+
+140%
+
+120%
+
+100%
+
+80%
+
+60%
+
+40%
+
+20%
+
+0%
+
+January
+
+February
+
+March
+
+April
+
+May
+
+June
+
+July
+
+August
+
+September
+
+Format test – no spend last year
+
+New brand creative rollout from end of June;
+StreamX test for 2 weeks
+
+We previously did not invest in September
+
+Channel
+ALPHA3
+BRAVO3
+STREAM1
+CHARLIE3
+DELTA3
+ECHO3
+FOXTROT3
+GOLF3
+HOTEL3
+INDIA3
+JULIET3
+
+Channel
+ALPHA3
+BRAVO3
+STREAM1
+CHARLIE3
+DELTA3
+ECHO3
+FOXTROT3
+GOLF3
+HOTEL3
+INDIA3
+JULIET3
+
+Indexed against one another
+CPV
+Spend €
+164%
+32%
+184%
+21%
+100%
+13%
+204%
+10%
+163%
+9%
+101%
+3%
+193%
+3%
+159%
+2%
+195%
+1%
+181%
+1%
+164%
+1%
+
+CPM
+€ 6.4
+€ 7.6
+€ 4.2
+€ 7.3
+€ 9.4
+€ 4.2
+€ 7.7
+€ 6.3
+€ 8.2
+€ 6.5
+€ 7.9
+
+Indexed to total Network Average
+CPV
+Spend €
+106%
+32%
+119%
+21%
+64%
+13%
+131%
+10%
+105%
+9%
+65%
+3%
+124%
+3%
+103%
+2%
+126%
+1%
+117%
+1%
+106%
+1%
+
+CPM
+€ 6.4
+€ 7.6
+€ 4.2
+€ 7.3
+€ 9.4
+€ 4.2
+€ 7.7
+€ 6.3
+€ 8.2
+€ 6.5
+€ 7.9
+
+VPMC
+68%
+71%
+73%
+62%
+100%
+72%
+70%
+69%
+73%
+62%
+84%
+
+VPMC
+95%
+100%
+102%
+87%
+140%
+101%
+97%
+96%
+102%
+87%
+118%
+
+Weekday
+Monday
+Tuesday
+Wednesday
+Thursday
+Friday
+Saturday
+Sunday
+
+Hour
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+
+Indexed to total Network Average
+CPM
+€ 4.5
+€ 4.4
+€ 4.4
+€ 4.6
+€ 4.5
+€ 4.4
+€ 4.6
+
+Spend €
+15%
+13%
+12%
+15%
+16%
+15%
+14%
+
+CPV
+97%
+94%
+100%
+105%
+106%
+95%
+103%
+
+Indexed to total Network Average
+CPM
+€ 4.2
+€ 4.2
+€ 5.3
+€ 6.9
+€ 7.0
+€ 7.0
+€ 6.8
+€ 6.7
+€ 6.5
+€ 6.6
+€ 7.8
+€ 7.2
+€ 7.3
+€ 7.6
+€ 7.6
+
+Spend €
+3%
+7%
+7%
+5%
+6%
+6%
+5%
+4%
+8%
+16%
+11%
+4%
+8%
+5%
+4%
+
+CPV
+52%
+71%
+89%
+106%
+119%
+142%
+112%
+125%
+119%
+113%
+117%
+132%
+87%
+81%
+95%
+
+VPMC
+103%
+105%
+99%
+93%
+91%
+110%
+116%
+
+VPMC
+128%
+92%
+93%
+102%
+92%
+77%
+95%
+83%
+85%
+91%
+105%
+85%
+131%
+145%
+124%
+
+Indexed against one another
+
+Indexed to average
+
+Daypart
+Breakfast Today
+Quiz Time
+Morning Magazine
+The Race
+Daytime Chat
+Letter Game
+Afternoon Panel
+Valley Road
+Evening Bulletin
+Case or No Case
+Harbour Lane
+Weather Report
+Racing Weekly
+Saturday Brunch Live
+Celebrity Word Game
+League Cup Live
+Regional Weather North
+Trivia Time!
+Weekend Living with James
+Thornton
+The Race Celebrity Special
+Regional Weather Central
+Quiz Time: Best Ever Finals
+The Top Club
+
+Spend €
+11%
+11%
+10%
+9%
+6%
+5%
+5%
+4%
+4%
+3%
+3%
+2%
+2%
+2%
+1%
+1%
+1%
+1%
+
+1%
+1%
+1%
+1%
+1%
+
+CPM
+€ 4.2
+€ 6.8
+€ 7.0
+€ 7.4
+€ 5.4
+€ 6.2
+€ 7.0
+€ 7.3
+€ 7.1
+€ 5.9
+€ 7.4
+€ 6.6
+€ 7.1
+€ 6.2
+€ 7.4
+€ 16.6
+€ 6.6
+€ 7.2
+
+€ 6.2
+€ 7.4
+€ 8.1
+€ 6.3
+€ 7.4
+
+CPV
+100%
+187%
+192%
+175%
+158%
+176%
+203%
+136%
+162%
+162%
+121%
+174%
+214%
+144%
+196%
+345%
+215%
+297%
+
+147%
+193%
+225%
+206%
+115%
+
+VPMC
+65%
+57%
+57%
+66%
+53%
+55%
+54%
+83%
+68%
+56%
+96%
+59%
+52%
+67%
+59%
+75%
+48%
+38%
+
+65%
+60%
+56%
+48%
+100%
+
+Daypart
+Breakfast Today
+Quiz Time
+Morning Magazine
+The Race
+Daytime Chat
+Letter Game
+Afternoon Panel
+Valley Road
+Evening Bulletin
+Case or No Case
+Harbour Lane
+Weather Report
+Racing Weekly
+Saturday Brunch Live
+Celebrity Word Game
+League Cup Live
+Regional Weather North
+Trivia Time!
+Weekend Living with James
+Thornton
+The Race Celebrity Special
+Regional Weather Central
+Quiz Time: Best Ever Finals
+The Top Club
+
+Spend €
+11%
+11%
+10%
+9%
+6%
+5%
+5%
+4%
+4%
+3%
+3%
+2%
+2%
+2%
+1%
+1%
+1%
+1%
+
+1%
+1%
+1%
+1%
+1%
+
+CPM
+€ 4.2
+€ 6.8
+€ 7.0
+€ 7.4
+€ 5.4
+€ 6.2
+€ 7.0
+€ 7.3
+€ 7.1
+€ 5.9
+€ 7.4
+€ 6.6
+€ 7.1
+€ 6.2
+€ 7.4
+€ 16.6
+€ 6.6
+€ 7.2
+
+€ 6.2
+€ 7.4
+€ 8.1
+€ 6.3
+€ 7.4
+
+CPV
+63%
+117%
+120%
+110%
+99%
+110%
+127%
+85%
+101%
+102%
+76%
+109%
+134%
+90%
+123%
+216%
+134%
+186%
+
+92%
+121%
+141%
+129%
+72%
+
+VPMC
+105%
+91%
+91%
+105%
+85%
+87%
+86%
+133%
+109%
+90%
+153%
+94%
+83%
+107%
+94%
+120%
+77%
+60%
+
+104%
+96%
+90%
+76%
+160%
+
+Goal is to have continuously running campaigns during our
+BAU months provided that pricing makes sense
+
+→
+
+•
+
+•
+
+•
+

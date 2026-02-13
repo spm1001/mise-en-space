@@ -1,5 +1,7 @@
 """Unit tests for PDF extraction."""
 
+import re
+
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -13,6 +15,8 @@ from adapters.pdf import (
 )
 from adapters.drive import STREAMING_THRESHOLD_BYTES as DRIVE_STREAMING_THRESHOLD
 from tools.fetch import fetch_pdf
+
+FIXTURES_DIR = Path(__file__).parent.parent.parent / "fixtures"
 
 
 class TestPdfExtraction:
@@ -423,3 +427,63 @@ class TestConvertViaDriveValidation:
         copy_kwargs = mock_service.files().copy.call_args
         assert copy_kwargs.kwargs["fileId"] == "existing_drive_file"
         assert result.content == "converted content"
+
+
+class TestFlattenedTableDetection:
+    """Tests for flattened PDF table detection using real fixture.
+
+    The fixture is markitdown output from a media rate-card PDF — dense
+    CPM/VPMC/CPV tables flattened into disconnected numbers with no structure.
+    Names, programmes, and channel codes are sanitized; statistical profile
+    preserved. Tests validate the fixture matches what the heuristic
+    (mise-cibufu) will detect.
+    """
+
+    @pytest.fixture
+    def rate_card_content(self) -> str:
+        """Load the flattened rate-card fixture."""
+        path = FIXTURES_DIR / "pdf" / "flattened_table_rate_card.txt"
+        return path.read_text()
+
+    @pytest.fixture
+    def rate_card_lines(self, rate_card_content: str) -> list[str]:
+        """Non-empty lines from the fixture."""
+        return [ln for ln in rate_card_content.splitlines() if ln.strip()]
+
+    def test_fixture_exists_and_has_content(self, rate_card_content: str) -> None:
+        """Fixture file exists and contains substantial content."""
+        assert len(rate_card_content) > 4000
+        lines = [ln for ln in rate_card_content.splitlines() if ln.strip()]
+        assert len(lines) > 200
+
+    def test_passes_char_count_gate(self, rate_card_content: str) -> None:
+        """Content passes the existing char-count gate (>= 500 chars).
+
+        This is the whole problem: markitdown produces enough chars to pass
+        the threshold, but the content is structurally useless.
+        """
+        assert len(rate_card_content.strip()) >= DEFAULT_MIN_CHARS_THRESHOLD
+
+    def test_high_short_line_ratio(self, rate_card_lines: list[str]) -> None:
+        """60%+ of lines are 1-3 tokens (one table cell per line)."""
+        short = sum(1 for ln in rate_card_lines if len(ln.split()) <= 3)
+        ratio = short / len(rate_card_lines)
+        assert ratio >= 0.60, f"short_ratio={ratio:.2f}, expected >= 0.60"
+
+    def test_low_sentence_ratio(self, rate_card_lines: list[str]) -> None:
+        """Almost no lines with 6+ tokens (no prose paragraphs)."""
+        sentences = sum(1 for ln in rate_card_lines if len(ln.split()) >= 6)
+        ratio = sentences / len(rate_card_lines)
+        assert ratio <= 0.10, f"sentence_ratio={ratio:.2f}, expected <= 0.10"
+
+    def test_high_numeric_ratio(self, rate_card_lines: list[str]) -> None:
+        """15%+ of lines are data values containing digits."""
+        numeric = sum(1 for ln in rate_card_lines if re.search(r"\d", ln))
+        ratio = numeric / len(rate_card_lines)
+        assert ratio >= 0.15, f"numeric_ratio={ratio:.2f}, expected >= 0.15"
+
+    def test_no_table_syntax(self, rate_card_content: str) -> None:
+        """No markdown table pipes — markitdown didn't produce table syntax."""
+        lines_with_pipes = [ln for ln in rate_card_content.splitlines()
+                           if "|" in ln and ln.strip().startswith("|")]
+        assert len(lines_with_pipes) == 0
