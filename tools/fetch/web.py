@@ -197,10 +197,13 @@ def fetch_web(url: str, base_path: Path | None = None) -> FetchResult:
             if web_data.temp_path:
                 web_data.temp_path.unlink(missing_ok=True)
 
-    # Extract content via extractor (pure function)
-    content = extract_web_content(web_data)
+    # Use pre-extracted content from passe if available, else run trafilatura
+    if web_data.pre_extracted_content:
+        content = web_data.pre_extracted_content
+    else:
+        content = extract_web_content(web_data)
 
-    # Extract title for folder naming
+    # Extract title for folder naming (from original HTML, or fallback)
     title = extract_title(web_data.html) or "web-page"
 
     # Generate stable ID from URL for deduplication
@@ -239,6 +242,10 @@ def fetch_web(url: str, base_path: Path | None = None) -> FetchResult:
         result_meta["warnings"] = web_data.warnings
 
     cues = _build_cues(folder, warnings=web_data.warnings)
+
+    # Signal extraction failure so callers can react (e.g. retry with browser)
+    if '*Content extraction failed for' in content:
+        cues['extraction_failed'] = True
 
     return FetchResult(
         path=str(folder),

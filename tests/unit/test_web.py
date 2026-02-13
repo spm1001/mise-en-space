@@ -30,8 +30,8 @@ from adapters.web import (
     _detect_auth_required,
     _detect_captcha,
     _needs_browser_rendering,
-    _is_webctl_available,
-    _fetch_with_browser,
+    _is_passe_available,
+    _fetch_with_passe,
     _stream_binary_to_temp,
     _is_binary_content_type,
     _parse_content_length,
@@ -152,6 +152,62 @@ class TestBrowserRenderingDetection:
 
     def test_static_content(self) -> None:
         html = "<html><body>" + "x" * 1000 + "</body></html>"
+        assert not _needs_browser_rendering(html)
+
+    def test_react_vite_spa_big_head(self) -> None:
+        """entire.io pattern: large HTML (big <head>), but empty <body>.
+        Must exceed 500 chars to test tier 2 (body heuristic), not tier 1."""
+        html = (
+            "<html><head>"
+            + '<meta name="description" content="' + "x" * 500 + '">'
+            + '<link rel="stylesheet" href="/assets/index.css">'
+            + '<script type="module" src="/assets/index.js"></script>'
+            + "</head><body>"
+            + '<div id="root"></div>'
+            + "</body></html>"
+        )
+        assert len(html) > 500  # Passes tier 1 — detected by tier 2
+        assert _needs_browser_rendering(html)
+
+    def test_empty_body_with_scripts(self) -> None:
+        """Body has only div + script tags, no visible text."""
+        html = (
+            "<html><head><title>App</title>" + "x" * 500 + "</head>"
+            "<body><div id='app'></div><script src='bundle.js'></script></body></html>"
+        )
+        assert _needs_browser_rendering(html)
+
+    def test_body_with_loading_text(self) -> None:
+        """Minimal loading text under 100-char threshold."""
+        html = (
+            "<html><head>" + "x" * 500 + "</head>"
+            "<body><div id='root'>Loading...</div></body></html>"
+        )
+        assert _needs_browser_rendering(html)
+
+    def test_body_with_sufficient_text(self) -> None:
+        """Real content in body — should NOT trigger."""
+        html = (
+            "<html><head><title>Blog</title></head>"
+            "<body><article>" + "This is a real article with enough content. " * 10 + "</article></body></html>"
+        )
+        assert not _needs_browser_rendering(html)
+
+    def test_react_root_pattern(self) -> None:
+        """React root div detected via framework pattern."""
+        html = "<html><body>" + "x" * 600 + '<div id="root"></div></body></html>'
+        assert _needs_browser_rendering(html)
+
+    def test_vue_app_pattern(self) -> None:
+        """Vue app div detected via framework pattern."""
+        html = "<html><body>" + "x" * 600 + '<div id="app"></div></body></html>'
+        assert _needs_browser_rendering(html)
+
+    def test_no_body_tag(self) -> None:
+        """Edge case: no <body> tag doesn't crash body heuristic."""
+        html = "<html><head>" + "x" * 600 + "</head></html>"
+        # No body tag → body heuristic doesn't match → falls through to patterns
+        # No patterns match → False
         assert not _needs_browser_rendering(html)
 
 
@@ -1394,10 +1450,10 @@ class TestFetchWebContentHTML:
             fetch_web_content("https://news.example.com/article")
         assert exc_info.value.kind == ErrorKind.AUTH_REQUIRED
 
-    @patch("adapters.web._is_webctl_available", return_value=False)
+    @patch("adapters.web._is_passe_available", return_value=False)
     @patch("adapters.web.httpx.Client")
-    def test_js_rendered_no_webctl_warns(self, mock_client_cls, _webctl) -> None:
-        """JS-rendered content without webctl returns HTML with warning."""
+    def test_js_rendered_no_passe_warns(self, mock_client_cls, _passe) -> None:
+        """JS-rendered content without passe returns HTML with warning."""
         mock_client = _wire_httpx_client(mock_client_cls)
         # Short content triggers JS detection
         mock_client.get.return_value = _mock_response(
@@ -1408,27 +1464,28 @@ class TestFetchWebContentHTML:
 
         assert result.render_method == "http"
         assert any("JS-rendered" in w for w in result.warnings)
-        assert any("webctl not available" in w for w in result.warnings)
+        assert any("passe not available" in w for w in result.warnings)
 
-    @patch("adapters.web._fetch_with_browser")
-    @patch("adapters.web._is_webctl_available", return_value=True)
+    @patch("adapters.web._fetch_with_passe")
+    @patch("adapters.web._is_passe_available", return_value=True)
     @patch("adapters.web.httpx.Client")
-    def test_js_rendered_with_webctl_falls_back(
-        self, mock_client_cls, _webctl, mock_browser
+    def test_js_rendered_with_passe_falls_back(
+        self, mock_client_cls, _passe, mock_passe_fetch
     ) -> None:
-        """JS-rendered + webctl available → falls back to browser."""
+        """JS-rendered + passe available → falls back to passe, sets pre_extracted_content."""
         mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.return_value = _mock_response(
             text='<html><script id="__NEXT_DATA__">{}</script><body>tiny</body></html>',
         )
-        mock_browser.return_value = ("<html><body>Full rendered content</body></html>", "https://spa.example.com")
+        mock_passe_fetch.return_value = ("# Full Rendered Content\n\nArticle text.", "https://spa.example.com")
 
         result = fetch_web_content("https://spa.example.com")
 
-        assert result.render_method == "browser"
+        assert result.render_method == "passe"
         assert result.cookies_used is True
-        assert any("browser rendering" in w.lower() for w in result.warnings)
-        mock_browser.assert_called_once_with("https://spa.example.com")
+        assert result.pre_extracted_content == "# Full Rendered Content\n\nArticle text."
+        assert any("passe browser rendering" in w.lower() for w in result.warnings)
+        mock_passe_fetch.assert_called_once_with("https://spa.example.com")
 
     @patch("adapters.web.httpx.Client")
     def test_normal_html_returns_webdata(self, mock_client_cls) -> None:
@@ -1473,127 +1530,145 @@ class TestFetchWebContentHTML:
 class TestFetchWebContentBrowserPath:
     """Forced browser path (use_browser=True)."""
 
-    @patch("adapters.web._is_webctl_available", return_value=False)
-    def test_browser_requested_no_webctl_raises(self, _webctl) -> None:
+    @patch("adapters.web._is_passe_available", return_value=False)
+    def test_browser_requested_no_passe_raises(self, _passe) -> None:
         with pytest.raises(MiseError) as exc_info:
             fetch_web_content("https://example.com", use_browser=True)
         assert exc_info.value.kind == ErrorKind.INVALID_INPUT
-        assert "webctl" in exc_info.value.message.lower()
+        assert "passe" in exc_info.value.message.lower()
 
-    @patch("adapters.web._fetch_with_browser")
-    @patch("adapters.web._is_webctl_available", return_value=True)
-    def test_browser_requested_with_webctl(self, _webctl, mock_browser) -> None:
-        mock_browser.return_value = (
-            "<html><body>Browser rendered</body></html>",
+    @patch("adapters.web._fetch_with_passe")
+    @patch("adapters.web._is_passe_available", return_value=True)
+    def test_browser_requested_with_passe(self, _passe, mock_passe_fetch) -> None:
+        mock_passe_fetch.return_value = (
+            "# Browser Rendered\n\nContent here.",
             "https://example.com",
         )
 
         result = fetch_web_content("https://example.com", use_browser=True)
 
-        assert result.render_method == "browser"
+        assert result.render_method == "passe"
         assert result.cookies_used is True
         assert result.status_code == 200
-        mock_browser.assert_called_once_with("https://example.com")
+        assert result.pre_extracted_content == "# Browser Rendered\n\nContent here."
+        mock_passe_fetch.assert_called_once_with("https://example.com")
 
 
 # ============================================================================
-# _is_webctl_available
+# _is_passe_available
 # ============================================================================
 
 
-class TestIsWebctlAvailable:
-    """Test webctl daemon availability check."""
+class TestIsPasseAvailable:
+    """Test passe + Chrome Debug availability check."""
 
-    @patch("adapters.web.subprocess.run")
-    def test_running(self, mock_run) -> None:
-        mock_run.return_value = MagicMock(returncode=0)
-        assert _is_webctl_available() is True
+    @patch("adapters.web.urllib.request.urlopen")
+    @patch("adapters.web.shutil.which", return_value="/usr/local/bin/passe")
+    def test_available(self, mock_which, mock_urlopen) -> None:
+        """Both passe on PATH and Chrome Debug on port 9222."""
+        mock_urlopen.return_value.__enter__ = MagicMock()
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+        assert _is_passe_available() is True
 
-    @patch("adapters.web.subprocess.run")
-    def test_not_running(self, mock_run) -> None:
-        mock_run.return_value = MagicMock(returncode=1)
-        assert _is_webctl_available() is False
+    @patch("adapters.web.shutil.which", return_value=None)
+    def test_not_installed(self, mock_which) -> None:
+        """passe binary not on PATH."""
+        assert _is_passe_available() is False
 
-    @patch("adapters.web.subprocess.run", side_effect=FileNotFoundError)
-    def test_not_installed(self, mock_run) -> None:
-        assert _is_webctl_available() is False
-
-    @patch("adapters.web.subprocess.run", side_effect=subprocess.TimeoutExpired("webctl", 5))
-    def test_timeout(self, mock_run) -> None:
-        assert _is_webctl_available() is False
+    @patch("adapters.web.urllib.request.urlopen", side_effect=ConnectionRefusedError)
+    @patch("adapters.web.shutil.which", return_value="/usr/local/bin/passe")
+    def test_chrome_debug_not_running(self, mock_which, mock_urlopen) -> None:
+        """passe installed but Chrome Debug not running."""
+        assert _is_passe_available() is False
 
 
 # ============================================================================
-# _fetch_with_browser
+# _fetch_with_passe
 # ============================================================================
 
 
-class TestFetchWithBrowser:
-    """Test browser rendering via webctl subprocess."""
+class TestFetchWithPasse:
+    """Test browser rendering via passe subprocess."""
 
     @patch("adapters.web.subprocess.run")
     def test_successful_render(self, mock_run) -> None:
-        """All subprocess calls succeed → returns (html, url)."""
+        """passe run succeeds → returns (markdown, original_url)."""
+        import tempfile, hashlib
+        url = "https://example.com"
+        url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
+        tmp_path = Path(tempfile.gettempdir()) / f"passe-{url_hash}.md"
+
+        # Write fake extracted markdown to where _fetch_with_passe expects it
+        tmp_path.write_text("# Rendered Content\n\nSome article text.")
+
         mock_run.side_effect = [
-            MagicMock(returncode=0),  # webctl start
-            MagicMock(returncode=0),  # webctl navigate
-            MagicMock(returncode=0, stdout="<html><body>Rendered</body></html>"),  # eval HTML
-            MagicMock(returncode=0, stdout="https://example.com/final"),  # eval URL
+            MagicMock(returncode=0, stderr=""),  # passe run
         ]
 
-        html, final_url = _fetch_with_browser("https://example.com")
-
-        assert "Rendered" in html
-        assert final_url == "https://example.com/final"
+        try:
+            markdown, final_url = _fetch_with_passe(url)
+            assert "Rendered Content" in markdown
+            # final_url is original URL until passe adds it to run summary
+            assert final_url == url
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
     @patch("adapters.web.subprocess.run")
-    def test_navigate_failure(self, mock_run) -> None:
+    def test_render_failure(self, mock_run) -> None:
+        """Non-zero exit from passe run → NETWORK_ERROR."""
         mock_run.side_effect = [
-            MagicMock(returncode=0),  # webctl start
-            MagicMock(returncode=1, stderr="Navigation timeout"),  # navigate fails
+            MagicMock(returncode=1, stderr="Connection refused"),
         ]
 
         with pytest.raises(MiseError) as exc_info:
-            _fetch_with_browser("https://example.com")
+            _fetch_with_passe("https://example.com")
         assert exc_info.value.kind == ErrorKind.NETWORK_ERROR
 
     @patch("adapters.web.subprocess.run")
-    def test_eval_html_failure(self, mock_run) -> None:
+    def test_empty_output_raises_extraction_failed(self, mock_run) -> None:
+        """passe succeeds but produces empty/missing output → EXTRACTION_FAILED."""
         mock_run.side_effect = [
-            MagicMock(returncode=0),  # start
-            MagicMock(returncode=0),  # navigate
-            MagicMock(returncode=1, stderr="Eval failed"),  # eval HTML fails
+            MagicMock(returncode=0, stderr=""),  # passe run succeeds
         ]
+        # Don't write any file — tmp_path won't exist
 
         with pytest.raises(MiseError) as exc_info:
-            _fetch_with_browser("https://example.com")
+            _fetch_with_passe("https://example.com/empty")
         assert exc_info.value.kind == ErrorKind.EXTRACTION_FAILED
 
-    @patch("adapters.web.subprocess.run")
-    def test_eval_url_failure_uses_original(self, mock_run) -> None:
-        """If eval window.location.href fails, use original URL."""
-        mock_run.side_effect = [
-            MagicMock(returncode=0),  # start
-            MagicMock(returncode=0),  # navigate
-            MagicMock(returncode=0, stdout="<html>OK</html>"),  # eval HTML
-            MagicMock(returncode=1, stdout=""),  # eval URL fails
-        ]
-
-        html, final_url = _fetch_with_browser("https://example.com/original")
-
-        assert final_url == "https://example.com/original"
-
-    @patch("adapters.web.subprocess.run", side_effect=subprocess.TimeoutExpired("webctl", 30))
+    @patch("adapters.web.subprocess.run", side_effect=subprocess.TimeoutExpired("passe", 45))
     def test_timeout_raises(self, mock_run) -> None:
         with pytest.raises(MiseError) as exc_info:
-            _fetch_with_browser("https://example.com")
+            _fetch_with_passe("https://example.com")
         assert exc_info.value.kind == ErrorKind.TIMEOUT
 
     @patch("adapters.web.subprocess.run", side_effect=FileNotFoundError)
     def test_not_installed_raises(self, mock_run) -> None:
         with pytest.raises(MiseError) as exc_info:
-            _fetch_with_browser("https://example.com")
+            _fetch_with_passe("https://example.com")
         assert exc_info.value.kind == ErrorKind.INVALID_INPUT
+
+    @patch("adapters.web.subprocess.run")
+    def test_final_url_is_original(self, mock_run) -> None:
+        """final_url is always original URL (no eval call — passe closes its tab)."""
+        import tempfile, hashlib
+        url = "https://example.com/page"
+        url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
+        tmp_path = Path(tempfile.gettempdir()) / f"passe-{url_hash}.md"
+
+        tmp_path.write_text("# Content")
+
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stderr=""),  # passe run (only call)
+        ]
+
+        try:
+            markdown, final_url = _fetch_with_passe(url)
+            assert final_url == url
+            # Only one subprocess call — no eval
+            assert mock_run.call_count == 1
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
 
 # ============================================================================
@@ -1714,3 +1789,201 @@ class TestStreamBinaryToTemp:
             assert path.suffix == ".bin"
         finally:
             path.unlink(missing_ok=True)
+
+
+# ============================================================================
+# Pre-extracted content bypass (passe → tool layer)
+# ============================================================================
+
+
+class TestPreExtractedContentBypass:
+    """Test that pre_extracted_content from passe skips trafilatura."""
+
+    @patch('tools.fetch.web.extract_web_content')
+    @patch('tools.fetch.web.fetch_web_content')
+    def test_pre_extracted_content_used_directly(self, mock_fetch, mock_extract) -> None:
+        """When pre_extracted_content is set, extractor is NOT called."""
+        from tools.fetch import fetch_web
+
+        mock_fetch.return_value = WebData(
+            url="https://spa.example.com",
+            html='<html><head><title>SPA Page</title></head><body><div id="root"></div></body></html>',
+            final_url="https://spa.example.com",
+            status_code=200,
+            content_type="text/html",
+            cookies_used=True,
+            render_method="passe",
+            pre_extracted_content="# SPA Page\n\nRendered article content from passe.",
+        )
+
+        result = fetch_web("https://spa.example.com")
+
+        assert result.type == "web"
+        assert result.metadata["render_method"] == "passe"
+        assert result.metadata["title"] == "SPA Page"
+        mock_extract.assert_not_called()
+
+    @patch('tools.fetch.web.extract_web_content')
+    @patch('tools.fetch.web.fetch_web_content')
+    def test_no_pre_extracted_content_calls_extractor(self, mock_fetch, mock_extract) -> None:
+        """When pre_extracted_content is None, extractor is called as normal."""
+        from tools.fetch import fetch_web
+
+        mock_fetch.return_value = WebData(
+            url="https://example.com/article",
+            html='<html><head><title>Article</title></head><body>Long article content ' + 'x' * 500 + '</body></html>',
+            final_url="https://example.com/article",
+            status_code=200,
+            content_type="text/html",
+            cookies_used=False,
+            render_method="http",
+        )
+        mock_extract.return_value = "# Article\n\nExtracted content."
+
+        result = fetch_web("https://example.com/article")
+
+        assert result.type == "web"
+        mock_extract.assert_called_once()
+
+
+# ============================================================================
+# extraction_failed cue
+# ============================================================================
+
+
+class TestExtractionFailedCue:
+    """Test that extraction failure stub produces an extraction_failed cue."""
+
+    @patch('tools.fetch.web.extract_web_content')
+    @patch('tools.fetch.web.fetch_web_content')
+    def test_stub_content_sets_cue(self, mock_fetch, mock_extract) -> None:
+        """Content with failure stub → cues['extraction_failed'] == True."""
+        from tools.fetch import fetch_web
+
+        mock_fetch.return_value = WebData(
+            url="https://empty.example.com",
+            html='<html><body></body></html>',
+            final_url="https://empty.example.com",
+            status_code=200,
+            content_type="text/html",
+            cookies_used=False,
+            render_method="http",
+        )
+        mock_extract.return_value = (
+            "# Untitled\n\n"
+            "*Content extraction failed for https://empty.example.com*\n\n"
+            "The page may require JavaScript rendering."
+        )
+
+        result = fetch_web("https://empty.example.com")
+
+        assert result.cues.get("extraction_failed") is True
+
+    @patch('tools.fetch.web.extract_web_content')
+    @patch('tools.fetch.web.fetch_web_content')
+    def test_real_content_no_cue(self, mock_fetch, mock_extract) -> None:
+        """Real content → 'extraction_failed' not in cues."""
+        from tools.fetch import fetch_web
+
+        mock_fetch.return_value = WebData(
+            url="https://example.com/article",
+            html='<html><head><title>Good Article</title></head><body>Content</body></html>',
+            final_url="https://example.com/article",
+            status_code=200,
+            content_type="text/html",
+            cookies_used=False,
+            render_method="http",
+        )
+        mock_extract.return_value = "# Good Article\n\nReal article content here."
+
+        result = fetch_web("https://example.com/article")
+
+        assert "extraction_failed" not in result.cues
+
+
+# ============================================================================
+# Title extraction with pre-extracted content (passe forced path)
+# ============================================================================
+
+
+class TestTitleExtractionWithPasse:
+    """Title extraction behaviour when passe provides pre_extracted_content."""
+
+    @patch('tools.fetch.web.extract_web_content')
+    @patch('tools.fetch.web.fetch_web_content')
+    def test_forced_browser_empty_html_falls_back_to_web_page(self, mock_fetch, mock_extract) -> None:
+        """Forced browser path: html='' → title falls back to 'web-page'."""
+        from tools.fetch import fetch_web
+
+        mock_fetch.return_value = WebData(
+            url="https://spa.example.com",
+            html='',  # Forced browser path sets html=''
+            final_url="https://spa.example.com",
+            status_code=200,
+            content_type="text/html",
+            cookies_used=True,
+            render_method="passe",
+            pre_extracted_content="# Great SPA App\n\nContent here.",
+        )
+
+        result = fetch_web("https://spa.example.com")
+
+        # No HTML → extract_title returns None → "web-page" fallback
+        assert result.metadata["title"] == "web-page"
+        mock_extract.assert_not_called()
+
+    @patch('tools.fetch.web.extract_web_content')
+    @patch('tools.fetch.web.fetch_web_content')
+    def test_auto_fallback_keeps_html_for_title(self, mock_fetch, mock_extract) -> None:
+        """Auto JS-detection fallback: original HTML preserved → real title extracted."""
+        from tools.fetch import fetch_web
+
+        mock_fetch.return_value = WebData(
+            url="https://spa.example.com",
+            html='<html><head><title>Great SPA App</title></head><body><div id="root"></div></body></html>',
+            final_url="https://spa.example.com",
+            status_code=200,
+            content_type="text/html",
+            cookies_used=True,
+            render_method="passe",
+            pre_extracted_content="# Great SPA App\n\nContent here.",
+        )
+
+        result = fetch_web("https://spa.example.com")
+
+        assert result.metadata["title"] == "Great SPA App"
+        mock_extract.assert_not_called()
+
+
+# ============================================================================
+# Cross-layer stub consistency (extractor ↔ tool cue detection)
+# ============================================================================
+
+
+class TestExtractionFailedStubConsistency:
+    """Ensure the tool layer's cue detection matches the extractor's actual stub."""
+
+    def test_extractor_stub_matches_cue_detection(self) -> None:
+        """The marker string in tools/fetch/web.py must appear in the extractor's stub."""
+        from extractors.web import extract_web_content
+        from models import WebData
+
+        # Create WebData that will produce the failure stub (empty HTML)
+        web_data = WebData(
+            url="https://stub-test.example.com",
+            html="<html><body></body></html>",
+            final_url="https://stub-test.example.com",
+            status_code=200,
+            content_type="text/html",
+            cookies_used=False,
+            render_method="http",
+        )
+
+        content = extract_web_content(web_data)
+
+        # This is the exact marker string that tools/fetch/web.py checks
+        CUE_MARKER = '*Content extraction failed for'
+        assert CUE_MARKER in content, (
+            f"Extractor stub no longer contains '{CUE_MARKER}'. "
+            f"Update tools/fetch/web.py:247 to match. Got: {content!r}"
+        )

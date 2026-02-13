@@ -338,6 +338,10 @@ class WebData:
     # Temp file path for large binary responses (above STREAMING_THRESHOLD_BYTES).
     # Caller is responsible for cleanup (unlink when done).
     temp_path: Path | None = None
+    # Markdown from browser extraction (passe read).
+    # When set, the tool layer skips trafilatura and uses this directly.
+    # The html field still holds the original HTTP response for title extraction.
+    pre_extracted_content: str | None = None
 
 
 # ============================================================================

@@ -83,7 +83,7 @@ chrome-debug    # Start Chrome with debug port enabled
 1. `fetch` detects web URLs by prefix (http:// or https://)
 2. Tries fast HTTP fetch first
 3. Detects if content needs browser rendering (JS-rendered pages)
-4. Falls back to browser via `webctl` if available and needed
+4. Falls back to browser via `passe` if available and needed
 5. Extracts clean markdown via `trafilatura`
 6. Deposits to `mise-fetch/web--{title}--{url-hash}/`
 
@@ -106,13 +106,14 @@ result = fetch("https://trafilatura.readthedocs.io/en/latest/")
 - CAPTCHA challenges (Cloudflare, reCAPTCHA)
 
 **Browser fallback:** For JS-rendered content (React SPAs, Next.js sites):
-- Requires `webctl` daemon running (`webctl start`)
-- Uses Playwright for full browser rendering
+- Requires `passe` installed and Chrome Debug running on port 9222
+- Uses passe's Readability.js + Turndown.js for content extraction (returns markdown directly, skipping trafilatura)
 - Inherits browser session cookies for authenticated content
+- SPA detection: three-tier heuristic (short HTML, empty body text, framework patterns)
 
 **Limitations:**
 - No automatic cookie injection yet (Phase 2)
-- Browser fallback requires webctl installed and running
+- Browser fallback requires passe installed and Chrome Debug running
 - Some heavily protected sites may still block extraction
 
 ## MCP Tool Surface (3 verbs)
@@ -516,6 +517,7 @@ Decisions made during planning (Jan 2026) that future Claude should understand:
 | **Web: trafilatura not Defuddle** | trafilatura (Python) | Best F1 score (0.883) in benchmarks, Python-native (no Node subprocess), battle-tested at scale. Defuddle (JS) preserves code hints better but requires Node. We work around trafilatura's code block mangling via pre-process/restore pattern instead of forking. |
 | **Web: code block preservation** | Pre-process/restore | Extract `<pre>` blocks before trafilatura, replace with placeholders, restore after. Avoids forking trafilatura while preserving language hints. |
 | **Web: raw text handling** | Detect and pass through | GitHub raw URLs, JSON APIs return non-HTML. Detect via Content-Type + URL extension, format appropriately (code fences for code, pass-through for markdown). |
+| **Web: passe browser fallback** | passe (CDP) replaces webctl (Playwright) | passe's `read` verb injects Readability.js + Turndown.js, returns markdown directly. `WebData.pre_extracted_content` carries the result; tool layer skips trafilatura when set. Three-tier SPA detection: short HTML, empty body text, framework patterns. `passe run` closes its tab on exit, so `passe eval` after run reads the wrong tab — use original URL as `final_url` until passe adds it to the run summary JSON. |
 | **Web: binary Content-Type routing** | Adapter captures raw bytes, tool routes by type | Web URLs that return `application/pdf` (or other binary types) are detected via Content-Type in the adapter, which captures `raw_bytes` on `WebData` and skips HTML inspection. Tool layer checks Content-Type and routes to the appropriate extractor (e.g., `extract_pdf_content`). Status code checks (404, 429, 500) run *before* binary detection. Only types with working extractors are in `BINARY_CONTENT_TYPES` — don't add types we can't process. |
 | **Gmail: no inline attachment text** | Pointers, not inline content | Extracted attachment text goes to separate `{filename}.md` files. content.md gets a compact `**Extracted attachments:**` summary with `→ \`filename.md\`` pointers. Originally (voSovu) we inlined full PDF text into content.md "like Drive PDFs" — but a Gmail thread is a conversation with attachments, not a standalone document. Inlining bloated content.md 10x (28→300 lines) and created a need for truncation guards. Reversed Feb 2026 (a0a7a45). |
 | **Gmail: single-attachment fetch** | `fetch(thread_id, attachment="file.xlsx")` | Office files are skipped during eager thread extraction (5-10s each). The `attachment` parameter on `fetch()` enables on-demand extraction of any specific attachment — including Office files. Routes through same extractors as Drive files. Pre-exfil Drive copies checked first. Deposit goes to self-contained folder (`mise-fetch/{type}--{title}--{id}/`). |

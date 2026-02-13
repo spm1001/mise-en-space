@@ -4,14 +4,19 @@ Web Content Adapter — Fetches web pages for extraction.
 Handles HTTP fetching with intelligent fallback:
 1. Try fast HTTP fetch
 2. Detect if page needs browser rendering (JS-rendered content)
-3. Fall back to browser if needed (requires webctl)
+3. Fall back to passe browser rendering if needed (requires passe + Chrome Debug)
 
-This adapter returns raw HTML. Extraction to markdown is done by extractors/web.py.
+For HTML pages, this adapter returns raw HTML for extraction by extractors/web.py.
+When passe is used, pre-extracted markdown is returned via WebData.pre_extracted_content,
+bypassing trafilatura entirely (passe uses Readability.js + Turndown.js).
 """
 
+import hashlib
 import re
+import shutil
 import subprocess
 import tempfile
+import urllib.request
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
@@ -36,7 +41,10 @@ JS_RENDER_PATTERNS = [
     r'id="__NEXT_DATA__"',  # Next.js
     r'__NUXT__',            # Nuxt
     r'window\.__INITIAL_STATE__',  # SSR hydration
-    r'<noscript>.*?enable javascript',  # Explicit JS requirement
+    r'<noscript>.*?(?:enable|requires?)\s+javascript',  # Explicit JS requirement
+    r'<div\s+id="root"\s*/?\s*>',   # React / CRA / Vite
+    r'<div\s+id="app"\s*/?\s*>',    # Vue.js
+    r'<div\s+id="__next"\s*/?\s*>',  # Next.js container
 ]
 
 # Auth detection patterns
@@ -215,17 +223,30 @@ def _needs_browser_rendering(html: str) -> bool:
     """
     Check if page content suggests JS rendering is needed.
 
+    Three-tier detection:
+    1. Total HTML < 500 chars → True (fast path)
+    2. Body text < 100 chars → True (catches fat-head SPAs like React/Vite)
+    3. Framework pattern match → True (defense in depth)
+
     Args:
         html: Raw HTML content
 
     Returns:
         True if content appears to need browser rendering
     """
-    # Very short content often means JS-rendered
+    # Tier 1: Very short content often means JS-rendered
     if len(html.strip()) < 500:
         return True
 
-    # Check for SPA framework patterns
+    # Tier 2: Fat <head> but empty <body> (e.g. entire.io — 1711 bytes of HTML
+    # but <body> is just <div id="root"></div>)
+    body_match = re.search(r'<body[^>]*>(.*?)</body>', html, re.IGNORECASE | re.DOTALL)
+    if body_match:
+        body_text = re.sub(r'<[^>]+>', '', body_match.group(1)).strip()
+        if len(body_text) < 100:
+            return True
+
+    # Tier 3: Check for SPA framework patterns
     for pattern in JS_RENDER_PATTERNS:
         if re.search(pattern, html, re.IGNORECASE | re.DOTALL):
             return True
@@ -233,84 +254,80 @@ def _needs_browser_rendering(html: str) -> bool:
     return False
 
 
-def _is_webctl_available() -> bool:
-    """Check if webctl daemon is available for browser rendering."""
+def _is_passe_available() -> bool:
+    """
+    Check if passe (CDP browser automation) is available for browser rendering.
+
+    Two checks:
+    1. passe binary on PATH
+    2. Chrome Debug running on port 9222 (same check pattern as adapters/cdp.py)
+    """
+    if not shutil.which('passe'):
+        return False
     try:
-        result = subprocess.run(
-            ['webctl', 'status'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        # webctl status returns 0 if daemon is running
-        return result.returncode == 0
-    except (subprocess.TimeoutExpired, FileNotFoundError):
+        req = urllib.request.Request('http://localhost:9222/json/version')
+        with urllib.request.urlopen(req, timeout=2):
+            return True
+    except Exception:
         return False
 
 
-def _fetch_with_browser(url: str) -> tuple[str, str]:
+def _fetch_with_passe(url: str) -> tuple[str, str]:
     """
-    Fetch page using browser rendering via webctl.
+    Fetch page using passe's Readability.js extraction (passe read).
+
+    Returns markdown directly — skips trafilatura entirely.
+    Uses passe's `read` verb: navigates, waits for load, injects Readability.js,
+    extracts article content as markdown via Turndown.js, writes to file.
 
     Returns:
-        Tuple of (html, final_url)
+        Tuple of (markdown_content, final_url)
+        Note: final_url is always the original URL for now. passe run creates
+        and closes its own tab, so a separate `passe eval` would read the wrong
+        tab. When passe adds final_url to its run summary JSON, we can extract
+        it from there.
 
     Raises:
         MiseError: If browser fetch fails
     """
-    try:
-        # Ensure daemon is running
-        start_result = subprocess.run(
-            ['webctl', 'start'],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
+    url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
+    tmp_path = Path(tempfile.gettempdir()) / f"passe-{url_hash}.md"
 
-        # Navigate with network-idle wait
-        nav_result = subprocess.run(
-            ['webctl', 'navigate', url, '--wait', 'network-idle', '--timeout', '30000'],
+    try:
+        # passe run: navigate to URL, extract with Readability.js → markdown file
+        run_result = subprocess.run(
+            ['passe', 'run', '-c', f'goto {url}; read {tmp_path}'],
             capture_output=True,
             text=True,
-            timeout=45
+            timeout=45,
         )
-        if nav_result.returncode != 0:
+        if run_result.returncode != 0:
             raise MiseError(
                 ErrorKind.NETWORK_ERROR,
-                f"Browser navigation failed: {nav_result.stderr}"
+                f"passe browser rendering failed: {run_result.stderr.strip()}"
             )
 
-        # Get rendered HTML
-        html_result = subprocess.run(
-            ['webctl', 'eval', 'document.documentElement.outerHTML'],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        if html_result.returncode != 0:
+        # Read extracted markdown
+        if not tmp_path.exists() or tmp_path.stat().st_size == 0:
             raise MiseError(
                 ErrorKind.EXTRACTION_FAILED,
-                f"Failed to get rendered HTML: {html_result.stderr}"
+                f"passe produced no content for {url}"
             )
+        markdown = tmp_path.read_text(encoding='utf-8')
 
-        # Get final URL (after redirects)
-        url_result = subprocess.run(
-            ['webctl', 'eval', 'window.location.href'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        final_url = url_result.stdout.strip() if url_result.returncode == 0 else url
-
-        return (html_result.stdout, final_url)
+        # TODO: Extract final_url from passe run's JSON summary once passe
+        # includes it (see passe field report). For now, use original URL.
+        return (markdown, url)
 
     except subprocess.TimeoutExpired:
-        raise MiseError(ErrorKind.TIMEOUT, f"Browser rendering timed out for {url}")
+        raise MiseError(ErrorKind.TIMEOUT, f"passe browser rendering timed out for {url}")
     except FileNotFoundError:
         raise MiseError(
             ErrorKind.INVALID_INPUT,
-            "webctl not found. Install webctl for browser rendering support."
+            "passe not found. Install passe for browser rendering support."
         )
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 def fetch_web_content(url: str, use_browser: bool = False) -> WebData:
@@ -344,23 +361,25 @@ def fetch_web_content(url: str, use_browser: bool = False) -> WebData:
 
     # === BROWSER PATH (forced or fallback) ===
     if use_browser:
-        if not _is_webctl_available():
+        if not _is_passe_available():
             raise MiseError(
                 ErrorKind.INVALID_INPUT,
-                f"Browser rendering requested but webctl is not running. "
-                f"Start it with: webctl start"
+                "Browser rendering requested but passe/Chrome Debug not available. "
+                "Ensure passe is installed and Chrome Debug is running on port 9222."
             )
 
-        html, final_url = _fetch_with_browser(url)
+        markdown, final_url = _fetch_with_passe(url)
         return WebData(
             url=url,
-            html=html,
+            html='',  # No raw HTML — title extraction falls back to "web-page"
+            # TODO: Extract title from pre_extracted_content H1 (see mise-siJoRo children)
             final_url=final_url,
             status_code=200,  # Browser always returns rendered page
             content_type='text/html',
             cookies_used=True,  # Browser uses session cookies
-            render_method='browser',
+            render_method='passe',
             warnings=warnings,
+            pre_extracted_content=markdown,
         )
 
     # === HTTP PATH (fast) ===
@@ -467,22 +486,23 @@ def fetch_web_content(url: str, use_browser: bool = False) -> WebData:
     if _needs_browser_rendering(html):
         warnings.append("Content appears JS-rendered")
 
-        if _is_webctl_available():
-            warnings.append("Falling back to browser rendering")
-            html, final_url = _fetch_with_browser(url)
+        if _is_passe_available():
+            warnings.append("Falling back to passe browser rendering")
+            markdown, passe_final_url = _fetch_with_passe(url)
             return WebData(
                 url=url,
-                html=html,
-                final_url=final_url,
+                html=html,  # Keep original HTML for title extraction
+                final_url=passe_final_url,
                 status_code=200,
                 content_type='text/html',
                 cookies_used=True,
-                render_method='browser',
+                render_method='passe',
                 warnings=warnings,
+                pre_extracted_content=markdown,
             )
         else:
             warnings.append(
-                "Browser rendering recommended but webctl not available. "
+                "Browser rendering recommended but passe not available. "
                 "Content may be incomplete."
             )
 
