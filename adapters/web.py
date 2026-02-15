@@ -69,6 +69,11 @@ LOGIN_URL_PATTERNS = [
 # Minimum characters for valid extraction
 MIN_CONTENT_THRESHOLD = 100
 
+# Maximum HTML response size to load into memory (bytes).
+# Prevents OOM from size-bomb pages claiming text/html.
+# 10MB is generous — largest real articles are ~500KB.
+MAX_HTML_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+
 # Size threshold for streaming binary content to disk (bytes).
 # Matches Drive adapter's default. Below this: load into memory (raw_bytes).
 # Above this: stream to temp file (temp_path). Prevents OOM on large web PDFs.
@@ -398,6 +403,11 @@ def fetch_web_content(url: str, use_browser: bool = False) -> WebData:
 
     except httpx.TimeoutException:
         raise MiseError(ErrorKind.TIMEOUT, f"Request timed out: {url}")
+    except httpx.TooManyRedirects:
+        raise MiseError(
+            ErrorKind.NETWORK_ERROR,
+            f"Too many redirects from {domain} — possible redirect loop"
+        )
     except httpx.ConnectError as e:
         raise MiseError(ErrorKind.NETWORK_ERROR, f"Connection failed: {url} - {e}")
     except httpx.RequestError as e:
@@ -467,6 +477,14 @@ def fetch_web_content(url: str, use_browser: bool = False) -> WebData:
             )
 
     # === HTML PATH — content inspection ===
+    # Guard against size bombs: check Content-Length before loading text
+    content_length = _parse_content_length(response.headers.get('content-length'))
+    if content_length is not None and content_length > MAX_HTML_SIZE_BYTES:
+        raise MiseError(
+            ErrorKind.EXTRACTION_FAILED,
+            f"HTML response too large ({content_length / 1024 / 1024:.0f} MB) from {domain}. "
+            f"Max {MAX_HTML_SIZE_BYTES // (1024 * 1024)} MB for HTML content."
+        )
     html = response.text
 
     # Check for CAPTCHA

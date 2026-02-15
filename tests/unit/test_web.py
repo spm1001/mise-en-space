@@ -1288,6 +1288,19 @@ class TestFetchWebContentHTTPErrors:
             fetch_web_content("https://example.com")
         assert exc_info.value.kind == ErrorKind.NETWORK_ERROR
 
+    @patch("adapters.web.httpx.Client")
+    def test_redirect_loop_raises(self, mock_client_cls) -> None:
+        """Redirect loop produces clear error, not generic RequestError."""
+        mock_client = _wire_httpx_client(mock_client_cls)
+        mock_client.get.side_effect = httpx.TooManyRedirects(
+            "Exceeded max redirects", request=MagicMock()
+        )
+
+        with pytest.raises(MiseError) as exc_info:
+            fetch_web_content("https://loop.example.com/a")
+        assert exc_info.value.kind == ErrorKind.NETWORK_ERROR
+        assert "redirect" in exc_info.value.message.lower()
+
 
 class TestFetchWebContentStatusCodes:
     """HTTP status code handling."""
@@ -1417,7 +1430,20 @@ class TestFetchWebContentBinary:
 
 
 class TestFetchWebContentHTML:
-    """HTML content path — CAPTCHA, auth, JS detection."""
+    """HTML content path — CAPTCHA, auth, JS detection, size limits."""
+
+    @patch("adapters.web.httpx.Client")
+    def test_html_size_bomb_rejected(self, mock_client_cls) -> None:
+        """HTML response claiming >10MB via Content-Length is rejected before loading."""
+        mock_client = _wire_httpx_client(mock_client_cls)
+        mock_client.get.return_value = _mock_response(
+            headers={"content-length": str(50 * 1024 * 1024)},  # 50 MB
+        )
+
+        with pytest.raises(MiseError) as exc_info:
+            fetch_web_content("https://bomb.example.com/huge.html")
+        assert exc_info.value.kind == ErrorKind.EXTRACTION_FAILED
+        assert "too large" in exc_info.value.message.lower()
 
     @patch("adapters.web.httpx.Client")
     def test_captcha_raises(self, mock_client_cls) -> None:
