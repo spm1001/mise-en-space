@@ -495,6 +495,48 @@ class TestSearchThreads:
 
         assert results == []  # Error thread skipped
 
+    @patch('adapters.gmail.get_gmail_service')
+    def test_empty_thread_id_skipped_with_warning(self, mock_get_service, caplog) -> None:
+        """Batch response with empty thread_id is skipped, not silently stored."""
+        import logging
+
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+
+        mock_api_chain(mock_service, "users.threads.list.execute", {
+            "threads": [{"id": "t1", "snippet": "test"}],
+        })
+
+        batch_mock = MagicMock()
+        mock_service.new_batch_http_request.return_value = batch_mock
+
+        callbacks = []
+        batch_mock.add.side_effect = lambda req, callback: callbacks.append(callback)
+
+        def execute_batch():
+            # Simulate response with missing id field
+            callbacks[0]("0", {
+                "messages": [{
+                    "id": "m1",
+                    "internalDate": "1706745600000",
+                    "payload": {
+                        "headers": [
+                            {"name": "From", "value": "ghost@example.com"},
+                            {"name": "Subject", "value": "Phantom"},
+                        ],
+                        "mimeType": "text/plain",
+                    },
+                }],
+            }, None)
+
+        batch_mock.execute.side_effect = execute_batch
+
+        with patch('retry.time.sleep'), caplog.at_level(logging.WARNING, logger="adapters.gmail"):
+            results = search_threads("test")
+
+        assert results == []  # Empty thread_id skipped, not stored under ""
+        assert any("empty thread_id" in r.message for r in caplog.records)
+
 
 # ============================================================================
 # DOWNLOAD ATTACHMENT (mocked service)

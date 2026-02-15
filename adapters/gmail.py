@@ -5,6 +5,7 @@ Fetches threads and messages, parses into typed models.
 """
 
 import base64
+import logging
 import re
 import tempfile
 from dataclasses import dataclass
@@ -18,6 +19,8 @@ from retry import with_retry
 from adapters.services import get_gmail_service
 from extractors.gmail import parse_message_payload, parse_attachments_from_payload
 from filters import is_trivial_attachment, filter_attachments
+
+logger = logging.getLogger(__name__)
 
 
 # Fields to request for threads — only what we need
@@ -272,6 +275,9 @@ def search_threads(
                     attachment_names.append(att["filename"])
 
         thread_id = response.get("id", "")
+        if not thread_id:
+            logger.warning("Batch callback received response with empty thread_id — skipping")
+            return
         results_by_id[thread_id] = GmailSearchResult(
             thread_id=thread_id,
             subject=headers.get("Subject", ""),
