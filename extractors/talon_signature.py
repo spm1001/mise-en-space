@@ -9,6 +9,7 @@ MIT License - Copyright (c) Mailgun Technologies Inc.
 """
 
 import logging
+from dataclasses import dataclass
 
 # Why regex, not re?
 # talon's RE_SIGNATURE_CANDIDATE uses duplicate named groups (?P<candidate>...)
@@ -214,6 +215,107 @@ def _process_marked_candidate_indexes(candidate: list[int], markers: str) -> lis
     return candidate[-match.end('candidate'):] if match else []
 
 
+# --- Forward detection ---
+# Forwarded messages contain unique content from outside the thread.
+# They must be preserved, unlike reply quotes (which duplicate earlier content).
+
+@dataclass
+class ForwardedSection:
+    """A forwarded message section extracted from an email body."""
+    attribution: str  # "From: ... Date: ... Subject: ..." or raw marker line
+    body: str
+
+# Gmail and Apple Mail forward markers (anchored to start of line)
+_RE_FORWARD_MARKER = re.compile(
+    r'^-{5,}\s*Forwarded message\s*-{5,}\s*$'
+    r'|'
+    r'^Begin forwarded message:\s*$',
+    re.MULTILINE | re.IGNORECASE
+)
+
+
+def split_forward_sections(msg_body: str) -> tuple[str, list[ForwardedSection]]:
+    """
+    Split message body into own content and forwarded sections.
+
+    Scans for forward markers (Gmail: '---------- Forwarded message ---------',
+    Apple: 'Begin forwarded message:') and splits the body at the first marker.
+    Content before the marker is "own content" (will be stripped normally).
+    Content after each marker is a forwarded section (preserved as-is).
+
+    Quoted forwards inside reply quotes (> ---------- Forwarded message)
+    won't match because the regex is anchored to ^ and strip_quoted_lines
+    removes >-prefixed lines first. This is correct: quoted forwards are
+    part of the reply chain, not standalone forwarded content.
+
+    Returns:
+        Tuple of (own_content, list_of_forwarded_sections)
+    """
+    match = _RE_FORWARD_MARKER.search(msg_body)
+    if not match:
+        return msg_body, []
+
+    own_content = msg_body[:match.start()].rstrip()
+    remaining = msg_body[match.end():].lstrip('\n')
+
+    sections: list[ForwardedSection] = []
+
+    # Split remaining text on subsequent forward markers
+    parts = _RE_FORWARD_MARKER.split(remaining)
+
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+
+        # Try to extract attribution block (From:/Date:/Subject: lines at top)
+        attribution, body = _parse_forward_attribution(part)
+        sections.append(ForwardedSection(attribution=attribution, body=body))
+
+    return own_content, sections
+
+
+def _parse_forward_attribution(text: str) -> tuple[str, str]:
+    """
+    Parse attribution headers from the top of a forwarded section.
+
+    Gmail forwards typically have:
+        From: Name <email>
+        Date: ...
+        Subject: ...
+        To: ...
+
+    Returns (attribution_block, remaining_body).
+    If no attribution headers found, returns ("", full_text).
+    """
+    lines = text.split('\n')
+    attr_lines: list[str] = []
+    body_start = 0
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        # Attribution lines: "Key: value" pattern (From, Date, Subject, To, Cc)
+        if re.match(r'^(From|Date|Subject|To|Cc|Sent):\s', stripped, re.IGNORECASE):
+            attr_lines.append(stripped)
+            body_start = i + 1
+        elif stripped == '' and attr_lines:
+            # Blank line after attribution = end of attribution block
+            body_start = i + 1
+            break
+        elif attr_lines:
+            # Non-attribution line after seeing some — attribution block is done
+            body_start = i
+            break
+        else:
+            # No attribution found at all — whole thing is body
+            break
+
+    attribution = '\n'.join(attr_lines)
+    body = '\n'.join(lines[body_start:]).strip()
+
+    return attribution, body
+
+
 # --- Convenience functions for our use case ---
 
 def strip_quoted_lines(msg_body: str) -> str:
@@ -298,24 +400,42 @@ def _strip_trailing_contact_block(body: str) -> str:
 
 def strip_signature_and_quotes(msg_body: str) -> str:
     """
-    Strip both signatures and quoted reply content from message body.
+    Strip signatures and quoted replies, preserving forwarded messages.
 
-    Three-pass approach:
-    1. Strip quoted lines (>) first - these push signatures out of
-       talon's detection window in long threads
-    2. Then detect and strip signature from remaining content (talon)
-    3. Strip trailing URL-dense contact blocks that talon misses
+    Pipeline:
+    0. Split off forwarded sections (unique content from outside the thread)
+    1. Strip quoted lines (>) from own content only
+    2. Detect and strip signature (talon) from own content
+    3. Strip trailing URL-dense contact blocks from own content
+    4. Reassemble with forwarded sections using delimiter
 
-    This handles the O(n^2) quoted reply explosion in email threads
-    where each reply quotes all previous messages.
+    Forwarded messages are preserved because they contain unique content
+    from outside the thread — unlike reply quotes which duplicate earlier
+    messages. The split happens first so >-prefixed lines inside forwarded
+    content aren't mistakenly stripped.
+
+    Edge case: reply-to-forward (> ---------- Forwarded message) inside
+    reply quotes won't match the regex (anchored to ^, quote-prefixed lines
+    stripped first), so it's correctly removed as part of the reply chain.
     """
-    # First pass: remove quoted lines
-    without_quotes = strip_quoted_lines(msg_body)
+    # Step 0: split off forwarded sections before any stripping
+    own_content, forwarded = split_forward_sections(msg_body)
 
-    # Second pass: extract signature from remaining content
+    # Steps 1-3: strip own content only
+    without_quotes = strip_quoted_lines(own_content)
     body, _ = extract_signature(without_quotes)
-
-    # Third pass: catch URL-dense contact blocks talon misses
     body = _strip_trailing_contact_block(body)
+
+    # Step 4: reassemble with forwarded sections
+    if forwarded:
+        parts = [body.rstrip()]
+        for section in forwarded:
+            parts.append('\n\n--- Forwarded message ---')
+            if section.attribution:
+                parts.append(section.attribution)
+            if section.body:
+                parts.append('')
+                parts.append(section.body)
+        body = '\n'.join(parts)
 
     return body

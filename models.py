@@ -178,6 +178,15 @@ class DocData:
 # ============================================================================
 
 @dataclass
+class ForwardedMessage:
+    """A message forwarded as a MIME message/rfc822 attachment."""
+    from_address: str = ""
+    date: str = ""
+    subject: str = ""
+    body_text: str = ""
+
+
+@dataclass
 class EmailAttachment:
     """An attachment on an email message."""
     filename: str
@@ -208,6 +217,9 @@ class EmailMessage:
 
     # Drive links mentioned in body (people say "attached" when they mean "linked")
     drive_links: list[dict[str, str]] = field(default_factory=list)
+
+    # Forwarded messages (MIME message/rfc822 parts)
+    forwarded_messages: list[ForwardedMessage] = field(default_factory=list)
 
 
 @dataclass

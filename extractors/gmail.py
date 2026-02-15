@@ -12,7 +12,7 @@ import os
 from datetime import datetime
 from typing import Any
 
-from models import GmailThreadData, EmailMessage
+from models import GmailThreadData, EmailMessage, ForwardedMessage
 
 from .talon_signature import strip_signature_and_quotes
 
@@ -230,6 +230,29 @@ def extract_message_content(
     if strip_signature and body:
         body = strip_signature_and_quotes(body)
 
+    # Append MIME-forwarded messages (message/rfc822 parts)
+    # These are invisible to the plain text parser — they're binary MIME parts,
+    # not inline text. We append them with clear attribution so the content
+    # from the forwarded message is visible in the extraction.
+    if message.forwarded_messages:
+        parts = [body.rstrip()] if body.strip() else []
+        for fwd in message.forwarded_messages:
+            fwd_block = ['\n--- Forwarded message ---']
+            attr_parts = []
+            if fwd.from_address:
+                attr_parts.append(f'From: {fwd.from_address}')
+            if fwd.date:
+                attr_parts.append(f'Date: {fwd.date}')
+            if fwd.subject:
+                attr_parts.append(f'Subject: {fwd.subject}')
+            if attr_parts:
+                fwd_block.append('\n'.join(attr_parts))
+            if fwd.body_text:
+                fwd_block.append('')
+                fwd_block.append(fwd.body_text)
+            parts.append('\n'.join(fwd_block))
+        body = '\n'.join(parts)
+
     return body.strip(), warnings
 
 
@@ -440,6 +463,71 @@ def _extract_body_by_mime_type(payload: dict[str, Any], mime_type: str) -> str |
                     return result
 
     return None
+
+
+def parse_forwarded_messages(payload: dict[str, Any]) -> list[ForwardedMessage]:
+    """
+    Extract forwarded messages from MIME message/rfc822 parts.
+
+    Gmail represents forwarded emails as message/rfc822 MIME parts with their
+    own nested payload (headers + body). These are invisible to the plain text
+    parser — they're binary attachments, not inline text.
+
+    Args:
+        payload: The 'payload' field from Gmail API message
+
+    Returns:
+        List of ForwardedMessage with headers and body text extracted
+    """
+    messages: list[ForwardedMessage] = []
+
+    def scan_parts(parts: list[dict[str, Any]]) -> None:
+        for part in parts:
+            if part.get('mimeType') == 'message/rfc822':
+                # The nested message is in this part's parts
+                nested_parts = part.get('parts', [])
+                if nested_parts:
+                    # First nested part is the actual forwarded message
+                    nested = nested_parts[0]
+                    msg = _parse_rfc822_part(nested)
+                    if msg:
+                        messages.append(msg)
+            # Recurse into nested parts (but not into rfc822 — handled above)
+            elif 'parts' in part:
+                scan_parts(part['parts'])
+
+    if 'parts' in payload:
+        scan_parts(payload['parts'])
+
+    return messages
+
+
+def _parse_rfc822_part(part: dict[str, Any]) -> ForwardedMessage | None:
+    """
+    Parse a nested message/rfc822 part into a ForwardedMessage.
+
+    Extracts From/Date/Subject headers and body text (plain preferred, html fallback).
+    """
+    headers = part.get('headers', [])
+    header_dict = {h['name']: h['value'] for h in headers if 'name' in h and 'value' in h}
+
+    # Extract body text (reuse existing MIME walker)
+    body_text = _extract_body_by_mime_type(part, 'text/plain')
+    if not body_text:
+        html = _extract_body_by_mime_type(part, 'text/html')
+        if html:
+            cleaned = _clean_html_for_conversion(html)
+            body_text, _ = _convert_html_to_markdown(cleaned)
+
+    if not body_text and not header_dict:
+        return None
+
+    return ForwardedMessage(
+        from_address=header_dict.get('From', ''),
+        date=header_dict.get('Date', ''),
+        subject=header_dict.get('Subject', ''),
+        body_text=body_text or '',
+    )
 
 
 def parse_attachments_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:

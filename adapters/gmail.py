@@ -14,10 +14,10 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
-from models import GmailThreadData, GmailSearchResult, EmailMessage, EmailAttachment
+from models import GmailThreadData, GmailSearchResult, EmailMessage, EmailAttachment, ForwardedMessage
 from retry import with_retry
 from adapters.services import get_gmail_service
-from extractors.gmail import parse_message_payload, parse_attachments_from_payload
+from extractors.gmail import parse_message_payload, parse_attachments_from_payload, parse_forwarded_messages
 from filters import is_trivial_attachment, filter_attachments
 
 logger = logging.getLogger(__name__)
@@ -124,6 +124,9 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
     # Extract Drive links from body
     drive_links = _extract_drive_links(body_text) or _extract_drive_links(body_html)
 
+    # Extract forwarded messages (MIME message/rfc822 parts)
+    forwarded = parse_forwarded_messages(payload)
+
     return EmailMessage(
         message_id=msg.get("id", ""),
         from_address=headers.get("From", ""),
@@ -135,6 +138,7 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
         body_html=body_html,
         attachments=attachments,
         drive_links=drive_links,
+        forwarded_messages=forwarded,
     )
 
 

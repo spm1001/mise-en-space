@@ -7,17 +7,19 @@ Tests pure extraction functions with no API calls.
 import pytest
 from datetime import datetime, timezone
 
-from models import GmailThreadData, EmailMessage, EmailAttachment
+from models import GmailThreadData, EmailMessage, EmailAttachment, ForwardedMessage
 from extractors.gmail import (
     extract_thread_content,
     extract_message_content,
     parse_message_payload,
     parse_attachments_from_payload,
+    parse_forwarded_messages,
 )
 from extractors.talon_signature import (
     strip_signature,
     strip_signature_and_quotes,
     strip_quoted_lines,
+    split_forward_sections,
 )
 
 
@@ -445,3 +447,285 @@ class TestPayloadParsing:
         assert attachments[0]["mimeType"] == "application/pdf"
         assert attachments[0]["size"] == 12345
         assert attachments[0]["attachment_id"] == "ANGjdJ_test123"
+
+
+class TestForwardDetection:
+    """Tests for forwarded message detection and preservation in talon_signature."""
+
+    def test_gmail_forward_marker_detected(self):
+        """Gmail-style forward marker splits body correctly."""
+        text = (
+            "FYI, see below.\n\n"
+            "---------- Forwarded message ---------\n"
+            "From: Peter <peter@example.com>\n"
+            "Date: Mon, 10 Feb 2026\n"
+            "Subject: Analysis\n\n"
+            "Here is my analysis of the data."
+        )
+        own, sections = split_forward_sections(text)
+        assert own == "FYI, see below."
+        assert len(sections) == 1
+        assert "peter@example.com" in sections[0].attribution
+        assert "Analysis" in sections[0].attribution
+        assert "analysis of the data" in sections[0].body
+
+    def test_apple_forward_marker_detected(self):
+        """Apple Mail forward marker splits body correctly."""
+        text = (
+            "Forwarding this along.\n\n"
+            "Begin forwarded message:\n\n"
+            "From: Jane <jane@example.com>\n"
+            "Subject: Report\n\n"
+            "The quarterly numbers are in."
+        )
+        own, sections = split_forward_sections(text)
+        assert own == "Forwarding this along."
+        assert len(sections) == 1
+        assert "quarterly numbers" in sections[0].body
+
+    def test_no_forward_marker_returns_original(self):
+        """Messages without forward markers are returned unchanged."""
+        text = "Just a normal reply.\n\nThanks,\nAlice"
+        own, sections = split_forward_sections(text)
+        assert own == text
+        assert sections == []
+
+    def test_forwarded_content_preserved_through_strip_pipeline(self):
+        """Forwarded content survives the full strip_signature_and_quotes pipeline."""
+        text = (
+            "I agree with Peter's analysis.\n\n"
+            "> Earlier quoted reply\n"
+            "> More quoted text\n\n"
+            "Thanks,\nAlice\n\n"
+            "---------- Forwarded message ---------\n"
+            "From: Peter <peter@example.com>\n"
+            "Date: Mon, 10 Feb 2026\n"
+            "Subject: VOD Analysis\n\n"
+            "The key finding is that VOD numbers are up 15%.\n"
+            "See the attached spreadsheet for details."
+        )
+        result = strip_signature_and_quotes(text)
+        # Own content stripped of quotes and signature
+        assert "I agree" in result
+        assert "> Earlier quoted" not in result
+        assert "Thanks," not in result
+        # Forwarded content preserved
+        assert "--- Forwarded message ---" in result
+        assert "VOD numbers are up 15%" in result
+        assert "peter@example.com" in result
+
+    def test_quoted_forward_inside_reply_stripped(self):
+        """A forward marker inside reply quotes (> ----------) is NOT preserved."""
+        text = (
+            "My thoughts on this.\n\n"
+            "> FYI\n"
+            "> ---------- Forwarded message ---------\n"
+            "> From: someone@example.com\n"
+            "> This was forwarded content in the quoted reply"
+        )
+        result = strip_signature_and_quotes(text)
+        assert "My thoughts" in result
+        # The quoted forward is stripped — it's part of the reply chain
+        assert "someone@example.com" not in result
+
+    def test_multiple_forwards(self):
+        """Multiple forwarded sections are all preserved."""
+        text = (
+            "See these two messages.\n\n"
+            "---------- Forwarded message ---------\n"
+            "From: Alice <alice@example.com>\n\n"
+            "First forwarded content.\n\n"
+            "---------- Forwarded message ---------\n"
+            "From: Bob <bob@example.com>\n\n"
+            "Second forwarded content."
+        )
+        own, sections = split_forward_sections(text)
+        assert own == "See these two messages."
+        assert len(sections) == 2
+        assert "First forwarded" in sections[0].body
+        assert "Second forwarded" in sections[1].body
+
+    def test_forward_with_no_attribution(self):
+        """Forward marker followed directly by content (no From/Date/Subject)."""
+        text = (
+            "Check this out.\n\n"
+            "---------- Forwarded message ---------\n"
+            "This content has no attribution headers."
+        )
+        own, sections = split_forward_sections(text)
+        assert len(sections) == 1
+        assert sections[0].attribution == ""
+        assert "no attribution headers" in sections[0].body
+
+    def test_forward_preserves_quoted_content_after_marker(self):
+        """Content with > after a forward marker is forwarded text, not reply quotes."""
+        text = (
+            "FYI.\n\n"
+            "---------- Forwarded message ---------\n"
+            "From: Peter <peter@example.com>\n\n"
+            "I think the numbers look good.\n"
+            "> What do you think about the Q4 targets?\n"
+            "I agree with the targets."
+        )
+        own, sections = split_forward_sections(text)
+        # The > line inside the forwarded section is part of the forwarded content
+        assert "> What do you think" in sections[0].body
+
+
+class TestRfc822Extraction:
+    """Tests for MIME message/rfc822 parsing and integration."""
+
+    def _make_rfc822_payload(
+        self,
+        fwd_from: str = "Peter <peter@example.com>",
+        fwd_subject: str = "Analysis",
+        fwd_body: str = "Key findings here.",
+        outer_body: str = "FYI see below",
+    ) -> dict:
+        """Build a multipart payload with a message/rfc822 part."""
+        import base64
+        return {
+            "mimeType": "multipart/mixed",
+            "parts": [
+                {
+                    "mimeType": "text/plain",
+                    "body": {"data": base64.urlsafe_b64encode(outer_body.encode()).decode()},
+                },
+                {
+                    "mimeType": "message/rfc822",
+                    "filename": "Forwarded message.eml",
+                    "body": {"size": 1234},
+                    "parts": [
+                        {
+                            "mimeType": "text/plain",
+                            "headers": [
+                                {"name": "From", "value": fwd_from},
+                                {"name": "Subject", "value": fwd_subject},
+                                {"name": "Date", "value": "Mon, 10 Feb 2026 09:00:00 +0000"},
+                            ],
+                            "body": {
+                                "data": base64.urlsafe_b64encode(fwd_body.encode()).decode()
+                            },
+                        }
+                    ],
+                },
+            ],
+        }
+
+    def test_rfc822_part_parsed(self):
+        """message/rfc822 MIME part is parsed into ForwardedMessage."""
+        payload = self._make_rfc822_payload()
+        messages = parse_forwarded_messages(payload)
+        assert len(messages) == 1
+        assert messages[0].from_address == "Peter <peter@example.com>"
+        assert messages[0].subject == "Analysis"
+        assert "Key findings" in messages[0].body_text
+
+    def test_rfc822_headers_extracted(self):
+        """From, Date, Subject extracted from rfc822 part."""
+        payload = self._make_rfc822_payload(
+            fwd_from="Jane Doe <jane@example.com>",
+            fwd_subject="Q4 Report",
+        )
+        messages = parse_forwarded_messages(payload)
+        assert messages[0].from_address == "Jane Doe <jane@example.com>"
+        assert messages[0].subject == "Q4 Report"
+        assert "2026" in messages[0].date
+
+    def test_no_rfc822_returns_empty(self):
+        """Payload without message/rfc822 returns empty list."""
+        import base64
+        payload = {
+            "mimeType": "text/plain",
+            "body": {"data": base64.urlsafe_b64encode(b"Just text").decode()},
+        }
+        messages = parse_forwarded_messages(payload)
+        assert messages == []
+
+    def test_rfc822_html_fallback(self):
+        """HTML body extracted when no plain text in rfc822 part."""
+        import base64
+        payload = {
+            "mimeType": "multipart/mixed",
+            "parts": [
+                {
+                    "mimeType": "text/plain",
+                    "body": {"data": base64.urlsafe_b64encode(b"Outer").decode()},
+                },
+                {
+                    "mimeType": "message/rfc822",
+                    "parts": [
+                        {
+                            "mimeType": "text/html",
+                            "headers": [
+                                {"name": "From", "value": "test@example.com"},
+                                {"name": "Subject", "value": "HTML only"},
+                            ],
+                            "body": {
+                                "data": base64.urlsafe_b64encode(
+                                    b"<p>HTML forwarded content</p>"
+                                ).decode()
+                            },
+                        }
+                    ],
+                },
+            ],
+        }
+        messages = parse_forwarded_messages(payload)
+        assert len(messages) == 1
+        assert "HTML forwarded content" in messages[0].body_text
+
+    def test_rfc822_appended_in_extraction(self):
+        """MIME-forwarded messages appear in extract_message_content output."""
+        msg = EmailMessage(
+            message_id="test-fwd",
+            from_address="alice@example.com",
+            to_addresses=["bob@example.com"],
+            body_text="Please see the forwarded analysis below.",
+            forwarded_messages=[
+                ForwardedMessage(
+                    from_address="Peter <peter@example.com>",
+                    date="Mon, 10 Feb 2026",
+                    subject="VOD Analysis",
+                    body_text="VOD numbers are up 15% quarter over quarter.",
+                )
+            ],
+        )
+        result, warnings = extract_message_content(msg, strip_signature=True)
+        assert "forwarded analysis" in result
+        assert "--- Forwarded message ---" in result
+        assert "VOD numbers are up 15%" in result
+        assert "peter@example.com" in result
+
+    def test_multiple_rfc822_parts(self):
+        """Multiple message/rfc822 parts are all extracted."""
+        import base64
+        payload = {
+            "mimeType": "multipart/mixed",
+            "parts": [
+                {
+                    "mimeType": "text/plain",
+                    "body": {"data": base64.urlsafe_b64encode(b"Outer").decode()},
+                },
+                {
+                    "mimeType": "message/rfc822",
+                    "parts": [{
+                        "mimeType": "text/plain",
+                        "headers": [{"name": "From", "value": "a@example.com"}],
+                        "body": {"data": base64.urlsafe_b64encode(b"First fwd").decode()},
+                    }],
+                },
+                {
+                    "mimeType": "message/rfc822",
+                    "parts": [{
+                        "mimeType": "text/plain",
+                        "headers": [{"name": "From", "value": "b@example.com"}],
+                        "body": {"data": base64.urlsafe_b64encode(b"Second fwd").decode()},
+                    }],
+                },
+            ],
+        }
+        messages = parse_forwarded_messages(payload)
+        assert len(messages) == 2
+        assert "First fwd" in messages[0].body_text
+        assert "Second fwd" in messages[1].body_text
