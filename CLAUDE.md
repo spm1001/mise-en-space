@@ -559,7 +559,7 @@ ParagraphElement types (from discovery doc):
 - `horizontalRule`, `pageBreak`, `columnBreak` — structural breaks
 - `equation` — math (currently just `[equation]` placeholder)
 - `autoText` — page numbers, dates
-- `person` — @mentions
+- `person` — `@mentions`
 - `richLink` — smart chips (Calendar, Sheets, etc.)
 - `dateElement` — date chips
 

@@ -154,3 +154,7 @@ MCP server startup is ~1.3s (import + first auth). After that, the server stays 
 
 Detailed timing data and flow diagrams: [`docs/information-flow.md`](docs/information-flow.md)
 
+## The Kitchen
+
+Mise en Space is part of [Batterie de Savoir](https://spm1001.github.io/batterie-de-savoir/) — a suite of tools for AI-assisted knowledge work. See the [full brigade and design principles](https://spm1001.github.io/batterie-de-savoir/) for how the tools fit together.
+
