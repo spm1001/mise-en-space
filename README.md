@@ -1,5 +1,10 @@
 # mise-en-space
 
+> **Status:** Beta — actively developed
+> **Works with:** Claude Code, Amp, Gemini CLI (any MCP client)
+> **Install:** Configure as MCP server (see below)
+> **Requires:** Python 3.11+, Google OAuth credentials
+
 An MCP sous-chef for Google Workspace that provides a *mise en place* for knowledge work. Peel and pith removed, everything prepped and in its place, ready for Claude to cook with.
 
 ## Why another tool for LLMs to use Google Workspace?
