@@ -371,8 +371,7 @@ def fetch_web_content(url: str, use_browser: bool = False) -> WebData:
         markdown, final_url = _fetch_with_passe(url)
         return WebData(
             url=url,
-            html='',  # No raw HTML — title extraction falls back to "web-page"
-            # TODO: Extract title from pre_extracted_content H1 (see mise-siJoRo children)
+            html='',  # No raw HTML — tool layer extracts title from H1 in pre_extracted_content
             final_url=final_url,
             status_code=200,  # Browser always returns rendered page
             content_type='text/html',

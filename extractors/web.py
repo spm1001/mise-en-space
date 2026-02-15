@@ -20,7 +20,13 @@ from models import WebData
 __all__ = [
     "extract_web_content",
     "extract_title",
+    "EXTRACTION_FAILED_CUE",
 ]
+
+# Cue marker written into stub content when all extraction methods fail.
+# tools/fetch/web.py matches this to set cues['extraction_failed'].
+# Shared constant so both layers stay in sync.
+EXTRACTION_FAILED_CUE = "*Content extraction failed for"
 
 
 # ============================================================================
@@ -450,7 +456,7 @@ def extract_web_content(data: WebData) -> str:
         data.warnings.append("All extraction methods returned empty content")
         # Return a minimal document with metadata
         title = extract_title(html)
-        return f"# {title or 'Untitled'}\n\n*Content extraction failed for {url}*\n"
+        return f"# {title or 'Untitled'}\n\n{EXTRACTION_FAILED_CUE} {url}*\n"
 
     # Post-process: restore code blocks with proper markdown fencing
     if code_blocks:

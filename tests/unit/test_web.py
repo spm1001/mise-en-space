@@ -1911,8 +1911,8 @@ class TestTitleExtractionWithPasse:
 
     @patch('tools.fetch.web.extract_web_content')
     @patch('tools.fetch.web.fetch_web_content')
-    def test_forced_browser_empty_html_falls_back_to_web_page(self, mock_fetch, mock_extract) -> None:
-        """Forced browser path: html='' → title falls back to 'web-page'."""
+    def test_forced_browser_extracts_title_from_h1(self, mock_fetch, mock_extract) -> None:
+        """Forced browser path: html='' → title extracted from H1 in pre_extracted_content."""
         from tools.fetch import fetch_web
 
         mock_fetch.return_value = WebData(
@@ -1928,8 +1928,7 @@ class TestTitleExtractionWithPasse:
 
         result = fetch_web("https://spa.example.com")
 
-        # No HTML → extract_title returns None → "web-page" fallback
-        assert result.metadata["title"] == "web-page"
+        assert result.metadata["title"] == "Great SPA App"
         mock_extract.assert_not_called()
 
     @patch('tools.fetch.web.extract_web_content')
@@ -1981,9 +1980,8 @@ class TestExtractionFailedStubConsistency:
 
         content = extract_web_content(web_data)
 
-        # This is the exact marker string that tools/fetch/web.py checks
-        CUE_MARKER = '*Content extraction failed for'
-        assert CUE_MARKER in content, (
-            f"Extractor stub no longer contains '{CUE_MARKER}'. "
-            f"Update tools/fetch/web.py:247 to match. Got: {content!r}"
+        from extractors.web import EXTRACTION_FAILED_CUE
+        assert EXTRACTION_FAILED_CUE in content, (
+            f"Extractor stub no longer contains '{EXTRACTION_FAILED_CUE}'. "
+            f"Both layers must use the shared constant. Got: {content!r}"
         )

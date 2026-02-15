@@ -3,6 +3,7 @@ Web content fetch — HTTP pages, web-hosted PDFs and Office files.
 """
 
 import hashlib
+import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -10,7 +11,7 @@ from urllib.parse import unquote, urlparse
 from adapters.office import extract_office_content, get_office_type_from_mime, OfficeType
 from adapters.pdf import extract_pdf_content
 from adapters.web import fetch_web_content
-from extractors.web import extract_web_content, extract_title
+from extractors.web import extract_web_content, extract_title, EXTRACTION_FAILED_CUE
 from models import MiseError, ErrorKind, FetchResult, WebData
 from workspace import get_deposit_folder, write_content, write_manifest
 
@@ -203,8 +204,21 @@ def fetch_web(url: str, base_path: Path | None = None) -> FetchResult:
     else:
         content = extract_web_content(web_data)
 
-    # Extract title for folder naming (from original HTML, or fallback)
-    title = extract_title(web_data.html) or "web-page"
+    # Extract title for folder naming
+    # Priority: HTML <title> → first H1 in pre-extracted content → URL-derived → fallback
+    title = extract_title(web_data.html)
+    if not title and web_data.pre_extracted_content:
+        h1_match = re.search(r'^#\s+(.+)', web_data.pre_extracted_content.lstrip(), re.MULTILINE)
+        if h1_match:
+            # Strip markdown link syntax: [text](url) → text
+            title = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', h1_match.group(1)).strip()
+    if not title:
+        # Try URL path as last resort before generic fallback
+        url_path = urlparse(url).path.rstrip('/')
+        if url_path and url_path != '/':
+            title = unquote(url_path.rsplit('/', 1)[-1]).replace('-', ' ').replace('_', ' ')
+    if not title:
+        title = "web-page"
 
     # Generate stable ID from URL for deduplication
     url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
@@ -244,7 +258,7 @@ def fetch_web(url: str, base_path: Path | None = None) -> FetchResult:
     cues = _build_cues(folder, warnings=web_data.warnings)
 
     # Signal extraction failure so callers can react (e.g. retry with browser)
-    if '*Content extraction failed for' in content:
+    if EXTRACTION_FAILED_CUE in content:
         cues['extraction_failed'] = True
 
     return FetchResult(

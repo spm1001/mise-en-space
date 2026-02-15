@@ -1612,7 +1612,7 @@ class TestFetchWeb:
     @patch("tools.fetch.web.write_content", return_value=Path("/tmp/web/content.md"))
     @patch("tools.fetch.web.write_manifest")
     def test_no_title_uses_fallback(self, mock_manifest, mock_write, mock_folder, mock_title, mock_extract, mock_fetch):
-        """Page with no extractable title uses 'web-page' fallback."""
+        """Page with no extractable title and root URL uses 'web-page' fallback."""
         mock_data = MagicMock(spec=WebData)
         mock_data.content_type = "text/html"
         mock_data.html = "<html></html>"
@@ -1621,11 +1621,104 @@ class TestFetchWeb:
         mock_data.warnings = []
         mock_data.raw_bytes = None
         mock_data.temp_path = None
+        mock_data.pre_extracted_content = None
         mock_fetch.return_value = mock_data
 
-        result = fetch_web("https://example.com")
+        result = fetch_web("https://example.com/")
 
         assert result.metadata["title"] == "web-page"
+
+    @patch("tools.fetch.web.fetch_web_content")
+    @patch("tools.fetch.web.extract_web_content")
+    @patch("tools.fetch.web.extract_title", return_value=None)
+    @patch("tools.fetch.web.get_deposit_folder", return_value=Path("/tmp/web"))
+    @patch("tools.fetch.web.write_content", return_value=Path("/tmp/web/content.md"))
+    @patch("tools.fetch.web.write_manifest")
+    def test_pre_extracted_h1_used_as_title(self, mock_manifest, mock_write, mock_folder, mock_title, mock_extract, mock_fetch):
+        """Browser-rendered page extracts title from first H1 in markdown."""
+        mock_data = MagicMock(spec=WebData)
+        mock_data.content_type = "text/html"
+        mock_data.html = ""
+        mock_data.final_url = "https://example.com/article"
+        mock_data.render_method = "passe"
+        mock_data.warnings = []
+        mock_data.raw_bytes = None
+        mock_data.temp_path = None
+        mock_data.pre_extracted_content = "# My Great Article\n\nSome content here."
+        mock_fetch.return_value = mock_data
+
+        result = fetch_web("https://example.com/article")
+
+        assert result.metadata["title"] == "My Great Article"
+
+    @patch("tools.fetch.web.fetch_web_content")
+    @patch("tools.fetch.web.extract_web_content")
+    @patch("tools.fetch.web.extract_title", return_value=None)
+    @patch("tools.fetch.web.get_deposit_folder", return_value=Path("/tmp/web"))
+    @patch("tools.fetch.web.write_content", return_value=Path("/tmp/web/content.md"))
+    @patch("tools.fetch.web.write_manifest")
+    def test_pre_extracted_h1_with_leading_whitespace(self, mock_manifest, mock_write, mock_folder, mock_title, mock_extract, mock_fetch):
+        """H1 extraction tolerates leading blank lines in passe output."""
+        mock_data = MagicMock(spec=WebData)
+        mock_data.content_type = "text/html"
+        mock_data.html = ""
+        mock_data.final_url = "https://example.com/article"
+        mock_data.render_method = "passe"
+        mock_data.warnings = []
+        mock_data.raw_bytes = None
+        mock_data.temp_path = None
+        mock_data.pre_extracted_content = "\n\n# Leading Whitespace Title\n\nContent."
+        mock_fetch.return_value = mock_data
+
+        result = fetch_web("https://example.com/article")
+
+        assert result.metadata["title"] == "Leading Whitespace Title"
+
+    @patch("tools.fetch.web.fetch_web_content")
+    @patch("tools.fetch.web.extract_web_content")
+    @patch("tools.fetch.web.extract_title", return_value=None)
+    @patch("tools.fetch.web.get_deposit_folder", return_value=Path("/tmp/web"))
+    @patch("tools.fetch.web.write_content", return_value=Path("/tmp/web/content.md"))
+    @patch("tools.fetch.web.write_manifest")
+    def test_pre_extracted_h1_strips_markdown_links(self, mock_manifest, mock_write, mock_folder, mock_title, mock_extract, mock_fetch):
+        """H1 with markdown link syntax extracts just the text."""
+        mock_data = MagicMock(spec=WebData)
+        mock_data.content_type = "text/html"
+        mock_data.html = ""
+        mock_data.final_url = "https://example.com/article"
+        mock_data.render_method = "passe"
+        mock_data.warnings = []
+        mock_data.raw_bytes = None
+        mock_data.temp_path = None
+        mock_data.pre_extracted_content = "# [My Article](https://example.com)\n\nContent."
+        mock_fetch.return_value = mock_data
+
+        result = fetch_web("https://example.com/article")
+
+        assert result.metadata["title"] == "My Article"
+
+    @patch("tools.fetch.web.fetch_web_content")
+    @patch("tools.fetch.web.extract_web_content", return_value="Content")
+    @patch("tools.fetch.web.extract_title", return_value=None)
+    @patch("tools.fetch.web.get_deposit_folder", return_value=Path("/tmp/web"))
+    @patch("tools.fetch.web.write_content", return_value=Path("/tmp/web/content.md"))
+    @patch("tools.fetch.web.write_manifest")
+    def test_url_path_used_as_title_fallback(self, mock_manifest, mock_write, mock_folder, mock_title, mock_extract, mock_fetch):
+        """No HTML title and no H1 → title derived from URL path."""
+        mock_data = MagicMock(spec=WebData)
+        mock_data.content_type = "text/html"
+        mock_data.html = "<html></html>"
+        mock_data.final_url = "https://example.com/my-great-article"
+        mock_data.render_method = "http"
+        mock_data.warnings = []
+        mock_data.raw_bytes = None
+        mock_data.temp_path = None
+        mock_data.pre_extracted_content = None
+        mock_fetch.return_value = mock_data
+
+        result = fetch_web("https://example.com/my-great-article")
+
+        assert result.metadata["title"] == "my great article"
 
     @patch("tools.fetch.web.fetch_web_content")
     @patch("tools.fetch.web.extract_web_content", return_value="Content")
