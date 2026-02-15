@@ -1430,14 +1430,32 @@ class TestFetchWebContentHTML:
             fetch_web_content("https://protected.example.com")
         assert exc_info.value.kind == ErrorKind.CAPTCHA
 
+    @patch("adapters.web._is_passe_available", return_value=False)
     @patch("adapters.web.httpx.Client")
-    def test_auth_401_raises(self, mock_client_cls) -> None:
+    def test_auth_401_raises_with_passe_hint(self, mock_client_cls, _passe) -> None:
         mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.return_value = _mock_response(status_code=401)
 
         with pytest.raises(MiseError) as exc_info:
             fetch_web_content("https://private.example.com")
         assert exc_info.value.kind == ErrorKind.AUTH_REQUIRED
+        assert "passe" in str(exc_info.value.message).lower()
+
+    @patch("adapters.web._fetch_with_passe")
+    @patch("adapters.web._is_passe_available", return_value=True)
+    @patch("adapters.web.httpx.Client")
+    def test_auth_403_falls_back_to_passe(self, mock_client_cls, _passe, mock_passe_fetch) -> None:
+        """403 with passe available → auto-fallback to browser."""
+        mock_client = _wire_httpx_client(mock_client_cls)
+        mock_client.get.return_value = _mock_response(status_code=403)
+        mock_passe_fetch.return_value = ("# Protected Content\n\nNow visible.", "https://private.example.com")
+
+        result = fetch_web_content("https://private.example.com")
+
+        assert result.render_method == "passe"
+        assert result.pre_extracted_content == "# Protected Content\n\nNow visible."
+        assert any("403" in w for w in result.warnings)
+        assert any("browser" in w.lower() for w in result.warnings)
 
     @patch("adapters.web.httpx.Client")
     def test_paywall_raises(self, mock_client_cls) -> None:

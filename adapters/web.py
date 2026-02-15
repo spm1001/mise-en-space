@@ -476,10 +476,28 @@ def fetch_web_content(url: str, use_browser: bool = False) -> WebData:
             f"CAPTCHA detected at {final_url}. Needs human intervention."
         )
 
-    # Check for auth requirement
+    # Check for auth requirement — try browser fallback before giving up
     auth_error = _detect_auth_required(response, html)
     if auth_error:
-        raise MiseError(ErrorKind.AUTH_REQUIRED, auth_error)
+        if _is_passe_available():
+            warnings.append(f"{auth_error} — falling back to browser (Chrome session may have access)")
+            markdown, passe_final_url = _fetch_with_passe(url)
+            return WebData(
+                url=url,
+                html=html,
+                final_url=passe_final_url,
+                status_code=200,
+                content_type='text/html',
+                cookies_used=True,
+                render_method='passe',
+                warnings=warnings,
+                pre_extracted_content=markdown,
+            )
+        raise MiseError(
+            ErrorKind.AUTH_REQUIRED,
+            f"{auth_error}. URL may require browser auth — try `passe read` with Chrome Debug, "
+            f"or `mise fetch` with `use_browser=True` if passe is available."
+        )
 
     # Check if content needs browser rendering
     if _needs_browser_rendering(html):
