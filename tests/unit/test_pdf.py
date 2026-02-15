@@ -12,6 +12,7 @@ from adapters.pdf import (
     PdfExtractionResult,
     DEFAULT_MIN_CHARS_THRESHOLD,
     STREAMING_THRESHOLD_BYTES,
+    _looks_like_flattened_tables,
 )
 from adapters.drive import STREAMING_THRESHOLD_BYTES as DRIVE_STREAMING_THRESHOLD
 from tools.fetch import fetch_pdf
@@ -430,13 +431,11 @@ class TestConvertViaDriveValidation:
 
 
 class TestFlattenedTableDetection:
-    """Tests for flattened PDF table detection using real fixture.
+    """Tests for _looks_like_flattened_tables() heuristic.
 
-    The fixture is markitdown output from a media rate-card PDF — dense
-    CPM/VPMC/CPV tables flattened into disconnected numbers with no structure.
-    Names, programmes, and channel codes are sanitized; statistical profile
-    preserved. Tests validate the fixture matches what the heuristic
-    (mise-cibufu) will detect.
+    Uses a real fixture (sanitized media rate-card) plus synthetic content
+    to verify detection triggers on flattened data and doesn't false-positive
+    on prose, code, poetry, numbered lists, or short content.
     """
 
     @pytest.fixture
@@ -445,45 +444,128 @@ class TestFlattenedTableDetection:
         path = FIXTURES_DIR / "pdf" / "flattened_table_rate_card.txt"
         return path.read_text()
 
-    @pytest.fixture
-    def rate_card_lines(self, rate_card_content: str) -> list[str]:
-        """Non-empty lines from the fixture."""
-        return [ln for ln in rate_card_content.splitlines() if ln.strip()]
+    # --- Real fixture: should trigger ---
 
-    def test_fixture_exists_and_has_content(self, rate_card_content: str) -> None:
-        """Fixture file exists and contains substantial content."""
-        assert len(rate_card_content) > 4000
-        lines = [ln for ln in rate_card_content.splitlines() if ln.strip()]
-        assert len(lines) > 200
+    def test_fixture_detected_as_flattened(self, rate_card_content: str) -> None:
+        """Real rate-card fixture triggers the heuristic."""
+        assert _looks_like_flattened_tables(rate_card_content)
 
-    def test_passes_char_count_gate(self, rate_card_content: str) -> None:
-        """Content passes the existing char-count gate (>= 500 chars).
-
-        This is the whole problem: markitdown produces enough chars to pass
-        the threshold, but the content is structurally useless.
-        """
+    def test_fixture_passes_char_count_gate(self, rate_card_content: str) -> None:
+        """Fixture passes the char-count gate — that's the whole problem."""
         assert len(rate_card_content.strip()) >= DEFAULT_MIN_CHARS_THRESHOLD
 
-    def test_high_short_line_ratio(self, rate_card_lines: list[str]) -> None:
-        """60%+ of lines are 1-3 tokens (one table cell per line)."""
-        short = sum(1 for ln in rate_card_lines if len(ln.split()) <= 3)
-        ratio = short / len(rate_card_lines)
-        assert ratio >= 0.60, f"short_ratio={ratio:.2f}, expected >= 0.60"
+    # --- Synthetic: should trigger ---
 
-    def test_low_sentence_ratio(self, rate_card_lines: list[str]) -> None:
-        """Almost no lines with 6+ tokens (no prose paragraphs)."""
-        sentences = sum(1 for ln in rate_card_lines if len(ln.split()) >= 6)
-        ratio = sentences / len(rate_card_lines)
-        assert ratio <= 0.10, f"sentence_ratio={ratio:.2f}, expected <= 0.10"
+    def test_synthetic_flattened_data(self) -> None:
+        """Synthetic flattened table data triggers detection."""
+        lines = []
+        for i in range(50):
+            lines.extend([
+                "Channel A",
+                f"{i * 100 + 50}",
+                f"£{i * 10:.2f}",
+                "Peak",
+            ])
+        content = "\n".join(lines)
+        assert _looks_like_flattened_tables(content)
 
-    def test_high_numeric_ratio(self, rate_card_lines: list[str]) -> None:
-        """15%+ of lines are data values containing digits."""
-        numeric = sum(1 for ln in rate_card_lines if re.search(r"\d", ln))
-        ratio = numeric / len(rate_card_lines)
-        assert ratio >= 0.15, f"numeric_ratio={ratio:.2f}, expected >= 0.15"
+    # --- Should NOT trigger ---
 
-    def test_no_table_syntax(self, rate_card_content: str) -> None:
-        """No markdown table pipes — markitdown didn't produce table syntax."""
-        lines_with_pipes = [ln for ln in rate_card_content.splitlines()
-                           if "|" in ln and ln.strip().startswith("|")]
-        assert len(lines_with_pipes) == 0
+    def test_normal_prose(self) -> None:
+        """Normal text paragraphs don't trigger."""
+        lines = [
+            "The quarterly revenue report shows strong growth across all regions.",
+            "European markets performed particularly well in the second quarter.",
+            "The Asia-Pacific region saw a 15% increase in customer acquisition rates.",
+            "Management expects continued momentum through the remainder of the fiscal year.",
+            "Key performance indicators remain above target for most business units.",
+        ] * 10
+        assert not _looks_like_flattened_tables("\n".join(lines))
+
+    def test_code_content(self) -> None:
+        """Source code doesn't trigger (mixed line lengths, low numeric)."""
+        lines = [
+            "def process_data(input_file: str) -> dict:",
+            '    """Process the input data file."""',
+            '    with open(input_file, "r") as f:',
+            "        data = json.load(f)",
+            "    results = {}",
+            "    for key, value in data.items():",
+            "        results[key] = transform(value)",
+            "    return results",
+            "",
+            "class DataProcessor:",
+            '    """Handles data transformation pipeline."""',
+            "",
+            "    def __init__(self, config: Config):",
+            "        self.config = config",
+            "        self.logger = logging.getLogger(__name__)",
+        ] * 5
+        assert not _looks_like_flattened_tables("\n".join(lines))
+
+    def test_poetry(self) -> None:
+        """Poetry has high short_ratio but very low numeric_ratio."""
+        lines = [
+            "Shall I compare",
+            "thee to a",
+            "summer's day?",
+            "Thou art more",
+            "lovely and",
+            "more temperate",
+            "Rough winds do",
+            "shake the",
+            "darling buds",
+            "of May",
+        ] * 5
+        assert not _looks_like_flattened_tables("\n".join(lines))
+
+    def test_numbered_list(self) -> None:
+        """Numbered lists have digits but high sentence_ratio."""
+        lines = [
+            f"{i}. This is a detailed action item that describes what needs to happen next in the project."
+            for i in range(1, 30)
+        ]
+        assert not _looks_like_flattened_tables("\n".join(lines))
+
+    def test_short_content_skipped(self) -> None:
+        """Content with fewer than 20 non-empty lines is skipped."""
+        lines = ["100", "200", "Channel A"] * 5  # 15 lines
+        assert not _looks_like_flattened_tables("\n".join(lines))
+
+    def test_markdown_table_syntax_skipped(self) -> None:
+        """Content with markdown table pipes is skipped (structure preserved)."""
+        lines = [
+            "| Channel | CPM | Rate |",
+            "|---------|-----|------|",
+        ]
+        lines.extend([f"| Ch{i} | {i*100} | £{i*10} |" for i in range(30)])
+        assert not _looks_like_flattened_tables("\n".join(lines))
+
+    # --- Integration: extract_pdf_content triggers Drive fallback ---
+
+    @patch("adapters.pdf.convert_via_drive")
+    @patch("adapters.pdf._extract_with_markitdown")
+    def test_flattened_content_triggers_drive_fallback(
+        self,
+        mock_markitdown: MagicMock,
+        mock_convert: MagicMock,
+    ) -> None:
+        """Markitdown content above char threshold but flattened triggers Drive."""
+        # Build flattened content above char threshold
+        lines = []
+        for i in range(80):
+            lines.extend(["Channel", f"{i * 100}", f"£{i:.2f}"])
+        mock_markitdown.return_value = "\n".join(lines)
+
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="| Channel | CPM |\n|---------|-----|\n| A | 100 |",
+            temp_file_deleted=True,
+            warnings=[],
+        )
+
+        result = extract_pdf_content(b"%PDF-test", "file123")
+
+        assert result.method == "drive"
+        assert any("flattened tables" in w for w in result.warnings)
+        mock_convert.assert_called_once()

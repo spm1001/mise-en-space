@@ -78,7 +78,7 @@ disallow_untyped_defs = true
 ignore_missing_imports = true
 
 [tool.inline-snapshot]
-format-command = "ruff format --stdin-filename {file}"
+format-command = "ruff format --stdin-filename {filename}"
 
 [tool.uv.sources]
 itv-google-auth = { git = "https://github.com/spm1001/itv-google-auth.git" }

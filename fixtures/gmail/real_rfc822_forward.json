@@ -1,0 +1,1807 @@
+{
+  "id": "19be751b24c9609a",
+  "historyId": "22519749",
+  "messages": [
+    {
+      "id": "19bfefd5759b28e6",
+      "threadId": "19be751b24c9609a",
+      "labelIds": [
+        "IMPORTANT",
+        "CATEGORY_PERSONAL"
+      ],
+      "snippet": "Hi Will, We did some digging and found the PoC and Proposal we did for you back in late 2024\u2026 Attached here with the comms for convenience. I think the method would be broadly unchanged today; we can",
+      "payload": {
+        "partId": "",
+        "mimeType": "multipart/mixed",
+        "filename": "",
+        "headers": [
+          {
+            "name": "Delivered-To",
+            "value": "alice@example.com"
+          },
+          {
+            "name": "Received",
+            "value": "by 2002:a05:640c:f56:b0:256:ed7b:b1f1 with SMTP id c22csp2133777eiw;        Tue, 27 Jan 2026 02:26:16 -0800 (PST)"
+          },
+          {
+            "name": "X-Forwarded-Encrypted",
+            "value": "i=3; AJvYcCWmuFDTI8siyAPNczPz9l8StDy/Y17+drvs0s7u2Y3D3ylV5eS8Jvlz+gmlI7tSceoBx2g4oym5epNyB2I=@example.org"
+          },
+          {
+            "name": "X-Received",
+            "value": "by 2002:a05:600c:64ce:b0:45c:4470:271c with SMTP id 5b1f17b1804b1-48069c8c59dmr14714445e9.18.1769509574638;        Tue, 27 Jan 2026 02:26:14 -0800 (PST)"
+          },
+          {
+            "name": "ARC-Seal",
+            "value": "i=2; a=rsa-sha256; t=1769509574; cv=pass;        d=google.com; s=arc-20240605;        b=TiTvILHSa9Bfa7cyLg9YZ4Cjgg8Bdj7z48gUhzaE5ZS9fm+gap3vzp/AOGeP++BRIx         BPOtNQFAcllVsEq21TuQLenn37Qsej2r4lcXM8wac3o+5ulr0bPXmJc0I4UTYB4nBjV3         vXkxU0uVzI0z/yK77UsuVpbXDgoYWZzIUOXsjMOvBtxRUQUaTTBuewDU2yXRoYMDsCsj         31EfmvhYpuQO5eWAYZWqnbpMuDSDn+RJ+KlIq0CY2Eq5OIQaThX1knZxN3zvh14napIc         IzzQV60ZpgFgTsxgieFaYRTwpYkI1Dk+TIfSpFtRVUssHPpLRlPSLJkQEU0wBod+oXCx         uDuQ=="
+          },
+          {
+            "name": "ARC-Message-Signature",
+            "value": "i=2; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;        h=mime-version:authentication-results-original:msip_labels         :content-language:accept-language:in-reply-to:references:message-id         :date:thread-index:thread-topic:subject:to:from:dkim-signature;        bh=yZxd1CxW/mzL4rBzv2xFWHqAxAiVKz5f6ngqM/CwHX0=;        fh=y2QIPAtqyjCdH4q7SCpRu9/NEoHgRDVGraX3K8zqXDU=;        b=Y576a5BeFwL3tWFGmKhrLriEa1Y7z2IOxAXaFlwuZ8C7ZPL2BtWZ1pb8pW9Mw+25hj         r9ESwgPOXM41Y3konXY+JQ1OTzYjsWCP068hlcpSevy1uLRhfruhmDq1OmeiGjJJUwT9         UnAL9ZZc78O011Oq/0LdpvD41kBJMTcys7/TqmymbLRXP8Z2Jj2oUp+duWvN/ndTw3+V         2a/9rwvYix4m32g2YS8EV7XHmuv59gqzx6qCnwPyi41W9VEfz7E+FdGaLcTyweKBKNrI         eyquZVqA0PlcvuIifuyszAAGO1Wa5OpW8QBUiB7yR5u9Y9Y4z49nQrFrgShnWjj6NL/J         MVkQ==;        dara=google.com"
+          },
+          {
+            "name": "ARC-Authentication-Results",
+            "value": "i=2; mx.google.com;       dkim=pass header.i=@trpresearch.com header.s=selector1 header.b=\"Ju/6+SO8\";       arc=pass (i=1);       spf=pass (google.com: domain of bob@example.com designates 2a01:111:f403:c205::5 as permitted sender) smtp.mailfrom=bob@example.com;       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=trpresearch.com"
+          },
+          {
+            "name": "Return-Path",
+            "value": "<bob@example.com>"
+          },
+          {
+            "name": "Received",
+            "value": "from LO0P265CU003.outbound.protection.outlook.com (mail-uksouthazlp170120005.outbound.protection.outlook.com. [2a01:111:f403:c205::5])        by mx.google.com with ESMTPS id 41be03b00d2f7-c635a3fea20si18579512a12.221.2026.192.0.2.1.12        for <alice@example.com>        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);        Tue, 27 Jan 2026 02:26:14 -0800 (PST)"
+          },
+          {
+            "name": "Received-SPF",
+            "value": "pass (google.com: domain of bob@example.com designates 2a01:111:f403:c205::5 as permitted sender) client-ip=2a01:111:f403:c205::5;"
+          },
+          {
+            "name": "Authentication-Results",
+            "value": "mx.google.com;       dkim=pass header.i=@trpresearch.com header.s=selector1 header.b=\"Ju/6+SO8\";       arc=pass (i=1);       spf=pass (google.com: domain of bob@example.com designates 2a01:111:f403:c205::5 as permitted sender) smtp.mailfrom=bob@example.com;       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=trpresearch.com"
+          },
+          {
+            "name": "ARC-Seal",
+            "value": "i=1; a=rsa-sha256; s=arcselector10001; d=microsoft.com; cv=none; b=m3w0FZgGwbEkjssEsFcqG+aegnf9e1NpbDQWUTT3RnB6vBbdbrD2mOnXe8qAAiEmPBuw5bmdfy1ASPEheQMrZ6+FkSRNumdjg2qt6d2WlkATWlSgJs18f1v1nKdZOXaPyNkG2K4RsKRJy2WFM28cGBTJXmiLEM/Ek1/RMLctkyFbjiMvSgdJrhsskLGypFeDd5kyjNbKRPDL/RjeQeOMjvZ+0GKz/1g6UwRr6217UXSmPb9NHdsKAfD3WdOgbXYBPgQgO4HgiraDpbOqHIbUwf6WKPQmEW52Ah8YZ1xSd869lTSQQDETSgBUdvGG0FDQp4RgswoX9fD9brZ0y0ft8A=="
+          },
+          {
+            "name": "ARC-Message-Signature",
+            "value": "i=1; a=rsa-sha256; c=relaxed/relaxed; d=microsoft.com; s=arcselector10001; h=From:Date:Subject:Message-ID:Content-Type:MIME-Version:X-MS-Exchange-AntiSpam-MessageData-ChunkCount:X-MS-Exchange-AntiSpam-MessageData-0:X-MS-Exchange-AntiSpam-MessageData-1; bh=yZxd1CxW/mzL4rBzv2xFWHqAxAiVKz5f6ngqM/CwHX0=; b=xnBMQ5puDTFHM9j42Ahkw1GYnEyza6EI4Ey5I+ebMDGN6K+KhllO6krDPM2nPSixt4q0K3GLmJeYVldIzUx09+YOe78SKfUvS9aKpqlAjrnG2LN7vTkxdvNZlXo2PnlQBpp2LhQGrjB7OH5WDwGT+SjkXFESYEBmon35ru7fZ2oiRvZ5iYYkg7SLysF2jsEhw4t0TJn2lUZAdG1gfgSgiKy3hEbVfqSjaTfbiK9ezxqnfAK31TtL8j2hhd395nkB8mls3jtxrbZUh1Fg5M2WA7wk3WJgvXb4scpJtYXVrXQ0DcpojltWNPEF9Q01eSEg/DhqTcF3E+pS4WBO9p0+cQ=="
+          },
+          {
+            "name": "ARC-Authentication-Results",
+            "value": "i=1; mx.microsoft.com 1; spf=softfail (sender ip is 192.0.2.1) smtp.rcpttodomain=system1group.com smtp.mailfrom=trpresearch.com; dmarc=fail (p=none sp=none pct=100) action=none header.from=trpresearch.com; dkim=none (message not signed); arc=none (0)"
+          },
+          {
+            "name": "DKIM-Signature",
+            "value": "v=1; a=rsa-sha256; c=relaxed/relaxed; d=trpresearch.com; s=selector1; h=From:Date:Subject:Message-ID:Content-Type:MIME-Version:X-MS-Exchange-SenderADCheck; bh=yZxd1CxW/mzL4rBzv2xFWHqAxAiVKz5f6ngqM/CwHX0=; b=Ju/6+SO8xds3c1rBgGpL3JZh41l8OVtSZQc0bCI1KsrEraqf8lkOsMEIHlcnSHPfsRjS37wi5PES3Nf/7RLLHXmLKIwTRmmXbXiu7D7xQnun9oWwnn055zlhzyCm4OacY07ZYD8EfgBLfFKn0Rxudr+mT41uSQ+vVIH33PJ9XgQ="
+          },
+          {
+            "name": "Received",
+            "value": "from CWLP265CA0407.GBRP265.PROD.OUTLOOK.COM (2603:10a6:400:1b6::20) by CWLP123MB2801.GBRP123.PROD.OUTLOOK.COM (2603:10a6:400:51::12) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.9542.11; Tue, 27 Jan 2026 10:26:03 +0000"
+          },
+          {
+            "name": "Received",
+            "value": "from CW2PEPF000056BD.GBRP265.PROD.OUTLOOK.COM (2603:10a6:400:1b6:cafe::47) by CWLP265CA0407.outlook.office365.com (2603:10a6:400:1b6::20) with Microsoft SMTP Server (version=TLS1_3, cipher=TLS_AES_256_GCM_SHA384) id 15.20.9542.16 via Frontend Transport; Tue, 27 Jan 2026 10:26:03 +0000"
+          },
+          {
+            "name": "X-MS-Exchange-Authentication-Results",
+            "value": "spf=softfail (sender IP is 192.0.2.1) smtp.mailfrom=trpresearch.com; dkim=none (message not signed) header.d=none;dmarc=fail action=none header.from=trpresearch.com;"
+          },
+          {
+            "name": "Received-SPF",
+            "value": "SoftFail (protection.outlook.com: domain of transitioning trpresearch.com discourages use of 192.0.2.1 as permitted sender)"
+          },
+          {
+            "name": "Received",
+            "value": "from uk1.smtp.exclaimer.net (192.0.2.1) by CW2PEPF000056BD.mail.protection.outlook.com (192.0.2.1) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.9564.3 via Frontend Transport; Tue, 27 Jan 2026 10:26:03 +0000"
+          },
+          {
+            "name": "Received",
+            "value": "from CWXP265CU010.outbound.protection.outlook.com (192.0.2.1) by\t uk1.smtp.exclaimer.net (192.0.2.1) with Exclaimer Signature Manager\t ESMTP Proxy uk1.smtp.exclaimer.net (tlsversion=TLS12,\t tlscipher=TLS_DIFFIEHELLMAN_WITH_AES256_NONE); Tue, 27 Jan 2026 10:26:03\t +0000"
+          },
+          {
+            "name": "X-ExclaimerHostedSignatures-MessageProcessed",
+            "value": "true"
+          },
+          {
+            "name": "X-ExclaimerProxyLatency",
+            "value": "6481881"
+          },
+          {
+            "name": "X-ExclaimerImprintLatency",
+            "value": "2801374"
+          },
+          {
+            "name": "X-ExclaimerImprintAction",
+            "value": "2ca95481d5044226854afb63129b7573"
+          },
+          {
+            "name": "Received",
+            "value": "from LO0P123MB6233.GBRP123.PROD.OUTLOOK.COM (2603:10a6:600:262::10) by LO3P123MB2969.GBRP123.PROD.OUTLOOK.COM (2603:10a6:600:b5::12) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.9542.15; Tue, 27 Jan 2026 10:25:55 +0000"
+          },
+          {
+            "name": "Received",
+            "value": "from LO0P123MB6233.GBRP123.PROD.OUTLOOK.COM ([fe80::1b34:91c1:ebe4:cfea]) by LO0P123MB6233.GBRP123.PROD.OUTLOOK.COM ([fe80::1b34:91c1:ebe4:cfea%6]) with mapi id 15.20.9542.010; Tue, 27 Jan 2026 10:25:55 +0000"
+          },
+          {
+            "name": "From",
+            "value": "Alice Smith <bob@example.com>"
+          },
+          {
+            "name": "To",
+            "value": "Alice Brown <carol@example.com>, Bob Jones <alice@example.com>, Eve Davis <Alice@example.com>, Carol Davidiams <eve@example.com>, Alice Smith <alice@example.com>, Alice Brown <bob@example.com>, Bob Jones <carol@example.com>"
+          },
+          {
+            "name": "Subject",
+            "value": "RE: Clock numbers"
+          },
+          {
+            "name": "Thread-Topic",
+            "value": "Clock numbers"
+          },
+          {
+            "name": "Thread-Index",
+            "value": "AQHci9tngRjrzrTXSU2/iEYw5oeXa7VfopkQgAT6tICAADCCoIAA/ZwAgAAKdNA="
+          },
+          {
+            "name": "Date",
+            "value": "Tue, 27 Jan 2026 10:25:55 +0000"
+          },
+          {
+            "name": "Message-ID",
+            "value": "<Alice@example.com>"
+          },
+          {
+            "name": "References",
+            "value": "<CA+S=eve@example.com> <alice@example.com> <bob@example.com> <carol@example.com> <Alice@example.com>"
+          },
+          {
+            "name": "In-Reply-To",
+            "value": "<Alice@example.com>"
+          },
+          {
+            "name": "Accept-Language",
+            "value": "en-US"
+          },
+          {
+            "name": "Content-Language",
+            "value": "en-US"
+          },
+          {
+            "name": "X-MS-Has-Attach",
+            "value": "yes"
+          },
+          {
+            "name": "X-MS-TNEF-Correlator",
+            "value": ""
+          },
+          {
+            "name": "msip_labels",
+            "value": "MSIP_Label_defa4170-0d19-0005-0004-bc88714345d2_ActionId=011c3353-4ce3-4c5e-9034-2d4ec7079e33;MSIP_Label_defa4170-0d19-0005-0004-bc88714345d2_ContentBits=0;MSIP_Label_defa4170-0d19-0005-0004-bc88714345d2_Enabled=true;MSIP_Label_defa4170-0d19-0005-0004-bc88714345d2_Method=Standard;MSIP_Label_defa4170-0d19-0005-0004-bc88714345d2_Name=defa4170-0d19-0005-0004-bc88714345d2;MSIP_Label_defa4170-0d19-0005-0004-bc88714345d2_SetDate=2026-01-23T11:41:04Z;MSIP_Label_defa4170-0d19-0005-0004-bc88714345d2_SiteId=c0d58682-0b7a-4cb5-b1ee-2bd5e6c7dd4a;MSIP_Label_defa4170-0d19-0005-0004-bc88714345d2_Tag=10, 3, 0, 1;"
+          },
+          {
+            "name": "Authentication-Results-Original",
+            "value": "dkim=none (message not signed) header.d=none;dmarc=none action=none header.from=trpresearch.com;"
+          },
+          {
+            "name": "x-ms-traffictypediagnostic",
+            "value": "LO0P123MB6233:EE_|LO3P123MB2969:EE_|CW2PEPF000056BD:EE_|CWLP123MB2801:EE_"
+          },
+          {
+            "name": "X-MS-Office365-Filtering-Correlation-Id",
+            "value": "905099b4-81da-40fe-1d2c-08de5d8e7957"
+          },
+          {
+            "name": "X-MS-Exchange-SenderADCheck",
+            "value": "1"
+          },
+          {
+            "name": "X-MS-Exchange-AntiSpam-Relay",
+            "value": "0"
+          },
+          {
+            "name": "X-Microsoft-Antispam-Untrusted",
+            "value": "BCL:0;ARA:13230040|366016|1800799024|376014|69100299015|4013099003|8096899003|13003099007|7053199007|38070700021;"
+          },
+          {
+            "name": "X-Microsoft-Antispam-Message-Info-Original",
+            "value": "Emjd//uIXoapbaaJkcu9SgIytDTtCGc3yaSpX3Ncbk+VLfbdkIUgyte9Q1bp7hKM3Fk8eT58E5+qlEF5uz+cYWOPWECUBS/8pi4q3zhg/EYeRixHP/9rDNQ65FL6zW83KXKXzwQf+8fk+DWNAe6ruSkrBBLjtByiMcbqNfkBiSKk51Rei4E9szH8+jStCt9uaAPapKvuP0Uch7FcA40T8UecJyiK4mLXYBDqorzgtFds2higw5LOFYvp/yGQCF7DlZLp4tfoVhedutwOytvQqPguHk2JtMu82VXVLXKniBq3qAyJjNExVSzer3DZqyANinj6zzSDFqYOes0+f6nV4HY/3ink4bci1ZJsF08eLEsBsYLbh7RUCCGDbbSWwsggShCNK+d5Sl1kOPoriZdTSzuCewh4sKYRcuYS0BpSRet6nAAl726Lyf8b0duO3KVJGd4FD8hIr8tgNwTDKONCFZHJwc41UJulnGBE8NViJ64EatBBk/mzW9tsXvFBdHsetTz7Ondqq1xl502zvyBTtBYJTFoQhcAPUP1437DFavnFy5R661Ey/daZklqhX0QMiIxhnG2DgI4sHOSseJRWrX7TN7eDCwaylXf7gKqTF+zyMca3KpyiFB3cff8eWlkbADGUvABoZ7bM4T1UNfRVxvIAFlM4XoKpgf+AdBrMKBzgKquUySIp1s7SduEFUoMXB0xuQQ18wQKkf52eIjY0UEVtoUTfNeucKv6Zo0310HemE8l7HxCknm0c3yXDC3a/hhZwsXKUzEVHzaVn5opcipeTWqKbr1XHuzEWyaFHFJOeanf4oCewxzICdgahI5eCU3Vm1+ZZQRMawS8UDBeP09jvndC7dHgpZcFYx9YB+3CgDtNb47SlBGbXghV19f+52d5ZfWtAsRHm07t6WL10xl3PxuIRV1znFw/pCzCGeIC71VG0fsipqbAF2Rn5eGEMpuJLxIX7LI7rEqnsa7eySw73P44NCwPKLY3j/MH1qzTOO9RWERoRF46RNK4enTNknCvEGsRZ2FhfvqbP8v01OEoCmYIGOU18tHPtHfxDemcVmr/dse6VSQeg1f1n9txtr2kh/Zq8BiIPF8l0CsyGJkp6kkcalObdHZwyfmmsFM9FCeanFF1DhGAUR2eaL+6Cs2XpVocsrhI4rV6xHwxFmVY5QaJGhNa3yPA5JGgsKl30ytgxLi0kq5zaFi5o1wh94slMhoRz9WLLk52l0GS76QrqrdwqW3TnE6RviDNbZMjbZuLdFWgEz7507sK+ckxCrT5z1REgbfNoSVOKQ/qpIn6CfXSf23rfZJtxZOqlpGbQfQXNcJeAMOEZndcbZJv9y4BiySP6LJe9m2QyxRPj+AsZjPssrTFQ23ULkQ8RfaY8dVFLBrSmRxlA3uBVViB89k1ax6UofKpXwqmGGlrSQ0MFcoqS0ZVw0XRdbTEfqElO8kOsTblo5tjFNyQGUmSi3H9MVbnS9eTFTAUzsNUZH9ABee/apYppeZJ9rwE9PsA="
+          },
+          {
+            "name": "X-Forefront-Antispam-Report-Untrusted",
+            "value": "CIP:192.0.2.1;CTRY:;LANG:en;SCL:1;SRV:;IPV:NLI;SFV:NSPM;H:LO0P123MB6233.GBRP123.PROD.OUTLOOK.COM;PTR:;CAT:NONE;SFS:(13230040)(366016)(1800799024)(376014)(69100299015)(4013099003)(8096899003)(13003099007)(7053199007)(38070700021);DIR:OUT;SFP:1102;"
+          },
+          {
+            "name": "Content-Type",
+            "value": "multipart/mixed; boundary=\"_024_LO0P123MB62338DF24942EF0AE581C47CA490ALO0P123MB6233GBRP_\""
+          },
+          {
+            "name": "MIME-Version",
+            "value": "1.0"
+          },
+          {
+            "name": "X-MS-Exchange-Transport-CrossTenantHeadersStamped",
+            "value": "LO3P123MB2969"
+          },
+          {
+            "name": "Return-Path",
+            "value": "bob@example.com"
+          },
+          {
+            "name": "X-EOPAttributedMessage",
+            "value": "0"
+          },
+          {
+            "name": "X-MS-Exchange-Transport-CrossTenantHeadersStripped",
+            "value": "CW2PEPF000056BD.GBRP265.PROD.OUTLOOK.COM"
+          },
+          {
+            "name": "X-MS-PublicTrafficType",
+            "value": "Email"
+          },
+          {
+            "name": "X-MS-Office365-Filtering-Correlation-Id-Prvs",
+            "value": "88b05718-af5b-4c4b-7805-08de5d8e74aa"
+          },
+          {
+            "name": "X-Microsoft-Antispam",
+            "value": "BCL:0;ARA:13230040|82310400026|14060799003|1800799024|35042699022|376014|36860700013|69100299015|8096899003|13003099007;"
+          },
+          {
+            "name": "X-Microsoft-Antispam-Message-Info",
+            "value": "jKKEMSMsAh4brI/sTL7VXQZlklM9Uf/qu4NUgPNGNXDEBmKmzMm0pM24T6ckVhP4GRAc7QpvFmV2iM38qOPOBInyn7MoA9BGGdZoK5JkoXVQkK5987UPMoWHuP8btpJGpBsqO8qpbcqpnP5/iz0O/Yxn5CAJclzsVBWrzLl+I37Zk48Iel0JUYcg80sDj3nphbNgMTdMtKgCmVIRqqeLaUQ+VtK18ZGK4ZXCVg5J+y0l1joxHlcL29KqpG4m2/uWd6VavJaQUBc6elIrfzUp81giWKtiBUPPOyb6/Tos0dlionBVgb2a6nlZY5KnWVd5PVzgoMfBxfOZ4GCpwc7cx82mjNaNQKxZbPlUNPNbpft6ewuWfFarXiIngLdNVxcsNVZmcJP1X8MuWcu5BWg959Lin0GEZSE2ShpUVIS3TXmK/nfS4WWGN1ICaL3Vlt7AkCkFaYza8lGUgP8/ab0Fqv5eINc6PAFYLi4FV28Oj81G7x7sZZknDGikA2plAXrCMvgTbAaK4ICxyQrj7LPgGKaAwSA2fP9ArN7U6tYMSgiKFKy5PnMhnqsJWIqfVawjaqJlw+deFAmHf46HcaNku+ZHXCwvQd0j5CNhWBUqg4ZQT0HoMyhpTMZxX2i+zDpnHNig09lEb5CCOQrEQFQZ5MCha3da5e5o4mtgCo8qYlxmzJpftg160TJt60hizYFE/uuYKBtw69UeddUNZM1c95D7QAixyT/10zWStvGhgIjwV2c+GoiEOIacUQpDJfXC5hWwm0OvVdVr0MQg8mMTwgkF+Vx1Fg4RRHz157DJsd4Ovq+XIryNUea4XvBnC1xJU6CCxRCD1ojEO7MthyuLbpu0YwBfy4GY5vVayF/Cg2CGCZdUKt2/MiQsK6UC5SsCIDWvy0EFyc3RRThYXZ3xdxyiTnTgIl9Fdvq942wLHg/nekFjAMH6IvGy395zVJxpyeqqH/VkXRl3n5kkpZWMxIvnLOpXAiGYFJkIRB52LcZWJ8/vZByTJVuvMbR66PO8eg8xGM+jeLk1MW8GTjt34ZEjx/uy+YMUbV2g8d+dwin7yi7cO0+vNnEe0oaTw0VxQZRcuG60Vgyo7mwGuvNXtd4NHmpR9WfgSpNujTGNINX5aTT07BGqhCpudybw+nd2AokBjbS2Z0rjWfDDCdUtlh/DJu0RZl8hlHkZl2P9xr8JQBwZOBkrXDMirtDbC4d3FaayFEokCsgETNaJzmLX1Suhy26T4eoOJRuUqmS4RfgZzEQvdmI/XG8bnkdG7oF1nG8MBdnfVcsHzRS96bM+Lbrb9+QiNfD1Qsy4KtT5fLGLaSzPXfh9p+KYejLpxJA2SV+r+oLb8KUrxZFzOZUM6H42TGPUW7Tm0w//wJYhvtStTLw3GcZhpSgamuqh/weLeVKBltIlPg2a6WEEQsfChI/lSe+XDEECh7JLeq0LrizvlBb2+mh7ED3KozKBqMqxpTtWxY0pmLVmZbXCYInlP7UNIUfqI0AW4coqyb5V3oE8B2MRNBthBTM2BJqQ0mI1bV49GlFC4L4p4NtTGm5Cxg=="
+          },
+          {
+            "name": "X-Forefront-Antispam-Report",
+            "value": "CIP:192.0.2.1;CTRY:GB;LANG:en;SCL:1;SRV:;IPV:CAL;SFV:NSPM;H:uk1.smtp.exclaimer.net;PTR:uk1.smtp.exclaimer.net;CAT:NONE;SFS:(13230040)(82310400026)(14060799003)(1800799024)(35042699022)(376014)(36860700013)(69100299015)(8096899003)(13003099007);DIR:OUT;SFP:1102;"
+          },
+          {
+            "name": "X-OriginatorOrg",
+            "value": "trpresearch.com"
+          },
+          {
+            "name": "X-MS-Exchange-CrossTenant-OriginalArrivalTime",
+            "value": "27 Jan 2026 10:26:03.1124 (UTC)"
+          },
+          {
+            "name": "X-MS-Exchange-CrossTenant-Network-Message-Id",
+            "value": "905099b4-81da-40fe-1d2c-08de5d8e7957"
+          },
+          {
+            "name": "X-MS-Exchange-CrossTenant-Id",
+            "value": "38a454b0-51a3-464d-b46f-c50e68c6856c"
+          },
+          {
+            "name": "X-MS-Exchange-CrossTenant-OriginalAttributedTenantConnectingIp",
+            "value": "TenantId=38a454b0-51a3-464d-b46f-c50e68c6856c;Ip=[192.0.2.1];Helo=[uk1.smtp.exclaimer.net]"
+          },
+          {
+            "name": "X-MS-Exchange-CrossTenant-AuthSource",
+            "value": "CW2PEPF000056BD.GBRP265.PROD.OUTLOOK.COM"
+          },
+          {
+            "name": "X-MS-Exchange-CrossTenant-AuthAs",
+            "value": "Anonymous"
+          },
+          {
+            "name": "X-MS-Exchange-CrossTenant-FromEntityHeader",
+            "value": "HybridOnPrem"
+          },
+          {
+            "name": "X-MS-Exchange-Transport-CrossTenantHeadersStamped",
+            "value": "CWLP123MB2801"
+          }
+        ],
+        "body": {
+          "size": 0
+        },
+        "parts": [
+          {
+            "partId": "0",
+            "mimeType": "multipart/related",
+            "filename": "",
+            "headers": [
+              {
+                "name": "Content-Type",
+                "value": "multipart/related; boundary=\"_023_LO0P123MB62338DF24942EF0AE581C47CA490ALO0P123MB6233GBRP_\"; type=\"multipart/alternative\""
+              }
+            ],
+            "body": {
+              "size": 0
+            },
+            "parts": [
+              {
+                "partId": "0.0",
+                "mimeType": "multipart/alternative",
+                "filename": "",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "multipart/alternative; boundary=\"_000_LO0P123MB62338DF24942EF0AE581C47CA490ALO0P123MB6233GBRP_\""
+                  }
+                ],
+                "body": {
+                  "size": 0
+                },
+                "parts": [
+                  {
+                    "partId": "0.0.0",
+                    "mimeType": "text/plain",
+                    "filename": "",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "text/plain; charset=\"utf-8\""
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 14598,
+                      "data": "SGkgV2lsbCwNCg0KV2UgZGlkIHNvbWUgZGlnZ2luZyBhbmQgZm91bmQgdGhlIFBvQyBhbmQgUHJvcG9zYWwgd2UgZGlkIGZvciB5b3UgYmFjayBpbiBsYXRlIDIwMjTigKYgQXR0YWNoZWQgaGVyZSB3aXRoIHRoZSBjb21tcyBmb3IgY29udmVuaWVuY2UuDQoNCkkgdGhpbmsgdGhlIG1ldGhvZCB3b3VsZCBiZSBicm9hZGx5IHVuY2hhbmdlZCB0b2RheTsgd2UgY2FuIGFkZCBjbG9jayBudW1iZXJzIGFuZCBwcm92aWRlIG90aGVyIG1ldGFkYXRhIHVzaW5nIHRoZXNlIHRlY2huaXF1ZXMuDQoNClNwZWFrIEZyaWRheSBhbmQga2VlbiB0byBoZWFyIHlvdXIgdXBkYXRlcywNCg0KQmVzdA0KDQpEYXZpZA0KDQoNCltjaWQ6aW1hZ2UwMDEucG5nQDAxREM4Rjc2LkNDOUVCQkUwXQ0KW2NpZDppbWFnZTAwMi5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdDQrigIvigIvigIvigIsNCltjaWQ6aW1hZ2UwMDMucG5nQDAxREM4Rjc2LkNDOUVCQkUwXQ0KW2NpZDppbWFnZTAwNC5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdDQpbY2lkOmltYWdlMDA1LnBuZ0AwMURDOEY3Ni5DQzlFQkJFMF0NCltjaWQ6aW1hZ2UwMDYucG5nQDAxREM4Rjc2LkNDOUVCQkUwXQ0KW2NpZDppbWFnZTAwNy5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdDQpbY2lkOmltYWdlMDA4LnBuZ0AwMURDOEY3Ni5DQzlFQkJFMF0NCltjaWQ6aW1hZ2UwMDkucG5nQDAxREM4Rjc2LkNDOUVCQkUwXQ0KDQpbY2lkOmltYWdlMDEwLnBuZ0AwMURDOEY3Ni5DQzlFQkJFMF08aHR0cHM6Ly91ay5jb250ZW50LmV4Y2xhaW1lci5uZXQvP3VybD1odHRwcyUzQSUyRiUyRnRycHJlc2VhcmNoLmNvbSUyRiZ0ZW5hbnRpZD1SSnZmb2paM0VleVlIeWdZZUxGSWRRJnRlbXBsYXRlaWQ9MjQyZTI5MTExYzE4ZWYxMTg2ZDI2MDQ1YmRmMTI3OGImZXhjb21wb25lbnRpZD1nRWhxNUZmSkViSTlsRW9VcUliRzREbTlqMnIyWTVrQU83Uks1RTZ3WXFnJmV4Y29tcG9uZW50dHlwZT1JbWFnZSZzaWduYXR1cmU9SWMydVdsNVo1WDVjQUJ4OXBEbmpkdnN4aWxPN2lQakhid0ppQ25QTG1xMk5BOTVsMldsSGExbXlReTR1eVMzc21kTUp6VWZpb2tHQnZNbGlXbkF5RURBeEl3dEp3S2ttUHQ3LUdCWVFVM0hnZTRuSmUxUDFTenFqakRtd0RyV1IydE9sejI3ajhNaXF6RFhtNFBOZmJSd0hsS0lXdG83cDI2YTU4SmQ5VnpLR29oaXpnbzNvQmktYnpxTTRyME9kWHoyeDNnb2VwX3A0cmJPaU54cHkxQWdjc0xnSEdQXzg4a01zRlg0eDhOWC14QjJMckp1OGJZdUk2dGdmVGlGOUdLTDhaSl9GZEdMWHoyZ2xzenFISzRfOHFKNjROV19Xa0JEcDJ2cE9hZEZWVGw1bHhzWG01bkVwTlJzQkNtM2FLTkZRbkUtWXVuUHJxTUh0MGhTeTNRJnY9MT4NCg0KW2NpZDppbWFnZTAxMS5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdPGh0dHBzOi8vdWsuY29udGVudC5leGNsYWltZXIubmV0Lz91cmw9aHR0cHMlM0ElMkYlMkZ0cnByZXNlYXJjaC5jb20lMkZ0ZWNoZWRnZS1leHBhbmRzLWRhdGEtdmlzdWFsaXNhdGlvbi1vZmZlci10aHJvdWdoLWludGVncmF0aW9uLXdpdGgtYXVkZXglMkYmdGVuYW50aWQ9Ukp2Zm9qWjNFZXlZSHlnWWVMRklkUSZ0ZW1wbGF0ZWlkPTI0MmUyOTExMWMxOGVmMTE4NmQyNjA0NWJkZjEyNzhiJmV4Y29tcG9uZW50aWQ9U3VMYl9EVGpmblVieFZPNnJyNEJxdExVaWlSTlpqbjJfLV82dTR6YVJDYyZleGNvbXBvbmVudHR5cGU9Um90YXRpbmdCYW5uZXImc2lnbmF0dXJlPXBpYi1KNXhEakRlb2oxX3RlRmpjVjFvTXVienNRcDhhdmR0TDFSNEwzZUtXcTV1emJZYldUX1FmVENpNUxCaERXN1B5Z2FOTXJwcDJPSFQyR3VWSUUwcV9CWU85eW1IY2JhVzNkZ0FFRjNlcWJwSVBkUHBOWnAxdktaUE1GVnM0RDNyMXFUXzUwejlsUU5JdGVuS08tRVlWQWJsR0hycVpKYlR4aU1YTUs1elZqZC1yN1VHLXJMN3VGd2lPNTN1MVRPaTIzMk51MUF0OFJCVUhMbEtqV25lQllieGI1TTlTMlNmd0NDd1phUHE2MlB6bjB2U1VZZUxqa0JGb1lyZWw3Z3JVeXQ1QS0tM09jRWxOU3BzampOZFd4a2dic1dqREJjRnFlXzJSM0tSNjZaWDh3QjNXdGRzdENLbXNiUVNEbTVTNmlRRjZrQTRxQzJ0cU04SUVuQSZ2PTE-DQoNCkZyb206IFdpbGwgSGVhZGxleSA8d2lsbC5oZWFkbGV5QHN5c3RlbTFncm91cC5jb20-DQpTZW50OiAyNyBKYW51YXJ5IDIwMjYgMDk6NDUNClRvOiBEYXZpZCBSYXlib3VsZCA8ZHJheWJvdWxkQHRycHJlc2VhcmNoLmNvbT47IFNhbWVlciBNb2RoYSA8c2FtZWVyLm1vZGhhQGl0di5jb20-OyBQaG9lYmUgRWxzZSA8cGhvZWJlLmVsc2VAc3lzdGVtMWdyb3VwLmNvbT47IFJlYmVjY2EgSGF0aGVyYWxsIDxyZWJlY2NhLmhhdGhlcmFsbEBzeXN0ZW0xZ3JvdXAuY29tPjsgQ2hpYXJhIE1hbmNvIDxjaGlhcmEubWFuY29Ac3lzdGVtMWdyb3VwLmNvbT47IExhdXJhIFBpcGVyIDxsYXVyYS5waXBlckBzaW1hbnRlYS5jb20-OyBKb2FubmUgVGluZ2F5IDxqdGluZ2F5QHRycHJlc2VhcmNoLmNvbT4NClN1YmplY3Q6IFJFOiBDbG9jayBudW1iZXJzDQoNClRoYW5rcyBEYXZpZCENCkxvb2sgZm9yd2FyZCB0byB0YWxraW5nIG9uIEZyaWRheS4NCldpbGwNCg0KW2NpZDppbWFnZTAxMi5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdDQpXaWxsIEhlYWRsZXkNCuKAi-KAi-KAi-KAiw0KSGVhZCBvZiBMYWJzDQpbY2lkOmltYWdlMDEzLnBuZ0AwMURDOEY3Ni5DQzlFQkJFMF0NCis0NCA3OTEyIDU3MjkxNTx0ZWw6KzQ0JTIwNzkxMiUyMDU3MjkxNT4NCltjaWQ6aW1hZ2UwMTQucG5nQDAxREM4Rjc2LkNDOUVCQkUwXQ0KVW5pdGVkIEtpbmdkb208aHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS9tYXBzL3BsYWNlLzI2K0hhdHRvbitHYXJkZW4sK0xvbmRvbitFQzFOKzhCTi9ANTEuNTE5NTEsLTAuMTA4MDM2NCwxN3ovZGF0YT0hM20xITRiMSE0bTYhM201ITFzMHg0ODc2MWI0ZGNmYzUxYmQxOjB4MjM4MWVhYTIyMjk3MjIwZCE4bTIhM2Q1MS41MTk1MSE0ZC0wLjEwODAzNjQhMTZzJTJGZyUyRjExZjNuNHo0YzA_ZW50cnk9dHRzPg0KW2NpZDppbWFnZTAxNS5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdDQpzeXN0ZW0xIExpbmtlZEluPGh0dHBzOi8vd3d3LmxpbmtlZGluLmNvbS9jb21wYW55L3N5c3RlbTFncm91cC9hYm91dC8-DQpbY2lkOmltYWdlMDE2LnBuZ0AwMURDOEY3Ni5DQzlFQkJFMF0NCnN5c3RlbTFncm91cC5jb208aHR0cHM6Ly9zeXN0ZW0xZ3JvdXAuY29tLz4NCltjaWQ6aW1hZ2UwMTcucG5nQDAxREM4Rjc2LkNDOUVCQkUwXTxodHRwczovL3N5c3RlbTFncm91cC5jb20vdGVzdC15b3VyLWFkLWNvbXBldGl0aXZlLWVkZ2U_dXRtX3NvdXJjZT1lbWFpbC1mb290ZXImdXRtX21lZGl1bT1iYW5uZXImdXRtX2NhbXBhaWduPWNvbXBldGl0aXZlLWVkZ2U-DQpOQjogSSBkbyBub3Qgd29yayBUaHVyc2RheSBhZnRlcm5vb25zDQpbY2lkOmltYWdlMDE4LmpwZ0AwMURDOEY3Ni5DQzlFQkJFMF08aHR0cHM6Ly93d3cuZ3JlYXRwbGFjZXRvd29yay5jby51ay9jZXJ0aWZpZWQtY29tcGFueS8xNTc1MDc4Pg0KU3lzdGVtMSBHcm91cCBQTEMgaXMgSVNPIDI3MDAxOjIwMjIgQ2VydGlmaWVkDQpTeXN0ZW0xIEdyb3VwIFBMQyBpcyBhIHB1YmxpYyBsaW1pdGVkIGNvbXBhbnkgcmVnaXN0ZXJlZCBpbiBFbmdsYW5kIGFuZCBXYWxlcyB3aXRoIGNvbXBhbnkgbnVtYmVyIDA1OTQwMDQwDQpUaGUgcmVnaXN0ZXJlZCBhZGRyZXNzIGlzIGF0IDQgTW9yZSBMb25kb24gUml2ZXJzaWRlLCBMb25kb24sIFNFMSAyQVUsIFVLDQrigItPZmZpY2UgaXMgbG9jYXRlZCBhdCAxIFdhdGVyaG91c2UgU3F1YXJlLCBMb25kb24sIEVDMU4gMlNUDQpGcm9tOiBEYXZpZCBSYXlib3VsZCA8ZHJheWJvdWxkQHRycHJlc2VhcmNoLmNvbTxtYWlsdG86ZHJheWJvdWxkQHRycHJlc2VhcmNoLmNvbT4-DQpTZW50OiBNb25kYXksIEphbnVhcnkgMjYsIDIwMjYgNjozOCBQTQ0KVG86IFdpbGwgSGVhZGxleSA8d2lsbC5oZWFkbGV5QHN5c3RlbTFncm91cC5jb208bWFpbHRvOndpbGwuaGVhZGxleUBzeXN0ZW0xZ3JvdXAuY29tPj47IFNhbWVlciBNb2RoYSA8c2FtZWVyLm1vZGhhQGl0di5jb208bWFpbHRvOnNhbWVlci5tb2RoYUBpdHYuY29tPj47IFBob2ViZSBFbHNlIDxwaG9lYmUuZWxzZUBzeXN0ZW0xZ3JvdXAuY29tPG1haWx0bzpwaG9lYmUuZWxzZUBzeXN0ZW0xZ3JvdXAuY29tPj47IFJlYmVjY2EgSGF0aGVyYWxsIDxyZWJlY2NhLmhhdGhlcmFsbEBzeXN0ZW0xZ3JvdXAuY29tPG1haWx0bzpyZWJlY2NhLmhhdGhlcmFsbEBzeXN0ZW0xZ3JvdXAuY29tPj47IENoaWFyYSBNYW5jbyA8Y2hpYXJhLm1hbmNvQHN5c3RlbTFncm91cC5jb208bWFpbHRvOmNoaWFyYS5tYW5jb0BzeXN0ZW0xZ3JvdXAuY29tPj47IExhdXJhIFBpcGVyIDxsYXVyYS5waXBlckBzaW1hbnRlYS5jb208bWFpbHRvOmxhdXJhLnBpcGVyQHNpbWFudGVhLmNvbT4-OyBKb2FubmUgVGluZ2F5IDxqdGluZ2F5QHRycHJlc2VhcmNoLmNvbTxtYWlsdG86anRpbmdheUB0cnByZXNlYXJjaC5jb20-Pg0KU3ViamVjdDogUkU6IENsb2NrIG51bWJlcnMNCg0KSGkgV2lsbCwNCg0KWWVzLCB5b3XigJlyZSByaWdodCENCg0KTGV0c-KAmSBjYXRjaCB1cCBhdCAxMSBvbiBGcmlkYXkg4oCTIEkgY2FuIG1ha2UgdGhhdCBhbHRob3VnaCBJIHN1c3BlY3QgdGhhdCBKbyBwcm9iYWJseSBjYW7igJl0IOKAkyB0aGF04oCZcyBPSy4gIEnigJlsbCBzZW5kIGFuIGFwcG9pbnRtZW50IGFuZCB5b3UgY2FuIGZ3ZCB0byB3aG9ldmVyIHlvdSB3YW50IHRvIGF0dGVuZCBmcm9tIHlvdXIgc2lkZT8NCg0KVGhhbmtzDQoNCkRSDQoNCg0KW2NpZDppbWFnZTAwMS5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdDQpbY2lkOmltYWdlMDAyLnBuZ0AwMURDOEY3Ni5DQzlFQkJFMF0NCuKAi-KAi-KAi-KAiw0KW2NpZDppbWFnZTAwMy5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdDQpbY2lkOmltYWdlMDA0LnBuZ0AwMURDOEY3Ni5DQzlFQkJFMF0NCltjaWQ6aW1hZ2UwMDUucG5nQDAxREM4Rjc2LkNDOUVCQkUwXQ0KW2NpZDppbWFnZTAwNi5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdDQpbY2lkOmltYWdlMDA3LnBuZ0AwMURDOEY3Ni5DQzlFQkJFMF0NCltjaWQ6aW1hZ2UwMDgucG5nQDAxREM4Rjc2LkNDOUVCQkUwXQ0KW2NpZDppbWFnZTAwOS5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdDQoNCltjaWQ6aW1hZ2UwMTAucG5nQDAxREM4Rjc2LkNDOUVCQkUwXTxodHRwczovL3VrLmNvbnRlbnQuZXhjbGFpbWVyLm5ldC8_dXJsPWh0dHBzJTNBJTJGJTJGdHJwcmVzZWFyY2guY29tJTJGJnRlbmFudGlkPVJKdmZvalozRWV5WUh5Z1llTEZJZFEmdGVtcGxhdGVpZD0yNDJlMjkxMTFjMThlZjExODZkMjYwNDViZGYxMjc4YiZleGNvbXBvbmVudGlkPWdFaHE1RmZKRWJJOWxFb1VxSWJHNERtOWoycjJZNWtBTzdSSzVFNndZcWcmZXhjb21wb25lbnR0eXBlPUltYWdlJnNpZ25hdHVyZT1JYzJ1V2w1WjVYNWNBQng5cERuamR2c3hpbE83aVBqSGJ3SmlDblBMbXEyTkE5NWwyV2xIYTFteVF5NHV5UzNzbWRNSnpVZmlva0dCdk1saVduQXlFREF4SXd0SndLa21QdDctR0JZUVUzSGdlNG5KZTFQMVN6cWpqRG13RHJXUjJ0T2x6MjdqOE1pcXpEWG00UE5mYlJ3SGxLSVd0bzdwMjZhNThKZDlWektHb2hpemdvM29CaS1ienFNNHIwT2RYejJ4M2dvZXBfcDRyYk9pTnhweTFBZ2NzTGdIR1BfODhrTXNGWDR4OE5YLXhCMkxySnU4Yll1STZ0Z2ZUaUY5R0tMOFpKX0ZkR0xYejJnbHN6cUhLNF84cUo2NE5XX1drQkRwMnZwT2FkRlZUbDVseHNYbTVuRXBOUnNCQ20zYUtORlFuRS1ZdW5QcnFNSHQwaFN5M1Emdj0xJmltcHJpbnRNZXNzYWdlSWQ9YjhhMTlhNjQtYTAwZi00ZTdhLTg1NGEtMzQ3MGNhMWRmYzQ4Pg0KDQpbY2lkOmltYWdlMDExLnBuZ0AwMURDOEY3Ni5DQzlFQkJFMF08aHR0cHM6Ly91ay5jb250ZW50LmV4Y2xhaW1lci5uZXQvP3VybD1odHRwcyUzQSUyRiUyRnRycHJlc2VhcmNoLmNvbSUyRnRlY2hlZGdlLWV4cGFuZHMtZGF0YS12aXN1YWxpc2F0aW9uLW9mZmVyLXRocm91Z2gtaW50ZWdyYXRpb24td2l0aC1hdWRleCUyRiZ0ZW5hbnRpZD1SSnZmb2paM0VleVlIeWdZZUxGSWRRJnRlbXBsYXRlaWQ9MjQyZTI5MTExYzE4ZWYxMTg2ZDI2MDQ1YmRmMTI3OGImZXhjb21wb25lbnRpZD1TdUxiX0RUamZuVWJ4Vk82cnI0QnF0TFVpaVJOWmpuMl8tXzZ1NHphUkNjJmV4Y29tcG9uZW50dHlwZT1Sb3RhdGluZ0Jhbm5lciZzaWduYXR1cmU9cGliLUo1eERqRGVvajFfdGVGamNWMW9NdWJ6c1FwOGF2ZHRMMVI0TDNlS1dxNXV6YlliV1RfUWZUQ2k1TEJoRFc3UHlnYU5NcnBwMk9IVDJHdVZJRTBxX0JZTzl5bUhjYmFXM2RnQUVGM2VxYnBJUGRQcE5acDF2S1pQTUZWczREM3IxcVRfNTB6OWxRTkl0ZW5LTy1FWVZBYmxHSHJxWkpiVHhpTVhNSzV6VmpkLXI3VUctckw3dUZ3aU81M3UxVE9pMjMyTnUxQXQ4UkJVSExsS2pXbmVCWWJ4YjVNOVMyU2Z3Q0N3WmFQcTYyUHpuMHZTVVllTGprQkZvWXJlbDdnclV5dDVBLS0zT2NFbE5TcHNqak5kV3hrZ2JzV2pEQmNGcWVfMlIzS1I2NlpYOHdCM1d0ZHN0Q0ttc2JRU0RtNVM2aVFGNmtBNHFDMnRxTThJRW5BJnY9MSZpbXByaW50TWVzc2FnZUlkPWI4YTE5YTY0LWEwMGYtNGU3YS04NTRhLTM0NzBjYTFkZmM0OD4NCg0KRnJvbTogV2lsbCBIZWFkbGV5IDx3aWxsLmhlYWRsZXlAc3lzdGVtMWdyb3VwLmNvbTxtYWlsdG86d2lsbC5oZWFkbGV5QHN5c3RlbTFncm91cC5jb20-Pg0KU2VudDogMjYgSmFudWFyeSAyMDI2IDE1OjQzDQpUbzogRGF2aWQgUmF5Ym91bGQgPGRyYXlib3VsZEB0cnByZXNlYXJjaC5jb208bWFpbHRvOmRyYXlib3VsZEB0cnByZXNlYXJjaC5jb20-PjsgU2FtZWVyIE1vZGhhIDxzYW1lZXIubW9kaGFAaXR2LmNvbTxtYWlsdG86c2FtZWVyLm1vZGhhQGl0di5jb20-PjsgUGhvZWJlIEVsc2UgPHBob2ViZS5lbHNlQHN5c3RlbTFncm91cC5jb208bWFpbHRvOnBob2ViZS5lbHNlQHN5c3RlbTFncm91cC5jb20-PjsgUmViZWNjYSBIYXRoZXJhbGwgPHJlYmVjY2EuaGF0aGVyYWxsQHN5c3RlbTFncm91cC5jb208bWFpbHRvOnJlYmVjY2EuaGF0aGVyYWxsQHN5c3RlbTFncm91cC5jb20-PjsgQ2hpYXJhIE1hbmNvIDxjaGlhcmEubWFuY29Ac3lzdGVtMWdyb3VwLmNvbTxtYWlsdG86Y2hpYXJhLm1hbmNvQHN5c3RlbTFncm91cC5jb20-PjsgTGF1cmEgUGlwZXIgPGxhdXJhLnBpcGVyQHNpbWFudGVhLmNvbTxtYWlsdG86bGF1cmEucGlwZXJAc2ltYW50ZWEuY29tPj47IEpvYW5uZSBUaW5nYXkgPGp0aW5nYXlAdHJwcmVzZWFyY2guY29tPG1haWx0bzpqdGluZ2F5QHRycHJlc2VhcmNoLmNvbT4-DQpTdWJqZWN0OiBSRTogQ2xvY2sgbnVtYmVycw0KDQpIaSBEYXZpZCwgSm8sDQoNCkhvcGUgeW914oCZcmUgd2VsbC4gIFdlIGhhZCBhIGNvdXBsZSBvZiBjYWxscyBiYWNrIGluIDIwMjQgSSB0aGluayEgIFNhbWUgdGhlbWUgdGhlbiBhcyBiZWxvdzogdHJ5aW5nIHRvIG1hdGNoIG91ciBkYXRhYmFzZSBvZiBVSyBUViBhZHMgKHdoaWNoIGNvbWUgZnJvbSBOaWVsc2VuIGFuZCBkb27igJl0IGhhdmUgY2xvY2sgbnVtYmVycykgdG8geW91cnMsIHRvIGltcG9ydCBjbG9jayBudW1iZXIuICBXb3VsZCBiZSBnb29kIHRvIGtub3cgaWYgdGhlIHNhbWUgd291bGQgYXBwbHkgbm93IGFzIHRoZW4gb3IgaWYgYW55IHVwZGF0ZXMgdG8gaG93IHRoYXQgbWlnaHQgd29yay4gIEkgY291bGQgc3BlYWsgb24gRnJpZGF5IG9mIHRoYXQgc3RpbGwgd29ya3MgZm9yIHlvdT8gIFNheSAxMT8NCg0KTWFueSB0aGFua3MNCg0KV2lsbA0KDQpbY2lkOmltYWdlMDEyLnBuZ0AwMURDOEY3Ni5DQzlFQkJFMF0NCldpbGwgSGVhZGxleQ0K4oCL4oCL4oCL4oCLDQpIZWFkIG9mIExhYnMNCltjaWQ6aW1hZ2UwMTMucG5nQDAxREM4Rjc2LkNDOUVCQkUwXQ0KKzQ0IDc5MTIgNTcyOTE1PHRlbDorNDQlMjA3OTEyJTIwNTcyOTE1Pg0KW2NpZDppbWFnZTAxNC5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdDQpVbml0ZWQgS2luZ2RvbTxodHRwczovL3d3dy5nb29nbGUuY29tL21hcHMvcGxhY2UvMjYrSGF0dG9uK0dhcmRlbiwrTG9uZG9uK0VDMU4rOEJOL0A1MS41MTk1MSwtMC4xMDgwMzY0LDE3ei9kYXRhPSEzbTEhNGIxITRtNiEzbTUhMXMweDQ4NzYxYjRkY2ZjNTFiZDE6MHgyMzgxZWFhMjIyOTcyMjBkIThtMiEzZDUxLjUxOTUxITRkLTAuMTA4MDM2NCExNnMlMkZnJTJGMTFmM240ejRjMD9lbnRyeT10dHM-DQpbY2lkOmltYWdlMDE1LnBuZ0AwMURDOEY3Ni5DQzlFQkJFMF0NCnN5c3RlbTEgTGlua2VkSW48aHR0cHM6Ly93d3cubGlua2VkaW4uY29tL2NvbXBhbnkvc3lzdGVtMWdyb3VwL2Fib3V0Lz4NCltjaWQ6aW1hZ2UwMTYucG5nQDAxREM4Rjc2LkNDOUVCQkUwXQ0Kc3lzdGVtMWdyb3VwLmNvbTxodHRwczovL3N5c3RlbTFncm91cC5jb20vPg0KW2NpZDppbWFnZTAxNy5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdPGh0dHBzOi8vc3lzdGVtMWdyb3VwLmNvbS90ZXN0LXlvdXItYWQtY29tcGV0aXRpdmUtZWRnZT91dG1fc291cmNlPWVtYWlsLWZvb3RlciZ1dG1fbWVkaXVtPWJhbm5lciZ1dG1fY2FtcGFpZ249Y29tcGV0aXRpdmUtZWRnZT4NCk5COiBJIGRvIG5vdCB3b3JrIFRodXJzZGF5IGFmdGVybm9vbnMNCltjaWQ6aW1hZ2UwMTguanBnQDAxREM4Rjc2LkNDOUVCQkUwXTxodHRwczovL3d3dy5ncmVhdHBsYWNldG93b3JrLmNvLnVrL2NlcnRpZmllZC1jb21wYW55LzE1NzUwNzg-DQpTeXN0ZW0xIEdyb3VwIFBMQyBpcyBJU08gMjcwMDE6MjAyMiBDZXJ0aWZpZWQNClN5c3RlbTEgR3JvdXAgUExDIGlzIGEgcHVibGljIGxpbWl0ZWQgY29tcGFueSByZWdpc3RlcmVkIGluIEVuZ2xhbmQgYW5kIFdhbGVzIHdpdGggY29tcGFueSBudW1iZXIgMDU5NDAwNDANClRoZSByZWdpc3RlcmVkIGFkZHJlc3MgaXMgYXQgNCBNb3JlIExvbmRvbiBSaXZlcnNpZGUsIExvbmRvbiwgU0UxIDJBVSwgVUsNCuKAi09mZmljZSBpcyBsb2NhdGVkIGF0IDEgV2F0ZXJob3VzZSBTcXVhcmUsIExvbmRvbiwgRUMxTiAyU1QNCkZyb206IERhdmlkIFJheWJvdWxkIDxkcmF5Ym91bGRAdHJwcmVzZWFyY2guY29tPG1haWx0bzpkcmF5Ym91bGRAdHJwcmVzZWFyY2guY29tPj4NClNlbnQ6IEZyaWRheSwgSmFudWFyeSAyMywgMjAyNiAxMTo0NSBBTQ0KVG86IFNhbWVlciBNb2RoYSA8c2FtZWVyLm1vZGhhQGl0di5jb208bWFpbHRvOnNhbWVlci5tb2RoYUBpdHYuY29tPj47IFdpbGwgSGVhZGxleSA8d2lsbC5oZWFkbGV5QHN5c3RlbTFncm91cC5jb208bWFpbHRvOndpbGwuaGVhZGxleUBzeXN0ZW0xZ3JvdXAuY29tPj47IFBob2ViZSBFbHNlIDxwaG9lYmUuZWxzZUBzeXN0ZW0xZ3JvdXAuY29tPG1haWx0bzpwaG9lYmUuZWxzZUBzeXN0ZW0xZ3JvdXAuY29tPj47IFJlYmVjY2EgSGF0aGVyYWxsIDxyZWJlY2NhLmhhdGhlcmFsbEBzeXN0ZW0xZ3JvdXAuY29tPG1haWx0bzpyZWJlY2NhLmhhdGhlcmFsbEBzeXN0ZW0xZ3JvdXAuY29tPj47IENoaWFyYSBNYW5jbyA8Y2hpYXJhLm1hbmNvQHN5c3RlbTFncm91cC5jb208bWFpbHRvOmNoaWFyYS5tYW5jb0BzeXN0ZW0xZ3JvdXAuY29tPj47IExhdXJhIFBpcGVyIDxsYXVyYS5waXBlckBzaW1hbnRlYS5jb208bWFpbHRvOmxhdXJhLnBpcGVyQHNpbWFudGVhLmNvbT4-OyBKb2FubmUgVGluZ2F5IDxqdGluZ2F5QHRycHJlc2VhcmNoLmNvbTxtYWlsdG86anRpbmdheUB0cnByZXNlYXJjaC5jb20-Pg0KU3ViamVjdDogUkU6IENsb2NrIG51bWJlcnMNCg0KSGkgU3lzdGVtIDEgdGVhbSENCg0KTmljZSB0byBtZWV0IHlvdSwgYW5kIHRoYW5rcyBTYW1lZXIgZm9yIHRoZSBpbnRyb-KApg0KDQpJ4oCZdmUgYWRkZWQgSm8gYXQgVFJQIHdobyBydW5zIG91ciBDb21tZXJjaWFsIGFuZCBNZXRhZGF0YSBzZXJ2aWNlcy4NCg0KWWVwIOKAkyB2ZXJ5IGhhcHB5IHRvIG1lZXQgdXAgYW5kIGNvbXBhcmUgbm90ZXMg4oCTIHdlIGRvIGhhdmUgdGhlIGRhdGEgU2FtZWVyIG1lbnRpb25lZCBzbyBpdCB3b3VsZCBiZSBnb29kIHRvIHVuZGVyc3RhbmQgbW9yZSBhYm91dCB5b3VyIG5lZWRzLg0KDQpJ4oCZbSBmcmVlIGZvciBhIFRlYW1zIHNlc3Npb24gYW55dGltZSBvbiBUdWVzZGF5IG5leHQgd2Vlaywgb3IgV2VkcyAxMS00cG0sIG9yIGFueXRpbWUgRnJpZGF5PyAgQW55IGdvb2Q_DQoNCkJlc3QgUmVnYXJkcw0KDQpEYXZpZA0KDQoNCltjaWQ6aW1hZ2UwMDEucG5nQDAxREM4Rjc2LkNDOUVCQkUwXQ0KW2NpZDppbWFnZTAwMi5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdDQrigIvigIvigIvigIsNCltjaWQ6aW1hZ2UwMDMucG5nQDAxREM4Rjc2LkNDOUVCQkUwXQ0KW2NpZDppbWFnZTAwNC5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdDQpbY2lkOmltYWdlMDA1LnBuZ0AwMURDOEY3Ni5DQzlFQkJFMF0NCltjaWQ6aW1hZ2UwMDYucG5nQDAxREM4Rjc2LkNDOUVCQkUwXQ0KW2NpZDppbWFnZTAwNy5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdDQpbY2lkOmltYWdlMDA4LnBuZ0AwMURDOEY3Ni5DQzlFQkJFMF0NCltjaWQ6aW1hZ2UwMDkucG5nQDAxREM4Rjc2LkNDOUVCQkUwXQ0KDQpbY2lkOmltYWdlMDEwLnBuZ0AwMURDOEY3Ni5DQzlFQkJFMF08aHR0cHM6Ly91ay5jb250ZW50LmV4Y2xhaW1lci5uZXQvP3VybD1odHRwcyUzQSUyRiUyRnRycHJlc2VhcmNoLmNvbSUyRiZ0ZW5hbnRpZD1SSnZmb2paM0VleVlIeWdZZUxGSWRRJnRlbXBsYXRlaWQ9MjQyZTI5MTExYzE4ZWYxMTg2ZDI2MDQ1YmRmMTI3OGImZXhjb21wb25lbnRpZD1nRWhxNUZmSkViSTlsRW9VcUliRzREbTlqMnIyWTVrQU83Uks1RTZ3WXFnJmV4Y29tcG9uZW50dHlwZT1JbWFnZSZzaWduYXR1cmU9SWMydVdsNVo1WDVjQUJ4OXBEbmpkdnN4aWxPN2lQakhid0ppQ25QTG1xMk5BOTVsMldsSGExbXlReTR1eVMzc21kTUp6VWZpb2tHQnZNbGlXbkF5RURBeEl3dEp3S2ttUHQ3LUdCWVFVM0hnZTRuSmUxUDFTenFqakRtd0RyV1IydE9sejI3ajhNaXF6RFhtNFBOZmJSd0hsS0lXdG83cDI2YTU4SmQ5VnpLR29oaXpnbzNvQmktYnpxTTRyME9kWHoyeDNnb2VwX3A0cmJPaU54cHkxQWdjc0xnSEdQXzg4a01zRlg0eDhOWC14QjJMckp1OGJZdUk2dGdmVGlGOUdLTDhaSl9GZEdMWHoyZ2xzenFISzRfOHFKNjROV19Xa0JEcDJ2cE9hZEZWVGw1bHhzWG01bkVwTlJzQkNtM2FLTkZRbkUtWXVuUHJxTUh0MGhTeTNRJnY9MSZpbXByaW50TWVzc2FnZUlkPWYyODJmZGZkLTQ4YTItNGVkMC05NTQwLTBiM2E3YzY0NmNmOD4NCg0KW2NpZDppbWFnZTAxMS5wbmdAMDFEQzhGNzYuQ0M5RUJCRTBdPGh0dHBzOi8vdWsuY29udGVudC5leGNsYWltZXIubmV0Lz91cmw9aHR0cHMlM0ElMkYlMkZ0cnByZXNlYXJjaC5jb20lMkZ0ZWNoZWRnZS1leHBhbmRzLWRhdGEtdmlzdWFsaXNhdGlvbi1vZmZlci10aHJvdWdoLWludGVncmF0aW9uLXdpdGgtYXVkZXglMkYmdGVuYW50aWQ9Ukp2Zm9qWjNFZXlZSHlnWWVMRklkUSZ0ZW1wbGF0ZWlkPTI0MmUyOTExMWMxOGVmMTE4NmQyNjA0NWJkZjEyNzhiJmV4Y29tcG9uZW50aWQ9U3VMYl9EVGpmblVieFZPNnJyNEJxdExVaWlSTlpqbjJfLV82dTR6YVJDYyZleGNvbXBvbmVudHR5cGU9Um90YXRpbmdCYW5uZXImc2lnbmF0dXJlPXBpYi1KNXhEakRlb2oxX3RlRmpjVjFvTXVienNRcDhhdmR0TDFSNEwzZUtXcTV1emJZYldUX1FmVENpNUxCaERXN1B5Z2FOTXJwcDJPSFQyR3VWSUUwcV9CWU85eW1IY2JhVzNkZ0FFRjNlcWJwSVBkUHBOWnAxdktaUE1GVnM0RDNyMXFUXzUwejlsUU5JdGVuS08tRVlWQWJsR0hycVpKYlR4aU1YTUs1elZqZC1yN1VHLXJMN3VGd2lPNTN1MVRPaTIzMk51MUF0OFJCVUhMbEtqV25lQllieGI1TTlTMlNmd0NDd1phUHE2MlB6bjB2U1VZZUxqa0JGb1lyZWw3Z3JVeXQ1QS0tM09jRWxOU3BzampOZFd4a2dic1dqREJjRnFlXzJSM0tSNjZaWDh3QjNXdGRzdENLbXNiUVNEbTVTNmlRRjZrQTRxQzJ0cU04SUVuQSZ2PTEmaW1wcmludE1lc3NhZ2VJZD1mMjgyZmRmZC00OGEyLTRlZDAtOTU0MC0wYjNhN2M2NDZjZjg-DQoNCkZyb206IFNhbWVlciBNb2RoYSA8c2FtZWVyLm1vZGhhQGl0di5jb208bWFpbHRvOnNhbWVlci5tb2RoYUBpdHYuY29tPj4NClNlbnQ6IDIyIEphbnVhcnkgMjAyNiAyMDoxMg0KVG86IFdpbGwgSGVhZGxleSA8d2lsbC5oZWFkbGV5QHN5c3RlbTFncm91cC5jb208bWFpbHRvOndpbGwuaGVhZGxleUBzeXN0ZW0xZ3JvdXAuY29tPj47IHBob2ViZS5lbHNlQHN5c3RlbTFncm91cC5jb208bWFpbHRvOnBob2ViZS5lbHNlQHN5c3RlbTFncm91cC5jb20-OyByZWJlY2NhLmhhdGhlcmFsbEBzeXN0ZW0xZ3JvdXAuY29tPG1haWx0bzpyZWJlY2NhLmhhdGhlcmFsbEBzeXN0ZW0xZ3JvdXAuY29tPjsgQ2hpYXJhIE1hbmNvIDxjaGlhcmEubWFuY29Ac3lzdGVtMWdyb3VwLmNvbTxtYWlsdG86Y2hpYXJhLm1hbmNvQHN5c3RlbTFncm91cC5jb20-PjsgRGF2aWQgUmF5Ym91bGQgPERhdmlkLlJheWJvdWxkQHNpbWFudGVhLmNvbTxtYWlsdG86RGF2aWQuUmF5Ym91bGRAc2ltYW50ZWEuY29tPj47IExhdXJhIFBpcGVyIDxsYXVyYS5waXBlckBzaW1hbnRlYS5jb208bWFpbHRvOmxhdXJhLnBpcGVyQHNpbWFudGVhLmNvbT4-DQpTdWJqZWN0OiBDbG9jayBudW1iZXJzDQoNCkhpIFN5c3RlbTEgY3JldyAtIEkgd2FzIHRoaW5raW5nIGEgYml0IG1vcmUgYWJvdXQgb3VyIGNvbnZlcnNhdGlvbiB0aGUgb3RoZXIgZGF5LCBhbmQgd2hpbGUgd2UgY2FuIGFsc28gZG8gdGhpcywgeW91IG1pZ2h0IGZpbmQgaXQgaW50ZXJlc3RpbmcgdG8gY2hhdCB0byBMYXVyYSBhbmQgRGF2aWQgYXQgVFJQIC0gdGhleSBoYXZlIGEgc3lzdGVtIGZvciBhZCBjYXB0dXJlIGFuZCBvdmVybGF5IG9mIGNsb2NrIG51bWJlcnMgYW5kIERhdmlkIGlzIGEgQmFyYi9DbGVhcmNhc3QgZGF0YSBuaW5qYSwgc28gdGhleSBtaWdodCBiZSBhYmxlIHRvIHNvbHZlIHNvbWUgb2Ygd2hhdCB3ZSB3ZXJlIHRhbGtpbmcgYWJvdXQuDQoNClRSUCBmb2xrcyAtIFN5c3RlbTEgbWVhc3VyZSBhbGwgbmV3IGFkcywgYnV0IGN1cnJlbnRseSBkb24ndCBoYXZlIGNsb2NrIG51bWJlcnMgb24gdGhlaXIgREIgYW5kIGFzIHlvdSBrbm93IHRoYXQncyBpbmNyZWFzaW5nbHkgaW1wb3J0YW50IGZvciBtYXRjaGluZyB0byBvdGhlciBkYXRhIHNldHMgKGluY2x1ZGluZyBMYW50ZXJuIHdoZW4gd2UgZ2V0IHRvIHRoYXQgcG9pbnQuKQ0KDQpXaWxsIGxlYXZlIHlvdSB0byBjb25uZWN0Lg0KDQoNClNhbWVlcg0KDQpTYW1lZXIgTW9kaGEgKGhlL2hpbSkNCg0KT3V0Y29tZSBNZWFzdXJlbWVudCBJbm5vdmF0aW9uIFRlYW0gQCBJVFYNClZpc2l0IHVzIGF0IEJyb2FkY2FzdCBDZW50cmUgLSBJVFYsIDIwMSBXb29kIExhbmUgVzEyIDdSVTxodHRwczovL2dvby5nbC9tYXBzLzM2UUR0ZzY5SGJkeDVnS0Y4Pg0KTWFrZSBzdXJlIHlvdSB3YWxrIHRoaXMgd2F5IGlmIHlvdSdyZSBjb21pbmcgaW4gcGVyc29uPGh0dHBzOi8vZHJpdmUuZ29vZ2xlLmNvbS9maWxlL2QvMTNGUTE4b1pGZzQ5QlItRXdsM19TcF9ScHVvaXNoR1E5L3ZpZXc-DQpCb29rIHRpbWUgYXQgaHR0cHM6Ly9iaXQubHkvbXRzbXINCkZlZWwgZnJlZSB0byBhc2sgbWUgYWJvdXQgQURIRDxodHRwczovL3d3dy5uaHMudWsvY29uZGl0aW9ucy9hdHRlbnRpb24tZGVmaWNpdC1oeXBlcmFjdGl2aXR5LWRpc29yZGVyLWFkaGQvc3ltcHRvbXMvPg0KRmFjZVRpbWUvV2hhdHNBcHAgQXVkaW8gKzQ0IDc3ODYgODU2NDExPGh0dHA6Ly8rNDQrNzc4Nis4NTY0MTE-DQoNCg0KW2h0dHBzOi8vc3RvcmFnZS5nb29nbGVhcGlzLmNvbS9pbWFnZWhvc3RpbmcxL0dlbmVyYWwvSVRWTG9nb185MHg0NS5wbmddDQoNCg0KSVRWIEJyb2FkY2FzdGluZyBMaW1pdGVkIChSZWdpc3RyYXRpb24gTm8uIDk1NTk1NykgKOKAnElUVuKAnSkgaXMgaW5jb3Jwb3JhdGVkIGluIEVuZ2xhbmQgYW5kIFdhbGVzIHdpdGggaXRzIHJlZ2lzdGVyZWQgb2ZmaWNlIGF0IElUViBXaGl0ZSBDaXR5LCAyMDEgV29vZCBMYW5lLCBMb25kb24gVzEyIDdSVS4gUGxlYXNlIHZpc2l0IHd3dy5pdHYuY29tPGh0dHA6Ly93d3cuaXR2LmNvbS8-IGZvciBmdXJ0aGVyIGluZm9ybWF0aW9uLg0KDQpUaGlzIGVtYWlsIGFuZCBhbnkgYXR0YWNobWVudHMgYXJlIGludGVuZGVkIHNvbGVseSBmb3IgdGhlIGFkZHJlc3NlZSBhbmQgbWF5IGNvbnRhaW4gY29uZmlkZW50aWFsLCBjb3B5cmlnaHRlZCBhbmQvb3IgcHJpdmlsZWdlZCBpbmZvcm1hdGlvbi4gIElmIHlvdSBoYXZlIHJlY2VpdmVkIHRoaXMgbWVzc2FnZSBpbiBlcnJvciwgcGxlYXNlIG5vdGlmeSB1cyBhbmQgZGVsZXRlIGl0LiAgUmVjaXBpZW50cyBzaG91bGQgc2NhbiB0aGUgZW1haWwgYW5kIGFueSBhdHRhY2htZW50cyBmb3IgdGhlaXIgb3duIHByb3RlY3Rpb24uDQoNClRoaXMgZW1haWwgZG9lcyBub3QgY29uY2x1ZGUgYSBiaW5kaW5nIGFncmVlbWVudC4gIFRoZSB2aWV3cyBvciBvcGluaW9ucyBwcmVzZW50ZWQgaW4gdGhpcyBlbWFpbCBkbyBub3QgbmVjZXNzYXJpbHkgcmVwcmVzZW50IHRob3NlIG9mIElUVi4NCg0KV2UgcmVzZXJ2ZSB0aGUgcmlnaHQgdG8gbW9uaXRvciBhbGwgZS1tYWlsIGNvbW11bmljYXRpb25zLCBhcyBwZXJtaXR0ZWQgYnkgYXBwbGljYWJsZSBsYXcgYW5kIHJlZ3VsYXRpb25zLg0KDQpGb3IgZGV0YWlscyBvZiBob3cgd2UgcHJvY2VzcyBwZXJzb25hbCBkYXRhLCBwbGVhc2Ugc2VlIHRoZSBwcml2YWN5IG5vdGljZXMgZm9yIGVhY2ggb2YgSVRWJ3MgYnVzaW5lc3MgYXJlYXMgYXQgaHR0cDovL3d3dy5pdHYuY29tL2dyb3VwcHJpdmFjeQ0K"
+                    }
+                  },
+                  {
+                    "partId": "0.0.1",
+                    "mimeType": "text/html",
+                    "filename": "",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "text/html; charset=\"utf-8\""
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 528,
+                      "data": "PGh0bWwgeG1sbnM6dj0idXJuOnNjaGVtYXMtbWljcm9zb2Z0LWNvbTp2bWwiIHhtbG5zOm89InVybjpzY2hlbWFzLW1pY3Jvc29mdC1jb206b2ZmaWNlOm9mZmljZSIgeG1sbnM6dz0idXJuOnNjaGVtYXMtbWljcm9zb2Z0LWNvbTpvZmZpY2U6d29yZCIgeG1sbnM6bT0iaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS9vZmZpY2UvMjAwNC8xMi9vbW1sIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvVFIvUkVDLWh0bWw0MCI-DQo8aGVhZD4NCjxtZXRhIGh0dHAtZXF1aXY9IkNvbnRlbnQtVHlwZSIgY29udGVudD0idGV4dC9odG1sOyBjaGFyc2V0PXV0Zi04Ij4NCjxtZXRhIG5hbWU9IkdlbmVyYXRvciIgY29udGVudD0iTWljcm9zb2Z0IFdvcmQgMTUgKGZpbHRlcmVkIG1lZGl1bSkiPg0KPCEtLVtpZiAhbXNvXT48c3R5bGU-dlw6KiB7YmVoYXZpb3I6dXJsKCNkZWZhdWx0I1ZNTCk7fQ0Kb1w6KiB7YmVoYXZpb3I6dXJsKCNkZWZhdWx0I1ZNTCk7fQ0Kd1w6KiB7YmVoYXZpb3I8IS0tIHRyaW1tZWQgZm9yIGZpeHR1cmUgLS0-"
+                    }
+                  }
+                ]
+              },
+              {
+                "partId": "0.1",
+                "mimeType": "image/png",
+                "filename": "image001.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image001.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image001.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image001.png\"; size=1746; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<eve@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.2",
+                "mimeType": "image/png",
+                "filename": "image002.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image002.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image002.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image002.png\"; size=1868; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<alice@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.3",
+                "mimeType": "image/png",
+                "filename": "image003.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image003.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image003.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image003.png\"; size=1500; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<bob@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.4",
+                "mimeType": "image/png",
+                "filename": "image004.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image004.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image004.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image004.png\"; size=544; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<carol@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.5",
+                "mimeType": "image/png",
+                "filename": "image005.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image005.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image005.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image005.png\"; size=1313; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<Alice@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.6",
+                "mimeType": "image/png",
+                "filename": "image006.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image006.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image006.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image006.png\"; size=517; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<eve@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.7",
+                "mimeType": "image/png",
+                "filename": "image007.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image007.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image007.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image007.png\"; size=2041; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<alice@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.8",
+                "mimeType": "image/png",
+                "filename": "image008.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image008.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image008.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image008.png\"; size=760; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<bob@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.9",
+                "mimeType": "image/png",
+                "filename": "image009.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image009.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image009.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image009.png\"; size=1617; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<carol@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.10",
+                "mimeType": "image/png",
+                "filename": "image010.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image010.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image010.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image010.png\"; size=91214; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<Alice@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.11",
+                "mimeType": "image/png",
+                "filename": "image011.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image011.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image011.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image011.png\"; size=119039; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<eve@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.12",
+                "mimeType": "image/png",
+                "filename": "image012.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image012.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image012.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image012.png\"; size=9009; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<alice@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.13",
+                "mimeType": "image/png",
+                "filename": "image013.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image013.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image013.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image013.png\"; size=710; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<bob@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.14",
+                "mimeType": "image/png",
+                "filename": "image014.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image014.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image014.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image014.png\"; size=1764; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<carol@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.15",
+                "mimeType": "image/png",
+                "filename": "image015.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image015.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image015.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image015.png\"; size=1022; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<Alice@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.16",
+                "mimeType": "image/png",
+                "filename": "image016.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image016.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image016.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image016.png\"; size=2020; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<eve@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.17",
+                "mimeType": "image/png",
+                "filename": "image017.png",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/png; name=\"image017.png\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image017.png"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image017.png\"; size=47028; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<alice@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              },
+              {
+                "partId": "0.18",
+                "mimeType": "image/jpeg",
+                "filename": "image018.jpg",
+                "headers": [
+                  {
+                    "name": "Content-Type",
+                    "value": "image/jpeg; name=\"image018.jpg\""
+                  },
+                  {
+                    "name": "Content-Description",
+                    "value": "image018.jpg"
+                  },
+                  {
+                    "name": "Content-Disposition",
+                    "value": "inline; filename=\"image018.jpg\"; size=8656; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                  },
+                  {
+                    "name": "Content-ID",
+                    "value": "<bob@example.com9EBBE0>"
+                  },
+                  {
+                    "name": "Content-Transfer-Encoding",
+                    "value": "base64"
+                  }
+                ],
+                "body": {
+                  "size": 0,
+                  "data": ""
+                }
+              }
+            ]
+          },
+          {
+            "partId": "1",
+            "mimeType": "message/rfc822",
+            "filename": "RE: Clock Number Questions.eml",
+            "headers": [
+              {
+                "name": "Content-Type",
+                "value": "message/rfc822"
+              },
+              {
+                "name": "Content-Disposition",
+                "value": "attachment; creation-date=\"Tue, 27 Jan 2026 10:25:54 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:55 GMT\""
+              }
+            ],
+            "body": {
+              "size": 0,
+              "data": ""
+            },
+            "parts": [
+              {
+                "partId": "1.0",
+                "mimeType": "multipart/related",
+                "filename": "",
+                "headers": [
+                  {
+                    "name": "Received",
+                    "value": "from LO6P123MB7253.GBRP123.PROD.OUTLOOK.COM (2603:10a6:600:341::16) by LO0P123MB6233.GBRP123.PROD.OUTLOOK.COM with HTTPS; Wed, 22 May 2024 11:49:35 +0000"
+                  },
+                  {
+                    "name": "Received",
+                    "value": "from LNXP265CA0079.GBRP265.PROD.OUTLOOK.COM (2603:10a6:600:76::19) by LO6P123MB7253.GBRP123.PROD.OUTLOOK.COM (2603:10a6:600:341::16) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.7587.36; Wed, 22 May 2024 11:49:31 +0000"
+                  },
+                  {
+                    "name": "Received",
+                    "value": "from LO1PEPF000022FC.GBRP265.PROD.OUTLOOK.COM (2603:10a6:600:76:cafe::b8) by LNXP265CA0079.outlook.office365.com (2603:10a6:600:76::19) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.7611.19 via Frontend Transport; Wed, 22 May 2024 11:49:31 +0000"
+                  },
+                  {
+                    "name": "Received",
+                    "value": "from uk2.smtp.exclaimer.net (192.0.2.1) by LO1PEPF000022FC.mail.protection.outlook.com (192.0.2.1) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.7611.14 via Frontend Transport; Wed, 22 May 2024 11:49:30 +0000"
+                  },
+                  {
+                    "name": "Received",
+                    "value": "from GBR01-LO4-obe.outbound.protection.outlook.com (192.0.2.1)\t by uk2.smtp.exclaimer.net (192.0.2.1) with Exclaimer Signature Manager\t ESMTP Proxy uk2.smtp.exclaimer.net (tlsversion=TLS12,\t tlscipher=TLS_DIFFIEHELLMAN_WITH_AES256_NONE); Wed, 22 May 2024 11:49:30\t +0000"
+                  },
+                  {
+                    "name": "Received",
+                    "value": "from CWLP123MB5054.GBRP123.PROD.OUTLOOK.COM (2603:10a6:400:129::9) by LO6P123MB6821.GBRP123.PROD.OUTLOOK.COM (2603:10a6:600:300::5) with Microsoft SMTP Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.7587.35; Wed, 22 May 2024 11:49:23 +0000"
+                  },
+                  {
+                    "name": "Received",
+                    "value": "from CWLP123MB5054.GBRP123.PROD.OUTLOOK.COM ([fe80::be04:67f6:5bd5:7cb2]) by CWLP123MB5054.GBRP123.PROD.OUTLOOK.COM ([fe80::be04:67f6:5bd5:7cb2%5]) with mapi id 15.20.7611.016; Wed, 22 May 2024 11:49:23 +0000"
+                  },
+                  {
+                    "name": "From",
+                    "value": "Bob Jones <carol@example.com>"
+                  },
+                  {
+                    "name": "To",
+                    "value": "Alice Brown <carol@example.com>"
+                  },
+                  {
+                    "name": "CC",
+                    "value": "Alice Smith <alice@example.com>, Alice Smith <bob@example.com>"
+                  },
+                  {
+                    "name": "Subject",
+                    "value": "RE: Clock Number Questions"
+                  },
+                  {
+                    "name": "Thread-Topic",
+                    "value": "Clock Number Questions"
+                  },
+                  {
+                    "name": "Thread-Index",
+                    "value": "AdqPPc03momN3Dc3TumTtL/lY0wwJgAAkUcAAAFl+eAABfIMcAHni4zwAD+s8NABITQrEAACJ7EQACsDKiADwmPooA=="
+                  },
+                  {
+                    "name": "Date",
+                    "value": "Wed, 22 May 2024 11:49:23 +0000"
+                  },
+                  {
+                    "name": "Message-ID",
+                    "value": "<carol@example.com>"
+                  },
+                  {
+                    "name": "References",
+                    "value": "<Alice@example.com> <eve@example.com> <alice@example.com> <bob@example.com> <carol@example.com> <Alice@example.com> <eve@example.com> <alice@example.com> <bob@example.com>"
+                  },
+                  {
+                    "name": "In-Reply-To",
+                    "value": "<bob@example.com>"
+                  },
+                  {
+                    "name": "Accept-Language",
+                    "value": "en-US, en-GB"
+                  },
+                  {
+                    "name": "Content-Language",
+                    "value": "en-US"
+                  },
+                  {
+                    "name": "X-MS-Exchange-Organization-AuthMechanism",
+                    "value": "04"
+                  },
+                  {
+                    "name": "X-MS-Exchange-Organization-AuthSource",
+                    "value": "CWLP123MB5054.GBRP123.PROD.OUTLOOK.COM"
+                  },
+                  {
+                    "name": "X-MS-Has-Attach",
+                    "value": "yes"
+                  },
+                  {
+                    "name": "X-MS-Exchange-Organization-Network-Message-Id",
+                    "value": "c6a9be6c-baa7-4363-97a9-08dc7a553dd5"
+                  },
+                  {
+                    "name": "X-MS-Exchange-Organization-SCL",
+                    "value": "1"
+                  },
+                  {
+                    "name": "X-MS-TNEF-Correlator",
+                    "value": ""
+                  },
+                  {
+                    "name": "X-MS-Exchange-Organization-RecordReviewCfmType",
+                    "value": "0"
+                  },
+                  {
+                    "name": "received-spf",
+                    "value": "SoftFail (protection.outlook.com: domain of transitioning trpresearch.com discourages use of 192.0.2.1 as permitted sender)"
+                  },
+                  {
+                    "name": "authentication-results",
+                    "value": "spf=softfail (sender IP is 192.0.2.1) smtp.mailfrom=trpresearch.com; dkim=none (message not signed) header.d=none;dmarc=fail action=none header.from=trpresearch.com;"
+                  },
+                  {
+                    "name": "x-ms-exchange-organization-originalclientipaddress",
+                    "value": "192.0.2.1"
+                  },
+                  {
+                    "name": "x-ms-exchange-organization-originalserveripaddress",
+                    "value": "192.0.2.1"
+                  },
+                  {
+                    "name": "x-ms-publictraffictype",
+                    "value": "Email"
+                  },
+                  {
+                    "name": "x-ms-office365-filtering-correlation-id",
+                    "value": "c6a9be6c-baa7-4363-97a9-08dc7a553dd5"
+                  },
+                  {
+                    "name": "x-ms-traffictypediagnostic",
+                    "value": "CWLP123MB5054:EE_|LO6P123MB6821:EE_|LO1PEPF000022FC:EE_|LO6P123MB7253:EE_|LO0P123MB6233:EE_"
+                  },
+                  {
+                    "name": "x-forefront-antispam-report",
+                    "value": "CIP:192.0.2.1;CTRY:GB;LANG:en;SCL:1;SRV:;IPV:CAL;SFV:NSPM;H:uk2.smtp.exclaimer.net;PTR:uk2.smtp.exclaimer.net;CAT:NONE;SFS:(13230031)(82310400017)(366007)(35042699013)(41050700001);DIR:INT;"
+                  },
+                  {
+                    "name": "x-microsoft-antispam",
+                    "value": "BCL:0;ARA:13230031|82310400017|366007|35042699013|41050700001;"
+                  },
+                  {
+                    "name": "x-ms-exchange-crosstenant-originalarrivaltime",
+                    "value": "22 May 2024 11:49:30.6578 (UTC)"
+                  },
+                  {
+                    "name": "x-ms-exchange-crosstenant-fromentityheader",
+                    "value": "HybridOnPrem"
+                  },
+                  {
+                    "name": "x-ms-exchange-crosstenant-id",
+                    "value": "38a454b0-51a3-464d-b46f-c50e68c6856c"
+                  },
+                  {
+                    "name": "x-ms-exchange-crosstenant-network-message-id",
+                    "value": "c6a9be6c-baa7-4363-97a9-08dc7a553dd5"
+                  },
+                  {
+                    "name": "x-ms-exchange-transport-crosstenantheadersstamped",
+                    "value": "LO6P123MB7253"
+                  },
+                  {
+                    "name": "x-ms-exchange-transport-endtoendlatency",
+                    "value": "00:00:04.6365159"
+                  },
+                  {
+                    "name": "x-ms-exchange-crosstenant-authsource",
+                    "value": "CWLP123MB5054.GBRP123.PROD.OUTLOOK.COM"
+                  },
+                  {
+                    "name": "x-ms-exchange-crosstenant-authas",
+                    "value": "Internal"
+                  },
+                  {
+                    "name": "x-ms-exchange-processed-by-bccfoldering",
+                    "value": "15.20.7611.013"
+                  },
+                  {
+                    "name": "x-microsoft-antispam-message-info",
+                    "value": "wcHt/zXKZadIlWFcuNNyBos0qvA0C8aMMyH0aHifQuiSCWqVN3yNg1SSaFL/+OEOaO42NK4TD/OM+w2FD/SSnjrlpuFi0Nc/zE4cg0RSp5Q/O8RsRjINU4cRMqN3cOE3r4qEa4KpqhTuUaUUdSDPvcDUrZ3cvD9PzVQEr/QrUCWBqhuavbYnB8QP3dncKvMqUBKnDlhP0P+R+qg2H1iJHvs/ebMlN65BfaLtiz90WakAUh6xMsC8zVgPPTF/H6ZyaOQ2aVWJDPJn1FMUumuP+x9CWz8YuxCYJhS1Lc6xJqNgbU5as/0JQpzX28hD5EKglU6tAqC+lgQXlLpjbtIYaf+/PiKoF3z1pnDVJ9g88P61NxAN4EH3Qgz3PInqmNg3iK1E3qPIwiTjt0oFlYA8CnoRNVjsKgqAfM1m0hNRnNEh9eGFYaSYs8EkGAR2tf3DXamgfv0+PXEfdbNnG5BtS7Se4OA+KOo973csB1t2VkdoU85/eizp/1WXPZIw/XdfPIdxXht8g4gRZa1d5+ZQk+KEGX/2MVo1KjlqXreURsl97TDOfoDpNB1csPlhnA96r79TwuDiSYH+eOCK8rqj0xwlnVB4+q0shx7kFCKBBpRrFNDsOaKCKis8Abxbx00VXcqebysIdFnK5qP4L6jhgbNQkF1igb6OZKwgdxbxofrZkoFItHc3cQtYTK4r4MeR9xiEnvxmAe8hZ9FCd34IuBF2362Qjp1ByBAnYq2p0ifoJy5qrJYjpsX1tLR1869YYA6zQV9bo6tR5uIQ8I/isA=="
+                  },
+                  {
+                    "name": "x-originatororg",
+                    "value": "E8VWQ5AVWEH0VHSF05R0Y2B4NE.smtp.exclaimer.cloud"
+                  },
+                  {
+                    "name": "x-eopattributedmessage",
+                    "value": "0"
+                  },
+                  {
+                    "name": "authentication-results-original",
+                    "value": "dkim=none (message not signed) header.d=none;dmarc=none action=none header.from=trpresearch.com;"
+                  },
+                  {
+                    "name": "x-forefront-antispam-report-untrusted",
+                    "value": "CIP:192.0.2.1;CTRY:;LANG:en;SCL:1;SRV:;IPV:NLI;SFV:NSPM;H:CWLP123MB5054.GBRP123.PROD.OUTLOOK.COM;PTR:;CAT:NONE;SFS:(13230031)(366007)(376005)(41050700001);DIR:INT;"
+                  },
+                  {
+                    "name": "x-microsoft-antispam-untrusted",
+                    "value": "BCL:0;ARA:13230031|366007|376005|41050700001;"
+                  },
+                  {
+                    "name": "x-microsoft-antispam-message-info-original",
+                    "value": "wcHt/zXKZadIlWFcuNNyBos0qvA0C8aMMyH0aHifQuiSCWqVN3yNg1SSaFL/+OEOaO42NK4TD/OM+w2FD/SSnjrlpuFi0Nc/zE4cg0RSp5Q/O8RsRjINU4cRMqN3cOE3r4qEa4KpqhTuUaUUdSDPvcDUrZ3cvD9PzVQEr/QrUCWBqhuavbYnB8QP3dncKvMqUBKnDlhP0P+R+qg2H1iJHvs/ebMlN65BfaLtiz90WakAUh6xMsC8zVgPPTF/H6ZyaOQ2aVWJDPJn1FMUumuP+x9CWz8YuxCYJhS1Lc6xJqNgbU5as/0JQpzX28hD5EKglU6tAqC+lgQXlLpjbtIYaf+/PiKoF3z1pnDVJ9g88P61NxAN4EH3Qgz3PInqmNg3iK1E3qPIwiTjt0oFlYA8CnoRNVjsKgqAfM1m0hNRnNEh9eGFYaSYs8EkGAR2tf3DXamgfv0+PXEfdbNnG5BtS7Se4OA+KOo973csB1t2VkdoU85/eizp/1WXPZIw/XdfPIdxXht8g4gRZa1d5+ZQk+KEGX/2MVo1KjlqXreURsl97TDOfoDpNB1csPlhnA96r79TwuDiSYH+eOCK8rqj0xwlnVB4+q0shx7kFCKBBpRrFNDsOaKCKis8Abxbx00VXcqebysIdFnK5qP4L6jhgbNQkF1igb6OZKwgdxbxofrZkoFItHc3cQtYTK4r4MeR9xiEnvxmAe8hZ9FCd34IuBF2362Qjp1ByBAnYq2p0ifoJy5qrJYjpsX1tLR1869YYA6zQV9bo6tR5uIQ8I/isA=="
+                  },
+                  {
+                    "name": "x-ms-exchange-transport-crosstenantheadersstripped",
+                    "value": "LO1PEPF000022FC.GBRP265.PROD.OUTLOOK.COM"
+                  },
+                  {
+                    "name": "x-ms-office365-filtering-correlation-id-prvs",
+                    "value": "bc7cbbfe-0dc3-4061-9df4-08dc7a5539b1"
+                  },
+                  {
+                    "name": "x-ms-exchange-crosstenant-originalattributedtenantconnectingip",
+                    "value": "TenantId=38a454b0-51a3-464d-b46f-c50e68c6856c;Ip=[192.0.2.1];Helo=[uk2.smtp.exclaimer.net]"
+                  },
+                  {
+                    "name": "X-Microsoft-Antispam-Mailbox-Delivery",
+                    "value": "ucf:0;jmr:0;auth:0;dest:I;ENG:(910001)(944506478)(944626604)(920097)(425001)(930097)(140003);"
+                  },
+                  {
+                    "name": "X-Microsoft-Antispam-Message-Info",
+                    "value": "UOyNipJHaxUr4+lVE3ztGcid2KM7LXQcR6rfQZl+HW10tL6XUUb9edGvY1kufeL43is1gKDbOXEkMJ51mO7imtncz52FRUB3snJJinwjngwBgA+o3YPxkUsIN/nJ6nmVkB4R31oJt2jcYehbpRd6jIeuQXtHSn1Jbb8QJA7XWd2RThBRtH8d9lD7pJFAlMr/DlC/jNff6HCkQFgS2c+YylGO0j/sDrTH0mFjeYV2+WWumIiddbrwxHG+CSnxk0PW6ikvl6+4wmvMjKVsanoSDFvlnWV24CeIwc2gdeoVidmcr9DOykIlPah4OHsgM3ow4+r197lLDIr78QgD0qPX5SjZtVJ4wU5r3SqCUsMAZOKGBTfxIovHpTE6u0gBAzWFqJRQmvBuXcd+OcLr44ngT7jA1//3f6t2zQfnOT5Wd8wxS+AXMvz25C9w27dWHSTBXw0AE55KTZ4+4Lb1vTlwTzNcoMmj1Azs52qjp+fuvzamz1q0qnafJ7+SyPADiSL8FI4L3wtHacbreAW3SCtEam9Oa2RzZ5VFNbxTI1Y3M0X9q0MtQbpPaLqjxgXLC/fXZEgKIUAViNT2IyXz3dXJ68XVbX8nxMJC0hEmxvsN6+57mfIYe6qCnMOlkA03vwGXo3umr1an09Z3V+N/58MG39KHia1XsiK6OVbZI6ijCaRucHPsGOTLcZr8XKg2Q9oQSY0BGA6Q5fiG4U3OSmnzmIEe22Nss4/B6WhMkIDBnSMQKZI3EfiQw5TGK+P1XSGRQiBqUZhxfMUnp4XM7Q94k4dv1khs8LzgupscWN3GdFcXjRtC52xcR0+Mtoeu9+s6/Z6u20OhP7ndEwHz7gUS1FvqOyicBeHlah8j5nTkUaPaCgs1J2h7lw9q2ICottEkukQ9mZqaNFEZpDgfPMMU+LPo2A48nPI0RvdN1njOTBY="
+                  },
+                  {
+                    "name": "Content-Type",
+                    "value": "multipart/related; boundary=\"_020_CWLP123MB5054052623E32F8389B3DA88BCEB2CWLP123MB5054GBRP_\"; type=\"multipart/alternative\""
+                  },
+                  {
+                    "name": "MIME-Version",
+                    "value": "1.0"
+                  }
+                ],
+                "body": {
+                  "size": 0
+                },
+                "parts": [
+                  {
+                    "partId": "1.0.0",
+                    "mimeType": "multipart/alternative",
+                    "filename": "",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "multipart/alternative; boundary=\"_000_CWLP123MB5054052623E32F8389B3DA88BCEB2CWLP123MB5054GBRP_\""
+                      }
+                    ],
+                    "body": {
+                      "size": 0
+                    },
+                    "parts": [
+                      {
+                        "partId": "192.0.2.1",
+                        "mimeType": "text/plain",
+                        "filename": "",
+                        "headers": [
+                          {
+                            "name": "Content-Type",
+                            "value": "text/plain; charset=\"utf-8\""
+                          },
+                          {
+                            "name": "Content-Transfer-Encoding",
+                            "value": "base64"
+                          }
+                        ],
+                        "body": {
+                          "size": 13068,
+                          "data": "SGkgV2lsbCwNCg0KSG9wZSBhbGwgaXMgd2VsbC4NCg0KSnVzdCB3b25kZXJpbmcgaWYgeW91IGhhdmUgaGFkIGEgY2hhbmNlIHRvIHJldmlldyBvdXIgcHJvcG9zYWwgb3IgaWYgeW91IGhhdmUgYW55IGZvbGxvdyB1cCBxdWVzdGlvbnM_ICBJ4oCZZCBiZSBoYXBweSB0byBoYXZlIGEgY2FsbCBpZiB5b3XigJlkIGxpa2UgdG8gZGlzY3VzcyBkZXRhaWxzLiBJ4oCZbSBhd2F5IG5leHQgd2VlayBidXQgY291bGQgY2hhdCBGcmlkYXkgYmVmb3JlIEkgbGVhdmUsIG9yIGhhcHB5IHRvIHB1dCB0aW1lIGluIGZvciB0aGUgd2VlayBJIHJldHVybi4NCg0KS2luZCByZWdhcmRzLA0KSm8NCg0KDQoNCkZyb206IFdpbGwgSGVhZGxleSA8d2lsbC5oZWFkbGV5QHN5c3RlbTFncm91cC5jb20-DQpTZW50OiBGcmlkYXksIE1heSAzLCAyMDI0IDk6MjkgQU0NClRvOiBKb2FubmUgVGluZ2F5IDxqdGluZ2F5QHRycHJlc2VhcmNoLmNvbT4NCkNjOiBDaGlhcmEgTWFuY28gPGNoaWFyYS5tYW5jb0BzeXN0ZW0xZ3JvdXAuY29tPjsgRGF2aWQgUmF5Ym91bGQgPGRyYXlib3VsZEB0cnByZXNlYXJjaC5jb20-DQpTdWJqZWN0OiBSRTogQ2xvY2sgTnVtYmVyIFF1ZXN0aW9ucw0KDQpHcmVhdCwgdGhhbmtzIEpvISAgTm8sIG5vIG5lZWQgdG8gdXBkYXRlIHRoZSBXb3JkIGRvYy4NCktpbmQgcmVnYXJkcw0KV2lsbA0KDQogPGh0dHBzOi8vc3lzdGVtMWdyb3VwLmNvbS9hb3R3Pg0KICAgICAgICBXaWxsIEhlYWRsZXnigIvigIvigIvigIsNCg0KSGVhZCBvZiBMYWJzICAgICB8ICAgICAgVW5pdGVkIEtpbmdkb20gICB8DQoNCg0KICAgICAgICArNDQgNzkxMiA1NzI5MTU8dGVsOis0NCUyMDc5MTIlMjA1NzI5MTU-DQoNClN5c3RlbTFHcm91cC5jb208aHR0cDovL3d3dy5zeXN0ZW0xZ3JvdXAuY29tLz4NCg0KDQoNCg0KDQpTeXN0ZW0xIEdyb3VwIFBMQyBpcyBJU08gMjcwMDE6MjAxMyBDZXJ0aWZpZWQNCg0KDQpTeXN0ZW0xIEdyb3VwIFBMQyBpcyBhIHB1YmxpYyBsaW1pdGVkIGNvbXBhbnkgcmVnaXN0ZXJlZCBpbiBFbmdsYW5kIGFuZCBXYWxlcyB3aXRoIGNvbXBhbnkgbnVtYmVyIDA1OTQwMDQwDQpUaGUgcmVnaXN0ZXJlZCBhZGRyZXNzIGlzIGF0IDQgTW9yZSBMb25kb24gUml2ZXJzaWRlLCBMb25kb24sIFNFMSAyQVUsIFVLDQrigItPZmZpY2UgaXMgbG9jYXRlZCBhdCAyNi0yNyBIYXR0b24gR2FyZGVuIExvbmRvbiwgRUMxTiA4QlINClRlbGVwaG9uZTogKzQ0ICgwKSAyMCA3MDQzIDEwMDAgRmF4OiArNDQgKDApIDIwIDcwNDMgMTAxMA0KDQoNCkZyb206IEpvYW5uZSBUaW5nYXkgPGp0aW5nYXlAdHJwcmVzZWFyY2guY29tPG1haWx0bzpqdGluZ2F5QHRycHJlc2VhcmNoLmNvbT4-DQpTZW50OiBUaHVyc2RheSwgTWF5IDIsIDIwMjQgMToxMiBQTQ0KVG86IFdpbGwgSGVhZGxleSA8d2lsbC5oZWFkbGV5QHN5c3RlbTFncm91cC5jb208bWFpbHRvOndpbGwuaGVhZGxleUBzeXN0ZW0xZ3JvdXAuY29tPj4NCkNjOiBDaGlhcmEgTWFuY28gPGNoaWFyYS5tYW5jb0BzeXN0ZW0xZ3JvdXAuY29tPG1haWx0bzpjaGlhcmEubWFuY29Ac3lzdGVtMWdyb3VwLmNvbT4-OyBEYXZpZCBSYXlib3VsZCA8ZHJheWJvdWxkQHRycHJlc2VhcmNoLmNvbTxtYWlsdG86ZHJheWJvdWxkQHRycHJlc2VhcmNoLmNvbT4-DQpTdWJqZWN0OiBSRTogQ2xvY2sgTnVtYmVyIFF1ZXN0aW9ucw0KDQpIaSBXaWxsLA0KDQpObyBwcm9ibGVtIGF0IGFsbC4NCg0KWW914oCZcmUgcmlnaHQgMTEgd2VyZSBsaXN0ZWQgYXMgMjAyNCBmcm9tIHRoZSBkYXRlcyBwcm92aWRlZCwgd2UgYWxzbyBjaGVja2VkIDIgb2YgdGhlIERlY2VtYmVyIGRhdGVzIGluIG91ciBzZWFyY2gvcmVmZXJlbmNlIGFzIHRoZSBkYXRlcyB3ZXJlIGVzdGltYXRlZC4gU29ycnkgc2hvdWxkIGhhdmUgbWFkZSB0aGF0IGNsZWFyLg0KDQpUaGUgcmVzdWx0cyB3aXRoIHRoZSBVUkwgbGlua3MgYXJlIGJlbG93LiAgTGV0IG1lIGtub3cgaWYgeW91IHdvdWxkIGxpa2UgdGhlIHdvcmQgZG9jdW1lbnQgdXBkYXRlZC4NCg0KVGhhbmtzDQpKbw0KDQoNCkFwcHJveC4gZmlyc3QgYWlyIGRhdGUgIEZpbGVuYW1lICAgICAgICAgICAgICAgIENsaXAgbGVuZ3RoICAgICBDbGVhcmNhc3QgSUQgICAgTWF0Y2ggQ29uZmlkZW5jZSAgICAgICAgQWR2ZXJ0aXNlciBOYW1lIEJyYW5kIE5hbWUgICAgICBzcG90bGVuZ3RoICAgICAgYnJhbmQNCjI2LzAyLzIwMjQgICAgICBNejBYTUE5Vi0zMTgyMTA2MCAgICAgICBodHRwczovL2NvbnRlbnQuandwbGF0Zm9ybS5jb20vdmlkZW9zL1U4Q0FZc0poLm1wNCAgICAgIDA6MDA6MTAgTUlBQVBVSzMxNzAxMCAgIFN0cm9uZyAgQVBQTEUgQ09NUFVURVIgVUsgICAgICAgQVBQTEUgVFYgICAgICAgIDEwDQowMi8wMy8yMDI0ICAgICAgVnNYSldXWlAtMzE4MjEwNjAgICAgICAgaHR0cHM6Ly9jb250ZW50Lmp3cGxhdGZvcm0uY29tL3ZpZGVvcy9hNENlbG4xTS5tcDQgICAgICAwOjAwOjEwIERHVVRUTEIwMDIwMTAgICBTdHJvbmcgIEFIREIgICAgQUhEQiBCUklUSVNIIExBTUIgICAgICAgMTANCjEyLzAyLzIwMjQgICAgICBFWjI4OXZwZy0zMTgyMTA2MCAgICAgICBodHRwczovL2NvbnRlbnQuandwbGF0Zm9ybS5jb20vdmlkZW9zL1A5ODM1WlFxLm1wNCAgICAgIDA6MDA6MDYgSllGQURVSzAzNDAzMCAgIE1pZCAgICAgQURJREFTIFVLICAgICAgIEFESURBUyBNSUNPQUNIIE1PQklMRSBBUFAgICAgICAgMzANCjI3LzAyLzIwMjQgICAgICA4c3BNdlNRQy0zMTgyMTA2MCAgICAgICBodHRwczovL2NvbnRlbnQuandwbGF0Zm9ybS5jb20vdmlkZW9zL0pRYXFEWFZqLm1wNCAgICAgIDA6MDA6MzAgSllGQURVSzAzNDAzMCAgIFN0cm9uZyAgQURJREFTIFVLICAgICAgIEFESURBUyBNSUNPQUNIIE1PQklMRSBBUFAgICAgICAgMzANCjA4LzAxLzIwMjQgICAgICBqUVFYQUZqUy0zMTgyMTA2MCAgICAgICBodHRwczovL2NvbnRlbnQuandwbGF0Zm9ybS5jb20vdmlkZW9zL3dIUVRncXRZLm1wNCAgICAgIDA6MDA6MTAgREdVVFREWTAwMjAxMCAgIFN0cm9uZyAgQUhEQiAgICBBSERCIEJSSVRJU0ggREFJUlkgICAgICAxMA0KDQoNCg0KQXBwcm94LiBmaXJzdCBhaXIgZGF0ZSAgRmlsZW5hbWUgICAgICAgICAgICAgICAgQ2xpcCBsZW5ndGggICAgIE5vdGUNCjIxLzAzLzIwMjQgICAgICBhNENlbG4xTS0zMTgyMTA1OSAgICAgICBodHRwczovL2NvbnRlbnQuandwbGF0Zm9ybS5jb20vdmlkZW9zL3FUN09GTzJwLm1wNCAgICAgIDA6MDA6MzAgTm8gQUcgQmFyciAvIElybiBCcnUgY29tbWVyY2lhbHMgYnJvYWRjYXN0IGluIDIwMjQNCjE5LzAxLzIwMjQgICAgICBXbUM4anhtMy0zMTgyMTA2MCAgICAgICBodHRwczovL2NvbnRlbnQuandwbGF0Zm9ybS5jb20vdmlkZW9zL3FUN09GTzJwLm1wNCAgICAgIDA6MDA6MTAgTm8gMTAgc2Vjb25kIEFzZGEgY29tbWVyY2lhbCBicm9hZGNhc3QgaW4gMjAyNA0KMjUvMDIvMjAyNCAgICAgIGU0TnNwZjNSLTMxODIxMDYwICAgICAgIGh0dHBzOi8vY29udGVudC5qd3BsYXRmb3JtLmNvbS92aWRlb3MvYjhyWVVvQmgubXA0ICAgICAgMDowMDozMCBObyAzMCBzZWNvbmQgQWRpZGFzIGNvbW1lcmNpYWwgYnJvYWRjYXN0IGluIDIwMjQNCjAxLzA0LzIwMjQgICAgICB5YXpFMDVEQS0zMTgyMTA2MCAgICAgICBodHRwczovL2NvbnRlbnQuandwbGF0Zm9ybS5jb20vdmlkZW9zL2I4cllVb0JoLm1wNCAgICAgIDA6MDA6MjAgTm8gUmVlYm9rIGNvbW1lcmNpYWxzIGJyb2FkY2FzdCBpbiAyMDI0DQowMS8wMy8yMDI0ICAgICAgeWxTVmpQRHItMzE4MjEwNjAgICAgICAgaHR0cHM6Ly9jb250ZW50Lmp3cGxhdGZvcm0uY29tL3ZpZGVvcy9qc0x1Q29oeC5tcDQgICAgICAwOjAwOjE1IE5vIDIwIHNlY29uZCBXcmVuIGNvbW1lcmNpYWxzIGJyb2FkY2FzdCBpbiAyMDI0DQoNCg0KDQoNCg0KRnJvbTogV2lsbCBIZWFkbGV5IDx3aWxsLmhlYWRsZXlAc3lzdGVtMWdyb3VwLmNvbTxtYWlsdG86d2lsbC5oZWFkbGV5QHN5c3RlbTFncm91cC5jb20-Pg0KU2VudDogVGh1cnNkYXksIE1heSAyLCAyMDI0IDExOjU4IEFNDQpUbzogSm9hbm5lIFRpbmdheSA8anRpbmdheUB0cnByZXNlYXJjaC5jb208bWFpbHRvOmp0aW5nYXlAdHJwcmVzZWFyY2guY29tPj4NCkNjOiBDaGlhcmEgTWFuY28gPGNoaWFyYS5tYW5jb0BzeXN0ZW0xZ3JvdXAuY29tPG1haWx0bzpjaGlhcmEubWFuY29Ac3lzdGVtMWdyb3VwLmNvbT4-OyBEYXZpZCBSYXlib3VsZCA8ZHJheWJvdWxkQHRycHJlc2VhcmNoLmNvbTxtYWlsdG86ZHJheWJvdWxkQHRycHJlc2VhcmNoLmNvbT4-DQpTdWJqZWN0OiBSRTogQ2xvY2sgTnVtYmVyIFF1ZXN0aW9ucw0KDQpIaSBKbywNCg0KVGhhbmtzIGFnYWluIGZvciBzaGFyaW5nLiAgSnVzdCBiZWVuIHJldmlld2luZyBpbiBtb3JlIGRldGFpbCB3aXRoIHRoZSB0ZWFtIGhlcmUuIEEgY291cGxlIG9mIHRoaW5ncyBJIHdhbnRlZCB0byBjaGVjayBwbGVhc2U6DQoNCllvdSBtZW50aW9uIHRoZXJlIGJlaW5nIDEzIGFkcyBpbiBvdXIgbGlzdCB0aGF0IGZpcnN0IGJyb2FkY2FzdCBpbiAyMDI0LiBPdXIgbWV0YSBkYXRhIGhhZCBpdCBhcyAxMSBvZiB0aGVtIOKAkyB3YXMgdGhlcmUgYW5vdGhlciBzb3VyY2Ugc3VnZ2VzdGluZyAxMz8NCldvdWxkIGl0IGJlIHBvc3NpYmxlIHRvIGluY2x1ZGUgYSB0YWJsZSwgZm9yIHRoZSAxMCBhZHMgd2hlcmUgeW91IGZvdW5kIHBvdGVudGlhbCBjbG9jayBudW1iZXIgbWF0Y2hlcywgdGhhdCBpbmNsdWRlcyBvdXIgb3JpZ2luYWwgdmlkZW8gZmlsZSBVUkwgYXMgYW4gaWRlbnRpZmllciBwbGVhc2U_ICBUaGVuIEkgY2FuIGJlIHN1cmUgb2Ygd2hpY2ggYWRzIHRvIHJlLXZpc2l0IG9uIG91ciBzaWRlLg0KDQpNYW55IHRoYW5rcw0KDQpXaWxsDQoNCiA8aHR0cHM6Ly9zeXN0ZW0xZ3JvdXAuY29tL2FvdHc-DQogICAgICAgIFdpbGwgSGVhZGxleeKAi-KAi-KAi-KAiw0KDQpIZWFkIG9mIExhYnMgICAgIHwgICAgICBVbml0ZWQgS2luZ2RvbSAgIHwNCg0KDQogICAgICAgICs0NCA3OTEyIDU3MjkxNTx0ZWw6KzQ0JTIwNzkxMiUyMDU3MjkxNT4NCg0KU3lzdGVtMUdyb3VwLmNvbTxodHRwOi8vd3d3LnN5c3RlbTFncm91cC5jb20vPg0KDQoNCg0KDQoNClN5c3RlbTEgR3JvdXAgUExDIGlzIElTTyAyNzAwMToyMDEzIENlcnRpZmllZA0KDQoNClN5c3RlbTEgR3JvdXAgUExDIGlzIGEgcHVibGljIGxpbWl0ZWQgY29tcGFueSByZWdpc3RlcmVkIGluIEVuZ2xhbmQgYW5kIFdhbGVzIHdpdGggY29tcGFueSBudW1iZXIgMDU5NDAwNDANClRoZSByZWdpc3RlcmVkIGFkZHJlc3MgaXMgYXQgNCBNb3JlIExvbmRvbiBSaXZlcnNpZGUsIExvbmRvbiwgU0UxIDJBVSwgVUsNCuKAi09mZmljZSBpcyBsb2NhdGVkIGF0IDI2LTI3IEhhdHRvbiBHYXJkZW4gTG9uZG9uLCBFQzFOIDhCUg0KVGVsZXBob25lOiArNDQgKDApIDIwIDcwNDMgMTAwMCBGYXg6ICs0NCAoMCkgMjAgNzA0MyAxMDEwDQoNCg0KRnJvbTogSm9hbm5lIFRpbmdheSA8anRpbmdheUB0cnByZXNlYXJjaC5jb208bWFpbHRvOmp0aW5nYXlAdHJwcmVzZWFyY2guY29tPj4NClNlbnQ6IEZyaWRheSwgQXByaWwgMjYsIDIwMjQgNTo1NyBQTQ0KVG86IFdpbGwgSGVhZGxleSA8d2lsbC5oZWFkbGV5QHN5c3RlbTFncm91cC5jb208bWFpbHRvOndpbGwuaGVhZGxleUBzeXN0ZW0xZ3JvdXAuY29tPj4NCkNjOiBDaGlhcmEgTWFuY28gPGNoaWFyYS5tYW5jb0BzeXN0ZW0xZ3JvdXAuY29tPG1haWx0bzpjaGlhcmEubWFuY29Ac3lzdGVtMWdyb3VwLmNvbT4-OyBEYXZpZCBSYXlib3VsZCA8ZHJheWJvdWxkQHRycHJlc2VhcmNoLmNvbTxtYWlsdG86ZHJheWJvdWxkQHRycHJlc2VhcmNoLmNvbT4-DQpTdWJqZWN0OiBSRTogQ2xvY2sgTnVtYmVyIFF1ZXN0aW9ucw0KDQpIaSBXaWxsLA0KDQpQbGVhc2UgZmlkIGF0dGFjaGVkIHRoZSByZXN1bHRzIGZyb20gdGhlIFBPQyBhbmQgb3VyIHByb3Bvc2FsIHRvIHByb3ZpZGUgdGhlIHNlcnZpY2UgdG8geW91LiAgSWYgeW914oCZZCBsaWtlIHRvIGhhdmUgYSBjYWxsIHRvIGRpc2N1c3MgdGhpcyBmdXJ0aGVyLCBwbGVhc2UgbGV0IG1lIGtub3csIEnigJlkIGJlIHZlcnkgaGFwcHkgdG8gdGFsayB5b3UgdGhyb3VnaCBvdXIgYXBwcm9hY2ggYW5kIGFuc3dlciBhbnkgcXVlc3Rpb25zLg0KDQpLaW5kIHJlZ2FyZHMNCkpvDQoNCg0KDQoNCg0KDQoNCg0KDQoNCg0KDQoNCg0KDQoNCg0KDQoNCg0KDQoNCg0KDQogICAgICAgICA8aHR0cHM6Ly90cnByZXNlYXJjaC5jb20vPg0KDQoNCg0KDQoNCiA8aHR0cHM6Ly90cnByZXNlYXJjaC5jb20vcHJvZHVjdHMvdHJwLXRyYXgvPg0KDQoNCg0KDQoNCg0KRnJvbTogRGF2aWQgUmF5Ym91bGQgPGRyYXlib3VsZEB0cnByZXNlYXJjaC5jb208bWFpbHRvOmRyYXlib3VsZEB0cnByZXNlYXJjaC5jb20-Pg0KU2VudDogVGh1cnNkYXksIEFwcmlsIDI1LCAyMDI0IDExOjMzIEFNDQpUbzogV2lsbCBIZWFkbGV5IDx3aWxsLmhlYWRsZXlAc3lzdGVtMWdyb3VwLmNvbTxtYWlsdG86d2lsbC5oZWFkbGV5QHN5c3RlbTFncm91cC5jb20-Pg0KQ2M6IENoaWFyYSBNYW5jbyA8Y2hpYXJhLm1hbmNvQHN5c3RlbTFncm91cC5jb208bWFpbHRvOmNoaWFyYS5tYW5jb0BzeXN0ZW0xZ3JvdXAuY29tPj47IFNhbWVlciBNb2RoYSA8c2FtZWVyLm1vZGhhQGl0di5jb208bWFpbHRvOnNhbWVlci5tb2RoYUBpdHYuY29tPj47IEpvYW5uZSBUaW5nYXkgPGp0aW5nYXlAdHJwcmVzZWFyY2guY29tPG1haWx0bzpqdGluZ2F5QHRycHJlc2VhcmNoLmNvbT4-DQpTdWJqZWN0OiBSRTogQ2xvY2sgTnVtYmVyIFF1ZXN0aW9ucw0KDQpIaSBXaWxsLA0KDQpRdWljayB1cGRhdGXigKYgIFRoZSB0ZWFtIGhhcyBiZWVuIHdvcmtpbmcgb24gdGhlIG1hdGNoaW5nIGZvciB5b3UsIHRoZXkgYXJlIG5vdyBmaW5hbGlzaW5nIHJlc3VsdHMgYW5kIHByZXBhcmluZyBhIHF1b3RhdGlvbiB3aGljaCB3aWxsIGJlIHNlbnQgdG8geW91IGluIHRoZSBuZXh0IGZldyBkYXlzLg0KDQpCZXN0LA0KDQpEYXZpZA0KDQpGcm9tOiBEYXZpZCBSYXlib3VsZA0KU2VudDogTW9uZGF5LCBBcHJpbCAxNSwgMjAyNCA2OjUzIFBNDQpUbzogV2lsbCBIZWFkbGV5IDx3aWxsLmhlYWRsZXlAc3lzdGVtMWdyb3VwLmNvbTxtYWlsdG86d2lsbC5oZWFkbGV5QHN5c3RlbTFncm91cC5jb20-Pg0KQ2M6IENoaWFyYSBNYW5jbyA8Y2hpYXJhLm1hbmNvQHN5c3RlbTFncm91cC5jb208bWFpbHRvOmNoaWFyYS5tYW5jb0BzeXN0ZW0xZ3JvdXAuY29tPj47IFNhbWVlciBNb2RoYSA8c2FtZWVyLm1vZGhhQGl0di5jb208bWFpbHRvOnNhbWVlci5tb2RoYUBpdHYuY29tPj47IEpvYW5uZSBUaW5nYXkgPGp0aW5nYXlAdHJwcmVzZWFyY2guY29tPG1haWx0bzpqdGluZ2F5QHRycHJlc2VhcmNoLmNvbT4-DQpTdWJqZWN0OiBSRTogQ2xvY2sgTnVtYmVyIFF1ZXN0aW9ucw0KDQpIaSBXaWxsLA0KDQpUaGFua3MgZm9yIHRoaXMg4oCTIHllcywgdGhpcyBpcyB3aGF0IHdlIG5lZWTigKYNCg0KSSB0aGluaywgZm9yIHNwZWVkLCBhbmQganVzdCB0byB0ZXN0IHRoZSBtYXRjaGluZywgd2UgbWlnaHQgc3RhcnQgd2l0aCBhIHN1YnNldCBvZiBhZHMgdGhhdCB3ZXJlIG5ldyBzaW5jZSBKYW4gMjAyNCDigJMganVzdCB0byB0ZXN0IHRoZSBwcm9jZXNzIGFuZCBwcm92ZSB0aGUgcHJpbmNpcGxlLiAgVGhpcyB3aWxsIHNhdmUgbG90cyBvZiB0aW1lIG91ciBlbmTigKYNCg0KQ2FuIEkgaW50cm9kdWNlIEpvIGF0IFRSUCDigJMgY2PigJlkIGhlcmXigKYgIFNoZSB3aWxsIHJ1biB0aGlzIFBvQyBhbmQgbWF5IGNvbWUgYmFjayB0byB5b3Ugd2l0aCBhbnkgZnVydGhlciBxdWVzdGlvbnMuDQoNCkJlc3QsDQoNCkRhdmlkDQoNCkZyb206IFdpbGwgSGVhZGxleSA8d2lsbC5oZWFkbGV5QHN5c3RlbTFncm91cC5jb208bWFpbHRvOndpbGwuaGVhZGxleUBzeXN0ZW0xZ3JvdXAuY29tPj4NClNlbnQ6IE1vbmRheSwgQXByaWwgMTUsIDIwMjQgNDowMiBQTQ0KVG86IERhdmlkIFJheWJvdWxkIDxkcmF5Ym91bGRAdHJwcmVzZWFyY2guY29tPG1haWx0bzpkcmF5Ym91bGRAdHJwcmVzZWFyY2guY29tPj4NCkNjOiBDaGlhcmEgTWFuY28gPGNoaWFyYS5tYW5jb0BzeXN0ZW0xZ3JvdXAuY29tPG1haWx0bzpjaGlhcmEubWFuY29Ac3lzdGVtMWdyb3VwLmNvbT4-OyBTYW1lZXIgTW9kaGEgPHNhbWVlci5tb2RoYUBpdHYuY29tPG1haWx0bzpzYW1lZXIubW9kaGFAaXR2LmNvbT4-OyBKb2FubmUgVGluZ2F5IDxqdGluZ2F5QHRycHJlc2VhcmNoLmNvbTxtYWlsdG86anRpbmdheUB0cnByZXNlYXJjaC5jb20-Pg0KU3ViamVjdDogUkU6IENsb2NrIE51bWJlciBRdWVzdGlvbnMNCg0KSGkgRGF2aWQsDQoNCkJlbG93IGFyZSB0aGUgRmlyc3QgQWlyZWQgZGF0ZXMgd2UgaGF2ZSDigJMgc2FtZSBvcmRlciBhcyB0aGUgYWRzIGluIHRoZSBFeGNlbCBleHBvcnQgc2VudC4gIExldCBtZSBrbm93IGlmIHRoaXMgd29ya3MgZm9yIHlvdS4NCg0KVGhhbmtzDQoNCldpbGwNCg0KRmlyc3QgQWlyZWQNCjIwMjMtMDYtMDYNCjIwMjMtMDYtMDMNCjIwMjMtMTItMTUNCjIwMjMtMTEtMjgNCjIwMjMtMTEtMjENCjIwMjMtMDktMjINCjIwMjEtMTEtMDUNCjIwMjQtMDItMjUNCjIwMjQtMDItMTINCjIwMjQtMDItMjcNCjIwMjQtMDMtMDINCjIwMjQtMDEtMDgNCjIwMjQtMDEtMDgNCjIwMjMtMDMtMDYNCjIwMjMtMDEtMzANCjIwMjMtMTAtMDINCjIwMjMtMDktMDQNCjIwMTUtMDgtMDYNCjIwMjQtMDItMjYNCjIwMjQtMDEtMTkNCjIwMjMtMTItMjYNCjIwMjQtMDMtMjENCjIwMDEtMDUtMTQNCjIwMjMtMDUtMTkNCjIwMjQtMDQtMDENCjIwMjMtMDMtMDMNCjIwMjMtMDQtMTgNCjIwMjQtMDMtMDENCjIwMjAtMTAtMTUNCg0KDQogPGh0dHBzOi8vc3lzdGVtMWdyb3VwLmNvbS9hb3R3Pg0KICAgICAgICBXaWxsIEhlYWRsZXnigIvigIvigIvigIsNCg0KSGVhZCBvZiBMYWJzICAgICB8ICAgICAgVW5pdGVkIEtpbmdkb20gICB8DQoNCg0KICAgICAgICArNDQgNzkxMiA1NzI5MTU8dGVsOis0NCUyMDc5MTIlMjA1NzI5MTU-DQoNClN5c3RlbTFHcm91cC5jb208aHR0cDovL3d3dy5zeXN0ZW0xZ3JvdXAuY29tLz4NCg0KDQoNCg0KDQoNClN5c3RlbTEgR3JvdXAgUExDIGlzIElTTyAyNzAwMToyMDEzIENlcnRpZmllZA0KDQoNClN5c3RlbTEgR3JvdXAgUExDIGlzIGEgcHVibGljIGxpbWl0ZWQgY29tcGFueSByZWdpc3RlcmVkIGluIEVuZ2xhbmQgYW5kIFdhbGVzIHdpdGggY29tcGFueSBudW1iZXIgMDU5NDAwNDANClRoZSByZWdpc3RlcmVkIGFkZHJlc3MgaXMgYXQgNCBNb3JlIExvbmRvbiBSaXZlcnNpZGUsIExvbmRvbiwgU0UxIDJBVSwgVUsNCuKAi09mZmljZSBpcyBsb2NhdGVkIGF0IDI2LTI3IEhhdHRvbiBHYXJkZW4gTG9uZG9uLCBFQzFOIDhCUg0KVGVsZXBob25lOiArNDQgKDApIDIwIDcwNDMgMTAwMCBGYXg6ICs0NCAoMCkgMjAgNzA0MyAxMDEwDQoNCg0KRnJvbTogV2lsbCBIZWFkbGV5IDx3aWxsLmhlYWRsZXlAc3lzdGVtMWdyb3VwLmNvbTxtYWlsdG86d2lsbC5oZWFkbGV5QHN5c3RlbTFncm91cC5jb20-Pg0KU2VudDogTW9uZGF5LCBBcHJpbCAxNSwgMjAyNCAzOjM1IFBNDQpUbzogRGF2aWQgUmF5Ym91bGQgPGRyYXlib3VsZEB0cnByZXNlYXJjaC5jb208bWFpbHRvOmRyYXlib3VsZEB0cnByZXNlYXJjaC5jb20-Pg0KQ2M6IENoaWFyYSBNYW5jbyA8Y2hpYXJhLm1hbmNvQHN5c3RlbTFncm91cC5jb208bWFpbHRvOmNoaWFyYS5tYW5jb0BzeXN0ZW0xZ3JvdXAuY29tPj47IFNhbWVlciBNb2RoYSA8c2FtZWVyLm1vZGhhQGl0di5jb208bWFpbHRvOnNhbWVlci5tb2RoYUBpdHYuY29tPj47IEpvYW5uZSBUaW5nYXkgPGp0aW5nYXlAdHJwcmVzZWFyY2guY29tPG1haWx0bzpqdGluZ2F5QHRycHJlc2VhcmNoLmNvbT4-DQpTdWJqZWN0OiBSRTogQ2xvY2sgTnVtYmVyIFF1ZXN0aW9ucw0KDQpIaSBEYXZpZCAoYW5kIHRoYW5rcyBTYW1lZXIhKSwNCg0KWWVzLCBJIGNhbiBzZW5kIG92ZXIgdGhlIGZpcnN0IGFpcmVkIGRhdGVzIGZvciBhbGwgdGhlc2UgYWRzLiAgTm90ZSBpdCBtYXkgZGlmZmVyIHNsaWdodGx5IGJ5IHNvdXJjZSAoZS5nLiBpZiBOaWVsc2VuIGNvdmVyYWdlIGdyb3dzIG9yIHNocmlua3MgdGhlbiBpdOKAmXMgcG9zc2libGUgdGhlIHNhbWUgYWQgY291bGQgZ2V0IGdpdmVuIGFuIGVhcmxpZXIgb3IgbGF0ZXIgZmlyc3QgYWlyaW5nIGRhdGUgaWYgaXQgaGFwcGVuZWQgdG8gYmUgb24gYSBmcmluZ2UgY2hhbm5lbCksIHNvIHRoZXNlIGFyZSB0aGUgZGF0ZXMgd2UgZ290IGZyb20gTmllbHNlbi4NCg0KRm9yIGFuIG9uZ29pbmcgc2VydmljZSwgSSBjb3VsZCBzZWUgdmFyaW91cyBwb3NzaWJpbGl0aWVzLiAgVGhlIG1vc3QgcmVjZW50IHJlcXVlc3RzIHdlIGhhZCB3b3VsZCBoYXZlIGJlZW4gY292ZXJlZCBieSBhZCBob2MgcmV0cm9zcGVjdGl2ZSBydW4gb2YgdGVucywgcG9zc2libHkgaHVuZHJlZHMgb2YgYWRzIHdpdGggbm8gaHVnZSBuZWVkIGZvciBzcGVlZC4gIEZvciBleGFtcGxlLCBtYXRjaGluZyBhbGwgdGhlIGFpcmVkIFRWIGFkcyB3ZSBoYXZlIGZyb20gdGhlIGxhc3QgeWVhciBmb3IgYSBnaXZlbiBjYXRlZ29yeS4gIFNpbWlsYXIgdG8gdGhpcyBwaWxvdCBleGVyY2lzZSB3ZeKAmXJlIGRvaW5nIHdpdGggeW91LiAgSSBjYW4gc2VlIHZhcmlvdXMgaW50ZXJtZWRpYXRlIG9wdGlvbnMgYnV0IEkgc3VwcG9zZSB0aGUgZnVsbGVzdCBvcHRpb24gd291bGQgYmUgdG8gbWF0Y2ggYWxsIFRWIGFkcyB0aGF0IHdlIGdldCBmcm9tIE5pZWxzZW4gYW5kIGluIGEgcHJldHR5IHNob3J0IHRpbWUtZnJhbWUuICBJIGRvbuKAmXQgdGhpbmsgaW5zdGFudGx5IHdvdWxkIGJlIG5lY2Vzc2FyeSBidXQgd2l0aGluIDI0IGhvdXJzLCB3aGlsZSB3ZSB0ZXN0IHRoZSBuZXcgYWRzLCBtYXhpbWlzZXMgdGhlIHBvc3NpYmlsaXRpZXMuICBNb3N0IHVzZXMsIGhvd2V2ZXIsIHdvdWxkIGxpa2VseSBiZSBjb3ZlcmVkIGJ5IGEgd2Vla2x5IG9yIG1vbnRobHkgRXhjZWwgZGVsaXZlcnkgb3Igc2ltaWxhci4gIFdl4oCZZCBuZWVkIGEgd2lkZXIgZGlzY3Vzc2lvbiB0aGlzIHNpZGUgdG8gY2hlY2sgd2hhdCAvIHdoZW4gZGV2IHJlc291cmNlcyBjb3VsZCBiZSBhbGxvY2F0ZWQsIGFsc28gd2hldGhlciBOaWVsc2VuIGhhdmUgYW55IHBsYW5uZWQgY2hhbmdlcyBpbiB0aGVpciBkZWxpdmVyeS4NCg0KTWFueSB0aGFua3MNCg0KV2lsbA0KDQogPGh0dHBzOi8vc3lzdGVtMWdyb3VwLmNvbS9hb3R3Pg0KICAgICAgICBXaWxsIEhlYWRsZXnigIvigIvigIvigIsNCg0KSGVhZCBvZiBMYWJzICAgICB8ICAgICAgVW5pdGVkIEtpbmdkb20gICB8DQoNCg0KICAgICAgICArNDQgNzkxMiA1NzI5MTU8dGVsOis0NCUyMDc5MTIlMjA1NzI5MTU-DQoNClN5c3RlbTFHcm91cC5jb208aHR0cDovL3d3dy5zeXN0ZW0xZ3JvdXAuY29tLz4NCg0KDQoNCg0KDQoNClN5c3RlbTEgR3JvdXAgUExDIGlzIElTTyAyNzAwMToyMDEzIENlcnRpZmllZA0KDQoNClN5c3RlbTEgR3JvdXAgUExDIGlzIGEgcHVibGljIGxpbWl0ZWQgY29tcGFueSByZWdpc3RlcmVkIGluIEVuZ2xhbmQgYW5kIFdhbGVzIHdpdGggY29tcGFueSBudW1iZXIgMDU5NDAwNDANClRoZSByZWdpc3RlcmVkIGFkZHJlc3MgaXMgYXQgNCBNb3JlIExvbmRvbiBSaXZlcnNpZGUsIExvbmRvbiwgU0UxIDJBVSwgVUsNCuKAi09mZmljZSBpcyBsb2NhdGVkIGF0IDI2LTI3IEhhdHRvbiBHYXJkZW4gTG9uZG9uLCBFQzFOIDhCUg0KVGVsZXBob25lOiArNDQgKDApIDIwIDcwNDMgMTAwMCBGYXg6ICs0NCAoMCkgMjAgNzA0MyAxMDEwDQoNCg0KRnJvbTogRGF2aWQgUmF5Ym91bGQgPGRyYXlib3VsZEB0cnByZXNlYXJjaC5jb208bWFpbHRvOmRyYXlib3VsZEB0cnByZXNlYXJjaC5jb20-Pg0KU2VudDogTW9uZGF5LCBBcHJpbCAxNSwgMjAyNCAzOjA5IFBNDQpUbzogV2lsbCBIZWFkbGV5IDx3aWxsLmhlYWRsZXlAc3lzdGVtMWdyb3VwLmNvbTxtYWlsdG86d2lsbC5oZWFkbGV5QHN5c3RlbTFncm91cC5jb20-Pg0KQ2M6IENoaWFyYSBNYW5jbyA8Y2hpYXJhLm1hbmNvQHN5c3RlbTFncm91cC5jb208bWFpbHRvOmNoaWFyYS5tYW5jb0BzeXN0ZW0xZ3JvdXAuY29tPj47IFNhbWVlciBNb2RoYSA8c2FtZWVyLm1vZGhhQGl0di5jb208bWFpbHRvOnNhbWVlci5tb2RoYUBpdHYuY29tPj47IEpvYW5uZSBUaW5nYXkgPGp0aW5nYXlAdHJwcmVzZWFyY2guY29tPG1haWx0bzpqdGluZ2F5QHRycHJlc2VhcmNoLmNvbT4-DQpTdWJqZWN0OiBDbG9jayBOdW1iZXIgUXVlc3Rpb25zDQoNCkhpIFdpbGwsDQoNClNhbWVlciBoYXMgc2VudCB1cyBzb21lIGFkcyB0byB0ZXN0IHRoZSByZWZlcmVuY2luZ-KApiAgT3VyIHRlYW0gaGF2ZSBhc2tlZCBhIGNvdXBsZSBvZiBxdWVzdGlvbnM6DQoNCiAgMS4gIERvIHlvdSBoYXZlIHRoZSBmaXJzdCBicm9hZGNhc3QgZGF0ZSBmb3IgdGhlIGNsaXBzPyAgT3IgZG8geW91IGtub3cgd2hhdCBwZXJpb2Qgb2YgdGltZSB0aGV5IHJlbGF0ZSB0byAoZWcuOiBTaW5jZSBKYW4gMjAyNCwgb3IgU2luY2UgMjAyMT8pICBUaGlzIHdpbGwgc3BlZWQgdXAgdGhlIHRlc3RpbmcgaWYgeW91IGhhdmUgaXQgYnV0IGlzbuKAmXQgYSBkZWFsIGJyZWFrZXIgaWYgeW91IGRvbuKAmXQg4oCTIHdlIGNhbiBydW4gYWdhaW5zdCBldmVyeXRoaW5nIGJ1dCBpdCB3aWxsIHRha2UgbG9uZ2VyLg0KICAyLiAgQ2FuIHlvdSBjb25maXJtIHRoZSBzY2FsZS9mcmVxdWVuY3kgb2YgY2xpcHMgdGhhdCB3b3VsZCByZXF1aXJlIHJlZmVyZW5jaW5nIGlmIHdlIHNldCB1cCBhIFNlcnZpY2U_ICBGb3IgZXhhbXBsZSwgd291bGQgaXQgYmUgYWxsIGNsaXBzIG9uIFRWLCBhIGhhbmRmdWwsIDMwIGEgbW9udGg_ICBBbmQgd291bGQgeW91IG5lZWQgcmVzdWx0cyBiYWNrIGluc3RhbnRseSB2aWEgYW4gQVBJLCBvciB3ZWVrbHkgLyBtb250aGx5IGluIEV4Y2VsIG9yIHZpYSBzb21lIGZpbGUgZGVsaXZlcnk_DQoNClRoYW5rcw0KDQpEYXZpZA0KDQoNCg0KDQoNCg0KDQoNCg0KDQoNCg0KDQoNCg0KDQoNCg0KDQoNCg0KDQoNCg0KICAgICAgICAgPGh0dHBzOi8vdHJwcmVzZWFyY2guY29tLz4NCg0KDQoNCg0KDQogPGh0dHBzOi8vdHJwcmVzZWFyY2guY29tL3Byb2R1Y3RzL3RycC10cmF4Lz4NCg0KDQoNCg0K"
+                        }
+                      },
+                      {
+                        "partId": "192.0.2.1",
+                        "mimeType": "text/html",
+                        "filename": "",
+                        "headers": [
+                          {
+                            "name": "Content-Type",
+                            "value": "text/html; charset=\"utf-8\""
+                          },
+                          {
+                            "name": "Content-Transfer-Encoding",
+                            "value": "base64"
+                          }
+                        ],
+                        "body": {
+                          "size": 528,
+                          "data": "PGh0bWwgeG1sbnM6dj0idXJuOnNjaGVtYXMtbWljcm9zb2Z0LWNvbTp2bWwiIHhtbG5zOm89InVybjpzY2hlbWFzLW1pY3Jvc29mdC1jb206b2ZmaWNlOm9mZmljZSIgeG1sbnM6dz0idXJuOnNjaGVtYXMtbWljcm9zb2Z0LWNvbTpvZmZpY2U6d29yZCIgeG1sbnM6bT0iaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS9vZmZpY2UvMjAwNC8xMi9vbW1sIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvVFIvUkVDLWh0bWw0MCI-DQo8aGVhZD4NCjxtZXRhIGh0dHAtZXF1aXY9IkNvbnRlbnQtVHlwZSIgY29udGVudD0idGV4dC9odG1sOyBjaGFyc2V0PXV0Zi04Ij4NCjxtZXRhIG5hbWU9IkdlbmVyYXRvciIgY29udGVudD0iTWljcm9zb2Z0IFdvcmQgMTUgKGZpbHRlcmVkIG1lZGl1bSkiPg0KPCEtLVtpZiAhbXNvXT48c3R5bGU-dlw6KiB7YmVoYXZpb3I6dXJsKCNkZWZhdWx0I1ZNTCk7fQ0Kb1w6KiB7YmVoYXZpb3I6dXJsKCNkZWZhdWx0I1ZNTCk7fQ0Kd1w6KiB7YmVoYXZpb3I8IS0tIHRyaW1tZWQgZm9yIGZpeHR1cmUgLS0-"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "partId": "1.0.1",
+                    "mimeType": "image/jpeg",
+                    "filename": "image001.jpg",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/jpeg; name=\"image001.jpg\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image001.jpg"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image001.jpg\"; size=7144; creation-date=\"Wed, 22 May 2024 11:49:22 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image001.jpg@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.2",
+                    "mimeType": "image/png",
+                    "filename": "image002.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image002.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image002.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image002.png\"; size=271; creation-date=\"Wed, 22 May 2024 11:49:22 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image002.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.3",
+                    "mimeType": "image/png",
+                    "filename": "image003.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image003.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image003.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image003.png\"; size=1554; creation-date=\"Wed, 22 May 2024 11:49:22 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image003.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.4",
+                    "mimeType": "image/png",
+                    "filename": "image004.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image004.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image004.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image004.png\"; size=933; creation-date=\"Wed, 22 May 2024 11:49:22 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image004.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.5",
+                    "mimeType": "image/png",
+                    "filename": "image005.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image005.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image005.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image005.png\"; size=1500; creation-date=\"Wed, 22 May 2024 11:49:22 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image005.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.6",
+                    "mimeType": "image/png",
+                    "filename": "image006.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image006.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image006.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image006.png\"; size=544; creation-date=\"Wed, 22 May 2024 11:49:22 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image006.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.7",
+                    "mimeType": "image/png",
+                    "filename": "image007.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image007.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image007.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image007.png\"; size=1382; creation-date=\"Wed, 22 May 2024 11:49:22 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image007.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.8",
+                    "mimeType": "image/png",
+                    "filename": "image008.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image008.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image008.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image008.png\"; size=517; creation-date=\"Wed, 22 May 2024 11:49:22 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image008.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.9",
+                    "mimeType": "image/png",
+                    "filename": "image009.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image009.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image009.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image009.png\"; size=2041; creation-date=\"Wed, 22 May 2024 11:49:22 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image009.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.10",
+                    "mimeType": "image/png",
+                    "filename": "image010.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image010.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image010.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image010.png\"; size=760; creation-date=\"Wed, 22 May 2024 11:49:23 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:54 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image010.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.11",
+                    "mimeType": "image/png",
+                    "filename": "image011.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image011.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image011.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image011.png\"; size=1617; creation-date=\"Wed, 22 May 2024 11:49:23 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:55 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image011.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.12",
+                    "mimeType": "image/png",
+                    "filename": "image012.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image012.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image012.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image012.png\"; size=47668; creation-date=\"Wed, 22 May 2024 11:49:23 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:55 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image012.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.13",
+                    "mimeType": "image/png",
+                    "filename": "image013.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image013.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image013.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image013.png\"; size=153377; creation-date=\"Wed, 22 May 2024 11:49:23 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:55 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image013.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.14",
+                    "mimeType": "image/png",
+                    "filename": "image014.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image014.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image014.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image014.png\"; size=1746; creation-date=\"Wed, 22 May 2024 11:49:23 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:55 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image014.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.15",
+                    "mimeType": "image/png",
+                    "filename": "image015.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image015.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image015.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image015.png\"; size=1868; creation-date=\"Wed, 22 May 2024 11:49:23 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:55 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image015.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.16",
+                    "mimeType": "image/png",
+                    "filename": "image016.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image016.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image016.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image016.png\"; size=1313; creation-date=\"Wed, 22 May 2024 11:49:23 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:55 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image016.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  },
+                  {
+                    "partId": "1.0.17",
+                    "mimeType": "image/png",
+                    "filename": "image017.png",
+                    "headers": [
+                      {
+                        "name": "Content-Type",
+                        "value": "image/png; name=\"image017.png\""
+                      },
+                      {
+                        "name": "Content-Description",
+                        "value": "image017.png"
+                      },
+                      {
+                        "name": "Content-Disposition",
+                        "value": "inline; filename=\"image017.png\"; size=2041; creation-date=\"Wed, 22 May 2024 11:49:23 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:55 GMT\""
+                      },
+                      {
+                        "name": "Content-ID",
+                        "value": "<image017.png@01DAAC46.776A8A10>"
+                      },
+                      {
+                        "name": "Content-Transfer-Encoding",
+                        "value": "base64"
+                      }
+                    ],
+                    "body": {
+                      "size": 0,
+                      "data": ""
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "partId": "2",
+            "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "filename": "Commercial Attributes Provision_April2024.docx",
+            "headers": [
+              {
+                "name": "Content-Type",
+                "value": "application/vnd.openxmlformats-officedocument.wordprocessingml.document; name=\"Commercial Attributes Provision_April2024.docx\""
+              },
+              {
+                "name": "Content-Description",
+                "value": "Commercial Attributes Provision_April2024.docx"
+              },
+              {
+                "name": "Content-Disposition",
+                "value": "attachment; filename=\"Commercial Attributes Provision_April2024.docx\"; size=49145; creation-date=\"Tue, 27 Jan 2026 10:22:53 GMT\"; modification-date=\"Tue, 27 Jan 2026 10:25:55 GMT\""
+              },
+              {
+                "name": "Content-Transfer-Encoding",
+                "value": "base64"
+              }
+            ],
+            "body": {
+              "size": 0,
+              "data": ""
+            }
+          }
+        ]
+      },
+      "sizeEstimate": 1139290,
+      "historyId": "22519746",
+      "internalDate": "1769509555000"
+    }
+  ]
+}

@@ -347,6 +347,10 @@ _RE_REPLY_PREAMBLE = re.compile(
 )
 
 _RE_URL = re.compile(r'https?://|<http')
+_RE_PHONE = re.compile(
+    r'(?:phone|tel|mob(?:ile)?|cell|direct|office)\s*[:.]?\s*\+?[\d\s\(\)\-]{7,}',
+    re.IGNORECASE,
+)
 
 
 def _strip_trailing_contact_block(body: str) -> str:
@@ -358,8 +362,9 @@ def _strip_trailing_contact_block(body: str) -> str:
 
     Detection: finds a "name block" pattern — a short line (bare name)
     preceded by a blank line, followed by another short text line
-    (full name/title), with 3+ URLs in the text below. This avoids
-    false positives on content that happens to contain links.
+    (full name/title). Then checks two signals in the trailing text:
+      - 3+ URLs (URL-dense block, original heuristic)
+      - 1+ URL and a phone number (corporate sig with fewer links)
 
     Also strips orphaned reply preambles ("On ... wrote:").
     """
@@ -389,10 +394,12 @@ def _strip_trailing_contact_block(body: str) -> str:
         if not next_text or _RE_URL.search(next_text) or len(next_text) >= 60:
             continue  # Next line is a URL or too long — not a name block
 
-        # Check URL density below this point
+        # Check signals below this point
         trailing = '\n'.join(lines[i:])
         url_count = len(_RE_URL.findall(trailing))
-        if url_count >= 3:
+        has_phone = bool(_RE_PHONE.search(trailing))
+
+        if url_count >= 3 or (url_count >= 1 and has_phone):
             return '\n'.join(lines[:i]).rstrip()
 
     return body

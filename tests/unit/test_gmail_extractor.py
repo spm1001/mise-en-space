@@ -92,6 +92,47 @@ class TestSignatureStripping:
         assert "Alice Smith" not in result
         assert "Innovation Team" not in result
 
+    def test_strips_corporate_sig_with_phone_and_few_urls(self):
+        """Strip corporate signature with phone + fewer than 3 URLs."""
+        text = (
+            "Please see the attached report.\n\n"
+            "Ross Partington\n\n"
+            "Head of Ad Sales Research, ITV\n"
+            "Phone: +44 20 7157 3000\n"
+            "https://www.itv.com\n"
+            "https://www.itvmedia.co.uk\n"
+        )
+        result = strip_signature_and_quotes(text)
+        assert "attached report" in result
+        assert "Ross Partington" not in result
+        assert "Head of Ad Sales" not in result
+        assert "itv.com" not in result
+
+    def test_strips_corporate_sig_mobile_label(self):
+        """Strip sig where phone uses 'Mobile' or 'Direct' label."""
+        text = (
+            "Thanks for confirming.\n\n"
+            "Jane Doe\n\n"
+            "Senior Director, Sales\n"
+            "Mobile: 07700 900123\n"
+            "https://www.company.com\n"
+        )
+        result = strip_signature_and_quotes(text)
+        assert "confirming" in result
+        assert "Jane Doe" not in result
+
+    def test_preserves_content_with_phone_no_name_block(self):
+        """Don't strip content mentioning a phone without name-block pattern."""
+        text = (
+            "Call the office for details.\n"
+            "Phone: +44 20 7157 3000\n"
+            "See https://example.com for more info.\n"
+        )
+        result = strip_signature_and_quotes(text)
+        assert "Call the office" in result
+        assert "Phone:" in result
+        assert "example.com" in result
+
     def test_strips_reply_preamble(self):
         """Strip orphaned 'On ... wrote:' after quote removal."""
         text = (
@@ -729,3 +770,25 @@ class TestRfc822Extraction:
         assert len(messages) == 2
         assert "First fwd" in messages[0].body_text
         assert "Second fwd" in messages[1].body_text
+
+    def test_real_rfc822_fixture_round_trip(self):
+        """Real Gmail API fixture with message/rfc822 part round-trips correctly."""
+        import json
+        from pathlib import Path
+
+        fixture_path = Path(__file__).parent.parent.parent / "fixtures" / "gmail" / "real_rfc822_forward.json"
+        if not fixture_path.exists():
+            pytest.skip("Real rfc822 fixture not available")
+
+        with open(fixture_path) as f:
+            thread = json.load(f)
+
+        msg = thread["messages"][0]
+        forwards = parse_forwarded_messages(msg["payload"])
+
+        assert len(forwards) == 1
+        fwd = forwards[0]
+        assert fwd.subject == "RE: Clock Number Questions"
+        assert fwd.from_address  # has a sender
+        assert len(fwd.body_text) > 100  # substantial content
+        assert fwd.body_text.startswith("Hi ")  # real email opening
