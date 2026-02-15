@@ -1,2 +1,2 @@
 # Merge-friendly arc storage
-.arc/*.jsonl merge=union
+.bon/*.jsonl merge=union
