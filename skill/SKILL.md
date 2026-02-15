@@ -162,6 +162,8 @@ Without `folder_id`, the doc lands in Drive root. Pass a folder ID when the user
 
 Cleaner than `curl` (raw HTML) or `WebFetch` (lossy summary). Deposits to `mise-fetch/web--{title}--{hash}/content.md`.
 
+**Choosing between mise and passe for web content:** For a single known URL, `mise fetch` is cleaner (no goto+wait dance, better markdown output). For discovering page structure or crawling a multi-page site, use passe `snapshot` to find the nav tree then `read` each page.
+
 ## Gmail Attachments
 
 PDFs and images are extracted eagerly. **Office files (DOCX/XLSX/PPTX) are skipped** during thread fetch (5-10s each). Extract on demand:
