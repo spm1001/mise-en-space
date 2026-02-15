@@ -129,7 +129,7 @@ def do(
         web_link: URL to view/edit
     """
     if operation == "create":
-        if not content or not title:
+        if content is None or not title:
             return {"error": True, "kind": "invalid_input",
                     "message": "create requires 'content' and 'title'"}
         return do_create(content, title, doc_type, folder_id).to_dict()

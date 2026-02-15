@@ -1,6 +1,6 @@
 ---
 name: mise
-description: Orchestrates content fetching via mcp__mise__ tools. MANDATORY before using search/fetch/create — load FIRST when you see 'fetch this URL', 'get this blog post', 'extract content from', 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace'. Prevents keyword-soup searches, missed comments, and orphaned context using file→email→meaning loop pattern, Gmail operators, comment checking, and result filtering the tools alone don't know. (user)
+description: Orchestrates content fetching via mcp__mise__ tools. MANDATORY before using search/fetch/do — load FIRST when you see 'fetch this URL', 'get this blog post', 'extract content from', 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace', 'move this file', 'create a doc'. Prevents keyword-soup searches, missed comments, and orphaned context using file→email→meaning loop pattern, Gmail operators, comment checking, and result filtering the tools alone don't know. (user)
 ---
 
 # mise
@@ -29,7 +29,7 @@ fetch("1abc...", base_path="/Users/modha/Repos/my-project")
 |------|---------|--------|
 | `search` | Find files/emails | Path to deposited JSON + counts |
 | `fetch` | Extract content to disk | Deposit folder: content.md, comments.md, manifest.json |
-| `create` | Make new Google Doc/Sheet/Slides | File ID + web URL |
+| `do` | Act on Workspace (create, move) | File ID + web URL + cues |
 
 `fetch` auto-detects input: Drive file ID, Drive URL, Gmail thread ID, or web URL.
 
@@ -140,16 +140,22 @@ Rule of thumb: <10 results → just read. >15 → filter with jq first.
 
 See `references/filtering-results.md` for patterns.
 
-## Workflow 4: Create
+## Workflow 4: Do (Create, Move)
 
-**When:** "Make a Google Doc from this" / "Create a slide deck"
+**When:** "Make a Google Doc from this" / "Move this file to Archive"
 
 ```python
-create("# Meeting Notes\n\n- Item 1", title="Team Sync")
-create(content, title="Report", doc_type="doc", folder_id="1xyz...")
+# Create
+do(operation="create", content="# Meeting Notes\n\n- Item 1", title="Team Sync")
+do(operation="create", content=content, title="Report", doc_type="doc", folder_id="1xyz...")
+
+# Move
+do(operation="move", file_id="1abc...", destination_folder_id="1xyz...")
 ```
 
-Without `folder_id`, the doc lands in Drive root. Pass a folder ID when the user has a specific destination.
+**Create:** Without `folder_id`, the doc lands in Drive root. Response includes `cues.folder` showing where it landed.
+
+**Move:** Enforces single parent — removes all existing parents, adds destination. Response includes `cues.destination_folder` (name) and `cues.previous_parents`.
 
 ## Web Content
 
