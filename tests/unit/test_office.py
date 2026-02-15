@@ -39,14 +39,30 @@ class TestOfficeExtraction:
         assert call_kwargs["target_type"] == "doc"
         assert call_kwargs["export_format"] == "markdown"
 
-    @patch("adapters.office.convert_via_drive")
-    def test_extract_xlsx(self, mock_convert: MagicMock) -> None:
-        """Test XLSX extraction uses CSV export."""
-        from adapters.conversion import ConversionResult
-        mock_convert.return_value = ConversionResult(
-            content="Name,Value\nAlice,100\nBob,200",
-            temp_file_deleted=True,
-            warnings=[],
+    @patch("adapters.office.delete_temp_file", return_value=True)
+    @patch("adapters.office.extract_sheets_content")
+    @patch("adapters.office.fetch_spreadsheet")
+    @patch("adapters.office.upload_and_convert", return_value="temp_sheet_id")
+    def test_extract_xlsx(
+        self,
+        mock_upload: MagicMock,
+        mock_fetch_sheet: MagicMock,
+        mock_extract_sheets: MagicMock,
+        mock_delete: MagicMock,
+    ) -> None:
+        """Test XLSX extraction uses Sheets API for all tabs."""
+        from models import SpreadsheetData, SheetTab
+        mock_fetch_sheet.return_value = SpreadsheetData(
+            title="Test",
+            spreadsheet_id="temp_sheet_id",
+            sheets=[
+                SheetTab(name="Sheet1", values=[["Name", "Value"], ["Alice", "100"]]),
+                SheetTab(name="Sheet2", values=[["ID", "Desc"], ["1", "Widget"]]),
+            ],
+        )
+        mock_extract_sheets.return_value = (
+            "=== Sheet: Sheet1 ===\nName,Value\nAlice,100\n\n"
+            "=== Sheet: Sheet2 ===\nID,Desc\n1,Widget"
         )
 
         result = extract_office_content("xlsx", file_bytes=b"fake xlsx bytes", file_id="file123")
@@ -55,10 +71,13 @@ class TestOfficeExtraction:
         assert result.export_format == "csv"
         assert result.extension == "csv"
         assert "Alice" in result.content
+        assert "Sheet2" in result.content  # Both tabs present
+        assert "Widget" in result.content
 
-        call_kwargs = mock_convert.call_args.kwargs
-        assert call_kwargs["target_type"] == "sheet"
-        assert call_kwargs["export_format"] == "csv"
+        # Verify Sheets API path used (not CSV export)
+        mock_upload.assert_called_once()
+        mock_fetch_sheet.assert_called_once_with("temp_sheet_id", render_charts=False)
+        mock_delete.assert_called_once()
 
     @patch("adapters.office.convert_via_drive")
     def test_extract_pptx(self, mock_convert: MagicMock) -> None:

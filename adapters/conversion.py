@@ -148,6 +148,78 @@ def convert_via_drive(
     )
 
 
+@with_retry(max_attempts=3, delay_ms=1000)
+def upload_and_convert(
+    file_bytes: bytes | None = None,
+    source_mime: str = "",
+    target_type: Literal["doc", "sheet", "slides"] = "doc",
+    temp_name_prefix: str = "_mise_temp_",
+    file_id_hint: str = "",
+    file_path: Path | None = None,
+    source_file_id: str | None = None,
+) -> str:
+    """
+    Upload file to Drive with conversion, return temp file ID.
+
+    Same as convert_via_drive step 1, but returns the temp ID instead of
+    exporting. Caller is responsible for reading the converted file and
+    calling delete_temp_file() when done.
+
+    Used for XLSX → Sheets path where we need the Sheets API (not CSV export)
+    to read all tabs.
+
+    Returns:
+        Temp file ID in Drive (as Google Workspace format)
+    """
+    service = get_drive_service()
+    target_mime = CONVERSION_TARGETS[target_type]
+    temp_name = f"{temp_name_prefix}{file_id_hint}" if file_id_hint else temp_name_prefix
+
+    if source_file_id:
+        copied = (
+            service.files()
+            .copy(
+                fileId=source_file_id,
+                body={"name": temp_name, "mimeType": target_mime},
+                fields="id",
+            )
+            .execute()
+        )
+        return copied["id"]
+    else:
+        if file_bytes is None and file_path is None:
+            raise ValueError("Must provide file_bytes, file_path, or source_file_id")
+        if file_bytes is not None and file_path is not None:
+            raise ValueError("Cannot provide both file_bytes and file_path")
+
+        if file_path is not None:
+            media = MediaFileUpload(str(file_path), mimetype=source_mime, resumable=True)
+        else:
+            media = MediaInMemoryUpload(file_bytes, mimetype=source_mime)
+
+        uploaded = (
+            service.files()
+            .create(
+                body={"name": temp_name, "mimeType": target_mime},
+                media_body=media,
+                fields="id",
+            )
+            .execute()
+        )
+        return uploaded["id"]
+
+
+def delete_temp_file(file_id: str, file_name: str = "") -> bool:
+    """
+    Delete temporary file from Drive. Best-effort, logs failures.
+
+    Public wrapper around _delete_temp_file for use by callers of
+    upload_and_convert().
+    """
+    service = get_drive_service()
+    return _delete_temp_file(service, file_id, file_name)
+
+
 def _delete_temp_file(service: Any, file_id: str, file_name: str) -> bool:
     """
     Delete temporary file from Drive. Best-effort, logs failures.

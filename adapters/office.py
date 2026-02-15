@@ -9,8 +9,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, cast
 
-from adapters.conversion import convert_via_drive
+from adapters.conversion import convert_via_drive, upload_and_convert, delete_temp_file
 from adapters.drive import download_file, download_file_to_temp, get_file_size, STREAMING_THRESHOLD_BYTES
+from adapters.sheets import fetch_spreadsheet
+from extractors.sheets import extract_sheets_content
 
 
 # Supported Office types and their conversion mappings
@@ -62,6 +64,9 @@ def extract_office_content(
     Accepts file_bytes (in-memory), file_path (from disk), or source_file_id
     (file already in Drive — copies with conversion, skipping upload entirely).
 
+    XLSX uses a special path: upload+convert to Google Sheet, then read via
+    Sheets API (gets all tabs). Drive CSV export only returns the first tab.
+
     Args:
         office_type: 'docx', 'xlsx', or 'pptx'
         file_bytes: Raw Office file content
@@ -74,8 +79,17 @@ def extract_office_content(
     """
     source_mime, target_type, export_format, extension = OFFICE_FORMATS[office_type]
 
-    # Convert via Drive
-    # Cast to Literal types (OFFICE_FORMATS values are constants)
+    # XLSX: use Sheets API to get all tabs (Drive CSV export is first-tab-only)
+    if office_type == "xlsx":
+        return _extract_xlsx_via_sheets_api(
+            source_mime=source_mime,
+            file_bytes=file_bytes,
+            file_path=file_path,
+            file_id=file_id,
+            source_file_id=source_file_id,
+        )
+
+    # DOCX/PPTX: standard Drive conversion path
     conversion_result = convert_via_drive(
         file_bytes=file_bytes,
         file_path=file_path,
@@ -92,6 +106,53 @@ def extract_office_content(
         export_format=export_format,
         extension=extension,
         warnings=conversion_result.warnings,
+    )
+
+
+def _extract_xlsx_via_sheets_api(
+    source_mime: str,
+    file_bytes: bytes | None = None,
+    file_path: Path | None = None,
+    file_id: str = "",
+    source_file_id: str | None = None,
+) -> OfficeExtractionResult:
+    """
+    Extract XLSX via Sheets API: upload+convert, read all tabs, delete temp.
+
+    Drive CSV export only returns the first sheet. The Sheets API path gives
+    us all tabs with proper per-sheet CSV formatting via extract_sheets_content().
+    """
+    warnings: list[str] = []
+
+    # Step 1: upload and convert to Google Sheet
+    temp_id = upload_and_convert(
+        file_bytes=file_bytes,
+        file_path=file_path,
+        source_mime=source_mime,
+        target_type="sheet",
+        file_id_hint=file_id,
+        source_file_id=source_file_id,
+    )
+
+    try:
+        # Step 2: read all tabs via Sheets API (no chart rendering for temp files)
+        spreadsheet_data = fetch_spreadsheet(temp_id, render_charts=False)
+
+        # Step 3: extract content (gets all tabs with === Sheet: Name === headers)
+        content = extract_sheets_content(spreadsheet_data)
+        warnings.extend(spreadsheet_data.warnings)
+
+    finally:
+        # Step 4: always clean up temp file
+        if not delete_temp_file(temp_id, f"_mise_temp_{file_id}"):
+            warnings.append(f"Failed to delete temp file (ID: {temp_id})")
+
+    return OfficeExtractionResult(
+        content=content,
+        source_type="xlsx",
+        export_format="csv",
+        extension="csv",
+        warnings=warnings,
     )
 
 
