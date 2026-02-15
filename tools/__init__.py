@@ -13,5 +13,6 @@ Verb model (3 tools):
 from .search import do_search
 from .fetch import do_fetch
 from .create import do_create
+from .move import do_move
 
-__all__ = ["do_search", "do_fetch", "do_create"]
+__all__ = ["do_search", "do_fetch", "do_create", "do_move"]

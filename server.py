@@ -29,7 +29,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from tools import do_search, do_fetch, do_create
+from tools import do_search, do_fetch, do_create, do_move
 from resources.tools import get_tool_registry
 
 # Initialize MCP server
@@ -109,19 +109,23 @@ def do(
     title: str | None = None,
     doc_type: str = "doc",
     folder_id: str | None = None,
+    file_id: str | None = None,
+    destination_folder_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Act on Google Workspace — create, move, rename, edit.
 
     Args:
-        operation: What to do. One of: 'create' (more coming)
+        operation: What to do. One of: 'create', 'move'
         content: Markdown content (required for create)
         title: Document title (required for create)
         doc_type: 'doc' | 'sheet' | 'slides' (for create)
         folder_id: Optional destination folder (for create)
+        file_id: Target file (required for move)
+        destination_folder_id: Where to move the file (required for move)
 
     Returns:
-        file_id: Created file ID
+        file_id: File ID
         web_link: URL to view/edit
     """
     if operation == "create":
@@ -130,8 +134,14 @@ def do(
                     "message": "create requires 'content' and 'title'"}
         return do_create(content, title, doc_type, folder_id).to_dict()
 
+    if operation == "move":
+        if not file_id or not destination_folder_id:
+            return {"error": True, "kind": "invalid_input",
+                    "message": "move requires 'file_id' and 'destination_folder_id'"}
+        return do_move(file_id, destination_folder_id)
+
     return {"error": True, "kind": "invalid_input",
-            "message": f"Unknown operation: {operation}. Supported: create"}
+            "message": f"Unknown operation: {operation}. Supported: create, move"}
 
 
 # ============================================================================
@@ -355,8 +365,9 @@ Act on Google Workspace — create, move, rename, edit.
 | Operation | Description | Required params |
 |-----------|-------------|-----------------|
 | `create` | Create Doc/Sheet/Slides from markdown | `content`, `title` |
+| `move` | Move file to different folder | `file_id`, `destination_folder_id` |
 
-More operations coming: move, rename, overwrite, insert.
+More operations coming: overwrite, insert, rename.
 
 ## Parameters
 
@@ -367,6 +378,8 @@ More operations coming: move, rename, overwrite, insert.
 | `title` | str | None | Document title (for create) |
 | `doc_type` | str | 'doc' | 'doc', 'sheet', or 'slides' (for create) |
 | `folder_id` | str | None | Destination folder ID (for create) |
+| `file_id` | str | None | Target file ID (for move) |
+| `destination_folder_id` | str | None | Where to move the file (for move) |
 
 ## Response Shape (create)
 
@@ -376,6 +389,22 @@ More operations coming: move, rename, overwrite, insert.
   "web_link": "https://docs.google.com/document/d/1abc.../edit",
   "title": "My Document",
   "type": "doc"
+}
+```
+
+## Response Shape (move)
+
+```json
+{
+  "file_id": "1abc...",
+  "title": "Moved File",
+  "web_link": "https://drive.google.com/...",
+  "operation": "move",
+  "cues": {
+    "destination_folder": "Archive",
+    "destination_folder_id": "1xyz...",
+    "previous_parents": ["0old..."]
+  }
 }
 ```
 
@@ -398,6 +427,9 @@ do(operation="create", content="# Meeting Notes\\n\\n- Item 1", title="Team Sync
 
 # Create in specific folder
 do(operation="create", content="| A | B |\\n|---|---|", title="Data", doc_type="sheet", folder_id="1xyz...")
+
+# Move a file to a different folder
+do(operation="move", file_id="1abc...", destination_folder_id="1xyz...")
 ```
 """
 

@@ -99,15 +99,35 @@ def _create_doc(
         .create(
             body=file_metadata,
             media_body=media,
-            fields="id,webViewLink,name",
+            fields="id,webViewLink,name,parents",
             supportsAllDrives=True,
         )
         .execute()
     )
+
+    # Build cues: resolve parent folder name
+    parents = result.get("parents", [])
+    folder_name = None
+    if parents:
+        try:
+            folder_meta = (
+                service.files()
+                .get(fileId=parents[0], fields="name", supportsAllDrives=True)
+                .execute()
+            )
+            folder_name = folder_meta.get("name")
+        except Exception:
+            pass  # Non-critical — cue degrades gracefully
+
+    cues: dict[str, Any] = {
+        "folder": folder_name or ("My Drive" if not folder_id else folder_id),
+        "folder_id": parents[0] if parents else folder_id,
+    }
 
     return CreateResult(
         file_id=result["id"],
         web_link=result["webViewLink"],
         title=result.get("name", title),
         doc_type="doc",
+        cues=cues,
     )

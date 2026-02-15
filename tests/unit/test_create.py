@@ -128,6 +128,68 @@ class TestDoCreateDoc:
         assert result.title == "Fallback Title"
 
 
+class TestCreateCues:
+    """Post-action cues on create responses."""
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_cues_include_folder_name(self, mock_svc, _sleep) -> None:
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "doc1",
+            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
+            "name": "Test",
+            "parents": ["folder123"],
+        }
+        mock_service.files().get().execute.return_value = {"name": "Project Files"}
+
+        result = do_create("# Test", "Test", folder_id="folder123")
+
+        assert isinstance(result, CreateResult)
+        assert result.cues is not None
+        assert result.cues["folder"] == "Project Files"
+        assert result.cues["folder_id"] == "folder123"
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_cues_degrade_without_parents(self, mock_svc, _sleep) -> None:
+        """No parents in response → cues still present with fallback."""
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "doc1",
+            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
+            "name": "Test",
+        }
+
+        result = do_create("# Test", "Test")
+
+        assert isinstance(result, CreateResult)
+        assert result.cues is not None
+        assert result.cues["folder"] == "My Drive"
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_cues_in_to_dict(self, mock_svc, _sleep) -> None:
+        """Cues appear in serialized output."""
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "doc1",
+            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
+            "name": "Test",
+            "parents": ["f1"],
+        }
+        mock_service.files().get().execute.return_value = {"name": "Archive"}
+
+        result = do_create("# Test", "Test")
+        d = result.to_dict()
+
+        assert "cues" in d
+        assert d["cues"]["folder"] == "Archive"
+
+
 class TestDocTypeMapping:
     """Verify doc type constants."""
 

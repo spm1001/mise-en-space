@@ -535,14 +535,18 @@ class CreateResult:
     web_link: str
     title: str
     doc_type: str
+    cues: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "file_id": self.file_id,
             "web_link": self.web_link,
             "title": self.title,
             "type": self.doc_type,
         }
+        if self.cues:
+            result["cues"] = self.cues
+        return result
 
 
 @dataclass
