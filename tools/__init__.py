@@ -7,7 +7,7 @@ server.py provides thin @mcp.tool() wrappers that call into these.
 Verb model (3 tools):
 - search: Unified discovery across Drive/Gmail
 - fetch: Content to filesystem (with open comments included automatically)
-- create: Markdown → Doc/Sheet/Slides
+- do: Act on Workspace (create, move, rename, edit)
 """
 
 from .search import do_search

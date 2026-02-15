@@ -7,7 +7,7 @@ Filesystem-first, token-efficient MCP server for Google Workspace.
 Verb model (3 tools):
 - search: Unified discovery across Drive/Gmail
 - fetch: Content to filesystem (with open comments included automatically)
-- create: Markdown → Doc/Sheet/Slides
+- do: Act on Workspace (create, move, rename, etc.)
 
 Sous-chef philosophy: when chef asks for a doc, bring the doc AND the comments
 AND the context — don't wait to be asked.
@@ -103,26 +103,35 @@ def fetch(file_id: str, base_path: str | None = None, attachment: str | None = N
 
 
 @mcp.tool()
-def create(
-    content: str,
-    title: str,
-    doc_type: str = 'doc',
-    folder_id: str | None = None
+def do(
+    operation: str = "create",
+    content: str | None = None,
+    title: str | None = None,
+    doc_type: str = "doc",
+    folder_id: str | None = None,
 ) -> dict[str, Any]:
     """
-    Create Google Workspace document from markdown.
+    Act on Google Workspace — create, move, rename, edit.
 
     Args:
-        content: Markdown content
-        title: Document title
-        doc_type: 'doc' | 'sheet' | 'slides'
-        folder_id: Optional destination folder
+        operation: What to do. One of: 'create' (more coming)
+        content: Markdown content (required for create)
+        title: Document title (required for create)
+        doc_type: 'doc' | 'sheet' | 'slides' (for create)
+        folder_id: Optional destination folder (for create)
 
     Returns:
         file_id: Created file ID
         web_link: URL to view/edit
     """
-    return do_create(content, title, doc_type, folder_id).to_dict()
+    if operation == "create":
+        if not content or not title:
+            return {"error": True, "kind": "invalid_input",
+                    "message": "create requires 'content' and 'title'"}
+        return do_create(content, title, doc_type, folder_id).to_dict()
+
+    return {"error": True, "kind": "invalid_input",
+            "message": f"Unknown operation: {operation}. Supported: create"}
 
 
 # ============================================================================
@@ -142,7 +151,7 @@ Google Workspace MCP server with filesystem-first design.
 |------|---------|---------------|
 | `search` | Find files/emails, deposit results to `mise-fetch/` | Yes |
 | `fetch` | Download content to `mise-fetch/`, return path | Yes |
-| `create` | Make new Doc/Sheet/Slides from markdown | No |
+| `do` | Act on Workspace (create, move, rename, edit) | Varies |
 
 ## Sous-Chef Philosophy
 
@@ -155,7 +164,7 @@ without being asked.
 1. **Search** to find what you need
 2. **Fetch** to download and extract content (includes open comments)
 3. Read content from filesystem with standard tools
-4. **Create** new documents when needed
+4. **Do** actions — create, move, rename, edit
 
 ## Content Types
 
@@ -166,7 +175,7 @@ Supported: **Web URLs**, Google Docs, Sheets, Slides, Gmail threads, PDFs, Offic
 - `mise://docs/overview` — This overview
 - `mise://docs/search` — Search tool details
 - `mise://docs/fetch` — Fetch tool details and supported types
-- `mise://docs/create` — Create tool details
+- `mise://docs/do` — Do tool details (create, move, rename, edit)
 - `mise://docs/workspace` — Deposit folder structure
 - `mise://docs/cross-source` — Cross-source search patterns (Drive↔Gmail linkage)
 """
@@ -334,23 +343,32 @@ fetch("18f3a4b5c6d7e8f9")
 """
 
 
-@mcp.resource("mise://docs/create")
-def docs_create() -> str:
-    """Detailed documentation for the create tool."""
-    return """# create
+@mcp.resource("mise://docs/do")
+def docs_do() -> str:
+    """Detailed documentation for the do tool."""
+    return """# do
 
-Create Google Workspace document from markdown content.
+Act on Google Workspace — create, move, rename, edit.
+
+## Operations
+
+| Operation | Description | Required params |
+|-----------|-------------|-----------------|
+| `create` | Create Doc/Sheet/Slides from markdown | `content`, `title` |
+
+More operations coming: move, rename, overwrite, insert.
 
 ## Parameters
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `content` | str | required | Markdown content |
-| `title` | str | required | Document title |
-| `doc_type` | str | 'doc' | 'doc', 'sheet', or 'slides' |
-| `folder_id` | str | None | Destination folder ID |
+| `operation` | str | 'create' | What to do |
+| `content` | str | None | Markdown content (for create) |
+| `title` | str | None | Document title (for create) |
+| `doc_type` | str | 'doc' | 'doc', 'sheet', or 'slides' (for create) |
+| `folder_id` | str | None | Destination folder ID (for create) |
 
-## Response Shape
+## Response Shape (create)
 
 ```json
 {
@@ -361,7 +379,7 @@ Create Google Workspace document from markdown content.
 }
 ```
 
-## Markdown Conversion
+## Markdown Conversion (create)
 
 Google's native markdown import handles:
 - Headings (H1-H6)
@@ -376,10 +394,10 @@ Google's native markdown import handles:
 
 ```python
 # Create a document
-create("# Meeting Notes\\n\\n- Item 1\\n- Item 2", title="Team Sync")
+do(operation="create", content="# Meeting Notes\\n\\n- Item 1", title="Team Sync")
 
 # Create in specific folder
-create("| A | B |\\n|---|---|\\n| 1 | 2 |", title="Data", doc_type="sheet", folder_id="1xyz...")
+do(operation="create", content="| A | B |\\n|---|---|", title="Data", doc_type="sheet", folder_id="1xyz...")
 ```
 """
 

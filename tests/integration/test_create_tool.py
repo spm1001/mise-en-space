@@ -6,7 +6,7 @@ Run with: uv run pytest tests/integration/test_create_tool.py -v -m integration
 
 import pytest
 
-from server import create
+from server import do
 from adapters.services import get_drive_service
 
 
@@ -45,7 +45,7 @@ This document should be automatically deleted after the test.
 """
     title = "mise-en-space-test-doc"
 
-    result = create(content, title)
+    result = do(operation="create", content=content, title=title)
 
     assert "error" not in result, f"Create failed: {result}"
     assert "file_id" in result
@@ -80,7 +80,7 @@ def test_create_doc_with_folder(cleanup_created_files: list[str]) -> None:
     content = "# Test in Folder\n\nThis doc should be in the test folder."
     title = "mise-en-space-test-doc-in-folder"
 
-    result = create(content, title, folder_id=folder_id)
+    result = do(operation="create", content=content, title=title, folder_id=folder_id)
 
     assert "error" not in result, f"Create failed: {result}"
     cleanup_created_files.append(result["file_id"])
@@ -96,7 +96,7 @@ def test_create_doc_empty_content(cleanup_created_files: list[str]) -> None:
     content = ""
     title = "mise-en-space-empty-test"
 
-    result = create(content, title)
+    result = do(operation="create", content=content, title=title)
 
     assert "error" not in result, f"Create failed: {result}"
     assert "file_id" in result
@@ -106,7 +106,7 @@ def test_create_doc_empty_content(cleanup_created_files: list[str]) -> None:
 @pytest.mark.integration
 def test_create_unsupported_type() -> None:
     """Test that unsupported doc_type returns error."""
-    result = create("content", "title", doc_type="sheet")
+    result = do(operation="create", content="content", title="title", doc_type="sheet")
 
     assert "error" in result
     assert result["error"] is True
@@ -116,7 +116,7 @@ def test_create_unsupported_type() -> None:
 @pytest.mark.integration
 def test_create_invalid_type() -> None:
     """Test that invalid doc_type returns error."""
-    result = create("content", "title", doc_type="invalid")
+    result = do(operation="create", content="content", title="title", doc_type="invalid")
 
     assert "error" in result
     assert result["error"] is True

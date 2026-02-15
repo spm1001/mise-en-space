@@ -1,11 +1,57 @@
-"""Tests for create tool implementation."""
+"""Tests for do tool (create and future operations)."""
 
 from unittest.mock import patch, MagicMock
 
 import pytest
 
 from models import CreateResult, CreateError
+from server import do
 from tools.create import do_create, DOC_TYPE_TO_MIME
+
+
+class TestDoToolRouting:
+    """MCP do() wrapper routes operations correctly."""
+
+    def test_unknown_operation_returns_error(self) -> None:
+        result = do(operation="explode")
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+        assert "explode" in result["message"]
+
+    def test_create_without_content_returns_error(self) -> None:
+        result = do(operation="create", title="Title")
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+        assert "content" in result["message"]
+
+    def test_create_without_title_returns_error(self) -> None:
+        result = do(operation="create", content="# Hello")
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+        assert "title" in result["message"]
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_create_routes_to_do_create(self, mock_svc, _sleep) -> None:
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "doc1",
+            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
+            "name": "Test",
+        }
+
+        result = do(operation="create", content="# Test", title="Test")
+
+        assert result["file_id"] == "doc1"
+        assert result["type"] == "doc"
+
+    def test_default_operation_is_create(self) -> None:
+        """Calling do() without operation should default to create."""
+        result = do(content=None, title=None)
+        # Should hit the create validation (missing content/title), not unknown operation
+        assert result["kind"] == "invalid_input"
+        assert "content" in result["message"]
 
 
 class TestDoCreateValidation:
