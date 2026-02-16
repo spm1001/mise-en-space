@@ -62,11 +62,6 @@ class TestDoCreateValidation:
         assert isinstance(result, CreateError)
         assert result.kind == "invalid_input"
 
-    def test_sheet_not_implemented(self) -> None:
-        result = do_create("content", "Title", doc_type="sheet")
-        assert isinstance(result, CreateError)
-        assert result.kind == "not_implemented"
-
     def test_slides_not_implemented(self) -> None:
         result = do_create("content", "Title", doc_type="slides")
         assert isinstance(result, CreateError)
@@ -188,6 +183,112 @@ class TestCreateCues:
 
         assert "cues" in d
         assert d["cues"]["folder"] == "Archive"
+
+
+class TestDoCreateErrorHandling:
+    """Unexpected exceptions return CreateError, not crashes."""
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_unexpected_exception_returns_create_error(self, mock_svc, _sleep) -> None:
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.side_effect = Exception("boom")
+
+        result = do_create("# Test", "Test")
+
+        assert isinstance(result, CreateError)
+        assert result.kind == "unknown"
+        assert "boom" in result.message
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_sheet_unexpected_exception_returns_create_error(self, mock_svc, _sleep) -> None:
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.side_effect = RuntimeError("quota exceeded")
+
+        result = do_create("a,b\n1,2", "Test", doc_type="sheet")
+
+        assert isinstance(result, CreateError)
+        assert "quota exceeded" in result.message
+
+
+class TestDoCreateSheet:
+    """Test sheet creation with mocked Drive API."""
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_creates_sheet_from_csv(self, mock_svc, _sleep) -> None:
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "sheet1",
+            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
+            "name": "Q4 Analysis",
+        }
+
+        csv_content = "Name,Amount\nAlice,100\nBob,200"
+        result = do_create(csv_content, "Q4 Analysis", doc_type="sheet")
+
+        assert isinstance(result, CreateResult)
+        assert result.file_id == "sheet1"
+        assert result.doc_type == "sheet"
+        assert result.title == "Q4 Analysis"
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_sheet_uses_csv_mimetype(self, mock_svc, _sleep) -> None:
+        """Verify Drive upload uses text/csv, not text/markdown."""
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "sheet1",
+            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
+            "name": "Test",
+        }
+
+        do_create("a,b\n1,2", "Test", doc_type="sheet")
+
+        # Inspect the media_body passed to files().create()
+        create_call = mock_service.files().create.call_args
+        media = create_call[1]["media_body"] if "media_body" in create_call[1] else create_call[0][0]
+        assert media.mimetype() == "text/csv"
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_sheet_with_folder(self, mock_svc, _sleep) -> None:
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "sheet1",
+            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
+            "name": "In Folder",
+            "parents": ["folder789"],
+        }
+        mock_service.files().get().execute.return_value = {"name": "Reports"}
+
+        result = do_create("a,b\n1,2", "In Folder", doc_type="sheet", folder_id="folder789")
+
+        assert isinstance(result, CreateResult)
+        assert result.cues["folder"] == "Reports"
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_sheet_routes_through_do(self, mock_svc, _sleep) -> None:
+        """do(operation=create, doc_type=sheet) reaches _create_sheet."""
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "sheet1",
+            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
+            "name": "Budget",
+        }
+
+        result = do(operation="create", content="a,b\n1,2", title="Budget", doc_type="sheet")
+
+        assert result["file_id"] == "sheet1"
+        assert result["type"] == "sheet"
 
 
 class TestDocTypeMapping:

@@ -48,17 +48,20 @@ def do_create(
             message=f"Unsupported doc_type: {doc_type}. Must be one of: {list(DOC_TYPE_TO_MIME.keys())}",
         )
 
-    # Currently only supporting doc creation
-    if doc_type != "doc":
-        return CreateError(
-            kind="not_implemented",
-            message=f"Creating {doc_type} is not yet implemented. Only 'doc' is supported.",
-        )
-
     try:
-        return _create_doc(content, title, folder_id)
+        if doc_type == "doc":
+            return _create_doc(content, title, folder_id)
+        elif doc_type == "sheet":
+            return _create_sheet(content, title, folder_id)
+        else:
+            return CreateError(
+                kind="not_implemented",
+                message=f"Creating {doc_type} is not yet implemented. Currently supported: doc, sheet.",
+            )
     except MiseError as e:
         return CreateError(kind=e.kind.value, message=e.message)
+    except Exception as e:
+        return CreateError(kind="unknown", message=f"Unexpected error creating {doc_type}: {e}")
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
@@ -129,5 +132,72 @@ def _create_doc(
         web_link=result["webViewLink"],
         title=result.get("name", title),
         doc_type="doc",
+        cues=cues,
+    )
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def _create_sheet(
+    content: str,
+    title: str,
+    folder_id: str | None = None,
+) -> CreateResult | CreateError:
+    """
+    Create a Google Sheet from CSV using Drive's native import.
+
+    Drive converts text/csv to Google Sheet automatically.
+    Same pattern as _create_doc with text/markdown.
+    """
+    service = get_drive_service()
+
+    file_metadata: dict[str, Any] = {
+        "name": title,
+        "mimeType": GOOGLE_SHEET_MIME,
+    }
+
+    if folder_id:
+        file_metadata["parents"] = [folder_id]
+
+    media = MediaIoBaseUpload(
+        io.BytesIO(content.encode("utf-8")),
+        mimetype="text/csv",
+        resumable=True,
+    )
+
+    result = (
+        service.files()
+        .create(
+            body=file_metadata,
+            media_body=media,
+            fields="id,webViewLink,name,parents",
+            supportsAllDrives=True,
+        )
+        .execute()
+    )
+
+    # Build cues: resolve parent folder name
+    parents = result.get("parents", [])
+    folder_name = None
+    if parents:
+        try:
+            folder_meta = (
+                service.files()
+                .get(fileId=parents[0], fields="name", supportsAllDrives=True)
+                .execute()
+            )
+            folder_name = folder_meta.get("name")
+        except Exception:
+            pass
+
+    cues: dict[str, Any] = {
+        "folder": folder_name or ("My Drive" if not folder_id else folder_id),
+        "folder_id": parents[0] if parents else folder_id,
+    }
+
+    return CreateResult(
+        file_id=result["id"],
+        web_link=result["webViewLink"],
+        title=result.get("name", title),
+        doc_type="sheet",
         cues=cues,
     )
