@@ -2,26 +2,31 @@
 """
 OAuth Authentication for mise-en-space.
 
-Fetches OAuth client credentials from GCP Secret Manager, then runs the
-OAuth flow to create a local token.json.
+Two credential sources, tried in order:
+1. Local credentials.json in repo root (for external users)
+2. GCP Secret Manager (for maintainer — requires gcloud CLI)
 
 Usage:
     uv run python -m auth                    # Auto mode (opens browser)
     uv run python -m auth --manual           # Manual mode (copy-paste URL)
     uv run python -m auth --project OTHER    # Use different GCP project
 
-Prerequisites:
+Prerequisites (external users):
+    - credentials.json in repo root (from GCP Console)
+
+Prerequisites (maintainer):
     - gcloud CLI installed and authenticated
     - Access to the GCP project containing the secret
 """
 
+import os
 import sys
 import argparse
 import subprocess
 import tempfile
 from pathlib import Path
 
-from itv_google_auth import authenticate
+from jeton import authenticate
 
 from oauth_config import (
     TOKEN_FILE,
@@ -29,7 +34,13 @@ from oauth_config import (
     OAUTH_PORT,
     GCP_PROJECT,
     SECRET_NAME,
+    LOCAL_CREDENTIALS_FILE,
 )
+
+
+def _is_interactive() -> bool:
+    """Check if we're running in an interactive terminal."""
+    return sys.stdin.isatty() and os.environ.get("DISPLAY", os.environ.get("WAYLAND_DISPLAY", ""))
 
 
 def fetch_credentials_from_secret_manager(project: str, secret_name: str) -> str:
@@ -61,7 +72,7 @@ def main() -> None:
     parser.add_argument(
         '--manual',
         action='store_true',
-        help='Manual mode: copy-paste OAuth flow (for remote/SSH)'
+        help='Manual mode: copy-paste OAuth flow (for remote/SSH/Claude)'
     )
     parser.add_argument(
         '--code',
@@ -77,23 +88,33 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Fetch credentials from Secret Manager
-    print(f"Fetching credentials from {args.project}/{SECRET_NAME}...")
-    credentials_json = fetch_credentials_from_secret_manager(args.project, SECRET_NAME)
-
-    # Write to temp file for itv_google_auth (expects a path)
-    with tempfile.NamedTemporaryFile(
-        mode='w', suffix='.json', delete=False
-    ) as tmp:
+    # Resolve credentials: local file first, then Secret Manager
+    tmp_path = None
+    if LOCAL_CREDENTIALS_FILE.exists():
+        print(f"Using local credentials: {LOCAL_CREDENTIALS_FILE}")
+        credentials_path = str(LOCAL_CREDENTIALS_FILE)
+    else:
+        print(f"No local credentials.json found.")
+        print(f"Fetching from Secret Manager: {args.project}/{SECRET_NAME}...")
+        credentials_json = fetch_credentials_from_secret_manager(args.project, SECRET_NAME)
+        tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
         tmp.write(credentials_json)
+        tmp.close()
         tmp_path = tmp.name
+        credentials_path = tmp_path
+
+    # Default to manual mode if no display available
+    manual = args.manual or bool(args.code)
+    if not manual and not _is_interactive():
+        print("No display detected — using manual mode.")
+        manual = True
 
     try:
         authenticate(
-            credentials_path=tmp_path,
+            credentials_path=credentials_path,
             token_path=TOKEN_FILE,
             scopes=SCOPES,
-            manual_mode=args.manual or bool(args.code),
+            manual_mode=manual,
             code=args.code,
             port=OAUTH_PORT,
         )
@@ -106,8 +127,9 @@ def main() -> None:
         print(f"\nAuthentication failed: {e}")
         sys.exit(1)
     finally:
-        # Clean up temp credentials file
-        Path(tmp_path).unlink(missing_ok=True)
+        # Clean up temp credentials file (only if we fetched from Secret Manager)
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)
 
 
 if __name__ == '__main__':

@@ -43,7 +43,10 @@ SCOPES = [
 # OAuth server port (localhost callback receiver)
 OAUTH_PORT = 3000
 
-# GCP Secret Manager
+# Local credentials file (for external users who provide their own)
+LOCAL_CREDENTIALS_FILE = _PACKAGE_ROOT / 'credentials.json'
+
+# GCP Secret Manager (optional — used by maintainer when local credentials.json absent)
 GCP_PROJECT = 'mit-workspace-mcp-server'
 SECRET_NAME = 'mise-credentials'
 

@@ -10,8 +10,8 @@ dependencies = [
     # Google APIs
     "google-api-python-client>=2.100.0",
     "google-auth-httplib2>=0.2.0",
-    # OAuth (shared with v1)
-    "itv-google-auth",
+    # OAuth token management
+    "jeton",
     # Extraction
     "markitdown[all]>=0.1.4",
     "regex>=2025.11.3",
@@ -81,7 +81,7 @@ ignore_missing_imports = true
 format-command = "ruff format --stdin-filename {filename}"
 
 [tool.uv.sources]
-itv-google-auth = { git = "https://github.com/spm1001/itv-google-auth.git" }
+jeton = { git = "https://github.com/spm1001/jeton.git" }
 
 [dependency-groups]
 dev = [

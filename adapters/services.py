@@ -30,7 +30,7 @@ __all__ = [
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build, Resource
 
-from itv_google_auth import load_credentials
+from jeton import load_credentials
 from oauth_config import TOKEN_FILE, SCOPES
 
 # Default timeout for all Google API calls (seconds)

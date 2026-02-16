@@ -96,7 +96,7 @@ uv sync    # requires uv — https://docs.astral.sh/uv/
 
 ### 2. Google OAuth
 
-mise-en-space uses `itv-google-auth` (private package) for OAuth. You need a Google Cloud project with the Drive, Gmail, and Slides APIs enabled.
+mise-en-space uses [jeton](https://github.com/spm1001/jeton) for OAuth. You need a Google Cloud project with the required APIs enabled. See jeton's README for GCP setup instructions, or place your `credentials.json` in the repo root and run `uv run python -m auth`.
 
 ```bash
 # First run will trigger OAuth flow
