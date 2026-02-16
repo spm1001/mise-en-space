@@ -96,12 +96,44 @@ uv sync    # requires uv — https://docs.astral.sh/uv/
 
 ### 2. Google OAuth
 
-mise-en-space uses [jeton](https://github.com/spm1001/jeton) for OAuth. You need a Google Cloud project with the required APIs enabled. See jeton's README for GCP setup instructions, or place your `credentials.json` in the repo root and run `uv run python -m auth`.
+mise-en-space uses [jeton](https://github.com/spm1001/jeton) for OAuth.
+
+**Quick version:** Create OAuth credentials in [GCP Console](https://console.cloud.google.com/apis/credentials), save as `credentials.json` in the repo root, run `uv run python -m auth`.
+
+**Detailed steps:**
+
+1. Create or select a [Google Cloud project](https://console.cloud.google.com)
+2. Enable these APIs in [APIs & Services > Library](https://console.cloud.google.com/apis/library):
+   - Google Drive API
+   - Gmail API
+   - Google Docs API
+   - Google Sheets API
+   - Google Slides API
+   - Google Calendar API
+   - Google Tasks API
+   - Drive Activity API
+   - Drive Labels API
+3. Configure [OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent) (External, add your email as test user)
+4. Create [OAuth credentials](https://console.cloud.google.com/apis/credentials) (Web Application type)
+   - Add `http://localhost:3000/oauth/callback` as an authorized redirect URI
+5. Download the JSON and save as `credentials.json` in the mise-en-space repo root
+6. Authenticate:
 
 ```bash
-# First run will trigger OAuth flow
-uv run python cli.py search "test"
+uv run python -m auth              # Opens browser automatically
+uv run python -m auth --manual     # For SSH/remote/Claude (paste URL back)
 ```
+
+**Scopes requested:** Drive (read), Gmail (read), Contacts (read), Docs/Sheets/Slides (read+write), Drive file creation, Drive Activity, Tasks, Drive Labels, Calendar. See [`oauth_config.py`](oauth_config.py) for the full list and rationale.
+
+**Troubleshooting:**
+
+| Problem | Fix |
+|---------|-----|
+| `redirect_uri_mismatch` | Add `http://localhost:3000/oauth/callback` to redirect URIs in GCP Console |
+| `access_denied` | Add your email as a test user on the OAuth consent screen |
+| `API not enabled` | Enable the API in [Library](https://console.cloud.google.com/apis/library) |
+| `gcloud: command not found` | You don't need gcloud — just put `credentials.json` in the repo root |
 
 ### 3. Add to Claude as MCP server
 
