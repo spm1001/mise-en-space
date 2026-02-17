@@ -36,7 +36,7 @@ I wanted something that had the best of all these ideas:
 | Verb | Purpose | Deposits files? |
 |------|---------|-----------------|
 | `search` | Find files and emails across Drive and Gmail | Yes — results JSON |
-| `fetch` | Extract content to `mise-fetch/` as markdown/CSV | Yes — content folder |
+| `fetch` | Extract content to `mise/` as markdown/CSV | Yes — content folder |
 | `create` | Make a new Doc/Sheet/Slides from markdown | No |
 
 ## CLI

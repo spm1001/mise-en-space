@@ -1,7 +1,7 @@
 """
 Workspace — Per-session folder management.
 
-Handles file deposit to mise-fetch/{type}--{title}--{id}/ folders.
+Handles file deposit to mise/{type}--{title}--{id}/ folders.
 Filesystem-first pattern: content goes to disk, Claude reads what it needs.
 """
 
@@ -14,6 +14,7 @@ from .manager import (
     write_chart,
     write_charts_metadata,
     write_manifest,
+    enrich_manifest,
     list_deposit_folders,
     parse_folder_name,
     get_deposit_summary,
@@ -28,6 +29,7 @@ __all__ = [
     "write_chart",
     "write_charts_metadata",
     "write_manifest",
+    "enrich_manifest",
     "list_deposit_folders",
     "parse_folder_name",
     "get_deposit_summary",

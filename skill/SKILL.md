@@ -21,7 +21,7 @@ search("Q4 planning", base_path="/Users/modha/Repos/my-project")
 fetch("1abc...", base_path="/Users/modha/Repos/my-project")
 ```
 
-**Deposit accumulation:** `mise-fetch/` grows without bound during a session. Be aware during heavy research — 15+ deposits add up.
+**Deposit accumulation:** `mise/` grows without bound during a session. Be aware during heavy research — 15+ deposits add up.
 
 ## The Three Tools
 
@@ -132,8 +132,8 @@ search("budget 2026", base_path="...")                       # Both sources
 When search returns 20+ results, don't read the full JSON. Filter first:
 
 ```bash
-jq '.drive_results[:5] | .[] | {name, id}' mise-fetch/search--*.json
-jq '.drive_results[] | select(.name | test("framework"; "i"))' mise-fetch/search--*.json
+jq '.drive_results[:5] | .[] | {name, id}' mise/search--*.json
+jq '.drive_results[] | select(.name | test("framework"; "i"))' mise/search--*.json
 ```
 
 Rule of thumb: <10 results → just read. >15 → filter with jq first.
@@ -166,7 +166,7 @@ do(operation="move", file_id="1abc...", destination_folder_id="1xyz...")
 - **JS-rendered pages** → browser fallback (requires `webctl start`)
 - **PDFs at URLs** → text extraction
 
-Cleaner than `curl` (raw HTML) or `WebFetch` (lossy summary). Deposits to `mise-fetch/web--{title}--{hash}/content.md`.
+Cleaner than `curl` (raw HTML) or `WebFetch` (lossy summary). Deposits to `mise/web--{title}--{hash}/content.md`.
 
 **Choosing between mise and passe for web content:** For a single known URL, `mise fetch` is cleaner (no goto+wait dance, better markdown output). For discovering page structure or crawling a multi-page site, use passe `snapshot` to find the nav tree then `read` each page.
 

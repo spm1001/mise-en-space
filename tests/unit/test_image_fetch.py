@@ -201,8 +201,8 @@ class TestFetchImageFile:
             filename="image.png",
             mime_type="image/png",
         )
-        mock_folder.return_value = Path("/tmp/mise-fetch/image--diagram--abc123")
-        mock_write.return_value = Path("/tmp/mise-fetch/image--diagram--abc123/image.png")
+        mock_folder.return_value = Path("/tmp/mise/image--diagram--abc123")
+        mock_write.return_value = Path("/tmp/mise/image--diagram--abc123/image.png")
 
         metadata = {"mimeType": "image/png", "name": "diagram.png"}
         result = fetch_image_file("abc123", "diagram.png", metadata)
@@ -229,10 +229,10 @@ class TestFetchImageFile:
             rendered_png_bytes=png_bytes,
             render_method="rsvg-convert",
         )
-        mock_folder.return_value = Path("/tmp/mise-fetch/image--diagram--svg123")
+        mock_folder.return_value = Path("/tmp/mise/image--diagram--svg123")
         mock_write.side_effect = [
-            Path("/tmp/mise-fetch/image--diagram--svg123/image.svg"),
-            Path("/tmp/mise-fetch/image--diagram--svg123/image_rendered.png"),
+            Path("/tmp/mise/image--diagram--svg123/image.svg"),
+            Path("/tmp/mise/image--diagram--svg123/image_rendered.png"),
         ]
 
         metadata = {"mimeType": "image/svg+xml", "name": "diagram.svg"}
@@ -260,8 +260,8 @@ class TestFetchImageFile:
             mime_type="image/svg+xml",
             warnings=["SVG render failed: neither rsvg-convert nor sips available"],
         )
-        mock_folder.return_value = Path("/tmp/mise-fetch/image--diagram--svg456")
-        mock_write.return_value = Path("/tmp/mise-fetch/image--diagram--svg456/image.svg")
+        mock_folder.return_value = Path("/tmp/mise/image--diagram--svg456")
+        mock_write.return_value = Path("/tmp/mise/image--diagram--svg456/image.svg")
 
         metadata = {"mimeType": "image/svg+xml", "name": "diagram.svg"}
         result = fetch_image_file("svg456", "diagram.svg", metadata)

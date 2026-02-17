@@ -1,6 +1,6 @@
 # Deposit Structure
 
-Content fetched by mise lands in `mise-fetch/` in your working directory (when `base_path` is passed correctly).
+Content fetched by mise lands in `mise/` in your working directory (when `base_path` is passed correctly).
 
 ## Folder Naming
 
@@ -18,7 +18,7 @@ Content fetched by mise lands in `mise-fetch/` in your working directory (when `
 ## Standard Deposit
 
 ```
-mise-fetch/{type}--{title}--{id}/
+mise/{type}--{title}--{id}/
 ├── manifest.json           # Metadata: type, title, id, fetched_at, warnings
 ├── content.md              # Extracted text/markdown
 └── comments.md             # Open comments (if any exist)
@@ -76,7 +76,7 @@ Extract skipped attachments on demand:
 fetch("thread_id", attachment="budget.xlsx", base_path="...")
 ```
 
-This creates a separate deposit: `mise-fetch/xlsx--budget--thread_id/`
+This creates a separate deposit: `mise/xlsx--budget--thread_id/`
 
 ## Large Deposits
 
@@ -84,11 +84,11 @@ For big email threads (32k+ tokens) or long docs, preview before full Read:
 
 ```bash
 # First 50 lines
-head -50 mise-fetch/gmail--re-lantern--abc123/content.md
+head -50 mise/gmail--re-lantern--abc123/content.md
 
 # Grep for topic
-grep -A5 "controllership" mise-fetch/gmail--*/content.md
+grep -A5 "controllership" mise/gmail--*/content.md
 
 # Count messages in thread
-grep -c "^## Message" mise-fetch/gmail--*/content.md
+grep -c "^## Message" mise/gmail--*/content.md
 ```

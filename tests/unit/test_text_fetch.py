@@ -37,8 +37,8 @@ class TestFetchText:
     def test_fetch_plain_text(self, mock_manifest, mock_write, mock_folder, mock_download):
         """Fetches plain text file and deposits correctly."""
         mock_download.return_value = b"Hello, world!"
-        mock_folder.return_value = "/tmp/mise-fetch/text--test--abc123"
-        mock_write.return_value = "/tmp/mise-fetch/text--test--abc123/content.txt"
+        mock_folder.return_value = "/tmp/mise/text--test--abc123"
+        mock_write.return_value = "/tmp/mise/text--test--abc123/content.txt"
 
         metadata = {"mimeType": "text/plain", "name": "test.txt"}
         result = fetch_text("abc123", "test.txt", metadata)
@@ -58,8 +58,8 @@ class TestFetchText:
     def test_fetch_json(self, mock_manifest, mock_write, mock_folder, mock_download):
         """Fetches JSON file with correct format and extension."""
         mock_download.return_value = b'{"key": "value"}'
-        mock_folder.return_value = "/tmp/mise-fetch/text--data--xyz789"
-        mock_write.return_value = "/tmp/mise-fetch/text--data--xyz789/content.json"
+        mock_folder.return_value = "/tmp/mise/text--data--xyz789"
+        mock_write.return_value = "/tmp/mise/text--data--xyz789/content.json"
 
         metadata = {"mimeType": "application/json", "name": "data.json"}
         result = fetch_text("xyz789", "data.json", metadata)
@@ -77,8 +77,8 @@ class TestFetchText:
     def test_fetch_csv(self, mock_manifest, mock_write, mock_folder, mock_download):
         """Fetches CSV file with correct format and extension."""
         mock_download.return_value = b"a,b,c\n1,2,3"
-        mock_folder.return_value = "/tmp/mise-fetch/text--data--csv123"
-        mock_write.return_value = "/tmp/mise-fetch/text--data--csv123/content.csv"
+        mock_folder.return_value = "/tmp/mise/text--data--csv123"
+        mock_write.return_value = "/tmp/mise/text--data--csv123/content.csv"
 
         metadata = {"mimeType": "text/csv", "name": "data.csv"}
         result = fetch_text("csv123", "data.csv", metadata)

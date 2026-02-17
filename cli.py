@@ -77,7 +77,7 @@ Examples:
     search_p.set_defaults(func=cmd_search)
 
     # fetch
-    fetch_p = subparsers.add_parser("fetch", help="Fetch content to mise-fetch/")
+    fetch_p = subparsers.add_parser("fetch", help="Fetch content to mise/")
     fetch_p.add_argument(
         "file_id",
         help="Drive file ID, Gmail thread ID, or URL (web, Drive, Gmail)",

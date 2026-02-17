@@ -25,11 +25,11 @@ def integration_ids() -> dict[str, str]:
 
 @pytest.fixture
 def cleanup_mise_fetch():
-    """Clean up mise-fetch folder after tests."""
+    """Clean up mise folder after tests."""
     import shutil
     from pathlib import Path
 
-    mise_fetch = Path.cwd() / "mise-fetch"
+    mise_fetch = Path.cwd() / "mise"
     yield mise_fetch
     # Cleanup after test
     if mise_fetch.exists():

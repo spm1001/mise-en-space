@@ -12,6 +12,7 @@ from workspace import (
     write_chart,
     write_charts_metadata,
     write_manifest,
+    enrich_manifest,
     list_deposit_folders,
     parse_folder_name,
     get_deposit_summary,
@@ -74,8 +75,8 @@ class TestGetDepositFolder:
             base_path=tmp_path,
         )
 
-        # Should be under mise-fetch/
-        assert folder.parent.name == "mise-fetch"
+        # Should be under mise/
+        assert folder.parent.name == "mise"
 
         # Should have correct structure
         name = folder.name
@@ -236,7 +237,7 @@ class TestParseFolderName:
 
     def test_parses_valid_name(self, tmp_path: Path) -> None:
         """Test parsing valid folder name."""
-        folder = tmp_path / "mise-fetch" / "slides--ami-deck-2026--1OepZju"
+        folder = tmp_path / "mise" / "slides--ami-deck-2026--1OepZju"
         folder.mkdir(parents=True)
 
         result = parse_folder_name(folder)
@@ -249,7 +250,7 @@ class TestParseFolderName:
 
     def test_handles_title_with_dashes(self, tmp_path: Path) -> None:
         """Test titles that contain double-dashes."""
-        folder = tmp_path / "mise-fetch" / "doc--q4-planning--draft--abc123"
+        folder = tmp_path / "mise" / "doc--q4-planning--draft--abc123"
         folder.mkdir(parents=True)
 
         result = parse_folder_name(folder)
@@ -378,7 +379,7 @@ class TestWriteSearchResults:
         path = write_search_results("Q4 planning", results, base_path=tmp_path)
 
         assert path.exists()
-        assert path.parent.name == "mise-fetch"
+        assert path.parent.name == "mise"
         assert path.name.startswith("search--q4-planning--")
         assert path.suffix == ".json"
 
@@ -386,8 +387,36 @@ class TestWriteSearchResults:
         assert data["drive_results"][0]["id"] == "d1"
 
     def test_creates_mise_fetch_dir(self, tmp_path: Path) -> None:
-        """mise-fetch/ created if it doesn't exist."""
+        """mise/ created if it doesn't exist."""
         path = write_search_results("test", {}, base_path=tmp_path)
-        assert (tmp_path / "mise-fetch").is_dir()
+        assert (tmp_path / "mise").is_dir()
+
+
+class TestEnrichManifest:
+    """Tests for post-creation manifest enrichment."""
+
+    def test_merges_fields(self, tmp_path: Path) -> None:
+        import json
+
+        folder = get_deposit_folder("doc", "Test", "abc123", tmp_path)
+        write_manifest(folder, "doc", "Test", "abc123")
+
+        enrich_manifest(folder, {
+            "status": "created",
+            "file_id": "doc1",
+            "web_link": "https://docs.google.com/document/d/doc1/edit",
+        })
+
+        manifest = json.loads((folder / "manifest.json").read_text())
+        assert manifest["status"] == "created"
+        assert manifest["file_id"] == "doc1"
+        # Original fields preserved
+        assert manifest["type"] == "doc"
+        assert manifest["title"] == "Test"
+
+    def test_raises_if_no_manifest(self, tmp_path: Path) -> None:
+        """FileNotFoundError when manifest.json doesn't exist."""
+        with pytest.raises(FileNotFoundError):
+            enrich_manifest(tmp_path, {"status": "created"})
 
 

@@ -16,7 +16,7 @@ A complete rewrite of the Google Workspace MCP with:
 extractors/     Pure functions, no MCP awareness (testable without APIs)
 adapters/       Thin Google API wrappers (easily mocked)
 tools/          MCP tool definitions (thin wiring layer)
-workspace/      File deposit management (mise-fetch/ in cwd)
+workspace/      File deposit management (mise/ in cwd)
 server.py       FastMCP entry point
 docs/           Design documents and references
 ```
@@ -85,12 +85,12 @@ chrome-debug    # Start Chrome with debug port enabled
 3. Detects if content needs browser rendering (JS-rendered pages)
 4. Falls back to browser via `passe` if available and needed
 5. Extracts clean markdown via `trafilatura`
-6. Deposits to `mise-fetch/web--{title}--{url-hash}/`
+6. Deposits to `mise/web--{title}--{url-hash}/`
 
 **Example:**
 ```python
 result = fetch("https://trafilatura.readthedocs.io/en/latest/")
-# → mise-fetch/web--a-python-package-command-line-tool--3364f7aa45b8/content.md
+# → mise/web--a-python-package-command-line-tool--3364f7aa45b8/content.md
 ```
 
 **Content extraction uses trafilatura**, which:
@@ -130,7 +130,7 @@ Documentation is provided via MCP Resources (static content), not a tool.
 
 **Key behaviors:**
 - `search` returns metadata only — Claude triages before fetching
-- `fetch` writes to `mise-fetch/` in cwd, returns path
+- `fetch` writes to `mise/` in cwd, returns path
 - `fetch` auto-detects ID type (Drive file ID vs Gmail thread ID vs URL)
 - `fetch` accepts optional `attachment` param for extracting a specific Gmail attachment (including Office files skipped during eager extraction)
 - `do` routes via `operation` param — `do(operation="create", ...)` replaces the old `create` tool
@@ -383,10 +383,10 @@ uv run python -m auth --manual
 
 ## File Deposit Structure
 
-Fetched content goes to `mise-fetch/` in the current working directory:
+Fetched content goes to `mise/` in the current working directory:
 
 ```
-mise-fetch/
+mise/
 ├── slides--ami-deck-2026--1OepZjuwi2em/
 │   ├── manifest.json           # Self-describing metadata
 │   ├── content.md              # Extracted text/markdown
@@ -515,14 +515,14 @@ Decisions made during planning (Jan 2026) that future Claude should understand:
 | **No search snippets** | `snippet: None` | Drive API v3 has no `contentSnippet` field. The API returns 400 if requested. `fullText` search finds files but doesn't explain *why* they matched. Discovered Jan 2026 via live testing. |
 | **Gmail: no streaming** | Full response only | Gmail API doesn't support chunked downloads. Current implementation is correct. |
 | **Search deposits to file** | Path + counts, not inline JSON | Filesystem-first consistency with fetch. Claude reads deposited JSON when needed. Saves ~5% tokens per search but scales better (10 parallel searches = 30-40k tokens avoided). Also enables jq/grep filtering before full read. |
-| **cwd is MCP's directory** | Known limitation | MCP servers run as separate processes — `Path.cwd()` is their cwd, not Claude's. All deposits go to `mise-en-space/mise-fetch/`. Future fix: add `base_path` parameter to search/fetch. |
+| **cwd is MCP's directory** | Known limitation | MCP servers run as separate processes — `Path.cwd()` is their cwd, not Claude's. All deposits go to `mise-en-space/mise/`. Future fix: add `base_path` parameter to search/fetch. |
 | **Web: trafilatura not Defuddle** | trafilatura (Python) | Best F1 score (0.883) in benchmarks, Python-native (no Node subprocess), battle-tested at scale. Defuddle (JS) preserves code hints better but requires Node. We work around trafilatura's code block mangling via pre-process/restore pattern instead of forking. |
 | **Web: code block preservation** | Pre-process/restore | Extract `<pre>` blocks before trafilatura, replace with placeholders, restore after. Avoids forking trafilatura while preserving language hints. |
 | **Web: raw text handling** | Detect and pass through | GitHub raw URLs, JSON APIs return non-HTML. Detect via Content-Type + URL extension, format appropriately (code fences for code, pass-through for markdown). |
 | **Web: passe browser fallback** | passe (CDP) replaces webctl (Playwright) | passe's `read` verb injects Readability.js + Turndown.js, returns markdown directly. `WebData.pre_extracted_content` carries the result; tool layer skips trafilatura when set. Three-tier SPA detection: short HTML, empty body text, framework patterns. `passe run` closes its tab on exit, so `passe eval` after run reads the wrong tab — use original URL as `final_url` until passe adds it to the run summary JSON. |
 | **Web: binary Content-Type routing** | Adapter captures raw bytes, tool routes by type | Web URLs that return `application/pdf` (or other binary types) are detected via Content-Type in the adapter, which captures `raw_bytes` on `WebData` and skips HTML inspection. Tool layer checks Content-Type and routes to the appropriate extractor (e.g., `extract_pdf_content`). Status code checks (404, 429, 500) run *before* binary detection. Only types with working extractors are in `BINARY_CONTENT_TYPES` — don't add types we can't process. |
 | **Gmail: no inline attachment text** | Pointers, not inline content | Extracted attachment text goes to separate `{filename}.md` files. content.md gets a compact `**Extracted attachments:**` summary with `→ \`filename.md\`` pointers. Originally (voSovu) we inlined full PDF text into content.md "like Drive PDFs" — but a Gmail thread is a conversation with attachments, not a standalone document. Inlining bloated content.md 10x (28→300 lines) and created a need for truncation guards. Reversed Feb 2026 (a0a7a45). |
-| **Gmail: single-attachment fetch** | `fetch(thread_id, attachment="file.xlsx")` | Office files are skipped during eager thread extraction (5-10s each). The `attachment` parameter on `fetch()` enables on-demand extraction of any specific attachment — including Office files. Routes through same extractors as Drive files. Pre-exfil Drive copies checked first. Deposit goes to self-contained folder (`mise-fetch/{type}--{title}--{id}/`). |
+| **Gmail: single-attachment fetch** | `fetch(thread_id, attachment="file.xlsx")` | Office files are skipped during eager thread extraction (5-10s each). The `attachment` parameter on `fetch()` enables on-demand extraction of any specific attachment — including Office files. Routes through same extractors as Drive files. Pre-exfil Drive copies checked first. Deposit goes to self-contained folder (`mise/{type}--{title}--{id}/`). |
 | **Activity API: two target types** | `_parse_target` handles both `driveItem` and `fileComment.parent` | Comment activities use `fileComment` target (with drive item nested in `parent`), non-comment activities use `driveItem`. Both have the same shape (name, title, mimeType). Discovered Feb 2026 via real fixture capture — unit tests with hand-crafted mocks missed this because they all used `driveItem`. |
 | **Activity API: people IDs not names** | `personName` → `people/ID` treated as Unknown | Activity API returns opaque `people/ID` strings in `knownUser.personName`, not display names. `_parse_actor` detects and falls through to "Unknown". No workaround — the API doesn't expose names for privacy. |
 | **Skill: MANDATORY for all operations** | Gate on every fetch/search/create, not just research | Evidence (Feb 2026): test Claudes skip skill and go straight to MCP tools — keyword soup in Gmail, miss comments, forget base_path. MANDATORY gate (CSO 80+) needed for skill to load at all. Keeping it mandatory for simple fetches too because: (1) can't predict which fetches become research, (2) post-fetch checklist (comments, email_context) applies universally, (3) overhead is one skill load, cost of not having it is real mistakes. Skill organized by workflow (quick fetch, research, precision search, create) not by verb. |
@@ -531,6 +531,8 @@ Decisions made during planning (Jan 2026) that future Claude should understand:
 | **Web: 403/401 auto-fallback** | Try passe before raising AUTH_REQUIRED | When HTTP fetch gets 403/401, auto-retry via passe (Chrome's authenticated session) if available. Falls through to actionable error message suggesting `passe read` if passe isn't running. Paywall detection (soft auth, 200 status) does NOT auto-fallback — passe can't bypass paywalls, only real session auth. |
 | **Web: hostile site defences** | Redirect loops, size bombs, tarpits | `TooManyRedirects` caught explicitly (not buried in generic `RequestError`). HTML responses capped at 10MB via `Content-Length` check before `response.text` loads. Existing: 30s timeout, CAPTCHA detection, 429/500+ handling, binary streaming >50MB. Known gap: servers omitting Content-Length bypass size check — timeout is the backstop. |
 | **Web: extraction_failed constant** | `EXTRACTION_FAILED_CUE` shared between extractor and tool | Extractor writes the stub, tool matches it for cues. Shared constant in `extractors/web.py` prevents silent breakage if stub wording changes. Cross-layer test verifies both sides use the same constant. |
+| **Workspace directory: mise/ not mise-fetch/** | Single bidirectional workspace | `mise/` is one station — fetch deposits there, do reads from there. Renamed from `mise-fetch/` (Feb 2026) because the deposit-then-publish pattern means the directory is bidirectional, not fetch-only. `.gitignore` keeps both names for compatibility with existing deposits. |
+| **Deposit-then-publish: source param** | `do(source="mise/...")` reads from deposit | Instead of passing content inline (burns tokens), caller writes to `mise/` deposit folder, then `do(source=path)` reads content.md (doc) or content.csv (sheet) from it. Title falls back to manifest.json. After creation, manifest is enriched with `status`, `file_id`, `web_link`, `created_at` as receipt. Inline `content` param stays for backwards compatibility. Both source and content → error (ambiguous). |
 | **Gmail: forwarded message preservation** | Split-then-strip pipeline + MIME rfc822 parsing | `strip_signature_and_quotes()` was destroying forwarded messages (unique content from outside the thread) alongside reply quotes (redundant content). Fix: `split_forward_sections()` detects forward markers (Gmail/Apple) *before* stripping, preserves forwarded content with `--- Forwarded message ---` delimiter and attribution. Separately, `parse_forwarded_messages()` walks MIME tree for `message/rfc822` parts (invisible to plain text parser) and appends them with headers. Two independent paths cover inline forwards (plain text markers) and MIME-attached forwards (binary parts). Quoted forwards inside reply quotes (`> ---------- Forwarded message`) correctly stripped — regex anchored to `^`, quote-prefixed lines removed first. |
 | **XLSX: Sheets API not CSV export** | Upload+convert, read via Sheets API, delete temp | Drive CSV export only returns the first sheet of a multi-tab spreadsheet. Fix: `_extract_xlsx_via_sheets_api()` uploads+converts the XLSX to a temp Google Sheet, reads all tabs via `fetch_spreadsheet()` + `extract_sheets_content()` (same path as native Google Sheets), then deletes the temp. Output uses `=== Sheet: Name ===` headers — same format as native Sheets extraction. `upload_and_convert()` + `delete_temp_file()` in conversion.py support this "convert but don't export" pattern. |
 

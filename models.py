@@ -409,7 +409,7 @@ class GmailSearchResult:
 @dataclass
 class FetchResult:
     """Successful fetch result."""
-    path: str                    # Folder path (mise-fetch/...)
+    path: str                    # Folder path (mise/...)
     content_file: str            # Full path to content file
     format: str                  # 'markdown', 'csv'
     type: str                    # 'doc', 'sheet', 'slides', 'gmail'

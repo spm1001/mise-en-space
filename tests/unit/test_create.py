@@ -1,12 +1,14 @@
 """Tests for do tool (create and future operations)."""
 
+import json
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
 
 from models import CreateResult, CreateError
 from server import do
-from tools.create import do_create, DOC_TYPE_TO_MIME
+from tools.create import do_create, _read_source, DOC_TYPE_TO_MIME
 
 
 class TestDoToolRouting:
@@ -298,3 +300,262 @@ class TestDocTypeMapping:
         assert "doc" in DOC_TYPE_TO_MIME
         assert "sheet" in DOC_TYPE_TO_MIME
         assert "slides" in DOC_TYPE_TO_MIME
+
+
+class TestReadSource:
+    """Tests for _read_source() — reading content from deposit folders."""
+
+    def test_reads_content_md_for_doc(self, tmp_path: Path) -> None:
+        """Reads content.md when doc_type=doc."""
+        (tmp_path / "content.md").write_text("# Hello World")
+        content, title = _read_source(tmp_path, "doc")
+        assert content == "# Hello World"
+        assert title is None  # No manifest
+
+    def test_reads_content_csv_for_sheet(self, tmp_path: Path) -> None:
+        """Reads content.csv when doc_type=sheet."""
+        (tmp_path / "content.csv").write_text("Name,Amount\nAlice,100")
+        content, title = _read_source(tmp_path, "sheet")
+        assert content == "Name,Amount\nAlice,100"
+
+    def test_title_from_manifest(self, tmp_path: Path) -> None:
+        """Extracts title from manifest.json if present."""
+        (tmp_path / "content.md").write_text("# Report")
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "type": "doc",
+            "title": "Quarterly Report",
+            "id": "draft-001",
+        }))
+        content, title = _read_source(tmp_path, "doc")
+        assert content == "# Report"
+        assert title == "Quarterly Report"
+
+    def test_missing_content_file_raises(self, tmp_path: Path) -> None:
+        """Raises MiseError when expected content file is missing."""
+        from models import MiseError
+        with pytest.raises(MiseError) as exc_info:
+            _read_source(tmp_path, "doc")
+        assert "content.md" in str(exc_info.value)
+
+    def test_unsupported_doc_type_raises(self, tmp_path: Path) -> None:
+        """Raises MiseError for doc types without source support."""
+        from models import MiseError
+        with pytest.raises(MiseError) as exc_info:
+            _read_source(tmp_path, "slides")
+        assert "not supported" in str(exc_info.value)
+
+    def test_malformed_manifest_ignored(self, tmp_path: Path) -> None:
+        """Bad manifest.json doesn't crash — title falls back to None."""
+        (tmp_path / "content.md").write_text("# Test")
+        (tmp_path / "manifest.json").write_text("not json{{{")
+        content, title = _read_source(tmp_path, "doc")
+        assert content == "# Test"
+        assert title is None
+
+
+class TestSourceParam:
+    """Tests for do_create() with source parameter."""
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_creates_doc_from_source(self, mock_svc, _sleep, tmp_path: Path) -> None:
+        """source reads content.md and creates a doc."""
+        (tmp_path / "content.md").write_text("# From Deposit")
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "doc1",
+            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
+            "name": "From Deposit",
+        }
+
+        result = do_create(title="From Deposit", source=tmp_path)
+
+        assert isinstance(result, CreateResult)
+        assert result.file_id == "doc1"
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_creates_sheet_from_source(self, mock_svc, _sleep, tmp_path: Path) -> None:
+        """source reads content.csv and creates a sheet."""
+        (tmp_path / "content.csv").write_text("Name,Amount\nAlice,100")
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "sheet1",
+            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
+            "name": "Data",
+        }
+
+        result = do_create(title="Data", doc_type="sheet", source=tmp_path)
+
+        assert isinstance(result, CreateResult)
+        assert result.file_id == "sheet1"
+        assert result.doc_type == "sheet"
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_title_falls_back_to_manifest(self, mock_svc, _sleep, tmp_path: Path) -> None:
+        """Title from manifest used when not passed explicitly."""
+        (tmp_path / "content.md").write_text("# Report")
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "type": "doc", "title": "Manifest Title", "id": "d1",
+        }))
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "doc1",
+            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
+            "name": "Manifest Title",
+        }
+
+        result = do_create(source=tmp_path)  # No title param
+
+        assert isinstance(result, CreateResult)
+        assert result.title == "Manifest Title"
+
+    def test_source_and_content_conflict(self, tmp_path: Path) -> None:
+        """Providing both source and content returns error."""
+        (tmp_path / "content.md").write_text("# Test")
+
+        result = do_create(content="# Inline", title="Test", source=tmp_path)
+
+        assert isinstance(result, CreateError)
+        assert result.kind == "invalid_input"
+        assert "either" in result.message.lower()
+
+    def test_no_content_no_source_returns_error(self) -> None:
+        """Neither content nor source returns error."""
+        result = do_create(title="Test")
+
+        assert isinstance(result, CreateError)
+        assert result.kind == "invalid_input"
+        assert "content" in result.message.lower()
+
+    def test_source_missing_file_returns_error(self, tmp_path: Path) -> None:
+        """Source folder without expected content file returns error."""
+        result = do_create(title="Test", source=tmp_path)
+
+        assert isinstance(result, CreateError)
+        assert result.kind == "invalid_input"
+        assert "content.md" in result.message
+
+    def test_source_no_title_no_manifest_returns_error(self, tmp_path: Path) -> None:
+        """Source without title param and without manifest returns error."""
+        (tmp_path / "content.md").write_text("# Test")
+
+        result = do_create(source=tmp_path)  # No title, no manifest
+
+        assert isinstance(result, CreateError)
+        assert result.kind == "invalid_input"
+        assert "title" in result.message.lower()
+
+
+class TestManifestEnrichment:
+    """Tests for post-creation manifest enrichment."""
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_manifest_enriched_after_creation(self, mock_svc, _sleep, tmp_path: Path) -> None:
+        """Manifest gets status, file_id, web_link, created_at after create."""
+        (tmp_path / "content.md").write_text("# Report")
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "type": "doc", "title": "Report", "id": "draft-001",
+        }))
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "doc1",
+            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
+            "name": "Report",
+        }
+
+        do_create(title="Report", source=tmp_path)
+
+        # Re-read manifest
+        manifest = json.loads((tmp_path / "manifest.json").read_text())
+        assert manifest["status"] == "created"
+        assert manifest["file_id"] == "doc1"
+        assert manifest["web_link"] == "https://docs.google.com/document/d/doc1/edit"
+        assert "created_at" in manifest
+        # Original fields preserved
+        assert manifest["type"] == "doc"
+        assert manifest["title"] == "Report"
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_no_manifest_no_crash(self, mock_svc, _sleep, tmp_path: Path) -> None:
+        """Source folder without manifest.json doesn't crash on enrichment."""
+        (tmp_path / "content.md").write_text("# Test")
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "doc1",
+            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
+            "name": "Test",
+        }
+
+        result = do_create(title="Test", source=tmp_path)
+
+        assert isinstance(result, CreateResult)
+        # No manifest.json to enrich — should succeed without error
+        assert not (tmp_path / "manifest.json").exists()
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_inline_content_does_not_enrich(self, mock_svc, _sleep) -> None:
+        """Inline content (no source) doesn't attempt manifest enrichment."""
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "doc1",
+            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
+            "name": "Test",
+        }
+
+        result = do_create(content="# Test", title="Test")
+
+        assert isinstance(result, CreateResult)
+        # No crash, no enrichment attempt
+
+
+class TestSourceThroughDoRouting:
+    """Tests that source param flows from do() MCP wrapper to do_create()."""
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_source_routes_through_do(self, mock_svc, _sleep, tmp_path: Path) -> None:
+        """do(operation=create, source=...) reaches do_create with resolved path."""
+        (tmp_path / "content.csv").write_text("a,b\n1,2")
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "type": "sheet", "title": "Test Sheet", "id": "draft",
+        }))
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "sheet1",
+            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
+            "name": "Test Sheet",
+        }
+
+        result = do(
+            operation="create",
+            source=str(tmp_path),
+            doc_type="sheet",
+            title="Test Sheet",
+        )
+
+        assert result["file_id"] == "sheet1"
+        assert result["type"] == "sheet"
+
+    def test_do_without_content_or_source_returns_error(self) -> None:
+        """do(operation=create) with neither content nor source errors."""
+        result = do(operation="create", title="Test")
+        assert result["error"] is True
+        assert "content" in result["message"] or "source" in result["message"]

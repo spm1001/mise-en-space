@@ -64,7 +64,7 @@ def do_search(
     """
     Search across Drive and Gmail.
 
-    Deposits results to mise-fetch/ and returns path + summary.
+    Deposits results to mise/ and returns path + summary.
     Follows filesystem-first pattern for token efficiency.
 
     Args:

@@ -50,7 +50,7 @@ def search(
     """
     Search across Drive and Gmail.
 
-    Writes results to mise-fetch/ and returns path + summary.
+    Writes results to mise/ and returns path + summary.
     Read the deposited JSON file for full results.
 
     Args:
@@ -75,7 +75,7 @@ def fetch(file_id: str, base_path: str | None = None, attachment: str | None = N
     """
     Fetch content to filesystem.
 
-    Writes processed content to mise-fetch/ in the specified directory.
+    Writes processed content to mise/ in the specified directory.
     Returns path for caller to read with standard file tools.
 
     Always optimizes for LLM consumption (markdown, CSV, clean text).
@@ -111,28 +111,41 @@ def do(
     folder_id: str | None = None,
     file_id: str | None = None,
     destination_folder_id: str | None = None,
+    source: str | None = None,
+    base_path: str | None = None,
 ) -> dict[str, Any]:
     """
     Act on Google Workspace — create, move, rename, edit.
 
     Args:
         operation: What to do. One of: 'create', 'move'
-        content: Markdown content (required for create)
-        title: Document title (required for create)
+        content: Markdown content (required for create, unless source is provided)
+        title: Document title (required for create, falls back to manifest title when using source)
         doc_type: 'doc' | 'sheet' | 'slides' (for create)
         folder_id: Optional destination folder (for create)
         file_id: Target file (required for move)
         destination_folder_id: Where to move the file (required for move)
+        source: Path to deposit folder containing content to publish (for create).
+                Reads content.md (doc) or content.csv (sheet) from the folder.
+                Manifest is enriched with creation receipt after success.
+        base_path: Directory for resolving relative source paths (pass your cwd)
 
     Returns:
         file_id: File ID
         web_link: URL to view/edit
     """
     if operation == "create":
-        if content is None or not title:
+        # Resolve source path
+        resolved_source = None
+        if source:
+            resolved_base = Path(base_path) if base_path else Path.cwd()
+            source_path = Path(source)
+            resolved_source = source_path if source_path.is_absolute() else resolved_base / source_path
+
+        if not content and not source:
             return {"error": True, "kind": "invalid_input",
-                    "message": "create requires 'content' and 'title'"}
-        return do_create(content, title, doc_type, folder_id).to_dict()
+                    "message": "create requires 'content' or 'source'"}
+        return do_create(content, title, doc_type, folder_id, source=resolved_source).to_dict()
 
     if operation == "move":
         if not file_id or not destination_folder_id:
@@ -159,8 +172,8 @@ Google Workspace MCP server with filesystem-first design.
 
 | Tool | Purpose | Writes files? |
 |------|---------|---------------|
-| `search` | Find files/emails, deposit results to `mise-fetch/` | Yes |
-| `fetch` | Download content to `mise-fetch/`, return path | Yes |
+| `search` | Find files/emails, deposit results to `mise/` | Yes |
+| `fetch` | Download content to `mise/`, return path | Yes |
 | `do` | Act on Workspace (create, move, rename, edit) | Varies |
 
 ## Sous-Chef Philosophy
@@ -200,7 +213,7 @@ Search across Drive and Gmail. Deposits results to file for token efficiency.
 
 ## Filesystem-First Pattern
 
-Search results are written to `mise-fetch/search--{query-slug}--{timestamp}.json`.
+Search results are written to `mise/search--{query-slug}--{timestamp}.json`.
 The tool returns the path and summary counts. Read the file for full results.
 
 This pattern:
@@ -221,18 +234,18 @@ This pattern:
 ```python
 # Search both sources
 search("Q4 planning")
-# Returns: {"path": "mise-fetch/search--q4-planning--2026-01-31T21-12-53.json",
+# Returns: {"path": "mise/search--q4-planning--2026-01-31T21-12-53.json",
 #           "drive_count": 15, "gmail_count": 8, ...}
 
 # Then read the file for full results
-Read("mise-fetch/search--q4-planning--2026-01-31T21-12-53.json")
+Read("mise/search--q4-planning--2026-01-31T21-12-53.json")
 ```
 
 ## Response Shape
 
 ```json
 {
-  "path": "mise-fetch/search--q4-planning--2026-01-31T21-12-53.json",
+  "path": "mise/search--q4-planning--2026-01-31T21-12-53.json",
   "query": "Q4 planning",
   "sources": ["drive", "gmail"],
   "drive_count": 15,
@@ -270,7 +283,7 @@ def docs_fetch() -> str:
     """Detailed documentation for the fetch tool."""
     return """# fetch
 
-Fetch content to filesystem. Writes to `mise-fetch/` in current directory.
+Fetch content to filesystem. Writes to `mise/` in current directory.
 
 ## Parameters
 
@@ -315,8 +328,8 @@ This supports gigabyte-scale Office files (common at ITV).
 
 ```json
 {
-  "path": "mise-fetch/doc--meeting-notes--abc123/",
-  "content_file": "mise-fetch/doc--meeting-notes--abc123/content.md",
+  "path": "mise/doc--meeting-notes--abc123/",
+  "content_file": "mise/doc--meeting-notes--abc123/content.md",
   "format": "markdown",
   "type": "doc",
   "metadata": {"title": "Meeting Notes", "mimeType": "..."}
@@ -364,7 +377,7 @@ Act on Google Workspace — create, move, rename, edit.
 
 | Operation | Description | Required params |
 |-----------|-------------|-----------------|
-| `create` | Create Doc/Sheet/Slides from markdown | `content`, `title` |
+| `create` | Create Doc/Sheet from content or deposit | `content`+`title` OR `source` |
 | `move` | Move file to different folder | `file_id`, `destination_folder_id` |
 
 More operations coming: overwrite, insert, rename.
@@ -374,12 +387,28 @@ More operations coming: overwrite, insert, rename.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `operation` | str | 'create' | What to do |
-| `content` | str | None | Markdown content (for create) |
-| `title` | str | None | Document title (for create) |
+| `content` | str | None | Inline content — markdown (doc) or CSV (sheet) |
+| `title` | str | None | Document title (falls back to manifest title with source) |
 | `doc_type` | str | 'doc' | 'doc', 'sheet', or 'slides' (for create) |
 | `folder_id` | str | None | Destination folder ID (for create) |
+| `source` | str | None | Path to deposit folder (reads content.md or content.csv) |
+| `base_path` | str | None | Working directory for resolving relative source paths |
 | `file_id` | str | None | Target file ID (for move) |
 | `destination_folder_id` | str | None | Where to move the file (for move) |
+
+## Deposit-Then-Publish (source param)
+
+Instead of passing content inline, write it to a `mise/` deposit folder and pass the path:
+
+```python
+# 1. Claude writes content to disk (cheap)
+# 2. Human inspects, edits if needed
+# 3. Publish from deposit (15 tokens vs 5000 for inline CSV)
+do(operation="create", source="mise/sheet--q4-analysis--draft/", base_path="/path/to/project")
+```
+
+Title falls back to `manifest.json` title if not passed explicitly.
+After creation, manifest.json is enriched with `status`, `file_id`, `web_link`, `created_at`.
 
 ## Response Shape (create)
 
@@ -422,8 +451,11 @@ Google's native markdown import handles:
 ## Examples
 
 ```python
-# Create a document
+# Create a document (inline content)
 do(operation="create", content="# Meeting Notes\\n\\n- Item 1", title="Team Sync")
+
+# Create from deposit folder (deposit-then-publish)
+do(operation="create", source="mise/sheet--q4-analysis--draft/", title="Q4 Analysis", doc_type="sheet", base_path="/path/to/project")
 
 # Create in specific folder
 do(operation="create", content="| A | B |\\n|---|---|", title="Data", doc_type="sheet", folder_id="1xyz...")
@@ -544,12 +576,12 @@ def docs_workspace() -> str:
     """Documentation for the workspace/deposit folder structure."""
     return """# Workspace Deposit Structure
 
-Fetched content goes to `mise-fetch/` in the current working directory.
+Fetched content goes to `mise/` in the current working directory.
 
 ## Folder Structure
 
 ```
-mise-fetch/
+mise/
 ├── doc--meeting-notes--abc123/
 │   ├── manifest.json
 │   └── content.md

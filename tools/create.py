@@ -1,18 +1,23 @@
 """
 Create tool implementation.
 
-Creates Google Workspace documents from markdown content.
+Creates Google Workspace documents from content — either inline or from a
+deposit folder (the deposit-then-publish pattern).
 """
 
 import io
+import json
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from googleapiclient.http import MediaIoBaseUpload
 
 from adapters.services import get_drive_service
 from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
-from models import CreateResult, CreateError, MiseError
+from models import CreateResult, CreateError, MiseError, ErrorKind
 from retry import with_retry
+from workspace import enrich_manifest
 
 
 # Supported doc types and their target MIME types
@@ -22,21 +27,76 @@ DOC_TYPE_TO_MIME = {
     "slides": GOOGLE_SLIDES_MIME,
 }
 
+# Which content file to read from a deposit, per doc_type
+_SOURCE_FILENAME = {
+    "doc": "content.md",
+    "sheet": "content.csv",
+}
 
-def do_create(
-    content: str,
-    title: str,
-    doc_type: str = "doc",
-    folder_id: str | None = None,
-) -> CreateResult | CreateError:
+
+def _read_source(source_path: Path, doc_type: str) -> tuple[str, str | None]:
     """
-    Create a Google Workspace document from markdown content.
+    Read content and optional title from a deposit folder.
 
     Args:
-        content: Markdown content to convert
-        title: Document title
-        doc_type: 'doc' | 'sheet' | 'slides' (only 'doc' supported initially)
+        source_path: Path to the deposit folder
+        doc_type: 'doc' or 'sheet' — determines which file to read
+
+    Returns:
+        (content, title_from_manifest) — title is None if no manifest
+
+    Raises:
+        MiseError: If the expected content file is missing
+    """
+    filename = _SOURCE_FILENAME.get(doc_type)
+    if not filename:
+        raise MiseError(
+            ErrorKind.INVALID_INPUT,
+            f"source not supported for doc_type={doc_type}. Supported: {list(_SOURCE_FILENAME.keys())}",
+        )
+
+    content_file = source_path / filename
+    if not content_file.exists():
+        raise MiseError(
+            ErrorKind.INVALID_INPUT,
+            f"Expected {filename} in {source_path}, but file not found.",
+        )
+
+    content = content_file.read_text(encoding="utf-8")
+
+    # Try to read title from manifest
+    title = None
+    manifest_file = source_path / "manifest.json"
+    if manifest_file.exists():
+        try:
+            manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+            title = manifest.get("title")
+        except (json.JSONDecodeError, KeyError):
+            pass  # Manifest is optional metadata, not critical
+
+    return content, title
+
+
+def do_create(
+    content: str | None = None,
+    title: str | None = None,
+    doc_type: str = "doc",
+    folder_id: str | None = None,
+    source: Path | None = None,
+) -> CreateResult | CreateError:
+    """
+    Create a Google Workspace document.
+
+    Content comes from either:
+    - `content` param (inline, backwards compatible)
+    - `source` param (path to deposit folder with content.md or content.csv)
+
+    Args:
+        content: Inline content (markdown for doc, CSV for sheet)
+        title: Document title (falls back to manifest title when using source)
+        doc_type: 'doc' | 'sheet' | 'slides'
         folder_id: Optional destination folder ID
+        source: Path to deposit folder to read content from
 
     Returns:
         CreateResult with file_id and web_link, or CreateError on failure
@@ -48,16 +108,57 @@ def do_create(
             message=f"Unsupported doc_type: {doc_type}. Must be one of: {list(DOC_TYPE_TO_MIME.keys())}",
         )
 
+    # Resolve content from source or inline
+    if source and content:
+        return CreateError(
+            kind="invalid_input",
+            message="Provide either 'content' or 'source', not both.",
+        )
+
+    if source:
+        try:
+            source_content, manifest_title = _read_source(source, doc_type)
+        except MiseError as e:
+            return CreateError(kind=e.kind.value, message=e.message)
+        content = source_content
+        if not title:
+            title = manifest_title
+
+    if not content:
+        return CreateError(
+            kind="invalid_input",
+            message="No content provided. Pass 'content' or 'source'.",
+        )
+    if not title:
+        return CreateError(
+            kind="invalid_input",
+            message="No title provided. Pass 'title' or include it in the source manifest.",
+        )
+
     try:
         if doc_type == "doc":
-            return _create_doc(content, title, folder_id)
+            result = _create_doc(content, title, folder_id)
         elif doc_type == "sheet":
-            return _create_sheet(content, title, folder_id)
+            result = _create_sheet(content, title, folder_id)
         else:
             return CreateError(
                 kind="not_implemented",
                 message=f"Creating {doc_type} is not yet implemented. Currently supported: doc, sheet.",
             )
+
+        # Enrich manifest if created from source
+        if source and isinstance(result, CreateResult):
+            try:
+                enrich_manifest(source, {
+                    "status": "created",
+                    "file_id": result.file_id,
+                    "web_link": result.web_link,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+            except FileNotFoundError:
+                pass  # No manifest to enrich — deposit was content-only
+
+        return result
     except MiseError as e:
         return CreateError(kind=e.kind.value, message=e.message)
     except Exception as e:

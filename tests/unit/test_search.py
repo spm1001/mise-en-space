@@ -321,12 +321,12 @@ class TestDoSearch:
         """Results written to filesystem via write_search_results."""
         mock_drive.return_value = []
         mock_gmail.return_value = []
-        mock_write.return_value = "/workspace/mise-fetch/search-results.json"
+        mock_write.return_value = "/workspace/mise/search-results.json"
 
         result = do_search("test")
 
         mock_write.assert_called_once()
-        assert result.path == "/workspace/mise-fetch/search-results.json"
+        assert result.path == "/workspace/mise/search-results.json"
 
 
 # ============================================================================

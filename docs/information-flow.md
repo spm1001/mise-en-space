@@ -56,7 +56,7 @@ This keeps thread fetch fast (~1s for text + PDFs + images) while allowing calle
 │                     │    │         (threads)   │    │                     │
 │                     │    │         +attachments│    │                     │
 │                     │    │                     │    │                     │
-│                     │    │   write_results() ──────▶│ mise-fetch/          │
+│                     │    │   write_results() ──────▶│ mise/          │
 │                     │    │                     │    │ search--project-x/   │
 │                     │    │                     │    │   └── results.json   │
 │                     │    │                     │    │                     │
@@ -105,7 +105,7 @@ This keeps thread fetch fast (~1s for text + PDFs + images) while allowing calle
 │                     │    │   extract_*()       │    │                     │
 │                     │    │     (<1ms)          │    │                     │
 │                     │    │     │               │    │                     │
-│                     │    │     ▼               │    │mise-fetch/          │
+│                     │    │     ▼               │    │mise/          │
 │                     │    │   write_content() ──────▶│ doc--title--abc123/ │
 │                     │    │   write_manifest()──────▶│   ├── content.md    │
 │                     │    │                     │    │   └── manifest.json │
@@ -168,7 +168,7 @@ This is now fixed with eager attachment extraction:
 │                     │    │                     │    │         download    │
 │                     │    │                     │    │         from Gmail  │
 │                     │    │   ▼                 │    │                     │
-│                     │    │ Combine:            │    │mise-fetch/          │
+│                     │    │ Combine:            │    │mise/          │
 │                     │    │ - thread markdown   │    │ gmail--subject--789/│
 │                     │    │ - PDF/image content │    │   ├── content.md    │
 │                     │    │                     │────▶│   │   (thread +    │
@@ -222,7 +222,7 @@ Timing: ~1-2s typical (text + PDFs + images)
 ## Implementation Checklist
 
 ### Search Changes
-- [ ] Deposit results to `mise-fetch/search--{query}/results.json`
+- [ ] Deposit results to `mise/search--{query}/results.json`
 - [ ] Return path + counts, not full JSON
 - [ ] Include `contentSnippet` in Drive results ✅ (done)
 - [ ] Include `attachment_names` in Gmail results ✅ (done)

@@ -51,6 +51,7 @@ token.json
 
 # MCP workspace output
 .mcp-workspace/
+mise/
 mise-fetch/
 
 # uv

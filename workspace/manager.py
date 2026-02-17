@@ -1,7 +1,7 @@
 """
 Workspace Manager — Handles file deposit for MCP deliveries.
 
-Deposits fetched content into mise-fetch/{type}--{title}--{id}/ folders
+Deposits fetched content into mise/{type}--{title}--{id}/ folders
 in the current working directory. Each fetch gets its own folder.
 
 This is a filesystem-first pattern: content goes to disk, Claude reads
@@ -68,7 +68,7 @@ def get_deposit_folder(
     Get the folder path for depositing fetched content.
 
     Creates the folder structure:
-        mise-fetch/{type}--{title-slug}--{id}/
+        mise/{type}--{title-slug}--{id}/
 
     Args:
         content_type: Type of content (slides, doc, sheet, gmail)
@@ -81,10 +81,10 @@ def get_deposit_folder(
 
     Example:
         get_deposit_folder("slides", "AMI Deck 2026", "1OepZju...")
-        -> Path("mise-fetch/slides--ami-deck-2026--1OepZju.../")
+        -> Path("mise/slides--ami-deck-2026--1OepZju.../")
     """
     base = base_path or Path.cwd()
-    mise_fetch = base / "mise-fetch"
+    mise_fetch = base / "mise"
 
     # Build folder name: {type}--{slug}--{id}
     # Truncate ID to first 12 chars for readability
@@ -245,13 +245,37 @@ def write_manifest(
     return file_path
 
 
+def enrich_manifest(folder: Path, extra: dict[str, Any]) -> Path:
+    """
+    Merge additional fields into an existing manifest.json.
+
+    Used post-creation to stamp a deposit with its published state
+    (file_id, web_link, status, created_at).
+
+    Args:
+        folder: Deposit folder containing manifest.json
+        extra: Fields to merge into the manifest
+
+    Returns:
+        Path to the updated manifest file
+
+    Raises:
+        FileNotFoundError: If manifest.json doesn't exist in folder
+    """
+    manifest_path = folder / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.update(extra)
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return manifest_path
+
+
 def write_search_results(
     query: str,
     results: dict[str, Any],
     base_path: Path | None = None,
 ) -> Path:
     """
-    Write search results to a JSON file in mise-fetch/.
+    Write search results to a JSON file in mise/.
 
     Args:
         query: The search query (used for slugified filename)
@@ -263,10 +287,10 @@ def write_search_results(
 
     Example:
         write_search_results("Q4 planning", {...})
-        -> Path("mise-fetch/search--q4-planning--2026-01-31T21-12-53.json")
+        -> Path("mise/search--q4-planning--2026-01-31T21-12-53.json")
     """
     base = base_path or Path.cwd()
-    mise_fetch = base / "mise-fetch"
+    mise_fetch = base / "mise"
     mise_fetch.mkdir(parents=True, exist_ok=True)
 
     # Build filename: search--{query-slug}--{timestamp}.json
@@ -281,7 +305,7 @@ def write_search_results(
 
 def list_deposit_folders(base_path: Path | None = None) -> list[Path]:
     """
-    List all deposit folders in mise-fetch/.
+    List all deposit folders in mise/.
 
     Args:
         base_path: Base directory (defaults to cwd)
@@ -290,7 +314,7 @@ def list_deposit_folders(base_path: Path | None = None) -> list[Path]:
         List of deposit folder paths, sorted by modification time (newest first)
     """
     base = base_path or Path.cwd()
-    mise_fetch = base / "mise-fetch"
+    mise_fetch = base / "mise"
 
     if not mise_fetch.exists():
         return []
@@ -312,7 +336,7 @@ def parse_folder_name(folder: Path) -> dict[str, str] | None:
         Dict with 'type', 'title_slug', 'id' or None if not parseable
 
     Example:
-        parse_folder_name(Path("mise-fetch/slides--ami-deck--1OepZ"))
+        parse_folder_name(Path("mise/slides--ami-deck--1OepZ"))
         -> {"type": "slides", "title_slug": "ami-deck", "id": "1OepZ"}
     """
     name = folder.name

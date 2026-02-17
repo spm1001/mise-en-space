@@ -7,7 +7,7 @@
 ## What happened
 
 1. `fetch("1ZCmdo3OE46hROf2Mr8_irqWeaIjbK_Md")` — xlsx with 2 tabs (raw data + a second sheet)
-2. Deposit: `mise-fetch/xlsx--ohid-survey-raw-data-xlsx--1ZCmdo3OE46h/content.csv`
+2. Deposit: `mise/xlsx--ohid-survey-raw-data-xlsx--1ZCmdo3OE46h/content.csv`
 3. content.csv contains only tab 1's data. No sheet headers, no second tab.
 
 ## Root cause
