@@ -7,7 +7,7 @@ Chart rendering uses Slides API (see adapters/charts.py) because Sheets API
 has no direct chart export endpoint.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from models import SpreadsheetData, SheetTab, ChartData, CellValue
 from retry import with_retry
@@ -145,3 +145,96 @@ def fetch_spreadsheet(
         time_zone=time_zone,
         chart_render_time_ms=chart_render_time_ms,
     )
+
+
+# ---------------------------------------------------------------------------
+# Write operations — used by do(operation=create) for multi-tab sheets
+# ---------------------------------------------------------------------------
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def add_sheet(spreadsheet_id: str, title: str) -> int:
+    """
+    Add a new sheet tab to an existing spreadsheet.
+
+    Args:
+        spreadsheet_id: Target spreadsheet
+        title: Name for the new tab
+
+    Returns:
+        The new sheet's sheetId (integer)
+    """
+    service = get_sheets_service()
+    body = {
+        "requests": [
+            {"addSheet": {"properties": {"title": title}}}
+        ]
+    }
+    response = (
+        service.spreadsheets()
+        .batchUpdate(spreadsheetId=spreadsheet_id, body=body)
+        .execute()
+    )
+    return response["replies"][0]["addSheet"]["properties"]["sheetId"]
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def update_sheet_values(
+    spreadsheet_id: str,
+    range_: str,
+    values: list[list[CellValue]],
+    value_input_option: Literal["RAW", "USER_ENTERED"] = "USER_ENTERED",
+) -> int:
+    """
+    Write values to a sheet range.
+
+    Args:
+        spreadsheet_id: Target spreadsheet
+        range_: A1 notation range, e.g. "'Tab Name'!A1"
+        values: 2D grid of cell values
+        value_input_option: RAW (literal) or USER_ENTERED (parses formulae, dates).
+            USER_ENTERED preserves =FORMULA cells and auto-detects types.
+
+    Returns:
+        Number of cells updated
+    """
+    service = get_sheets_service()
+    body = {"values": values}
+    response = (
+        service.spreadsheets()
+        .values()
+        .update(
+            spreadsheetId=spreadsheet_id,
+            range=range_,
+            valueInputOption=value_input_option,
+            body=body,
+        )
+        .execute()
+    )
+    return response.get("updatedCells", 0)
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def rename_sheet(spreadsheet_id: str, sheet_id: int, new_title: str) -> None:
+    """
+    Rename the first sheet (created by CSV upload, defaults to the CSV filename).
+
+    Args:
+        spreadsheet_id: Target spreadsheet
+        sheet_id: The sheetId to rename (0 for first sheet)
+        new_title: New tab name
+    """
+    service = get_sheets_service()
+    body = {
+        "requests": [
+            {
+                "updateSheetProperties": {
+                    "properties": {"sheetId": sheet_id, "title": new_title},
+                    "fields": "title",
+                }
+            }
+        ]
+    }
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id, body=body
+    ).execute()

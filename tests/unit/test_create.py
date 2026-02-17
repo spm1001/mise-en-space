@@ -8,7 +8,10 @@ import pytest
 
 from models import CreateResult, CreateError
 from server import do
-from tools.create import do_create, _read_source, DOC_TYPE_TO_MIME
+from tools.create import (
+    do_create, _read_source, _read_multi_tab_source, _csv_text_to_values,
+    DOC_TYPE_TO_MIME,
+)
 
 
 class TestDoToolRouting:
@@ -559,3 +562,229 @@ class TestSourceThroughDoRouting:
         result = do(operation="create", title="Test")
         assert result["error"] is True
         assert "content" in result["message"] or "source" in result["message"]
+
+
+class TestCsvTextToValues:
+    """Tests for _csv_text_to_values helper."""
+
+    def test_simple_csv(self) -> None:
+        assert _csv_text_to_values("a,b\n1,2\n") == [["a", "b"], ["1", "2"]]
+
+    def test_quoted_fields(self) -> None:
+        result = _csv_text_to_values('"hello, world",=SUM(A1:A3)\n')
+        assert result == [["hello, world", "=SUM(A1:A3)"]]
+
+    def test_empty_csv(self) -> None:
+        assert _csv_text_to_values("") == []
+
+    def test_formula_preserved(self) -> None:
+        """Formulae (=prefix) are preserved as plain strings for USER_ENTERED."""
+        result = _csv_text_to_values("total,=A1+A2\n")
+        assert result[0][1] == "=A1+A2"
+
+
+class TestReadMultiTabSource:
+    """Tests for _read_multi_tab_source."""
+
+    def test_reads_tabs_in_manifest_order(self, tmp_path: Path) -> None:
+        (tmp_path / "content_revenue.csv").write_text("a,b\n1,2\n")
+        (tmp_path / "content_costs.csv").write_text("x,y\n3,4\n")
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "type": "sheet",
+            "title": "Budget",
+            "tabs": [
+                {"name": "Revenue", "filename": "content_revenue.csv"},
+                {"name": "Costs", "filename": "content_costs.csv"},
+            ],
+        }))
+
+        tabs = _read_multi_tab_source(tmp_path)
+        assert len(tabs) == 2
+        assert tabs[0][0] == "Revenue"
+        assert "a,b" in tabs[0][1]
+        assert tabs[1][0] == "Costs"
+
+    def test_missing_tab_file_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "type": "sheet",
+            "tabs": [{"name": "Missing", "filename": "content_missing.csv"}],
+        }))
+
+        from models import MiseError
+        with pytest.raises(MiseError) as exc_info:
+            _read_multi_tab_source(tmp_path)
+        assert "content_missing.csv" in str(exc_info.value)
+
+    def test_no_tabs_in_manifest_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "manifest.json").write_text(json.dumps({"type": "sheet"}))
+
+        from models import MiseError
+        with pytest.raises(MiseError) as exc_info:
+            _read_multi_tab_source(tmp_path)
+        assert "No tabs" in str(exc_info.value)
+
+
+class TestMultiTabSheetCreation:
+    """Tests for multi-tab sheet creation via hybrid path."""
+
+    def _make_multi_tab_deposit(self, tmp_path: Path) -> Path:
+        """Helper: create a multi-tab deposit folder."""
+        (tmp_path / "content.csv").write_text("combined")
+        (tmp_path / "content_revenue.csv").write_text("Product,Amount\nWidgets,1000\n")
+        (tmp_path / "content_costs.csv").write_text("Item,Cost\nRent,500\n")
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "type": "sheet",
+            "title": "Budget",
+            "id": "draft-123",
+            "tabs": [
+                {"name": "Revenue", "filename": "content_revenue.csv"},
+                {"name": "Costs", "filename": "content_costs.csv"},
+            ],
+        }))
+        return tmp_path
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.rename_sheet")
+    @patch("tools.create.add_sheet", return_value=1)
+    @patch("tools.create.update_sheet_values", return_value=4)
+    @patch("tools.create.get_drive_service")
+    def test_multi_tab_creates_sheet_with_tabs(
+        self, mock_svc, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
+    ) -> None:
+        """Multi-tab deposit creates spreadsheet with multiple tabs."""
+        deposit = self._make_multi_tab_deposit(tmp_path)
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "sheet1",
+            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
+            "name": "Budget",
+        }
+
+        result = do_create(title="Budget", doc_type="sheet", source=deposit)
+
+        assert isinstance(result, CreateResult)
+        assert result.file_id == "sheet1"
+        assert result.doc_type == "sheet"
+
+        # Tab 1: renamed from CSV upload default
+        mock_rename.assert_called_once_with("sheet1", sheet_id=0, new_title="Revenue")
+
+        # Tab 2: added via Sheets API
+        mock_add.assert_called_once_with("sheet1", "Costs")
+
+        # Tab 2: values written
+        mock_update.assert_called_once()
+        call_args = mock_update.call_args
+        assert call_args[0][0] == "sheet1"
+        assert "'Costs'!A1" in call_args[1]["range_"]
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.rename_sheet")
+    @patch("tools.create.add_sheet", return_value=1)
+    @patch("tools.create.update_sheet_values", return_value=4)
+    @patch("tools.create.get_drive_service")
+    def test_multi_tab_cues_include_tab_info(
+        self, mock_svc, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
+    ) -> None:
+        """Result cues include tab_count and tab_names."""
+        deposit = self._make_multi_tab_deposit(tmp_path)
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "sheet1",
+            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
+            "name": "Budget",
+        }
+
+        result = do_create(title="Budget", doc_type="sheet", source=deposit)
+
+        assert result.cues["tab_count"] == 2
+        assert result.cues["tab_names"] == ["Revenue", "Costs"]
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_single_tab_deposit_uses_csv_upload(self, mock_svc, _sleep, tmp_path: Path) -> None:
+        """Single-tab deposit (no tabs in manifest) uses fast CSV upload path."""
+        (tmp_path / "content.csv").write_text("a,b\n1,2\n")
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "type": "sheet", "title": "Simple",
+        }))
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "sheet1",
+            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
+            "name": "Simple",
+        }
+
+        result = do_create(doc_type="sheet", source=tmp_path)
+
+        assert isinstance(result, CreateResult)
+        # No Sheets API calls — just CSV upload
+        assert "tab_count" not in result.cues
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.rename_sheet")
+    @patch("tools.create.add_sheet", return_value=1)
+    @patch("tools.create.update_sheet_values", return_value=4)
+    @patch("tools.create.get_drive_service")
+    def test_multi_tab_manifest_enriched(
+        self, mock_svc, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
+    ) -> None:
+        """Manifest enriched with creation receipt after multi-tab create."""
+        deposit = self._make_multi_tab_deposit(tmp_path)
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "sheet1",
+            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
+            "name": "Budget",
+        }
+
+        do_create(title="Budget", doc_type="sheet", source=deposit)
+
+        manifest = json.loads((deposit / "manifest.json").read_text())
+        assert manifest["status"] == "created"
+        assert manifest["file_id"] == "sheet1"
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.rename_sheet")
+    @patch("tools.create.add_sheet", return_value=1)
+    @patch("tools.create.update_sheet_values", return_value=0)
+    @patch("tools.create.get_drive_service")
+    def test_multi_tab_with_formula_cells(
+        self, mock_svc, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
+    ) -> None:
+        """Formulae in CSV cells are passed through for USER_ENTERED."""
+        (tmp_path / "content.csv").write_text("combined")
+        (tmp_path / "content_data.csv").write_text("a,b\n1,2\n")
+        (tmp_path / "content_totals.csv").write_text("label,formula\nTotal,=SUM(Data!B:B)\n")
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "type": "sheet",
+            "title": "With Formulae",
+            "tabs": [
+                {"name": "Data", "filename": "content_data.csv"},
+                {"name": "Totals", "filename": "content_totals.csv"},
+            ],
+        }))
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "sheet1",
+            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
+            "name": "With Formulae",
+        }
+
+        result = do_create(title="With Formulae", doc_type="sheet", source=tmp_path)
+
+        assert isinstance(result, CreateResult)
+        # The formula is in the values passed to update_sheet_values
+        call_args = mock_update.call_args
+        values = call_args[1]["values"]
+        assert any("=SUM(Data!B:B)" in str(row) for row in values)
