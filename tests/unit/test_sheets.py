@@ -3,7 +3,7 @@
 import pytest
 from inline_snapshot import snapshot
 
-from extractors.sheets import extract_sheets_content, _row_to_csv
+from extractors.sheets import extract_sheets_content, extract_sheets_per_tab, _row_to_csv
 from models import SpreadsheetData, SheetTab
 
 
@@ -61,6 +61,53 @@ note",200
         result = extract_sheets_content(data)
 
         assert result == ""
+
+
+class TestExtractSheetsPerTab:
+    """Tests for per-tab extraction."""
+
+    def test_multi_tab(self, sheets_response: SpreadsheetData) -> None:
+        """Multi-tab spreadsheet returns one tuple per tab."""
+        tabs = extract_sheets_per_tab(sheets_response)
+        assert len(tabs) == 3
+        assert tabs[0][0] == "Summary"
+        assert tabs[1][0] == "Details"
+        assert tabs[2][0] == "Empty Sheet"
+        # Summary tab has CSV content
+        assert "Revenue,1000000,Projected" in tabs[0][1]
+        # Empty tab
+        assert tabs[2][1] == "(empty)\n"
+
+    def test_single_tab(self) -> None:
+        """Single-tab returns one tuple."""
+        data = SpreadsheetData(
+            title="Single",
+            spreadsheet_id="single-id",
+            sheets=[SheetTab(name="Sheet1", values=[["a", "b"], ["1", "2"]])],
+        )
+        tabs = extract_sheets_per_tab(data)
+        assert len(tabs) == 1
+        assert tabs[0] == ("Sheet1", "a,b\n1,2\n")
+
+    def test_empty_spreadsheet(self) -> None:
+        """Empty spreadsheet returns empty list."""
+        data = SpreadsheetData(title="Empty", spreadsheet_id="e", sheets=[])
+        tabs = extract_sheets_per_tab(data)
+        assert tabs == []
+
+    def test_warnings_populated(self) -> None:
+        """Warnings populated for empty sheets."""
+        data = SpreadsheetData(
+            title="Mixed",
+            spreadsheet_id="m",
+            sheets=[
+                SheetTab(name="Data", values=[["x"]]),
+                SheetTab(name="Blank", values=[]),
+            ],
+        )
+        extract_sheets_per_tab(data)
+        assert len(data.warnings) == 1
+        assert "Blank" in data.warnings[0]
 
 
 class TestRowToCsv:

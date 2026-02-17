@@ -55,6 +55,7 @@ def _build_cues(
     participants: list[str] | None = None,
     has_attachments: bool | None = None,
     date_range: str | None = None,
+    tab_names: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Build cues dict for FetchResult — decision-tree signals for the caller.
@@ -98,6 +99,11 @@ def _build_cues(
             _build_email_context_metadata(email_context) if email_context else None
         ),
     }
+
+    # Sheet-specific cues
+    if tab_names is not None:
+        cues["tab_count"] = len(tab_names)
+        cues["tab_names"] = tab_names
 
     # Gmail-specific cues
     if participants is not None:

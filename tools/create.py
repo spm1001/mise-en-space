@@ -27,7 +27,10 @@ DOC_TYPE_TO_MIME = {
     "slides": GOOGLE_SLIDES_MIME,
 }
 
-# Which content file to read from a deposit, per doc_type
+# Which content file to read from a deposit, per doc_type.
+# For sheets: content.csv is the combined file (all tabs).
+# Multi-tab deposits also have content_{tab_slug}.csv per tab —
+# multi-tab creation (mise-jonofu) will read those individually.
 _SOURCE_FILENAME = {
     "doc": "content.md",
     "sheet": "content.csv",

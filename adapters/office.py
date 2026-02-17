@@ -5,14 +5,19 @@ Strategy: Upload with conversion to Google format, then export.
 This produces cleaner output than local conversion tools, especially for XLSX.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal, TYPE_CHECKING, cast
 
 from adapters.conversion import convert_via_drive, upload_and_convert, delete_temp_file
 from adapters.drive import download_file, download_file_to_temp, get_file_size, STREAMING_THRESHOLD_BYTES
 from adapters.sheets import fetch_spreadsheet
 from extractors.sheets import extract_sheets_content
+
+if TYPE_CHECKING:
+    from models import SpreadsheetData
 
 
 # Supported Office types and their conversion mappings
@@ -49,6 +54,7 @@ class OfficeExtractionResult:
     export_format: str  # 'markdown', 'csv', 'plain'
     extension: str      # 'md', 'csv', 'txt'
     warnings: list[str] = field(default_factory=list)
+    spreadsheet_data: SpreadsheetData | None = None  # XLSX: carries tab data for per-tab deposit
 
 
 def extract_office_content(
@@ -153,6 +159,7 @@ def _extract_xlsx_via_sheets_api(
         export_format="csv",
         extension="csv",
         warnings=warnings,
+        spreadsheet_data=spreadsheet_data,
     )
 
 

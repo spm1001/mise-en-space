@@ -15,10 +15,10 @@ from adapters.pdf import fetch_and_extract_pdf, extract_pdf_content
 from adapters.office import fetch_and_extract_office, get_office_type_from_mime, OfficeType
 from adapters.image import fetch_image as adapter_fetch_image, is_image_file, is_svg
 from extractors.docs import extract_doc_content
-from extractors.sheets import extract_sheets_content
+from extractors.sheets import extract_sheets_content, extract_sheets_per_tab
 from extractors.slides import extract_slides_content
 from models import FetchResult, FetchError, EmailContext
-from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata
+from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata, slugify
 
 from .common import (
     _build_cues, _build_email_context_metadata, _enrich_with_comments,
@@ -102,6 +102,28 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: 
     )
 
 
+def _write_per_tab_csvs(
+    folder: Path, data: Any, *, tabs_info: list[dict[str, str]] | None = None
+) -> list[dict[str, str]]:
+    """Write per-tab CSV files for multi-tab spreadsheets.
+
+    Returns list of {name, filename} dicts for manifest.
+    Only writes per-tab files when there are 2+ tabs.
+    Mutates tabs_info list if provided, otherwise creates new.
+    """
+    per_tab = extract_sheets_per_tab(data)
+    if len(per_tab) <= 1:
+        return []
+
+    result = tabs_info if tabs_info is not None else []
+    for tab_name, csv_content in per_tab:
+        tab_slug = slugify(tab_name, max_length=40)
+        filename = f"content_{tab_slug}.csv"
+        write_content(folder, csv_content, filename=filename)
+        result.append({"name": tab_name, "filename": filename})
+    return result
+
+
 def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
     """Fetch Google Sheet with charts rendered as PNGs and open comments included."""
     sheet_data = fetch_spreadsheet(sheet_id)
@@ -109,6 +131,9 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
 
     folder = get_deposit_folder("sheet", title, sheet_id, base_path=base_path)
     content_path = write_content(folder, content, filename="content.csv")
+
+    # Write per-tab CSVs for multi-tab spreadsheets
+    tabs_info = _write_per_tab_csvs(folder, sheet_data)
 
     # Write chart PNGs
     chart_count = 0
@@ -136,6 +161,8 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
 
     # Build manifest extras
     extra: dict[str, Any] = {"sheet_count": len(sheet_data.sheets)}
+    if tabs_info:
+        extra["tabs"] = tabs_info
     if chart_count > 0:
         extra["chart_count"] = chart_count
         extra["chart_render_time_ms"] = sheet_data.chart_render_time_ms
@@ -155,11 +182,13 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
     if email_context:
         result_meta["email_context"] = _build_email_context_metadata(email_context)
 
+    tab_names = [s.name for s in sheet_data.sheets] if len(sheet_data.sheets) > 1 else None
     cues = _build_cues(
         folder,
         open_comment_count=open_comment_count,
         warnings=sheet_data.warnings,
         email_context=email_context,
+        tab_names=tab_names,
     )
 
     return FetchResult(
@@ -391,7 +420,17 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
     folder = get_deposit_folder(office_type, title, file_id, base_path=base_path)
     content_path = write_content(folder, result.content, filename=filename)
 
+    # Write per-tab CSVs for multi-tab XLSX
+    tabs_info: list[dict[str, str]] = []
+    tab_names: list[str] | None = None
+    if office_type == "xlsx" and result.spreadsheet_data:
+        tabs_info = _write_per_tab_csvs(folder, result.spreadsheet_data)
+        if len(result.spreadsheet_data.sheets) > 1:
+            tab_names = [s.name for s in result.spreadsheet_data.sheets]
+
     extra_office: dict[str, Any] = {}
+    if tabs_info:
+        extra_office["tabs"] = tabs_info
     if result.warnings:
         extra_office["warnings"] = result.warnings
     write_manifest(folder, office_type, title, file_id, extra=extra_office if extra_office else None)
@@ -406,6 +445,7 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
         folder,
         warnings=result.warnings,
         email_context=email_context,
+        tab_names=tab_names,
     )
 
     return FetchResult(

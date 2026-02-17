@@ -75,6 +75,40 @@ def extract_sheets_content(
     return "".join(content_parts).strip()
 
 
+def extract_sheets_per_tab(
+    data: SpreadsheetData,
+) -> list[tuple[str, str]]:
+    """
+    Extract each sheet tab as a separate CSV string.
+
+    Returns:
+        List of (tab_name, csv_content) tuples.
+        Empty sheets are included with "(empty)" content.
+        Populates data.warnings (same as extract_sheets_content).
+    """
+    data.warnings = []
+    result: list[tuple[str, str]] = []
+    empty_sheets: list[str] = []
+
+    for sheet in data.sheets:
+        if sheet.values:
+            lines = [_row_to_csv(row) for row in sheet.values]
+            result.append((sheet.name, "\n".join(lines) + "\n"))
+        else:
+            result.append((sheet.name, "(empty)\n"))
+            empty_sheets.append(sheet.name)
+
+    if empty_sheets:
+        if len(empty_sheets) == 1:
+            data.warnings.append(f"Sheet '{empty_sheets[0]}' is empty")
+        else:
+            data.warnings.append(
+                f"{len(empty_sheets)} sheets are empty: {', '.join(empty_sheets)}"
+            )
+
+    return result
+
+
 def _row_to_csv(row: list[CellValue]) -> str:
     """
     Convert a row of cells to CSV format with proper escaping.

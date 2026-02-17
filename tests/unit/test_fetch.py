@@ -19,6 +19,7 @@ from models import (
     MiseError, ErrorKind, EmailContext, WebData,
 )
 from adapters.gmail import AttachmentDownload
+from tools.fetch.common import _build_cues
 from adapters.office import OfficeExtractionResult
 from adapters.pdf import PdfExtractionResult
 
@@ -1127,7 +1128,8 @@ class TestFetchSheet:
     @patch("tools.fetch.drive.write_charts_metadata")
     @patch("tools.fetch.drive._enrich_with_comments", return_value=(2, "comments"))
     @patch("tools.fetch.drive.write_manifest")
-    def test_sheet_with_charts(self, mock_manifest, mock_comments, mock_charts_meta, mock_chart, mock_write, mock_folder, mock_extract, mock_fetch):
+    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
+    def test_sheet_with_charts(self, mock_tabs, mock_manifest, mock_comments, mock_charts_meta, mock_chart, mock_write, mock_folder, mock_extract, mock_fetch):
         """Sheet with charts writes chart PNGs and metadata."""
         chart = MagicMock()
         chart.png_bytes = b"png"
@@ -1156,7 +1158,8 @@ class TestFetchSheet:
     @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/sheet/content.csv"))
     @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
     @patch("tools.fetch.drive.write_manifest")
-    def test_sheet_no_charts(self, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
+    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
+    def test_sheet_no_charts(self, mock_tabs, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
         """Sheet without charts skips chart writing."""
         mock_sheet = MagicMock()
         mock_sheet.sheets = [MagicMock(), MagicMock()]
@@ -1175,7 +1178,8 @@ class TestFetchSheet:
     @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/sheet/content.csv"))
     @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
     @patch("tools.fetch.drive.write_manifest")
-    def test_sheet_with_email_context(self, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
+    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
+    def test_sheet_with_email_context(self, mock_tabs, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
         """Email context in sheet result metadata."""
         mock_sheet = MagicMock()
         mock_sheet.sheets = [MagicMock()]
@@ -2180,7 +2184,8 @@ class TestFetchSheetEdgeCases:
     @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/sheet/content.csv"))
     @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
     @patch("tools.fetch.drive.write_manifest")
-    def test_sheet_with_warnings(self, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
+    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
+    def test_sheet_with_warnings(self, mock_tabs, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
         """Sheet-level warnings appear in manifest."""
         mock_sheet = MagicMock()
         mock_sheet.sheets = [MagicMock()]
@@ -2193,6 +2198,140 @@ class TestFetchSheetEdgeCases:
         extra = mock_manifest.call_args[1]["extra"]
         assert "warnings" in extra
         assert "Empty sheet skipped" in extra["warnings"]
+
+
+class TestPerTabCsvDeposit:
+    """Tests for per-tab CSV deposit in sheet and XLSX fetches."""
+
+    def test_multi_tab_writes_per_tab_files(self, tmp_path: Path) -> None:
+        """Multi-tab spreadsheet produces per-tab CSV files."""
+        from tools.fetch.drive import _write_per_tab_csvs
+        from models import SpreadsheetData, SheetTab
+
+        data = SpreadsheetData(
+            title="Multi",
+            spreadsheet_id="m1",
+            sheets=[
+                SheetTab(name="Summary", values=[["a", "b"], ["1", "2"]]),
+                SheetTab(name="Details", values=[["x", "y"], ["3", "4"]]),
+            ],
+        )
+        tabs_info = _write_per_tab_csvs(tmp_path, data)
+
+        assert len(tabs_info) == 2
+        assert tabs_info[0]["name"] == "Summary"
+        assert tabs_info[1]["name"] == "Details"
+
+        # Files actually written
+        f1 = tmp_path / tabs_info[0]["filename"]
+        f2 = tmp_path / tabs_info[1]["filename"]
+        assert f1.exists()
+        assert f2.exists()
+        assert "a,b\n1,2\n" == f1.read_text()
+        assert "x,y\n3,4\n" == f2.read_text()
+
+    def test_single_tab_no_per_tab_files(self, tmp_path: Path) -> None:
+        """Single-tab spreadsheet skips per-tab files (redundant with content.csv)."""
+        from tools.fetch.drive import _write_per_tab_csvs
+        from models import SpreadsheetData, SheetTab
+
+        data = SpreadsheetData(
+            title="Single",
+            spreadsheet_id="s1",
+            sheets=[SheetTab(name="Sheet1", values=[["a"]])],
+        )
+        tabs_info = _write_per_tab_csvs(tmp_path, data)
+
+        assert tabs_info == []
+        # No per-tab files written
+        csv_files = list(tmp_path.glob("content_*.csv"))
+        assert csv_files == []
+
+    def test_tab_filename_slugified(self, tmp_path: Path) -> None:
+        """Tab names are slugified for filenames."""
+        from tools.fetch.drive import _write_per_tab_csvs
+        from models import SpreadsheetData, SheetTab
+
+        data = SpreadsheetData(
+            title="Test",
+            spreadsheet_id="t1",
+            sheets=[
+                SheetTab(name="Q4 Revenue (Draft)", values=[["a"]]),
+                SheetTab(name="Über Cool Sheet!!!", values=[["b"]]),
+            ],
+        )
+        tabs_info = _write_per_tab_csvs(tmp_path, data)
+
+        assert tabs_info[0]["filename"] == "content_q4-revenue-draft.csv"
+        assert tabs_info[1]["filename"] == "content_uber-cool-sheet.csv"
+
+    @patch("tools.fetch.drive.fetch_spreadsheet")
+    @patch("tools.fetch.drive.extract_sheets_content", return_value="combined")
+    @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/sheet"))
+    @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/sheet/content.csv"))
+    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
+    @patch("tools.fetch.drive.write_manifest")
+    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[
+        {"name": "Tab1", "filename": "content_tab1.csv"},
+        {"name": "Tab2", "filename": "content_tab2.csv"},
+    ])
+    def test_manifest_includes_tabs(self, mock_tabs, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
+        """Manifest includes tabs array when per-tab files exist."""
+        mock_sheet = MagicMock()
+        mock_sheet.sheets = [MagicMock(name="Tab1"), MagicMock(name="Tab2")]
+        mock_sheet.charts = []
+        mock_sheet.warnings = []
+        mock_fetch.return_value = mock_sheet
+
+        fetch_sheet("s1", "Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
+
+        extra = mock_manifest.call_args[1]["extra"]
+        assert "tabs" in extra
+        assert len(extra["tabs"]) == 2
+
+    @patch("tools.fetch.drive.fetch_spreadsheet")
+    @patch("tools.fetch.drive.extract_sheets_content", return_value="data")
+    @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/sheet"))
+    @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/sheet/content.csv"))
+    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
+    @patch("tools.fetch.drive.write_manifest")
+    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
+    def test_cues_include_tab_names_for_multi_tab(self, mock_tabs, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
+        """Cues include tab_count and tab_names for multi-tab sheets."""
+        tab1 = MagicMock()
+        tab1.name = "Revenue"
+        tab2 = MagicMock()
+        tab2.name = "Costs"
+        mock_sheet = MagicMock()
+        mock_sheet.sheets = [tab1, tab2]
+        mock_sheet.charts = []
+        mock_sheet.warnings = []
+        mock_fetch.return_value = mock_sheet
+
+        with patch("tools.fetch.drive._build_cues", wraps=_build_cues) as mock_cues:
+            result = fetch_sheet("s1", "Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
+
+        assert mock_cues.call_args[1]["tab_names"] == ["Revenue", "Costs"]
+
+    @patch("tools.fetch.drive.fetch_spreadsheet")
+    @patch("tools.fetch.drive.extract_sheets_content", return_value="data")
+    @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/sheet"))
+    @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/sheet/content.csv"))
+    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
+    @patch("tools.fetch.drive.write_manifest")
+    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
+    def test_cues_no_tab_names_for_single_tab(self, mock_tabs, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
+        """Single-tab sheets don't include tab_names in cues."""
+        mock_sheet = MagicMock()
+        mock_sheet.sheets = [MagicMock()]
+        mock_sheet.charts = []
+        mock_sheet.warnings = []
+        mock_fetch.return_value = mock_sheet
+
+        with patch("tools.fetch.drive._build_cues", wraps=_build_cues) as mock_cues:
+            result = fetch_sheet("s1", "Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
+
+        assert mock_cues.call_args[1]["tab_names"] is None
 
 
 class TestFetchSlidesEdgeCases:

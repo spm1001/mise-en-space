@@ -587,8 +587,9 @@ class TestFetchSheetCues:
     @patch("tools.fetch.drive.write_charts_metadata")
     @patch("tools.fetch.drive._enrich_with_comments", return_value=(1, "comments"))
     @patch("tools.fetch.drive.write_manifest")
+    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
     def test_sheet_cues(
-        self, mock_manifest, mock_comments, mock_charts_meta, mock_chart,
+        self, mock_tabs, mock_manifest, mock_comments, mock_charts_meta, mock_chart,
         mock_write, mock_extract, mock_fetch, tmp_path: Path,
     ) -> None:
         """Sheet cues include comment count."""
@@ -609,6 +610,38 @@ class TestFetchSheetCues:
         assert cues["open_comment_count"] == 1
         assert "content.csv" in cues["files"]
         assert cues["content_length"] > 0
+
+    @patch("tools.fetch.drive.fetch_spreadsheet")
+    @patch("tools.fetch.drive.extract_sheets_content", return_value="combined")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
+    @patch("tools.fetch.drive.write_manifest")
+    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
+    def test_sheet_cues_multi_tab(
+        self, mock_tabs, mock_manifest, mock_comments,
+        mock_write, mock_extract, mock_fetch, tmp_path: Path,
+    ) -> None:
+        """Multi-tab sheet cues include tab_count and tab_names."""
+        tab1 = MagicMock()
+        tab1.name = "Revenue"
+        tab2 = MagicMock()
+        tab2.name = "Costs"
+        mock_data = MagicMock()
+        mock_data.sheets = [tab1, tab2]
+        mock_data.charts = []
+        mock_data.warnings = []
+        mock_fetch.return_value = mock_data
+
+        content_file = tmp_path / "content.csv"
+        content_file.write_text("combined")
+        mock_write.return_value = content_file
+
+        with patch("tools.fetch.drive.get_deposit_folder", return_value=tmp_path):
+            result = fetch_sheet("sheet1", "Multi", _drive_metadata("application/vnd.google-apps.spreadsheet"))
+
+        cues = result.cues
+        assert cues["tab_count"] == 2
+        assert cues["tab_names"] == ["Revenue", "Costs"]
 
 
 # ============================================================================
