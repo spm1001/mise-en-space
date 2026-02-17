@@ -55,6 +55,7 @@ class OfficeExtractionResult:
     extension: str      # 'md', 'csv', 'txt'
     warnings: list[str] = field(default_factory=list)
     spreadsheet_data: SpreadsheetData | None = None  # XLSX: carries tab data for per-tab deposit
+    raw_bytes: bytes | None = None  # Original file bytes for raw deposit (XLSX)
 
 
 def extract_office_content(
@@ -194,17 +195,24 @@ def fetch_and_extract_office(
                 file_id=file_id,
             )
             result.warnings.insert(0, "Large file: used streaming download")
+            # Keep raw bytes for xlsx deposit (read before temp is deleted)
+            if office_type == "xlsx":
+                result.raw_bytes = tmp_path.read_bytes()
             return result
         finally:
             tmp_path.unlink(missing_ok=True)
     else:
         # Small file: load into memory
         file_bytes = download_file(file_id)
-        return extract_office_content(
+        result = extract_office_content(
             file_bytes=file_bytes,
             office_type=office_type,
             file_id=file_id,
         )
+        # Keep raw bytes for xlsx deposit
+        if office_type == "xlsx":
+            result.raw_bytes = file_bytes
+        return result
 
 
 def get_office_type_from_mime(mime_type: str) -> OfficeType | None:

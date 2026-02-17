@@ -431,6 +431,12 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
         if len(result.spreadsheet_data.sheets) > 1:
             tab_names = [s.name for s in result.spreadsheet_data.sheets]
 
+    # Deposit raw xlsx alongside CSV for roundtrip workflows
+    raw_file: str | None = None
+    if office_type == "xlsx" and result.raw_bytes:
+        raw_file = "source.xlsx"
+        (folder / raw_file).write_bytes(result.raw_bytes)
+
     # Formula count from spreadsheet data (XLSX only)
     formula_count: int | None = None
     if result.spreadsheet_data and result.spreadsheet_data.formula_count > 0:
@@ -441,6 +447,8 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
         extra_office["tabs"] = tabs_info
     if formula_count:
         extra_office["formula_count"] = formula_count
+    if raw_file:
+        extra_office["raw_file"] = raw_file
     if result.warnings:
         extra_office["warnings"] = result.warnings
     write_manifest(folder, office_type, title, file_id, extra=extra_office if extra_office else None)

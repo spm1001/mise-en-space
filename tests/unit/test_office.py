@@ -204,3 +204,75 @@ class TestFetchOffice:
         # Verify filename is content.csv
         call_args = mock_write_content.call_args
         assert call_args.kwargs.get("filename") == "content.csv" or "content.csv" in str(call_args)
+
+    @patch("tools.fetch.drive.fetch_and_extract_office")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
+    def test_fetch_xlsx_deposits_raw_file(
+        self,
+        mock_write_manifest: MagicMock,
+        mock_write_content: MagicMock,
+        mock_get_folder: MagicMock,
+        mock_extract: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Test that XLSX fetch deposits raw .xlsx alongside content.csv."""
+        fake_xlsx_bytes = b"PK\x03\x04fake-xlsx-content"
+        deposit_folder = tmp_path / "xlsx--budget--abc123"
+        deposit_folder.mkdir()
+
+        mock_extract.return_value = OfficeExtractionResult(
+            content="A,B\n1,2",
+            source_type="xlsx",
+            export_format="csv",
+            extension="csv",
+            warnings=[],
+            raw_bytes=fake_xlsx_bytes,
+        )
+        mock_get_folder.return_value = deposit_folder
+        mock_write_content.return_value = deposit_folder / "content.csv"
+
+        result = fetch_office("abc123", "Budget.xlsx", {}, "xlsx")
+
+        # Raw xlsx deposited
+        raw_path = deposit_folder / "source.xlsx"
+        assert raw_path.exists()
+        assert raw_path.read_bytes() == fake_xlsx_bytes
+
+        # Manifest includes raw_file
+        manifest_call = mock_write_manifest.call_args
+        extra = manifest_call.kwargs.get("extra") or manifest_call[1].get("extra")
+        assert extra["raw_file"] == "source.xlsx"
+
+    @patch("tools.fetch.drive.fetch_and_extract_office")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
+    def test_fetch_docx_no_raw_file(
+        self,
+        mock_write_manifest: MagicMock,
+        mock_write_content: MagicMock,
+        mock_get_folder: MagicMock,
+        mock_extract: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Test that non-XLSX Office files don't get raw file deposits."""
+        deposit_folder = tmp_path / "docx--report--def456"
+        deposit_folder.mkdir()
+
+        mock_extract.return_value = OfficeExtractionResult(
+            content="# Report",
+            source_type="docx",
+            export_format="markdown",
+            extension="md",
+            warnings=[],
+        )
+        mock_get_folder.return_value = deposit_folder
+        mock_write_content.return_value = deposit_folder / "content.md"
+
+        fetch_office("def456", "Report.docx", {}, "docx")
+
+        # No raw file for docx
+        assert not (deposit_folder / "source.xlsx").exists()
+        assert not (deposit_folder / "source.docx").exists()
