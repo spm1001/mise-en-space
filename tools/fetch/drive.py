@@ -163,6 +163,8 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
     extra: dict[str, Any] = {"sheet_count": len(sheet_data.sheets)}
     if tabs_info:
         extra["tabs"] = tabs_info
+    if sheet_data.formula_count > 0:
+        extra["formula_count"] = sheet_data.formula_count
     if chart_count > 0:
         extra["chart_count"] = chart_count
         extra["chart_render_time_ms"] = sheet_data.chart_render_time_ms
@@ -189,6 +191,7 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
         warnings=sheet_data.warnings,
         email_context=email_context,
         tab_names=tab_names,
+        formula_count=sheet_data.formula_count,
     )
 
     return FetchResult(
@@ -428,9 +431,16 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
         if len(result.spreadsheet_data.sheets) > 1:
             tab_names = [s.name for s in result.spreadsheet_data.sheets]
 
+    # Formula count from spreadsheet data (XLSX only)
+    formula_count: int | None = None
+    if result.spreadsheet_data and result.spreadsheet_data.formula_count > 0:
+        formula_count = result.spreadsheet_data.formula_count
+
     extra_office: dict[str, Any] = {}
     if tabs_info:
         extra_office["tabs"] = tabs_info
+    if formula_count:
+        extra_office["formula_count"] = formula_count
     if result.warnings:
         extra_office["warnings"] = result.warnings
     write_manifest(folder, office_type, title, file_id, extra=extra_office if extra_office else None)
@@ -446,6 +456,7 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
         warnings=result.warnings,
         email_context=email_context,
         tab_names=tab_names,
+        formula_count=formula_count if formula_count else 0,
     )
 
     return FetchResult(

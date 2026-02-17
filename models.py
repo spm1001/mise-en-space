@@ -133,6 +133,9 @@ class SpreadsheetData:
     # Chart rendering timing (ms)
     chart_render_time_ms: int = 0
 
+    # Formula cell count (cells where FORMULA differs from FORMATTED_VALUE)
+    formula_count: int = 0
+
     # Warnings during extraction (empty sheets, truncation, etc.)
     warnings: list[str] = field(default_factory=list)
 

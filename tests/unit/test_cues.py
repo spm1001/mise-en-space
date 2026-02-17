@@ -221,6 +221,30 @@ class TestBuildCues:
 
         assert cues["files"] == ["content.md"]
 
+    def test_formula_count_in_cues(self, tmp_path: Path) -> None:
+        """formula_count appears when provided."""
+        (tmp_path / "content.csv").write_text("a,b")
+
+        cues = _build_cues(tmp_path, formula_count=47)
+
+        assert cues["formula_count"] == 47
+
+    def test_formula_count_zero(self, tmp_path: Path) -> None:
+        """formula_count=0 is surfaced (not omitted)."""
+        (tmp_path / "content.csv").write_text("a,b")
+
+        cues = _build_cues(tmp_path, formula_count=0)
+
+        assert cues["formula_count"] == 0
+
+    def test_formula_count_omitted_when_none(self, tmp_path: Path) -> None:
+        """No formula_count key when not provided."""
+        (tmp_path / "content.csv").write_text("a,b")
+
+        cues = _build_cues(tmp_path)
+
+        assert "formula_count" not in cues
+
 
 # ============================================================================
 # _build_email_context_metadata
@@ -597,6 +621,7 @@ class TestFetchSheetCues:
         mock_data.charts = []
         mock_data.warnings = []
         mock_data.chart_render_time_ms = 0
+        mock_data.formula_count = 0
         mock_fetch.return_value = mock_data
 
         content_file = tmp_path / "content.csv"
@@ -610,6 +635,7 @@ class TestFetchSheetCues:
         assert cues["open_comment_count"] == 1
         assert "content.csv" in cues["files"]
         assert cues["content_length"] > 0
+        assert cues["formula_count"] == 0
 
     @patch("tools.fetch.drive.fetch_spreadsheet")
     @patch("tools.fetch.drive.extract_sheets_content", return_value="combined")
@@ -630,6 +656,7 @@ class TestFetchSheetCues:
         mock_data.sheets = [tab1, tab2]
         mock_data.charts = []
         mock_data.warnings = []
+        mock_data.formula_count = 0
         mock_fetch.return_value = mock_data
 
         content_file = tmp_path / "content.csv"
@@ -642,6 +669,38 @@ class TestFetchSheetCues:
         cues = result.cues
         assert cues["tab_count"] == 2
         assert cues["tab_names"] == ["Revenue", "Costs"]
+
+    @patch("tools.fetch.drive.fetch_spreadsheet")
+    @patch("tools.fetch.drive.extract_sheets_content", return_value="a,b\n=SUM(A1),2")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
+    @patch("tools.fetch.drive.write_manifest")
+    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
+    def test_sheet_cues_with_formulae(
+        self, mock_tabs, mock_manifest, mock_comments,
+        mock_write, mock_extract, mock_fetch, tmp_path: Path,
+    ) -> None:
+        """Sheet with formulae shows formula_count in cues and manifest."""
+        mock_data = MagicMock()
+        mock_data.sheets = [MagicMock()]
+        mock_data.charts = []
+        mock_data.warnings = []
+        mock_data.formula_count = 47
+        mock_fetch.return_value = mock_data
+
+        content_file = tmp_path / "content.csv"
+        content_file.write_text("a,b\n=SUM(A1),2")
+        mock_write.return_value = content_file
+
+        with patch("tools.fetch.drive.get_deposit_folder", return_value=tmp_path):
+            result = fetch_sheet("sheet1", "Formula Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
+
+        cues = result.cues
+        assert cues["formula_count"] == 47
+
+        # Also in manifest
+        extra = mock_manifest.call_args[1]["extra"]
+        assert extra["formula_count"] == 47
 
 
 # ============================================================================

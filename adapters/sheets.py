@@ -93,6 +93,7 @@ def fetch_spreadsheet(
 
     # Fetch values only for GRID sheets
     sheets: list[SheetTab] = []
+    formula_count = 0
 
     if grid_sheets:
         ranges = [f"'{name}'" for name, _ in grid_sheets]
@@ -110,6 +111,19 @@ def fetch_spreadsheet(
 
         value_ranges = batch_response.get("valueRanges", [])
 
+        # Second batchGet with FORMULA to count formula cells
+        formula_response = (
+            service.spreadsheets()
+            .values()
+            .batchGet(
+                spreadsheetId=spreadsheet_id,
+                ranges=ranges,
+                valueRenderOption="FORMULA",
+            )
+            .execute()
+        )
+        formula_ranges = formula_response.get("valueRanges", [])
+
         for (sheet_name, sheet_type), value_range in zip(grid_sheets, value_ranges):
             raw_values = value_range.get("values", [])
             parsed_values = [_parse_row(row) for row in raw_values]
@@ -118,6 +132,13 @@ def fetch_spreadsheet(
                 values=parsed_values,
                 sheet_type=sheet_type,
             ))
+
+        # Count formula cells (cells starting with = in FORMULA render)
+        for fr in formula_ranges:
+            for row in fr.get("values", []):
+                for cell in row:
+                    if isinstance(cell, str) and cell.startswith("="):
+                        formula_count += 1
 
     # Add non-GRID sheets (OBJECT sheets = chart sheets) with empty values
     for name, sheet_type in all_sheet_info:
@@ -144,6 +165,7 @@ def fetch_spreadsheet(
         locale=locale,
         time_zone=time_zone,
         chart_render_time_ms=chart_render_time_ms,
+        formula_count=formula_count,
     )
 
 

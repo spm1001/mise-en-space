@@ -1142,6 +1142,7 @@ class TestFetchSheet:
         mock_sheet.charts = [chart]
         mock_sheet.chart_render_time_ms = 500
         mock_sheet.warnings = []
+        mock_sheet.formula_count = 0
         mock_fetch.return_value = mock_sheet
 
         result = fetch_sheet("s1", "My Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
@@ -1165,6 +1166,7 @@ class TestFetchSheet:
         mock_sheet.sheets = [MagicMock(), MagicMock()]
         mock_sheet.charts = []
         mock_sheet.warnings = []
+        mock_sheet.formula_count = 0
         mock_fetch.return_value = mock_sheet
 
         result = fetch_sheet("s1", "My Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
@@ -1185,6 +1187,7 @@ class TestFetchSheet:
         mock_sheet.sheets = [MagicMock()]
         mock_sheet.charts = []
         mock_sheet.warnings = []
+        mock_sheet.formula_count = 0
         mock_fetch.return_value = mock_sheet
         ctx = EmailContext(message_id="m1", from_address="a@b.com", subject="Sheet")
 
@@ -2191,6 +2194,7 @@ class TestFetchSheetEdgeCases:
         mock_sheet.sheets = [MagicMock()]
         mock_sheet.charts = []
         mock_sheet.warnings = ["Empty sheet skipped"]
+        mock_sheet.formula_count = 0
         mock_fetch.return_value = mock_sheet
 
         fetch_sheet("s1", "Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
@@ -2281,6 +2285,7 @@ class TestPerTabCsvDeposit:
         mock_sheet.sheets = [MagicMock(name="Tab1"), MagicMock(name="Tab2")]
         mock_sheet.charts = []
         mock_sheet.warnings = []
+        mock_sheet.formula_count = 0
         mock_fetch.return_value = mock_sheet
 
         fetch_sheet("s1", "Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
@@ -2306,6 +2311,7 @@ class TestPerTabCsvDeposit:
         mock_sheet.sheets = [tab1, tab2]
         mock_sheet.charts = []
         mock_sheet.warnings = []
+        mock_sheet.formula_count = 0
         mock_fetch.return_value = mock_sheet
 
         with patch("tools.fetch.drive._build_cues", wraps=_build_cues) as mock_cues:
@@ -2326,6 +2332,7 @@ class TestPerTabCsvDeposit:
         mock_sheet.sheets = [MagicMock()]
         mock_sheet.charts = []
         mock_sheet.warnings = []
+        mock_sheet.formula_count = 0
         mock_fetch.return_value = mock_sheet
 
         with patch("tools.fetch.drive._build_cues", wraps=_build_cues) as mock_cues:

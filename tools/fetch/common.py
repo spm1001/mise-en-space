@@ -56,6 +56,7 @@ def _build_cues(
     has_attachments: bool | None = None,
     date_range: str | None = None,
     tab_names: list[str] | None = None,
+    formula_count: int | None = None,
 ) -> dict[str, Any]:
     """
     Build cues dict for FetchResult — decision-tree signals for the caller.
@@ -101,6 +102,9 @@ def _build_cues(
     }
 
     # Sheet-specific cues
+    if formula_count is not None:
+        cues["formula_count"] = formula_count
+
     if tab_names is not None:
         cues["tab_count"] = len(tab_names)
         cues["tab_names"] = tab_names
