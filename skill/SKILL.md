@@ -166,16 +166,22 @@ Pass CSV as `content` with `doc_type="sheet"`. Google's Drive import handles typ
 
 ```python
 # Simple data
-do(operation="create", doc_type="sheet", title="Team Scores",
+do(operation="create", doc_type="sheet", title="Team Scores", base_path="...",
    content="Name,Score,Pass\nAlice,95,TRUE\nBob,87,TRUE\nCarol,62,FALSE")
 
 # With formulae — cells starting with = are preserved
-do(operation="create", doc_type="sheet", title="Budget",
+do(operation="create", doc_type="sheet", title="Budget", base_path="...",
    content="Item,Cost\nLicences,12000\nHosting,8500\nTotal,=SUM(B2:B3)")
+
+# Values with commas need CSV quoting
+do(operation="create", doc_type="sheet", title="Staff", base_path="...",
+   content='Name,Department,Salary\nAlice,"Sales, Marketing","£65,000"\nBob,Engineering,"£52,000"')
 
 # From a deposit folder (saves tokens — don't inline large CSVs)
 do(operation="create", doc_type="sheet", source="mise/sheet--budget--abc123/", base_path="...")
 ```
+
+**CSV quoting rule:** If a value contains a comma, wrap it in double quotes (`"Sales, Marketing"`). This is standard CSV — applies to currency with thousands separators (`"£65,000"`) and multi-word categories.
 
 **Deposit-then-publish** is the preferred pattern for large data. Write CSV to a deposit folder, then pass `source=` instead of `content=`. The tool reads `content.csv` from the folder and uses the manifest title. Multi-tab deposits (with `tabs` in manifest) are auto-detected and create multi-tab sheets.
 
@@ -211,6 +217,7 @@ do(operation="create", doc_type="sheet", source="mise/sheet--budget--abc123/", b
 | Inline 500-row CSV as `content` | Write to deposit, use `source=` |
 | Build formulae with absolute values | Use `=SUM(B2:B10)` — formulae work |
 | Manually pad columns with spaces | CSV handles alignment; Sheets renders it |
+| Bare commas in values (`£65,000`) | Quote: `"£65,000"` — or CSV breaks |
 
 ## Web Content
 
