@@ -37,6 +37,21 @@ Self-describing metadata. Key fields:
 | `open_comment_count` | Unresolved comments (0 = no comments.md) |
 | `warnings` | Extraction issues (empty sheets, truncation, etc.) |
 
+## Sheets / XLSX: Per-Tab CSVs
+
+```
+sheet--budget-2026--xyz789abc/
+├── content.csv             # Combined: all tabs (=== Sheet: Name === headers)
+├── content_revenue.csv     # Per-tab: one file per tab (multi-tab only)
+├── content_costs.csv
+├── comments.md             # Open comments (if any)
+└── manifest.json           # includes tabs [{name, filename}], formula_count
+```
+
+Multi-tab spreadsheets deposit one CSV per tab alongside the combined `content.csv`. Single-tab sheets just get `content.csv`.
+
+XLSX deposits also include `source.xlsx` — the raw original file for roundtrip workflows (edit and re-upload without conversion loss). The `formula_count` cue tells you when the raw file matters.
+
 ## Slides: Thumbnails
 
 ```

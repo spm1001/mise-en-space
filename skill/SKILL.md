@@ -142,12 +142,15 @@ See `references/filtering-results.md` for patterns.
 
 ## Workflow 4: Do (Create, Move)
 
-**When:** "Make a Google Doc from this" / "Move this file to Archive"
+**When:** "Make a Google Doc from this" / "Move this file to Archive" / "Create a spreadsheet from this data"
 
 ```python
-# Create
+# Create doc
 do(operation="create", content="# Meeting Notes\n\n- Item 1", title="Team Sync")
 do(operation="create", content=content, title="Report", doc_type="doc", folder_id="1xyz...")
+
+# Create sheet (see Sheet Creation below for details)
+do(operation="create", content="Name,Score\nAlice,95\nBob,87", title="Results", doc_type="sheet")
 
 # Move
 do(operation="move", file_id="1abc...", destination_folder_id="1xyz...")
@@ -156,6 +159,58 @@ do(operation="move", file_id="1abc...", destination_folder_id="1xyz...")
 **Create:** Without `folder_id`, the doc lands in Drive root. Response includes `cues.folder` showing where it landed.
 
 **Move:** Enforces single parent — removes all existing parents, adds destination. Response includes `cues.destination_folder` (name) and `cues.previous_parents`.
+
+### Sheet Creation
+
+Pass CSV as `content` with `doc_type="sheet"`. Google's Drive import handles type detection — it gets numbers, dates, currencies, booleans, and formulae right ~94% of the time. **Trust it.** Don't pre-format.
+
+```python
+# Simple data
+do(operation="create", doc_type="sheet", title="Team Scores",
+   content="Name,Score,Pass\nAlice,95,TRUE\nBob,87,TRUE\nCarol,62,FALSE")
+
+# With formulae — cells starting with = are preserved
+do(operation="create", doc_type="sheet", title="Budget",
+   content="Item,Cost\nLicences,12000\nHosting,8500\nTotal,=SUM(B2:B3)")
+
+# From a deposit folder (saves tokens — don't inline large CSVs)
+do(operation="create", doc_type="sheet", source="mise/sheet--budget--abc123/", base_path="...")
+```
+
+**Deposit-then-publish** is the preferred pattern for large data. Write CSV to a deposit folder, then pass `source=` instead of `content=`. The tool reads `content.csv` from the folder and uses the manifest title. Multi-tab deposits (with `tabs` in manifest) are auto-detected and create multi-tab sheets.
+
+#### What Google auto-detects well
+
+| Type | Example CSV value | Detected as |
+|------|-------------------|-------------|
+| Numbers | `95`, `3.14`, `-200` | Number |
+| UK currency | `£1,200.00`, `€50` | Currency |
+| Percentages | `45%` | Percentage |
+| Booleans | `TRUE`, `FALSE` | Boolean |
+| Dates (ISO) | `2026-02-17` | Date |
+| UK dates | `17/02/2026` | Date |
+| Formulae | `=SUM(A1:A10)` | Formula |
+
+#### What needs help
+
+| Problem | Example | Fix |
+|---------|---------|-----|
+| Leading zeros stripped | `00412` (product ID) → `412` | Prefix with tick: `'00412` |
+| USD not detected | `$50.00` → text | USD works if locale is US; UK locale treats as text. Use plain number + format after |
+| US dates ambiguous | `02/03/2026` → 2 Mar or 3 Feb? | Use ISO: `2026-02-03` |
+| Text-that-looks-numeric | Phone `07700900123` | Prefix with tick: `'07700900123` |
+
+**The tick prefix** (`'`) tells Google Sheets "treat this as text, not a number." Write it directly in the CSV value — Google strips the tick from display but preserves the text type.
+
+#### Anti-patterns
+
+| Don't do this | Do this instead |
+|---------------|-----------------|
+| Strip `£` signs before CSV | Leave them — Google detects UK currency |
+| Format numbers as strings (`"95"`) | Plain `95` — let Google type it |
+| Inline 500-row CSV as `content` | Write to deposit, use `source=` |
+| Build formulae with absolute values | Use `=SUM(B2:B10)` — formulae work |
+| Manually pad columns with spaces | CSV handles alignment; Sheets renders it |
 
 ## Web Content
 
