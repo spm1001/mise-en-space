@@ -434,7 +434,8 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
     # Deposit raw xlsx alongside CSV for roundtrip workflows
     raw_file: str | None = None
     if office_type == "xlsx" and result.raw_bytes:
-        raw_file = "source.xlsx"
+        # Preserve original filename — consistent with Gmail attachment deposits
+        raw_file = title if title.lower().endswith(".xlsx") else f"{title}.xlsx"
         (folder / raw_file).write_bytes(result.raw_bytes)
 
     # Formula count from spreadsheet data (XLSX only)

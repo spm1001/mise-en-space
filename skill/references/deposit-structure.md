@@ -50,7 +50,7 @@ sheet--budget-2026--xyz789abc/
 
 Multi-tab spreadsheets deposit one CSV per tab alongside the combined `content.csv`. Single-tab sheets just get `content.csv`.
 
-XLSX deposits also include `source.xlsx` — the raw original file for roundtrip workflows (edit and re-upload without conversion loss). The `formula_count` cue tells you when the raw file matters.
+XLSX deposits also include the original `.xlsx` file (original filename preserved) for roundtrip workflows (edit and re-upload without conversion loss). The `formula_count` cue tells you when the raw file matters.
 
 ## Slides: Thumbnails
 

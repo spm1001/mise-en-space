@@ -235,15 +235,15 @@ class TestFetchOffice:
 
         result = fetch_office("abc123", "Budget.xlsx", {}, "xlsx")
 
-        # Raw xlsx deposited
-        raw_path = deposit_folder / "source.xlsx"
+        # Raw xlsx deposited with original filename
+        raw_path = deposit_folder / "Budget.xlsx"
         assert raw_path.exists()
         assert raw_path.read_bytes() == fake_xlsx_bytes
 
-        # Manifest includes raw_file
+        # Manifest includes raw_file with original name
         manifest_call = mock_write_manifest.call_args
         extra = manifest_call.kwargs.get("extra") or manifest_call[1].get("extra")
-        assert extra["raw_file"] == "source.xlsx"
+        assert extra["raw_file"] == "Budget.xlsx"
 
     @patch("tools.fetch.drive.fetch_and_extract_office")
     @patch("tools.fetch.drive.get_deposit_folder")
