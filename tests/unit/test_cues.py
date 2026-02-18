@@ -604,31 +604,11 @@ from tools.fetch import fetch_doc, fetch_sheet, fetch_slides, fetch_web
 class TestFetchSheetCues:
     """Verify cues are populated correctly during sheet fetch."""
 
-    @patch("tools.fetch.drive.fetch_spreadsheet")
-    @patch("tools.fetch.drive.extract_sheets_content", return_value="col1,col2\n1,2")
-    @patch("tools.fetch.drive.write_content")
-    @patch("tools.fetch.drive.write_chart")
-    @patch("tools.fetch.drive.write_charts_metadata")
-    @patch("tools.fetch.drive._enrich_with_comments", return_value=(1, "comments"))
-    @patch("tools.fetch.drive.write_manifest")
-    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
-    def test_sheet_cues(
-        self, mock_tabs, mock_manifest, mock_comments, mock_charts_meta, mock_chart,
-        mock_write, mock_extract, mock_fetch, tmp_path: Path,
-    ) -> None:
+    def test_sheet_cues(self, tmp_path: Path) -> None:
         """Sheet cues include comment count."""
-        mock_data = MagicMock()
-        mock_data.charts = []
-        mock_data.warnings = []
-        mock_data.chart_render_time_ms = 0
-        mock_data.formula_count = 0
-        mock_fetch.return_value = mock_data
+        from tests.helpers import sheet_fetch_context
 
-        content_file = tmp_path / "content.csv"
-        content_file.write_text("col1,col2\n1,2")
-        mock_write.return_value = content_file
-
-        with patch("tools.fetch.drive.get_deposit_folder", return_value=tmp_path):
+        with sheet_fetch_context(tmp_path, comment_count=1) as ctx:
             result = fetch_sheet("sheet1", "My Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
 
         cues = result.cues
@@ -637,69 +617,38 @@ class TestFetchSheetCues:
         assert cues["content_length"] > 0
         assert cues["formula_count"] == 0
 
-    @patch("tools.fetch.drive.fetch_spreadsheet")
-    @patch("tools.fetch.drive.extract_sheets_content", return_value="combined")
-    @patch("tools.fetch.drive.write_content")
-    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
-    @patch("tools.fetch.drive.write_manifest")
-    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
-    def test_sheet_cues_multi_tab(
-        self, mock_tabs, mock_manifest, mock_comments,
-        mock_write, mock_extract, mock_fetch, tmp_path: Path,
-    ) -> None:
+    def test_sheet_cues_multi_tab(self, tmp_path: Path) -> None:
         """Multi-tab sheet cues include tab_count and tab_names."""
+        from tests.helpers import sheet_fetch_context
+
         tab1 = MagicMock()
         tab1.name = "Revenue"
         tab2 = MagicMock()
         tab2.name = "Costs"
-        mock_data = MagicMock()
-        mock_data.sheets = [tab1, tab2]
-        mock_data.charts = []
-        mock_data.warnings = []
-        mock_data.formula_count = 0
-        mock_fetch.return_value = mock_data
 
-        content_file = tmp_path / "content.csv"
-        content_file.write_text("combined")
-        mock_write.return_value = content_file
+        with sheet_fetch_context(tmp_path) as ctx:
+            ctx.sheet_data.sheets = [tab1, tab2]
 
-        with patch("tools.fetch.drive.get_deposit_folder", return_value=tmp_path):
             result = fetch_sheet("sheet1", "Multi", _drive_metadata("application/vnd.google-apps.spreadsheet"))
 
         cues = result.cues
         assert cues["tab_count"] == 2
         assert cues["tab_names"] == ["Revenue", "Costs"]
 
-    @patch("tools.fetch.drive.fetch_spreadsheet")
-    @patch("tools.fetch.drive.extract_sheets_content", return_value="a,b\n=SUM(A1),2")
-    @patch("tools.fetch.drive.write_content")
-    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
-    @patch("tools.fetch.drive.write_manifest")
-    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
-    def test_sheet_cues_with_formulae(
-        self, mock_tabs, mock_manifest, mock_comments,
-        mock_write, mock_extract, mock_fetch, tmp_path: Path,
-    ) -> None:
+    def test_sheet_cues_with_formulae(self, tmp_path: Path) -> None:
         """Sheet with formulae shows formula_count in cues and manifest."""
-        mock_data = MagicMock()
-        mock_data.sheets = [MagicMock()]
-        mock_data.charts = []
-        mock_data.warnings = []
-        mock_data.formula_count = 47
-        mock_fetch.return_value = mock_data
+        from tests.helpers import sheet_fetch_context
 
-        content_file = tmp_path / "content.csv"
-        content_file.write_text("a,b\n=SUM(A1),2")
-        mock_write.return_value = content_file
+        with sheet_fetch_context(tmp_path, content="a,b\n=SUM(A1),2") as ctx:
+            ctx.sheet_data.formula_count = 47
 
-        with patch("tools.fetch.drive.get_deposit_folder", return_value=tmp_path):
             result = fetch_sheet("sheet1", "Formula Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
 
         cues = result.cues
         assert cues["formula_count"] == 47
 
         # Also in manifest
-        extra = mock_manifest.call_args[1]["extra"]
+        extra = ctx.mocks["write_manifest"].call_args[1]["extra"]
         assert extra["formula_count"] == 47
 
 

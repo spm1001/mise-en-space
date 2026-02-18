@@ -1120,78 +1120,49 @@ class TestFetchDoc:
 class TestFetchSheet:
     """Tests for fetch_sheet orchestration."""
 
-    @patch("tools.fetch.drive.fetch_spreadsheet")
-    @patch("tools.fetch.drive.extract_sheets_content", return_value="col1,col2\n1,2")
-    @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/sheet"))
-    @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/sheet/content.csv"))
-    @patch("tools.fetch.drive.write_chart")
-    @patch("tools.fetch.drive.write_charts_metadata")
-    @patch("tools.fetch.drive._enrich_with_comments", return_value=(2, "comments"))
-    @patch("tools.fetch.drive.write_manifest")
-    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
-    def test_sheet_with_charts(self, mock_tabs, mock_manifest, mock_comments, mock_charts_meta, mock_chart, mock_write, mock_folder, mock_extract, mock_fetch):
+    def test_sheet_with_charts(self, tmp_path: Path):
         """Sheet with charts writes chart PNGs and metadata."""
+        from tests.helpers import sheet_fetch_context
+
         chart = MagicMock()
         chart.png_bytes = b"png"
         chart.chart_id = "c1"
         chart.title = "Sales"
         chart.sheet_name = "Sheet1"
         chart.chart_type = "BAR"
-        mock_sheet = MagicMock()
-        mock_sheet.sheets = [MagicMock()]
-        mock_sheet.charts = [chart]
-        mock_sheet.chart_render_time_ms = 500
-        mock_sheet.warnings = []
-        mock_sheet.formula_count = 0
-        mock_fetch.return_value = mock_sheet
 
-        result = fetch_sheet("s1", "My Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
+        with sheet_fetch_context(tmp_path, comment_count=2) as ctx:
+            ctx.sheet_data.charts = [chart]
+            ctx.sheet_data.chart_render_time_ms = 500
+
+            result = fetch_sheet("s1", "My Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
 
         assert result.type == "sheet"
         assert result.format == "csv"
         assert result.metadata["chart_count"] == 1
-        mock_chart.assert_called_once()
-        mock_charts_meta.assert_called_once()
+        ctx.mocks["write_chart"].assert_called_once()
+        ctx.mocks["write_charts_metadata"].assert_called_once()
 
-    @patch("tools.fetch.drive.fetch_spreadsheet")
-    @patch("tools.fetch.drive.extract_sheets_content", return_value="col1\n1")
-    @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/sheet"))
-    @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/sheet/content.csv"))
-    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
-    @patch("tools.fetch.drive.write_manifest")
-    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
-    def test_sheet_no_charts(self, mock_tabs, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
+    def test_sheet_no_charts(self, tmp_path: Path):
         """Sheet without charts skips chart writing."""
-        mock_sheet = MagicMock()
-        mock_sheet.sheets = [MagicMock(), MagicMock()]
-        mock_sheet.charts = []
-        mock_sheet.warnings = []
-        mock_sheet.formula_count = 0
-        mock_fetch.return_value = mock_sheet
+        from tests.helpers import sheet_fetch_context
 
-        result = fetch_sheet("s1", "My Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
+        with sheet_fetch_context(tmp_path) as ctx:
+            ctx.sheet_data.sheets = [MagicMock(), MagicMock()]
+
+            result = fetch_sheet("s1", "My Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
 
         assert result.metadata["sheet_count"] == 2
         assert "chart_count" not in result.metadata
 
-    @patch("tools.fetch.drive.fetch_spreadsheet")
-    @patch("tools.fetch.drive.extract_sheets_content", return_value="data")
-    @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/sheet"))
-    @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/sheet/content.csv"))
-    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
-    @patch("tools.fetch.drive.write_manifest")
-    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
-    def test_sheet_with_email_context(self, mock_tabs, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
+    def test_sheet_with_email_context(self, tmp_path: Path):
         """Email context in sheet result metadata."""
-        mock_sheet = MagicMock()
-        mock_sheet.sheets = [MagicMock()]
-        mock_sheet.charts = []
-        mock_sheet.warnings = []
-        mock_sheet.formula_count = 0
-        mock_fetch.return_value = mock_sheet
-        ctx = EmailContext(message_id="m1", from_address="a@b.com", subject="Sheet")
+        from tests.helpers import sheet_fetch_context
 
-        result = fetch_sheet("s1", "Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"), email_context=ctx)
+        with sheet_fetch_context(tmp_path) as ctx:
+            email_ctx = EmailContext(message_id="m1", from_address="a@b.com", subject="Sheet")
+
+            result = fetch_sheet("s1", "Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"), email_context=email_ctx)
 
         assert "email_context" in result.metadata
 
@@ -2181,25 +2152,16 @@ class TestFetchAttachmentExfilEdgeCases:
 class TestFetchSheetEdgeCases:
     """Edge cases for fetch_sheet."""
 
-    @patch("tools.fetch.drive.fetch_spreadsheet")
-    @patch("tools.fetch.drive.extract_sheets_content", return_value="data")
-    @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/sheet"))
-    @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/sheet/content.csv"))
-    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
-    @patch("tools.fetch.drive.write_manifest")
-    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
-    def test_sheet_with_warnings(self, mock_tabs, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
+    def test_sheet_with_warnings(self, tmp_path: Path):
         """Sheet-level warnings appear in manifest."""
-        mock_sheet = MagicMock()
-        mock_sheet.sheets = [MagicMock()]
-        mock_sheet.charts = []
-        mock_sheet.warnings = ["Empty sheet skipped"]
-        mock_sheet.formula_count = 0
-        mock_fetch.return_value = mock_sheet
+        from tests.helpers import sheet_fetch_context
 
-        fetch_sheet("s1", "Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
+        with sheet_fetch_context(tmp_path) as ctx:
+            ctx.sheet_data.warnings = ["Empty sheet skipped"]
 
-        extra = mock_manifest.call_args[1]["extra"]
+            fetch_sheet("s1", "Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
+
+        extra = ctx.mocks["write_manifest"].call_args[1]["extra"]
         assert "warnings" in extra
         assert "Empty sheet skipped" in extra["warnings"]
 
@@ -2269,74 +2231,47 @@ class TestPerTabCsvDeposit:
         assert tabs_info[0]["filename"] == "content_q4-revenue-draft.csv"
         assert tabs_info[1]["filename"] == "content_uber-cool-sheet.csv"
 
-    @patch("tools.fetch.drive.fetch_spreadsheet")
-    @patch("tools.fetch.drive.extract_sheets_content", return_value="combined")
-    @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/sheet"))
-    @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/sheet/content.csv"))
-    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
-    @patch("tools.fetch.drive.write_manifest")
-    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[
-        {"name": "Tab1", "filename": "content_tab1.csv"},
-        {"name": "Tab2", "filename": "content_tab2.csv"},
-    ])
-    def test_manifest_includes_tabs(self, mock_tabs, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
+    def test_manifest_includes_tabs(self, tmp_path: Path):
         """Manifest includes tabs array when per-tab files exist."""
-        mock_sheet = MagicMock()
-        mock_sheet.sheets = [MagicMock(name="Tab1"), MagicMock(name="Tab2")]
-        mock_sheet.charts = []
-        mock_sheet.warnings = []
-        mock_sheet.formula_count = 0
-        mock_fetch.return_value = mock_sheet
+        from tests.helpers import sheet_fetch_context
 
-        fetch_sheet("s1", "Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
+        tabs = [
+            {"name": "Tab1", "filename": "content_tab1.csv"},
+            {"name": "Tab2", "filename": "content_tab2.csv"},
+        ]
+        with sheet_fetch_context(tmp_path, tabs_info=tabs) as ctx:
+            ctx.sheet_data.sheets = [MagicMock(name="Tab1"), MagicMock(name="Tab2")]
 
-        extra = mock_manifest.call_args[1]["extra"]
+            fetch_sheet("s1", "Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
+
+        extra = ctx.mocks["write_manifest"].call_args[1]["extra"]
         assert "tabs" in extra
         assert len(extra["tabs"]) == 2
 
-    @patch("tools.fetch.drive.fetch_spreadsheet")
-    @patch("tools.fetch.drive.extract_sheets_content", return_value="data")
-    @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/sheet"))
-    @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/sheet/content.csv"))
-    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
-    @patch("tools.fetch.drive.write_manifest")
-    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
-    def test_cues_include_tab_names_for_multi_tab(self, mock_tabs, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
+    def test_cues_include_tab_names_for_multi_tab(self, tmp_path: Path):
         """Cues include tab_count and tab_names for multi-tab sheets."""
+        from tests.helpers import sheet_fetch_context
+
         tab1 = MagicMock()
         tab1.name = "Revenue"
         tab2 = MagicMock()
         tab2.name = "Costs"
-        mock_sheet = MagicMock()
-        mock_sheet.sheets = [tab1, tab2]
-        mock_sheet.charts = []
-        mock_sheet.warnings = []
-        mock_sheet.formula_count = 0
-        mock_fetch.return_value = mock_sheet
 
-        with patch("tools.fetch.drive._build_cues", wraps=_build_cues) as mock_cues:
-            result = fetch_sheet("s1", "Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
+        with sheet_fetch_context(tmp_path) as ctx:
+            ctx.sheet_data.sheets = [tab1, tab2]
+
+            with patch("tools.fetch.drive._build_cues", wraps=_build_cues) as mock_cues:
+                result = fetch_sheet("s1", "Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
 
         assert mock_cues.call_args[1]["tab_names"] == ["Revenue", "Costs"]
 
-    @patch("tools.fetch.drive.fetch_spreadsheet")
-    @patch("tools.fetch.drive.extract_sheets_content", return_value="data")
-    @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/sheet"))
-    @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/sheet/content.csv"))
-    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
-    @patch("tools.fetch.drive.write_manifest")
-    @patch("tools.fetch.drive._write_per_tab_csvs", return_value=[])
-    def test_cues_no_tab_names_for_single_tab(self, mock_tabs, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
+    def test_cues_no_tab_names_for_single_tab(self, tmp_path: Path):
         """Single-tab sheets don't include tab_names in cues."""
-        mock_sheet = MagicMock()
-        mock_sheet.sheets = [MagicMock()]
-        mock_sheet.charts = []
-        mock_sheet.warnings = []
-        mock_sheet.formula_count = 0
-        mock_fetch.return_value = mock_sheet
+        from tests.helpers import sheet_fetch_context
 
-        with patch("tools.fetch.drive._build_cues", wraps=_build_cues) as mock_cues:
-            result = fetch_sheet("s1", "Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
+        with sheet_fetch_context(tmp_path) as ctx:
+            with patch("tools.fetch.drive._build_cues", wraps=_build_cues) as mock_cues:
+                result = fetch_sheet("s1", "Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
 
         assert mock_cues.call_args[1]["tab_names"] is None
 
