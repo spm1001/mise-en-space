@@ -5,7 +5,7 @@ Re-exports all public symbols so `from tools.fetch import X` continues to work.
 """
 
 # Router (entry points)
-from .router import do_fetch, do_fetch_comments, detect_id_type
+from .router import do_fetch, detect_id_type
 
 # Common helpers
 from .common import (

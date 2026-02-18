@@ -1,8 +1,7 @@
 """
 Tests for search tool implementation.
 
-Tests format functions (pure), do_search wiring (mocked adapters),
-and do_search_activity routing.
+Tests format functions (pure) and do_search wiring (mocked adapters).
 """
 
 from datetime import datetime
@@ -16,17 +15,11 @@ from models import (
     EmailContext,
     MiseError,
     ErrorKind,
-    CommentActivity,
-    ActivityActor,
-    ActivityTarget,
-    ActivitySearchResult,
 )
 from tools.search import (
     format_drive_result,
     format_gmail_result,
-    format_activity_result,
     do_search,
-    do_search_activity,
 )
 
 
@@ -136,33 +129,6 @@ class TestFormatGmailResult:
         )
         formatted = format_gmail_result(result)
         assert formatted["date"] is None
-
-
-class TestFormatActivityResult:
-    """Test activity result serialization."""
-
-    def test_basic_fields(self) -> None:
-        activity = CommentActivity(
-            activity_id="act1",
-            timestamp="2026-02-01T10:00:00Z",
-            actor=ActivityActor(name="Alice", email="alice@example.com"),
-            target=ActivityTarget(
-                file_id="doc123",
-                file_name="Design Doc",
-                mime_type="application/vnd.google-apps.document",
-                web_link="https://docs.google.com/document/d/doc123",
-            ),
-            action_type="comment",
-            mentioned_users=["bob@example.com"],
-        )
-        formatted = format_activity_result(activity)
-
-        assert formatted["activity_id"] == "act1"
-        assert formatted["actor"]["name"] == "Alice"
-        assert formatted["actor"]["email"] == "alice@example.com"
-        assert formatted["target"]["file_id"] == "doc123"
-        assert formatted["action_type"] == "comment"
-        assert formatted["mentioned_users"] == ["bob@example.com"]
 
 
 # ============================================================================
@@ -329,113 +295,3 @@ class TestDoSearch:
         assert result.path == "/workspace/mise/search-results.json"
 
 
-# ============================================================================
-# do_search_activity ROUTING
-# ============================================================================
-
-
-class TestDoSearchActivity:
-    """Test activity search routing and error handling."""
-
-    @patch('tools.search.search_comment_activities')
-    def test_default_comment_search(self, mock_search) -> None:
-        """Default filter searches comment activities."""
-        mock_search.return_value = ActivitySearchResult(
-            activities=[
-                CommentActivity(
-                    activity_id="a1",
-                    timestamp="2026-02-01T10:00:00Z",
-                    actor=ActivityActor(name="Alice"),
-                    target=ActivityTarget(file_id="f1", file_name="Doc"),
-                    action_type="comment",
-                ),
-            ],
-            next_page_token=None,
-            warnings=[],
-        )
-
-        result = do_search_activity()
-
-        assert result["activity_count"] == 1
-        assert result["activities"][0]["activity_id"] == "a1"
-        assert "error" not in result
-        mock_search.assert_called_once()
-
-    @patch('tools.search.get_file_activities')
-    def test_file_specific_activity(self, mock_get) -> None:
-        """file_id routes to get_file_activities."""
-        mock_get.return_value = ActivitySearchResult(
-            activities=[],
-            next_page_token=None,
-            warnings=[],
-        )
-
-        result = do_search_activity(file_id="doc123")
-
-        mock_get.assert_called_once_with("doc123", page_size=50, filter_type="comments")
-        assert result["activity_count"] == 0
-
-    def test_cross_file_non_comment_rejected(self) -> None:
-        """Cross-file search with non-comment filter returns error."""
-        result = do_search_activity(filter_type="edits")
-
-        assert result["error"] is True
-        assert result["kind"] == "invalid_input"
-        assert "comments" in result["message"]
-
-    @patch('tools.search.get_file_activities')
-    def test_file_specific_edits_allowed(self, mock_get) -> None:
-        """File-specific search allows edits filter."""
-        mock_get.return_value = ActivitySearchResult(
-            activities=[], next_page_token=None, warnings=[],
-        )
-
-        result = do_search_activity(filter_type="edits", file_id="doc123")
-
-        mock_get.assert_called_once_with("doc123", page_size=50, filter_type="edits")
-        assert "error" not in result
-
-    @patch('tools.search.search_comment_activities')
-    def test_mise_error_handled(self, mock_search) -> None:
-        """MiseError from adapter returns structured error."""
-        mock_search.side_effect = MiseError(ErrorKind.AUTH_EXPIRED, "Token expired")
-
-        result = do_search_activity()
-
-        assert result["error"] is True
-        assert result["kind"] == "auth_expired"
-        assert "Token expired" in result["message"]
-
-    @patch('tools.search.search_comment_activities')
-    def test_unexpected_error_handled(self, mock_search) -> None:
-        """Unexpected exception returns generic error."""
-        mock_search.side_effect = RuntimeError("something broke")
-
-        result = do_search_activity()
-
-        assert result["error"] is True
-        assert result["kind"] == "unknown"
-        assert "something broke" in result["message"]
-
-    @patch('tools.search.search_comment_activities')
-    def test_pagination_token_returned(self, mock_search) -> None:
-        """Next page token passed through when present."""
-        mock_search.return_value = ActivitySearchResult(
-            activities=[], next_page_token="next123", warnings=[],
-        )
-
-        result = do_search_activity()
-
-        assert result["next_page_token"] == "next123"
-
-    @patch('tools.search.search_comment_activities')
-    def test_warnings_returned(self, mock_search) -> None:
-        """Warnings from adapter included in response."""
-        mock_search.return_value = ActivitySearchResult(
-            activities=[], next_page_token=None,
-            warnings=["Some activities may be missing"],
-        )
-
-        result = do_search_activity()
-
-        assert result["warnings"] == ["Some activities may be missing"]

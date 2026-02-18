@@ -1,13 +1,11 @@
 """
-Fetch routing — ID detection, do_fetch entry point, do_fetch_comments.
+Fetch routing — ID detection and do_fetch entry point.
 """
 
 from pathlib import Path
 from typing import Any
 
-from adapters.drive import fetch_file_comments
 from adapters.web import is_web_url
-from extractors.comments import extract_comments_content
 from models import MiseError, FetchResult, FetchError
 from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id, GMAIL_WEB_ID_PREFIXES
 
@@ -90,49 +88,3 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
         return FetchError(kind="unknown", message=str(e))
 
 
-def do_fetch_comments(
-    file_id: str,
-    include_deleted: bool = False,
-    include_resolved: bool = True,
-    max_results: int = 100,
-) -> dict[str, Any]:
-    """
-    Fetch comments from a Drive file.
-
-    Returns comments as formatted markdown directly (no file deposit).
-    """
-    try:
-        # Normalize file ID (handle URLs)
-        _, normalized_id = detect_id_type(file_id)
-
-        # Fetch comments via adapter
-        data = fetch_file_comments(
-            file_id=normalized_id,
-            include_deleted=include_deleted,
-            include_resolved=include_resolved,
-            max_results=max_results,
-        )
-
-        # Extract to markdown
-        content = extract_comments_content(data)
-
-        return {
-            "content": content,
-            "file_id": data.file_id,
-            "file_name": data.file_name,
-            "comment_count": data.comment_count,
-            "warnings": data.warnings if data.warnings else None,
-        }
-
-    except MiseError as e:
-        return {
-            "error": True,
-            "kind": e.kind.value,
-            "message": e.message,
-        }
-    except Exception as e:
-        return {
-            "error": True,
-            "kind": "unknown",
-            "message": str(e),
-        }

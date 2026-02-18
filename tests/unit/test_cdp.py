@@ -56,28 +56,3 @@ class TestGetGoogleCookies:
             assert result is None
 
 
-class TestGetSapisid:
-    """Tests for get_sapisid()."""
-
-    def test_returns_sapisid_from_cookies(self):
-        """Should extract SAPISID from cookies dict."""
-        from adapters import cdp
-        mock_cookies = {"SAPISID": "test123", "OTHER": "value"}
-        with patch.object(cdp, "get_google_cookies", return_value=mock_cookies):
-            result = cdp.get_sapisid()
-            assert result == "test123"
-
-    def test_returns_none_when_no_sapisid(self):
-        """Should return None if SAPISID not in cookies."""
-        from adapters import cdp
-        mock_cookies = {"OTHER": "value"}
-        with patch.object(cdp, "get_google_cookies", return_value=mock_cookies):
-            result = cdp.get_sapisid()
-            assert result is None
-
-    def test_returns_none_when_no_cookies(self):
-        """Should return None if cookies unavailable."""
-        from adapters import cdp
-        with patch.object(cdp, "get_google_cookies", return_value=None):
-            result = cdp.get_sapisid()
-            assert result is None

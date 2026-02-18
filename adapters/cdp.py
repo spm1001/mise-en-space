@@ -91,14 +91,3 @@ def get_google_cookies() -> dict[str, str] | None:
         return None
 
 
-def get_sapisid() -> str | None:
-    """
-    Get SAPISID cookie value for GenAI authentication.
-
-    Returns:
-        SAPISID value or None if not available.
-    """
-    cookies = get_google_cookies()
-    if cookies:
-        return cookies.get("SAPISID")
-    return None

@@ -4,13 +4,13 @@ import pytest
 from datetime import datetime
 
 from models import EmailContext, DriveSearchResult
-from adapters.drive import _parse_email_context
+from adapters.drive import parse_email_context
 from tools.search import format_drive_result, format_gmail_result
 from models import GmailSearchResult
 
 
 class TestParseEmailContext:
-    """Tests for _parse_email_context function."""
+    """Tests for parse_email_context function."""
 
     def test_parses_full_exfil_description(self):
         """Parse complete exfil description with all fields."""
@@ -20,7 +20,7 @@ Date: 2026-01-15T10:30:00.000Z
 Message ID: 18f4a5b6c7d8e9f0
 Content Hash: abc123def456"""
 
-        result = _parse_email_context(description)
+        result = parse_email_context(description)
 
         assert result is not None
         assert result.message_id == "18f4a5b6c7d8e9f0"
@@ -33,19 +33,19 @@ Content Hash: abc123def456"""
         description = """From: alice@example.com
 Subject: Budget analysis"""
 
-        result = _parse_email_context(description)
+        result = parse_email_context(description)
         assert result is None
 
     def test_returns_none_for_empty_description(self):
         """Return None for empty string."""
-        assert _parse_email_context("") is None
-        assert _parse_email_context(None) is None
+        assert parse_email_context("") is None
+        assert parse_email_context(None) is None
 
     def test_parses_minimal_description(self):
         """Parse description with only Message ID."""
         description = "Message ID: 18f4a5b6c7d8e9f0"
 
-        result = _parse_email_context(description)
+        result = parse_email_context(description)
 
         assert result is not None
         assert result.message_id == "18f4a5b6c7d8e9f0"
@@ -60,7 +60,7 @@ Subject: Re: Long thread about stuff
 Date: 2026-01-15T10:30:00.000Z
 Message ID: abc123"""
 
-        result = _parse_email_context(description)
+        result = parse_email_context(description)
         assert result.subject == "Re: Long thread about stuff"
 
     def test_handles_email_with_display_name(self):
@@ -68,7 +68,7 @@ Message ID: abc123"""
         description = """From: Alice Smith <alice@example.com>
 Message ID: abc123"""
 
-        result = _parse_email_context(description)
+        result = parse_email_context(description)
         assert result.from_address == "Alice Smith <alice@example.com>"
 
 

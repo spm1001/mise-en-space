@@ -551,6 +551,7 @@ class TestSourceThroughDoRouting:
             source=str(tmp_path),
             doc_type="sheet",
             title="Test Sheet",
+            base_path=str(tmp_path),
         )
 
         assert result["file_id"] == "sheet1"

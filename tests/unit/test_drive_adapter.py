@@ -21,7 +21,7 @@ from models import (
     CommentReply,
 )
 from adapters.drive import (
-    _parse_email_context,
+    parse_email_context,
     _parse_datetime,
     get_file_metadata,
     export_file,
@@ -49,7 +49,7 @@ class TestParseEmailContext:
             "Message ID: 18f4a5b6c7d8e9f0\n"
             "Content Hash: abc123def456"
         )
-        result = _parse_email_context(description)
+        result = parse_email_context(description)
 
         assert result is not None
         assert result.message_id == "18f4a5b6c7d8e9f0"
@@ -60,7 +60,7 @@ class TestParseEmailContext:
     def test_only_message_id(self) -> None:
         """Minimal description with just Message ID."""
         description = "Message ID: abc123"
-        result = _parse_email_context(description)
+        result = parse_email_context(description)
 
         assert result is not None
         assert result.message_id == "abc123"
@@ -71,13 +71,13 @@ class TestParseEmailContext:
     def test_no_message_id_returns_none(self) -> None:
         """Description without Message ID returns None."""
         description = "From: alice@example.com\nSubject: Test"
-        assert _parse_email_context(description) is None
+        assert parse_email_context(description) is None
 
     def test_none_description_returns_none(self) -> None:
-        assert _parse_email_context(None) is None
+        assert parse_email_context(None) is None
 
     def test_empty_description_returns_none(self) -> None:
-        assert _parse_email_context("") is None
+        assert parse_email_context("") is None
 
     def test_whitespace_stripped(self) -> None:
         """Extra whitespace in field values is stripped."""
@@ -86,7 +86,7 @@ class TestParseEmailContext:
             "Subject:   Spaced Out   \n"
             "Message ID: abc123"
         )
-        result = _parse_email_context(description)
+        result = parse_email_context(description)
 
         assert result is not None
         assert result.from_address == "alice@example.com"

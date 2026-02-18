@@ -12,8 +12,6 @@ from validation import (
     convert_gmail_web_id,
     is_gmail_web_id,
     is_gmail_api_id,
-    is_valid_email,
-    normalize_email,
     sanitize_gmail_query,
 )
 
@@ -116,33 +114,6 @@ class TestGmailIdConversion:
         """Reject non-Gmail URLs."""
         with pytest.raises(ValueError, match="Not a Gmail URL"):
             extract_gmail_id("https://example.com/something")
-
-
-class TestEmailValidation:
-    """Tests for email validation."""
-
-    def test_valid_emails(self):
-        """Accept valid email addresses."""
-        assert is_valid_email("user@example.com")
-        assert is_valid_email("user.name@example.co.uk")
-        assert is_valid_email("user+tag@example.com")
-
-    def test_invalid_emails(self):
-        """Reject invalid email addresses."""
-        assert not is_valid_email("")
-        assert not is_valid_email("not-an-email")
-        assert not is_valid_email("@example.com")
-        assert not is_valid_email("user@")
-
-    def test_normalize_email(self):
-        """Normalize email addresses."""
-        assert normalize_email("User@Example.COM") == "user@example.com"
-        assert normalize_email("  user@example.com  ") == "user@example.com"
-
-    def test_normalize_rejects_invalid(self):
-        """Reject invalid emails during normalization."""
-        with pytest.raises(ValueError, match="Invalid email"):
-            normalize_email("not-an-email")
 
 
 class TestQueryEscaping:

@@ -4,7 +4,6 @@ Input validation and ID conversion utilities.
 Handles:
 - Gmail web URL/ID → API ID conversion
 - Google Drive URL → file ID extraction
-- Email validation
 
 Patterns adopted from mcp-google-workspace.
 """
@@ -26,8 +25,6 @@ GMAIL_API_ID_PATTERN = re.compile(r'^[0-9a-f]{16}$')
 GMAIL_WEB_URL_PATTERN = re.compile(r'https?://mail\.google\.com/mail/.*#[^/]+/([a-zA-Z0-9_-]+)')
 GMAIL_WEB_ID_PREFIXES = ('FM', 'KtbxL', 'QgrcJHs', 'CLL', 'Gtj')
 
-# Email pattern
-EMAIL_PATTERN = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
 
 
 # =============================================================================
@@ -409,26 +406,3 @@ def sanitize_gmail_query(query: str) -> str:
 
     return sanitized.strip()
 
-
-# =============================================================================
-# EMAIL VALIDATION
-# =============================================================================
-
-def is_valid_email(email: str) -> bool:
-    """Check if a string is a valid email address."""
-    if not email:
-        return False
-    return bool(EMAIL_PATTERN.match(email.strip()))
-
-
-def normalize_email(email: str) -> str:
-    """Normalize an email address (lowercase, strip whitespace)."""
-    if not email:
-        raise ValueError("Email is required")
-
-    email = email.strip().lower()
-
-    if not EMAIL_PATTERN.match(email):
-        raise ValueError(f"Invalid email format: {email}")
-
-    return email

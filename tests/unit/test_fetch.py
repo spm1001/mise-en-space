@@ -6,7 +6,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock, call
 from tools.fetch import (
-    detect_id_type, fetch_gmail, fetch_attachment, do_fetch, do_fetch_comments,
+    detect_id_type, fetch_gmail, fetch_attachment, do_fetch,
     _extract_from_drive, _match_exfil_file, _enrich_with_comments,
     _is_extractable_attachment, _deposit_attachment_content,
     _extract_attachment_content, _build_email_context_metadata,
@@ -1894,81 +1894,6 @@ class TestDoFetchRouting:
         mock_drive.return_value = FetchResult(path="/p", content_file="/p/c.md", format="markdown", type="doc", metadata={})
         do_fetch("f1", base_path=Path("/custom"))
         mock_drive.assert_called_once_with("f1", base_path=Path("/custom"))
-
-
-class TestDoFetchComments:
-    """Tests for do_fetch_comments."""
-
-    @patch("tools.fetch.router.detect_id_type", return_value=("drive", "f1"))
-    @patch("tools.fetch.router.fetch_file_comments")
-    @patch("tools.fetch.router.extract_comments_content", return_value="# Comments\n- test")
-    def test_success(self, mock_extract, mock_fetch, mock_detect):
-        """Successful comment fetch returns content and metadata."""
-        mock_data = MagicMock()
-        mock_data.file_id = "f1"
-        mock_data.file_name = "My Doc"
-        mock_data.comment_count = 3
-        mock_data.warnings = []
-        mock_fetch.return_value = mock_data
-
-        result = do_fetch_comments("f1")
-
-        assert result["content"] == "# Comments\n- test"
-        assert result["file_id"] == "f1"
-        assert result["comment_count"] == 3
-        assert result.get("error") is None
-
-    @patch("tools.fetch.router.detect_id_type", return_value=("drive", "f1"))
-    @patch("tools.fetch.router.fetch_file_comments")
-    @patch("tools.fetch.router.extract_comments_content", return_value="# Comments")
-    def test_with_warnings(self, mock_extract, mock_fetch, mock_detect):
-        """Warnings from comment data are included."""
-        mock_data = MagicMock()
-        mock_data.file_id = "f1"
-        mock_data.file_name = "Doc"
-        mock_data.comment_count = 1
-        mock_data.warnings = ["Author name missing"]
-        mock_fetch.return_value = mock_data
-
-        result = do_fetch_comments("f1")
-
-        assert result["warnings"] == ["Author name missing"]
-
-    @patch("tools.fetch.router.detect_id_type", return_value=("drive", "f1"))
-    @patch("tools.fetch.router.fetch_file_comments", side_effect=MiseError(ErrorKind.NOT_FOUND, "File not found"))
-    def test_mise_error(self, mock_fetch, mock_detect):
-        """MiseError returns error dict."""
-        result = do_fetch_comments("f1")
-
-        assert result["error"] is True
-        assert result["kind"] == "not_found"
-
-    @patch("tools.fetch.router.detect_id_type", return_value=("drive", "f1"))
-    @patch("tools.fetch.router.fetch_file_comments", side_effect=RuntimeError("boom"))
-    def test_generic_error(self, mock_fetch, mock_detect):
-        """Generic exception returns error dict."""
-        result = do_fetch_comments("f1")
-
-        assert result["error"] is True
-        assert result["kind"] == "unknown"
-
-    @patch("tools.fetch.router.detect_id_type", return_value=("drive", "f1"))
-    @patch("tools.fetch.router.fetch_file_comments")
-    @patch("tools.fetch.router.extract_comments_content", return_value="comments")
-    def test_passes_parameters(self, mock_extract, mock_fetch, mock_detect):
-        """Parameters are forwarded to adapter."""
-        mock_data = MagicMock()
-        mock_data.file_id = "f1"
-        mock_data.file_name = "Doc"
-        mock_data.comment_count = 0
-        mock_data.warnings = []
-        mock_fetch.return_value = mock_data
-
-        do_fetch_comments("f1", include_deleted=True, include_resolved=False, max_results=50)
-
-        mock_fetch.assert_called_once_with(
-            file_id="f1", include_deleted=True, include_resolved=False, max_results=50,
-        )
 
 
 class TestFetchGmailEdgeCases:

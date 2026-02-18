@@ -5,7 +5,7 @@ Drive file fetch — routes by MIME type, extracts content, deposits to workspac
 from pathlib import Path
 from typing import Any
 
-from adapters.drive import get_file_metadata, _parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
+from adapters.drive import get_file_metadata, parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
 from adapters.docs import fetch_document
 from adapters.sheets import fetch_spreadsheet
 from adapters.slides import fetch_presentation
@@ -34,7 +34,7 @@ def fetch_drive(file_id: str, base_path: Path | None = None) -> FetchResult | Fe
     title = metadata.get("name", "untitled")
 
     # Parse email context for cross-source linkage (exfil'd files)
-    email_context = _parse_email_context(metadata.get("description"))
+    email_context = parse_email_context(metadata.get("description"))
 
     # Route by MIME type
     if mime_type == GOOGLE_DOC_MIME:

@@ -32,6 +32,20 @@ from mcp.server.fastmcp import FastMCP
 from tools import do_search, do_fetch, do_create, do_move, do_overwrite, do_prepend, do_append, do_replace_text
 from resources.tools import get_tool_registry
 
+
+def _resolve_source(source: str | None, base_path: str | None) -> Path | None:
+    """Resolve source path relative to base_path.
+
+    Returns None if no source. Raises ValueError if source given without base_path
+    (MCP server's cwd is not Claude's cwd).
+    """
+    if not source:
+        return None
+    if not base_path:
+        raise ValueError("base_path is required when using source — pass your working directory")
+    source_path = Path(source)
+    return source_path if source_path.is_absolute() else Path(base_path) / source_path
+
 # Initialize MCP server
 mcp = FastMCP("Google Workspace v2")
 
@@ -140,14 +154,12 @@ def do(
         file_id: File ID
         web_link: URL to view/edit
     """
-    if operation == "create":
-        # Resolve source path
-        resolved_source = None
-        if source:
-            resolved_base = Path(base_path) if base_path else Path.cwd()
-            source_path = Path(source)
-            resolved_source = source_path if source_path.is_absolute() else resolved_base / source_path
+    try:
+        resolved_source = _resolve_source(source, base_path)
+    except ValueError as e:
+        return {"error": True, "kind": "invalid_input", "message": str(e)}
 
+    if operation == "create":
         if not content and not source:
             return {"error": True, "kind": "invalid_input",
                     "message": "create requires 'content' or 'source'"}
@@ -163,11 +175,6 @@ def do(
         if not file_id:
             return {"error": True, "kind": "invalid_input",
                     "message": "overwrite requires 'file_id'"}
-        resolved_source = None
-        if source:
-            resolved_base = Path(base_path) if base_path else Path.cwd()
-            source_path = Path(source)
-            resolved_source = source_path if source_path.is_absolute() else resolved_base / source_path
         return do_overwrite(file_id, content=content, source=resolved_source)
 
     if operation == "prepend":
@@ -409,7 +416,7 @@ def docs_do() -> str:
     """Detailed documentation for the do tool."""
     return """# do
 
-Act on Google Workspace — create, move, rename, edit.
+Act on Google Workspace — create, move, overwrite, and edit documents.
 
 ## Operations
 
@@ -417,22 +424,27 @@ Act on Google Workspace — create, move, rename, edit.
 |-----------|-------------|-----------------|
 | `create` | Create Doc/Sheet from content or deposit | `content`+`title` OR `source` |
 | `move` | Move file to different folder | `file_id`, `destination_folder_id` |
+| `overwrite` | Replace full document content | `file_id`, plus `content` OR `source` |
+| `prepend` | Insert text at start of document | `file_id`, `content` |
+| `append` | Insert text at end of document | `file_id`, `content` |
+| `replace_text` | Find and replace text in document | `file_id`, `find`, `content` |
 
-More operations coming: overwrite, insert, rename.
+**Overwrite** destroys existing content (images, tables, formatting). Use `prepend`/`append`/`replace_text` when existing content matters.
 
 ## Parameters
 
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `operation` | str | 'create' | What to do |
-| `content` | str | None | Inline content — markdown (doc) or CSV (sheet) |
-| `title` | str | None | Document title (falls back to manifest title with source) |
-| `doc_type` | str | 'doc' | 'doc', 'sheet', or 'slides' (for create) |
-| `folder_id` | str | None | Destination folder ID (for create) |
-| `source` | str | None | Path to deposit folder (reads content.md or content.csv) |
-| `base_path` | str | None | Working directory for resolving relative source paths |
-| `file_id` | str | None | Target file ID (for move) |
-| `destination_folder_id` | str | None | Where to move the file (for move) |
+| Param | Type | Default | Used by |
+|-------|------|---------|---------|
+| `operation` | str | 'create' | All |
+| `content` | str | None | create, overwrite, prepend, append, replace_text (replacement) |
+| `title` | str | None | create |
+| `doc_type` | str | 'doc' | create ('doc', 'sheet', 'slides') |
+| `folder_id` | str | None | create |
+| `file_id` | str | None | move, overwrite, prepend, append, replace_text |
+| `destination_folder_id` | str | None | move |
+| `source` | str | None | create, overwrite (path to deposit folder) |
+| `base_path` | str | None | Required with source (your cwd) |
+| `find` | str | None | replace_text (case-sensitive) |
 
 ## Deposit-Then-Publish (source param)
 
@@ -475,17 +487,6 @@ After creation, manifest.json is enriched with `status`, `file_id`, `web_link`, 
 }
 ```
 
-## Markdown Conversion (create)
-
-Google's native markdown import handles:
-- Headings (H1-H6)
-- Bold, italic, strikethrough
-- Lists (ordered, unordered, nested)
-- Links
-- Tables
-- Code blocks
-- Task lists (`- [ ]` and `- [x]`)
-
 ## Examples
 
 ```python
@@ -495,11 +496,20 @@ do(operation="create", content="# Meeting Notes\\n\\n- Item 1", title="Team Sync
 # Create from deposit folder (deposit-then-publish)
 do(operation="create", source="mise/sheet--q4-analysis--draft/", title="Q4 Analysis", doc_type="sheet", base_path="/path/to/project")
 
-# Create in specific folder
-do(operation="create", content="| A | B |\\n|---|---|", title="Data", doc_type="sheet", folder_id="1xyz...")
-
 # Move a file to a different folder
 do(operation="move", file_id="1abc...", destination_folder_id="1xyz...")
+
+# Overwrite document content (replaces everything)
+do(operation="overwrite", file_id="1abc...", content="# New Content\\n\\nFresh start.")
+
+# Prepend text to start of document
+do(operation="prepend", file_id="1abc...", content="# Important Update\\n\\n")
+
+# Append text to end of document
+do(operation="append", file_id="1abc...", content="\\n\\n---\\nLast updated: 2026-02-18")
+
+# Find and replace text (case-sensitive)
+do(operation="replace_text", file_id="1abc...", find="DRAFT", content="FINAL")
 ```
 """
 

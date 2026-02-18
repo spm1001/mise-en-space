@@ -11,8 +11,7 @@ from typing import Any
 
 from adapters.drive import search_files
 from adapters.gmail import search_threads
-from adapters.activity import search_comment_activities, get_file_activities
-from models import DriveSearchResult, GmailSearchResult, MiseError, SearchResult, CommentActivity
+from models import DriveSearchResult, GmailSearchResult, MiseError, SearchResult
 from validation import escape_drive_query, sanitize_gmail_query
 from workspace.manager import write_search_results
 
@@ -132,86 +131,3 @@ def do_search(
     return result
 
 
-def format_activity_result(activity: CommentActivity) -> dict[str, Any]:
-    """Convert CommentActivity to JSON-serializable dict."""
-    return {
-        "activity_id": activity.activity_id,
-        "timestamp": activity.timestamp,
-        "actor": {
-            "name": activity.actor.name,
-            "email": activity.actor.email,
-        },
-        "target": {
-            "file_id": activity.target.file_id,
-            "file_name": activity.target.file_name,
-            "mime_type": activity.target.mime_type,
-            "web_link": activity.target.web_link,
-        },
-        "action_type": activity.action_type,
-        "mentioned_users": activity.mentioned_users,
-    }
-
-
-def do_search_activity(
-    filter_type: str = "comments",
-    file_id: str | None = None,
-    max_results: int = 50,
-) -> dict[str, Any]:
-    """
-    Search recent activity across Drive.
-
-    Useful for finding:
-    - Action items (comments mentioning you)
-    - Recent discussions on your files
-    - Activity history for a specific file
-
-    Args:
-        filter_type: Type of activity to find:
-            - "comments": Comment-related activities (default)
-            - "edits": Edit-related activities
-            - "all": All activities
-        file_id: If provided, get activity for this specific file only
-        max_results: Maximum activities to return
-
-    Returns:
-        Dict with:
-        - activities: List of activity objects
-        - next_page_token: For pagination (if more results exist)
-        - warnings: Any issues encountered
-        - error: True if operation failed
-    """
-    try:
-        if file_id:
-            # Get activity for specific file
-            api_filter = filter_type if filter_type in ("comments", "edits") else None
-            result = get_file_activities(file_id, page_size=max_results, filter_type=api_filter)
-        else:
-            # Search all comment activities
-            if filter_type != "comments":
-                # Only comment search is supported for cross-file queries
-                return {
-                    "error": True,
-                    "kind": "invalid_input",
-                    "message": "Cross-file search only supports filter_type='comments'. Use file_id for other activity types.",
-                }
-            result = search_comment_activities(page_size=max_results)
-
-        return {
-            "activities": [format_activity_result(a) for a in result.activities],
-            "activity_count": len(result.activities),
-            "next_page_token": result.next_page_token,
-            "warnings": result.warnings if result.warnings else None,
-        }
-
-    except MiseError as e:
-        return {
-            "error": True,
-            "kind": e.kind.value,
-            "message": e.message,
-        }
-    except Exception as e:
-        return {
-            "error": True,
-            "kind": "unknown",
-            "message": str(e),
-        }

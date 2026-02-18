@@ -27,7 +27,7 @@ from retry import with_retry
 from adapters.services import get_drive_service
 
 
-def _parse_email_context(description: str | None) -> EmailContext | None:
+def parse_email_context(description: str | None) -> EmailContext | None:
     """
     Parse email context from exfil'd file description.
 
@@ -311,7 +311,7 @@ def search_files(
             for o in file.get("owners", [])
         ]
         description = file.get("description")
-        email_context = _parse_email_context(description)
+        email_context = parse_email_context(description)
 
         results.append(
             DriveSearchResult(

@@ -136,62 +136,6 @@ def _convert_html_to_markdown(html: str) -> tuple[str, bool]:
 
 
 # =============================================================================
-# DRIVE LINK EXTRACTION
-# =============================================================================
-
-
-def _extract_drive_links(text: str) -> list[dict[str, str]]:
-    """
-    Extract Google Drive/Docs links from text.
-
-    People often say "attached" when they mean "linked". This extracts
-    Drive file IDs so they can be surfaced alongside real attachments.
-
-    Returns:
-        List of dicts with 'file_id' and 'url' keys
-    """
-    if not text:
-        return []
-
-    # Patterns for various Google Docs URLs
-    patterns = [
-        # drive.google.com/open?id=XXX
-        r'https?://drive\.google\.com/open\?id=([a-zA-Z0-9_-]+)',
-        # drive.google.com/file/d/XXX
-        r'https?://drive\.google\.com/file/d/([a-zA-Z0-9_-]+)',
-        # drive.google.com/drive/folders/XXX
-        r'https?://drive\.google\.com/drive/folders/([a-zA-Z0-9_-]+)',
-        # docs.google.com/document/d/XXX
-        r'https?://docs\.google\.com/document/d/([a-zA-Z0-9_-]+)',
-        # docs.google.com/spreadsheets/d/XXX
-        r'https?://docs\.google\.com/spreadsheets/d/([a-zA-Z0-9_-]+)',
-        # docs.google.com/presentation/d/XXX
-        r'https?://docs\.google\.com/presentation/d/([a-zA-Z0-9_-]+)',
-        # docs.google.com/forms/d/XXX
-        r'https?://docs\.google\.com/forms/d/([a-zA-Z0-9_-]+)',
-        # docs.google.com/drawings/d/XXX
-        r'https?://docs\.google\.com/drawings/d/([a-zA-Z0-9_-]+)',
-        # sites.google.com/d/XXX (new Sites)
-        r'https?://sites\.google\.com/d/([a-zA-Z0-9_-]+)',
-    ]
-
-    links: list[dict[str, str]] = []
-    seen_ids: set[str] = set()
-
-    for pattern in patterns:
-        for match in re.finditer(pattern, text):
-            file_id = match.group(1)
-            if file_id not in seen_ids:
-                seen_ids.add(file_id)
-                links.append({
-                    'file_id': file_id,
-                    'url': match.group(0)
-                })
-
-    return links
-
-
-# =============================================================================
 # MESSAGE EXTRACTION
 # =============================================================================
 

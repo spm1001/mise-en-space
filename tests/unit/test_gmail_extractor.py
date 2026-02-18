@@ -190,49 +190,6 @@ class TestHTMLCleaning:
         assert "Visible" in result
 
 
-class TestDriveLinkExtraction:
-    """Tests for extracting Google Drive links from text."""
-
-    @pytest.mark.parametrize("url,expected_id", [
-        ("https://docs.google.com/document/d/1ABC123_test/edit", "1ABC123_test"),
-        ("https://docs.google.com/spreadsheets/d/1XYZ789/edit", "1XYZ789"),
-        ("https://docs.google.com/presentation/d/1SLIDES/edit", "1SLIDES"),
-        ("https://drive.google.com/file/d/0BwGZ5_abc123/view", "0BwGZ5_abc123"),
-    ])
-    def test_extracts_drive_link_variants(self, url, expected_id):
-        """Extract Drive links from various URL formats."""
-        from extractors.gmail import _extract_drive_links
-
-        links = _extract_drive_links(f"See {url}")
-        assert len(links) == 1
-        assert links[0]["file_id"] == expected_id
-
-    def test_extracts_multiple_links(self):
-        """Extract multiple Drive links."""
-        from extractors.gmail import _extract_drive_links
-
-        text = """
-        Doc: https://docs.google.com/document/d/doc123/edit
-        Sheet: https://docs.google.com/spreadsheets/d/sheet456/edit
-        """
-        links = _extract_drive_links(text)
-        assert len(links) == 2
-        file_ids = {l["file_id"] for l in links}
-        assert "doc123" in file_ids
-        assert "sheet456" in file_ids
-
-    def test_deduplicates_links(self):
-        """Don't return same link twice."""
-        from extractors.gmail import _extract_drive_links
-
-        text = """
-        First mention: https://docs.google.com/document/d/same123/edit
-        Second mention: https://docs.google.com/document/d/same123/view
-        """
-        links = _extract_drive_links(text)
-        assert len(links) == 1
-
-
 class TestMessageExtraction:
     """Tests for extracting content from EmailMessage."""
 

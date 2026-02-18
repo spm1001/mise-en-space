@@ -13,9 +13,6 @@ from workspace import (
     write_charts_metadata,
     write_manifest,
     enrich_manifest,
-    list_deposit_folders,
-    parse_folder_name,
-    get_deposit_summary,
 )
 from workspace.manager import write_search_results
 
@@ -210,107 +207,6 @@ class TestWriteManifest:
         manifest = json.loads(path.read_text())
         assert manifest["slide_count"] == 43
         assert manifest["has_thumbnails"] is True
-
-
-class TestListDepositFolders:
-    """Tests for listing deposit folders."""
-
-    def test_lists_folders(self, tmp_path: Path) -> None:
-        """Test listing deposit folders."""
-        # Create some folders
-        get_deposit_folder("slides", "A", "id1", tmp_path)
-        get_deposit_folder("doc", "B", "id2", tmp_path)
-        get_deposit_folder("sheet", "C", "id3", tmp_path)
-
-        folders = list_deposit_folders(tmp_path)
-
-        assert len(folders) == 3
-
-    def test_empty_directory(self, tmp_path: Path) -> None:
-        """Test with no deposits."""
-        folders = list_deposit_folders(tmp_path)
-        assert folders == []
-
-
-class TestParseFolderName:
-    """Tests for parsing folder names."""
-
-    def test_parses_valid_name(self, tmp_path: Path) -> None:
-        """Test parsing valid folder name."""
-        folder = tmp_path / "mise" / "slides--ami-deck-2026--1OepZju"
-        folder.mkdir(parents=True)
-
-        result = parse_folder_name(folder)
-
-        assert result == {
-            "type": "slides",
-            "title_slug": "ami-deck-2026",
-            "id": "1OepZju",
-        }
-
-    def test_handles_title_with_dashes(self, tmp_path: Path) -> None:
-        """Test titles that contain double-dashes."""
-        folder = tmp_path / "mise" / "doc--q4-planning--draft--abc123"
-        folder.mkdir(parents=True)
-
-        result = parse_folder_name(folder)
-
-        assert result is not None
-        assert result["type"] == "doc"
-        assert result["title_slug"] == "q4-planning--draft"
-        assert result["id"] == "abc123"
-
-    def test_returns_none_for_invalid(self, tmp_path: Path) -> None:
-        """Test that invalid names return None."""
-        folder = tmp_path / "random-folder"
-        folder.mkdir(parents=True)
-
-        result = parse_folder_name(folder)
-
-        assert result is None
-
-
-class TestGetDepositSummary:
-    """Tests for deposit summary."""
-
-    def test_summary_with_thumbnails(self, tmp_path: Path) -> None:
-        """Test summary includes thumbnail info."""
-        folder = get_deposit_folder("slides", "Test", "abc123", tmp_path)
-        write_content(folder, "# Test")
-        write_thumbnail(folder, b"png1", 0)
-        write_thumbnail(folder, b"png2", 1)
-
-        summary = get_deposit_summary(folder)
-
-        assert summary["type"] == "slides"
-        assert summary["content_file"] == "content.md"
-        assert summary["thumbnail_count"] == 2
-        assert "slide_01.png" in summary["thumbnails"]
-        assert "slide_02.png" in summary["thumbnails"]
-
-    def test_summary_without_thumbnails(self, tmp_path: Path) -> None:
-        """Test summary for non-slides content."""
-        folder = get_deposit_folder("doc", "Notes", "xyz789", tmp_path)
-        write_content(folder, "# Notes")
-
-        summary = get_deposit_summary(folder)
-
-        assert summary["type"] == "doc"
-        assert summary["content_file"] == "content.md"
-        assert "thumbnails" not in summary
-
-    def test_summary_with_charts(self, tmp_path: Path) -> None:
-        """Summary includes chart info when charts present."""
-        folder = get_deposit_folder("sheet", "Data", "abc123", tmp_path)
-        write_content(folder, "# Data")
-        write_chart(folder, b"chart1", 0)
-        write_chart(folder, b"chart2", 1)
-
-        summary = get_deposit_summary(folder)
-
-        assert summary["chart_count"] == 2
-        assert "chart_01.png" in summary["charts"]
-        assert "chart_02.png" in summary["charts"]
 
 
 class TestWriteImage:
