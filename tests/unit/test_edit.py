@@ -188,3 +188,52 @@ class TestDoReplaceText:
         result = do_replace_text("doc123", "nonexistent", "replacement")
 
         assert result["cues"]["occurrences_changed"] == 0
+
+
+class TestEditErrorPaths:
+    """API errors surface cleanly for all edit operations."""
+
+    @patch("retry.time.sleep")
+    @patch("tools.edit.get_docs_service")
+    def test_prepend_doc_not_found(self, mock_svc, _sleep) -> None:
+        from googleapiclient.errors import HttpError
+        import httplib2
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        resp = httplib2.Response({"status": "404"})
+        mock_service.documents().get().execute.side_effect = HttpError(resp, b"Not found")
+
+        result = do_prepend("nonexistent", "hello")
+
+        assert result["error"] is True
+
+    @patch("retry.time.sleep")
+    @patch("tools.edit.get_docs_service")
+    def test_append_permission_denied(self, mock_svc, _sleep) -> None:
+        from googleapiclient.errors import HttpError
+        import httplib2
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        resp = httplib2.Response({"status": "403"})
+        mock_service.documents().get().execute.side_effect = HttpError(resp, b"Forbidden")
+
+        result = do_append("readonly", "hello")
+
+        assert result["error"] is True
+
+    @patch("retry.time.sleep")
+    @patch("tools.edit.get_docs_service")
+    def test_replace_text_doc_not_found(self, mock_svc, _sleep) -> None:
+        from googleapiclient.errors import HttpError
+        import httplib2
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        resp = httplib2.Response({"status": "404"})
+        mock_service.documents().get().execute.side_effect = HttpError(resp, b"Not found")
+
+        result = do_replace_text("nonexistent", "find", "replace")
+
+        assert result["error"] is True

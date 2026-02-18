@@ -157,9 +157,22 @@ def _overwrite_doc(file_id: str, markdown: str) -> dict[str, Any]:
     }
 
 
+def _utf16_len(text: str) -> int:
+    """Count UTF-16 code units (what the Docs API uses for indices).
+
+    Python len() counts Unicode code points. The Docs API counts UTF-16 code
+    units. Characters outside the BMP (emoji, some CJK) are 2 UTF-16 code
+    units but 1 Python code point. Using Python len() for Docs API indices
+    produces wrong positions for any non-BMP content.
+    """
+    return len(text.encode("utf-16-le")) // 2
+
+
 def _strip_headings(markdown: str) -> tuple[str, list[tuple[int, int, int]]]:
     """
     Convert markdown headings to plain text and record their positions.
+
+    Positions are in UTF-16 code units (Docs API index convention).
 
     Returns:
         (plain_text, heading_map) where heading_map is list of
@@ -176,13 +189,13 @@ def _strip_headings(markdown: str) -> tuple[str, list[tuple[int, int, int]]]:
         if match:
             hashes, text = match.groups()
             level = len(hashes)
-            # Record position of heading text in output
-            heading_map.append((current_pos, current_pos + len(text), level))
+            text_len = _utf16_len(text)
+            heading_map.append((current_pos, current_pos + text_len, level))
             output_lines.append(text)
-            current_pos += len(text) + 1  # +1 for newline
+            current_pos += text_len + 1  # +1 for newline (\n = 1 UTF-16 unit)
         else:
             output_lines.append(line)
-            current_pos += len(line) + 1
+            current_pos += _utf16_len(line) + 1
 
     plain_text = "\n".join(output_lines)
     return plain_text, heading_map

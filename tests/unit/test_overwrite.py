@@ -57,6 +57,23 @@ class TestStripHeadings:
         # H2 starts at position 14 (after "intro\nH1\nbody\n")
         assert headings[1] == (14, 16, 2)
 
+    def test_heading_positions_with_emoji(self) -> None:
+        """Docs API uses UTF-16 code units. Emoji are 2 units, not 1."""
+        # 🎯 is U+1F3AF — a surrogate pair in UTF-16 (2 code units)
+        text = "🎯 intro\n# Title"
+        plain, headings = _strip_headings(text)
+        assert plain == "🎯 intro\nTitle"
+        # "🎯 intro\n" = 2 (emoji) + 7 (" intro\n") = 9 UTF-16 units
+        assert headings[0] == (9, 14, 1)  # "Title" = 5 UTF-16 units
+
+    def test_heading_with_emoji_in_heading(self) -> None:
+        """Emoji inside heading text affects end position."""
+        text = "# 🚀 Launch"
+        plain, headings = _strip_headings(text)
+        assert plain == "🚀 Launch"
+        # "🚀 Launch" = 2 + 7 = 9 UTF-16 units
+        assert headings[0] == (0, 9, 1)
+
 
 class TestDoOverwriteValidation:
     """Input validation via do() wrapper."""
@@ -203,3 +220,41 @@ class TestDoOverwrite:
         range_ = delete_req["deleteContentRange"]["range"]
         assert range_["startIndex"] == 1
         assert range_["endIndex"] == 99  # endIndex - 1
+
+    @patch("retry.time.sleep")
+    @patch("tools.overwrite.get_docs_service")
+    def test_overwrite_doc_not_found(self, mock_svc, _sleep) -> None:
+        """404 from Docs API becomes clean error."""
+        from googleapiclient.errors import HttpError
+        import httplib2
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+
+        resp = httplib2.Response({"status": "404"})
+        mock_service.documents().get().execute.side_effect = HttpError(
+            resp, b"Document not found"
+        )
+
+        result = do_overwrite("nonexistent", content="hello")
+
+        assert result["error"] is True
+
+    @patch("retry.time.sleep")
+    @patch("tools.overwrite.get_docs_service")
+    def test_overwrite_permission_denied(self, mock_svc, _sleep) -> None:
+        """403 from Docs API becomes clean error."""
+        from googleapiclient.errors import HttpError
+        import httplib2
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+
+        resp = httplib2.Response({"status": "403"})
+        mock_service.documents().get().execute.side_effect = HttpError(
+            resp, b"Forbidden"
+        )
+
+        result = do_overwrite("readonly_doc", content="hello")
+
+        assert result["error"] is True
