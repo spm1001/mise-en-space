@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from adapters.drive import fetch_file_comments
+from adapters.pdf import PdfExtractionResult
 from extractors.comments import extract_comments_content
 from models import MiseError, EmailContext
-from workspace import write_content
+from workspace import write_content, write_page_thumbnail
 
 
 def _enrich_with_comments(file_id: str, folder: Path) -> tuple[int, str | None]:
@@ -44,6 +45,43 @@ def _enrich_with_comments(file_id: str, folder: Path) -> tuple[int, str | None]:
         return (0, None)
     except Exception:
         return (0, None)
+
+
+def _deposit_pdf_thumbnails(
+    folder: Path,
+    result: PdfExtractionResult,
+) -> dict[str, Any]:
+    """
+    Write PDF page thumbnails to deposit folder and return manifest extras.
+
+    Shared by drive, web, and gmail fetch paths. Returns a dict of
+    thumbnail-related fields to merge into the manifest.
+
+    Returns empty dict if no thumbnails available.
+    """
+    if not result.thumbnails:
+        return {}
+
+    thumbnail_count = 0
+    for page_img in result.thumbnails.pages:
+        write_page_thumbnail(folder, page_img.image_bytes, page_img.page_index)
+        thumbnail_count += 1
+
+    extras: dict[str, Any] = {
+        "page_count": result.thumbnails.page_count,
+        "has_thumbnails": thumbnail_count > 0,
+        "thumbnail_count": thumbnail_count,
+        "thumbnail_method": result.thumbnails.method,
+    }
+
+    # Track pages that failed to render (gaps between expected and actual)
+    rendered_indices = {p.page_index for p in result.thumbnails.pages}
+    expected_count = min(result.thumbnails.page_count, 100)
+    missing = [i + 1 for i in range(expected_count) if i not in rendered_indices]
+    if missing:
+        extras["thumbnail_failures"] = missing
+
+    return extras
 
 
 def _build_cues(

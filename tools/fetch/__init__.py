@@ -10,7 +10,7 @@ from .router import do_fetch, do_fetch_comments, detect_id_type
 # Common helpers
 from .common import (
     _build_cues, _build_email_context_metadata, _enrich_with_comments,
-    is_text_file, TEXT_MIME_TYPES,
+    _deposit_pdf_thumbnails, is_text_file, TEXT_MIME_TYPES,
 )
 
 # Drive fetchers

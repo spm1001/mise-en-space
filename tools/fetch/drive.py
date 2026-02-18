@@ -18,11 +18,11 @@ from extractors.docs import extract_doc_content
 from extractors.sheets import extract_sheets_content, extract_sheets_per_tab
 from extractors.slides import extract_slides_content
 from models import FetchResult, FetchError, EmailContext
-from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_page_thumbnail, write_image, write_chart, write_charts_metadata, slugify
+from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata, slugify
 
 from .common import (
-    _build_cues, _build_email_context_metadata, _enrich_with_comments,
-    is_text_file,
+    _build_cues, _build_email_context_metadata, _deposit_pdf_thumbnails,
+    _enrich_with_comments, is_text_file,
 )
 
 
@@ -375,28 +375,14 @@ def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context:
     folder = get_deposit_folder("pdf", title, file_id, base_path=base_path)
     content_path = write_content(folder, result.content)
 
-    # Deposit page thumbnails
-    thumbnail_count = 0
-    if result.thumbnails:
-        for page_img in result.thumbnails.pages:
-            write_page_thumbnail(folder, page_img.image_bytes, page_img.page_index)
-            thumbnail_count += 1
+    # Deposit page thumbnails (shared helper writes PNGs, returns manifest extras)
+    thumb_extras = _deposit_pdf_thumbnails(folder, result)
 
     extra: dict[str, Any] = {
         "char_count": result.char_count,
         "extraction_method": result.method,
+        **thumb_extras,
     }
-    if result.thumbnails:
-        extra["page_count"] = result.thumbnails.page_count
-        extra["has_thumbnails"] = thumbnail_count > 0
-        extra["thumbnail_count"] = thumbnail_count
-        extra["thumbnail_method"] = result.thumbnails.method
-        # Track pages that failed to render (gaps between expected and actual)
-        rendered_indices = {p.page_index for p in result.thumbnails.pages}
-        expected_count = min(result.thumbnails.page_count, 100)
-        missing = [i + 1 for i in range(expected_count) if i not in rendered_indices]
-        if missing:
-            extra["thumbnail_failures"] = missing
     if result.warnings:
         extra["warnings"] = result.warnings
     write_manifest(folder, "pdf", title, file_id, extra=extra)

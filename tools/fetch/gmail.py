@@ -8,12 +8,12 @@ from typing import Any
 from adapters.drive import download_file, lookup_exfiltrated
 from adapters.gmail import fetch_thread, download_attachment
 from adapters.office import extract_office_content, get_office_type_from_mime
-from adapters.pdf import extract_pdf_content
+from adapters.pdf import extract_pdf_content, render_pdf_pages
 from extractors.gmail import extract_thread_content
 from models import MiseError, FetchResult, FetchError, EmailAttachment
 from workspace import get_deposit_folder, write_content, write_manifest, write_image
 
-from .common import _build_cues
+from .common import _build_cues, _deposit_pdf_thumbnails
 
 
 # MIME types for Office files that are too slow to extract eagerly (5-10s each)
@@ -514,8 +514,17 @@ def fetch_attachment(
     if mime_type == "application/pdf":
         pdf_result = extract_pdf_content(file_bytes=content_bytes, file_id=thread_id)
 
+        # Render thumbnails (own folder, no collision risk)
+        try:
+            pdf_result.thumbnails = render_pdf_pages(file_bytes=content_bytes)
+        except Exception as e:
+            pdf_result.warnings.append(f"Thumbnail rendering failed: {e}")
+
         folder = get_deposit_folder("pdf", title, thread_id, base_path=base_path)
         content_path = write_content(folder, pdf_result.content)
+
+        # Deposit thumbnails via shared helper
+        thumb_extras = _deposit_pdf_thumbnails(folder, pdf_result)
 
         all_warnings = warnings + pdf_result.warnings
         extra = {
@@ -523,6 +532,7 @@ def fetch_attachment(
             "gmail_thread_id": thread_id,
             "extraction_method": pdf_result.method,
             "char_count": pdf_result.char_count,
+            **thumb_extras,
         }
         if all_warnings:
             extra["warnings"] = all_warnings

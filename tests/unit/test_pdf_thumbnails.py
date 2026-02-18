@@ -319,24 +319,24 @@ class TestPdfThumbnailDeposit:
     @patch("tools.fetch.drive.fetch_and_extract_pdf")
     @patch("tools.fetch.drive.get_deposit_folder")
     @patch("tools.fetch.drive.write_content")
-    @patch("tools.fetch.drive.write_page_thumbnail")
+    @patch("tools.fetch.drive._deposit_pdf_thumbnails")
     @patch("tools.fetch.drive.write_manifest")
-    def test_thumbnails_deposited_as_page_pngs(
+    def test_thumbnails_deposited_via_shared_helper(
         self,
         mock_manifest: MagicMock,
-        mock_write_thumb: MagicMock,
+        mock_deposit_thumbs: MagicMock,
         mock_write_content: MagicMock,
         mock_get_folder: MagicMock,
         mock_extract: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """fetch_pdf deposits page_01.png through page_NN.png."""
+        """fetch_pdf calls shared helper and merges extras into manifest."""
         from tools.fetch.drive import fetch_pdf
 
         folder = tmp_path / "pdf--test--abc123"
         folder.mkdir()
 
-        mock_extract.return_value = PdfExtractionResult(
+        result_obj = PdfExtractionResult(
             content="# PDF Content",
             method="markitdown",
             char_count=100,
@@ -350,41 +350,43 @@ class TestPdfThumbnailDeposit:
                 method="pdf2image",
             ),
         )
+        mock_extract.return_value = result_obj
+        mock_deposit_thumbs.return_value = {
+            "page_count": 3,
+            "has_thumbnails": True,
+            "thumbnail_count": 3,
+            "thumbnail_method": "pdf2image",
+        }
         mock_get_folder.return_value = folder
         mock_write_content.return_value = folder / "content.md"
 
-        result = fetch_pdf("abc123", "Test PDF", {"mimeType": "application/pdf"})
+        fetch_pdf("abc123", "Test PDF", {"mimeType": "application/pdf"})
 
-        # Three page thumbnails written
-        assert mock_write_thumb.call_count == 3
-        calls = mock_write_thumb.call_args_list
-        assert calls[0].args == (folder, b"PNG1", 0)
-        assert calls[1].args == (folder, b"PNG2", 1)
-        assert calls[2].args == (folder, b"PNG3", 2)
+        # Shared helper called with folder and result
+        mock_deposit_thumbs.assert_called_once_with(folder, result_obj)
 
-        # Manifest includes thumbnail metadata
+        # Manifest includes thumbnail metadata via spread
         manifest_call = mock_manifest.call_args
         extra = manifest_call.kwargs.get("extra") or manifest_call[1].get("extra") or (manifest_call[0][4] if len(manifest_call[0]) > 4 else {})
         assert extra["page_count"] == 3
         assert extra["has_thumbnails"] is True
         assert extra["thumbnail_count"] == 3
-        assert extra["thumbnail_method"] == "pdf2image"
 
     @patch("tools.fetch.drive.fetch_and_extract_pdf")
     @patch("tools.fetch.drive.get_deposit_folder")
     @patch("tools.fetch.drive.write_content")
-    @patch("tools.fetch.drive.write_page_thumbnail")
+    @patch("tools.fetch.drive._deposit_pdf_thumbnails")
     @patch("tools.fetch.drive.write_manifest")
     def test_no_thumbnails_no_manifest_fields(
         self,
         mock_manifest: MagicMock,
-        mock_write_thumb: MagicMock,
+        mock_deposit_thumbs: MagicMock,
         mock_write_content: MagicMock,
         mock_get_folder: MagicMock,
         mock_extract: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """When thumbnails=None, manifest doesn't include thumbnail fields."""
+        """When thumbnails=None, shared helper returns empty dict."""
         from tools.fetch.drive import fetch_pdf
 
         folder = tmp_path / "pdf--test--abc123"
@@ -396,12 +398,11 @@ class TestPdfThumbnailDeposit:
             char_count=100,
             thumbnails=None,
         )
+        mock_deposit_thumbs.return_value = {}
         mock_get_folder.return_value = folder
         mock_write_content.return_value = folder / "content.md"
 
         fetch_pdf("abc123", "Test PDF", {"mimeType": "application/pdf"})
-
-        mock_write_thumb.assert_not_called()
 
         manifest_call = mock_manifest.call_args
         extra = manifest_call.kwargs.get("extra") or manifest_call[1].get("extra") or (manifest_call[0][4] if len(manifest_call[0]) > 4 else {})
@@ -414,7 +415,7 @@ class TestWebPdfThumbnails:
 
     @patch("tools.fetch.web.render_pdf_pages")
     @patch("tools.fetch.web.extract_pdf_content")
-    @patch("tools.fetch.web.write_page_thumbnail")
+    @patch("tools.fetch.web._deposit_pdf_thumbnails")
     @patch("tools.fetch.web.get_deposit_folder")
     @patch("tools.fetch.web.write_content")
     @patch("tools.fetch.web.write_manifest")
@@ -423,7 +424,7 @@ class TestWebPdfThumbnails:
         mock_manifest: MagicMock,
         mock_write_content: MagicMock,
         mock_get_folder: MagicMock,
-        mock_write_thumb: MagicMock,
+        mock_deposit_thumbs: MagicMock,
         mock_extract: MagicMock,
         mock_render: MagicMock,
         tmp_path: Path,
@@ -453,6 +454,7 @@ class TestWebPdfThumbnails:
             page_count=1,
             method="pdf2image",
         )
+        mock_deposit_thumbs.return_value = {"page_count": 1, "has_thumbnails": True, "thumbnail_count": 1}
         folder = tmp_path / "pdf--doc--hash"
         folder.mkdir()
         mock_get_folder.return_value = folder
@@ -461,11 +463,11 @@ class TestWebPdfThumbnails:
         result = _fetch_web_pdf("https://example.com/doc.pdf", web_data, base_path=tmp_path)
 
         mock_render.assert_called_once_with(file_bytes=b"%PDF-test-content")
-        mock_write_thumb.assert_called_once()
+        mock_deposit_thumbs.assert_called_once()
 
     @patch("tools.fetch.web.render_pdf_pages")
     @patch("tools.fetch.web.extract_pdf_content")
-    @patch("tools.fetch.web.write_page_thumbnail")
+    @patch("tools.fetch.web._deposit_pdf_thumbnails")
     @patch("tools.fetch.web.get_deposit_folder")
     @patch("tools.fetch.web.write_content")
     @patch("tools.fetch.web.write_manifest")
@@ -474,7 +476,7 @@ class TestWebPdfThumbnails:
         mock_manifest: MagicMock,
         mock_write_content: MagicMock,
         mock_get_folder: MagicMock,
-        mock_write_thumb: MagicMock,
+        mock_deposit_thumbs: MagicMock,
         mock_extract: MagicMock,
         mock_render: MagicMock,
         tmp_path: Path,
@@ -507,6 +509,7 @@ class TestWebPdfThumbnails:
             page_count=1,
             method="pdf2image",
         )
+        mock_deposit_thumbs.return_value = {"page_count": 1, "has_thumbnails": True, "thumbnail_count": 1}
         folder = tmp_path / "pdf--big--hash"
         folder.mkdir()
         mock_get_folder.return_value = folder
@@ -515,7 +518,7 @@ class TestWebPdfThumbnails:
         result = _fetch_web_pdf("https://example.com/big.pdf", web_data, base_path=tmp_path)
 
         mock_render.assert_called_once_with(file_path=temp_pdf)
-        mock_write_thumb.assert_called_once()
+        mock_deposit_thumbs.assert_called_once()
 
     @patch("tools.fetch.web.render_pdf_pages")
     @patch("tools.fetch.web.extract_pdf_content")
@@ -561,6 +564,167 @@ class TestWebPdfThumbnails:
 
         assert result.type == "pdf"
         assert result.format == "markdown"
+
+
+class TestDepositPdfThumbnailsHelper:
+    """Test the shared _deposit_pdf_thumbnails helper."""
+
+    def test_writes_pngs_and_returns_extras(self, tmp_path: Path) -> None:
+        """Helper writes page PNGs and returns manifest extras dict."""
+        from tools.fetch.common import _deposit_pdf_thumbnails
+
+        folder = tmp_path / "deposit"
+        folder.mkdir()
+
+        result = PdfExtractionResult(
+            content="text",
+            method="markitdown",
+            char_count=4,
+            thumbnails=PdfThumbnailResult(
+                pages=[
+                    PageImage(page_index=0, image_bytes=b"PNG1", width_px=1240, height_px=1754),
+                    PageImage(page_index=1, image_bytes=b"PNG2", width_px=1240, height_px=1754),
+                ],
+                page_count=2,
+                method="pdf2image",
+            ),
+        )
+
+        extras = _deposit_pdf_thumbnails(folder, result)
+
+        # PNGs written
+        assert (folder / "page_01.png").read_bytes() == b"PNG1"
+        assert (folder / "page_02.png").read_bytes() == b"PNG2"
+
+        # Extras correct
+        assert extras["page_count"] == 2
+        assert extras["has_thumbnails"] is True
+        assert extras["thumbnail_count"] == 2
+        assert extras["thumbnail_method"] == "pdf2image"
+        assert "thumbnail_failures" not in extras
+
+    def test_returns_empty_dict_when_no_thumbnails(self, tmp_path: Path) -> None:
+        """No thumbnails → empty dict, no files written."""
+        from tools.fetch.common import _deposit_pdf_thumbnails
+
+        folder = tmp_path / "deposit"
+        folder.mkdir()
+
+        result = PdfExtractionResult(
+            content="text", method="markitdown", char_count=4, thumbnails=None
+        )
+
+        extras = _deposit_pdf_thumbnails(folder, result)
+
+        assert extras == {}
+        assert list(folder.iterdir()) == []
+
+    def test_tracks_missing_pages(self, tmp_path: Path) -> None:
+        """Gap in rendered indices → thumbnail_failures in extras."""
+        from tools.fetch.common import _deposit_pdf_thumbnails
+
+        folder = tmp_path / "deposit"
+        folder.mkdir()
+
+        # 3 pages total, but only page 0 and 2 rendered (page 1 missing)
+        result = PdfExtractionResult(
+            content="text",
+            method="markitdown",
+            char_count=4,
+            thumbnails=PdfThumbnailResult(
+                pages=[
+                    PageImage(page_index=0, image_bytes=b"PNG1", width_px=100, height_px=100),
+                    PageImage(page_index=2, image_bytes=b"PNG3", width_px=100, height_px=100),
+                ],
+                page_count=3,
+                method="pdf2image",
+            ),
+        )
+
+        extras = _deposit_pdf_thumbnails(folder, result)
+
+        assert extras["thumbnail_count"] == 2
+        assert extras["thumbnail_failures"] == [2]  # 1-indexed: page 2 missing
+
+
+class TestGmailAttachmentThumbnails:
+    """Test thumbnail rendering in the Gmail single-attachment PDF path."""
+
+    @patch("tools.fetch.gmail.render_pdf_pages")
+    @patch("tools.fetch.gmail.extract_pdf_content")
+    @patch("tools.fetch.gmail._deposit_pdf_thumbnails")
+    @patch("tools.fetch.gmail.get_deposit_folder")
+    @patch("tools.fetch.gmail.write_content")
+    @patch("tools.fetch.gmail.write_manifest")
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail.lookup_exfiltrated")
+    @patch("tools.fetch.gmail.download_attachment")
+    def test_gmail_attachment_pdf_renders_thumbnails(
+        self,
+        mock_download_att: MagicMock,
+        mock_exfil: MagicMock,
+        mock_fetch_thread: MagicMock,
+        mock_manifest: MagicMock,
+        mock_write_content: MagicMock,
+        mock_get_folder: MagicMock,
+        mock_deposit_thumbs: MagicMock,
+        mock_extract: MagicMock,
+        mock_render: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """fetch_attachment for PDF renders thumbnails and calls shared helper."""
+        from tools.fetch.gmail import fetch_attachment
+        from models import EmailMessage, EmailAttachment, GmailThreadData
+
+        att = EmailAttachment(
+            filename="report.pdf",
+            mime_type="application/pdf",
+            size=1024,
+            attachment_id="att123",
+        )
+        msg = EmailMessage(
+            message_id="msg1",
+            from_address="sender@test.com",
+            to_addresses=["me@test.com"],
+            attachments=[att],
+        )
+        thread = GmailThreadData(
+            thread_id="thread1",
+            subject="Test",
+            messages=[msg],
+        )
+        mock_fetch_thread.return_value = thread
+        mock_exfil.return_value = {}
+
+        # Mock download
+        mock_dl = MagicMock()
+        mock_dl.content = b"%PDF-report-content"
+        mock_download_att.return_value = mock_dl
+
+        mock_extract.return_value = PdfExtractionResult(
+            content="Report text",
+            method="markitdown",
+            char_count=100,
+        )
+        mock_render.return_value = PdfThumbnailResult(
+            pages=[PageImage(page_index=0, image_bytes=b"PNG", width_px=1240, height_px=1754)],
+            page_count=1,
+            method="pdf2image",
+        )
+        mock_deposit_thumbs.return_value = {
+            "page_count": 1, "has_thumbnails": True, "thumbnail_count": 1, "thumbnail_method": "pdf2image",
+        }
+
+        folder = tmp_path / "pdf--report--thread1"
+        folder.mkdir()
+        mock_get_folder.return_value = folder
+        mock_write_content.return_value = folder / "content.md"
+
+        result = fetch_attachment("thread1", "report.pdf", base_path=tmp_path)
+
+        mock_render.assert_called_once_with(file_bytes=b"%PDF-report-content")
+        mock_deposit_thumbs.assert_called_once()
+        assert result.type == "pdf"
 
 
 class TestCuesPagePrefix:
