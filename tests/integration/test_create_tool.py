@@ -203,3 +203,43 @@ def test_create_invalid_type() -> None:
     assert "error" in result
     assert result["error"] is True
     assert result["kind"] == "invalid_input"
+
+
+# --- Overwrite round-trip tests ---
+
+
+@pytest.mark.integration
+def test_overwrite_doc_round_trip(cleanup_created_files: list[str]) -> None:
+    """Create a doc, overwrite it with new content, verify new content."""
+    # 1. Create
+    create_result = do(
+        operation="create",
+        content="# Original\n\nOriginal body text.",
+        title="Overwrite Round-Trip Test",
+    )
+    assert "error" not in create_result
+    file_id = create_result["file_id"]
+    cleanup_created_files.append(file_id)
+
+    # 2. Overwrite with new content
+    overwrite_result = do(
+        operation="overwrite",
+        file_id=file_id,
+        content="# Replaced\n\n## Section A\n\nNew body text.",
+    )
+    assert "error" not in overwrite_result
+    assert overwrite_result["operation"] == "overwrite"
+    assert overwrite_result["cues"]["heading_count"] == 2
+
+    # 3. Fetch and verify new content
+    from adapters.docs import fetch_document
+    from extractors.docs import extract_doc_content
+
+    doc_data = fetch_document(file_id)
+    content = extract_doc_content(doc_data)
+
+    assert "Replaced" in content
+    assert "Section A" in content
+    assert "New body text" in content
+    # Original content should be gone
+    assert "Original body text" not in content

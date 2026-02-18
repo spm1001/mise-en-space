@@ -29,7 +29,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from tools import do_search, do_fetch, do_create, do_move
+from tools import do_search, do_fetch, do_create, do_move, do_overwrite
 from resources.tools import get_tool_registry
 
 # Initialize MCP server
@@ -122,7 +122,7 @@ def do(
     Act on Google Workspace — create, move, rename, edit.
 
     Args:
-        operation: What to do. One of: 'create', 'move'
+        operation: What to do. One of: 'create', 'move', 'overwrite'
         content: Markdown content (required for create, unless source is provided)
         title: Document title (required for create, falls back to manifest title when using source)
         doc_type: 'doc' | 'sheet' | 'slides' (for create)
@@ -157,8 +157,19 @@ def do(
                     "message": "move requires 'file_id' and 'destination_folder_id'"}
         return do_move(file_id, destination_folder_id)
 
+    if operation == "overwrite":
+        if not file_id:
+            return {"error": True, "kind": "invalid_input",
+                    "message": "overwrite requires 'file_id'"}
+        resolved_source = None
+        if source:
+            resolved_base = Path(base_path) if base_path else Path.cwd()
+            source_path = Path(source)
+            resolved_source = source_path if source_path.is_absolute() else resolved_base / source_path
+        return do_overwrite(file_id, content=content, source=resolved_source)
+
     return {"error": True, "kind": "invalid_input",
-            "message": f"Unknown operation: {operation}. Supported: create, move"}
+            "message": f"Unknown operation: {operation}. Supported: create, move, overwrite"}
 
 
 # ============================================================================
