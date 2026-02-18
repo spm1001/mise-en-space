@@ -29,7 +29,7 @@ fetch("1abc...", base_path="/Users/modha/Repos/my-project")
 |------|---------|--------|
 | `search` | Find files/emails | Path to deposited JSON + counts |
 | `fetch` | Extract content to disk | Deposit folder: content.md, comments.md, manifest.json |
-| `do` | Act on Workspace (create, move) | File ID + web URL + cues |
+| `do` | Act on Workspace (create, move, overwrite, edit) | File ID + web URL + cues |
 
 `fetch` auto-detects input: Drive file ID, Drive URL, Gmail thread ID, or web URL.
 
@@ -140,9 +140,37 @@ Rule of thumb: <10 results → just read. >15 → filter with jq first.
 
 See `references/filtering-results.md` for patterns.
 
-## Workflow 4: Do (Create, Move)
+## Workflow 4: Do (Act on Workspace)
 
-**When:** "Make a Google Doc from this" / "Move this file to Archive" / "Create a spreadsheet from this data"
+**When:** "Make a Google Doc from this" / "Move this file" / "Update that doc" / "Add a note to the meeting minutes"
+
+### The 6 Operations
+
+| Operation | What it does | Key params |
+|-----------|-------------|------------|
+| `create` | New Doc/Sheet/Slides | `content`+`title` OR `source` |
+| `move` | Move file between folders | `file_id`, `destination_folder_id` |
+| `overwrite` | Replace full doc content | `file_id`, `content` OR `source` |
+| `prepend` | Insert at start of doc | `file_id`, `content` |
+| `append` | Insert at end of doc | `file_id`, `content` |
+| `replace_text` | Find-and-replace in doc | `file_id`, `find`, `content` |
+
+### Choosing the Right Edit Operation
+
+**Overwrite destroys everything** — images, tables, formatting, all gone. It's a full replacement from markdown. Use it when you're publishing a complete new version of a document.
+
+**Surgical edits preserve existing content.** Use `prepend`, `append`, or `replace_text` when the document has content worth keeping:
+
+| Situation | Use |
+|-----------|-----|
+| Publishing a complete document from scratch | `overwrite` |
+| Replacing a draft with a final version | `overwrite` |
+| Adding meeting notes to an existing doc | `append` |
+| Adding a header/disclaimer to a doc | `prepend` |
+| Updating a specific section or value | `replace_text` |
+| Doc has images, tables, or rich formatting | `prepend`/`append`/`replace_text` (never overwrite) |
+
+### Create and Move
 
 ```python
 # Create doc
@@ -159,6 +187,36 @@ do(operation="move", file_id="1abc...", destination_folder_id="1xyz...")
 **Create:** Without `folder_id`, the doc lands in Drive root. Response includes `cues.folder` showing where it landed.
 
 **Move:** Enforces single parent — removes all existing parents, adds destination. Response includes `cues.destination_folder` (name) and `cues.previous_parents`.
+
+### Overwrite
+
+```python
+# Full replacement from inline markdown
+do(operation="overwrite", file_id="1abc...", content="# Q4 Report\n\nRevised findings...", base_path="...")
+
+# From a deposit folder (fetch → edit locally → publish back)
+do(operation="overwrite", file_id="1abc...", source="mise/doc--q4-report--1abc/", base_path="...")
+```
+
+Markdown headings (`#`, `##`, etc.) are converted to Google Docs heading styles. Response includes `cues.char_count` and `cues.heading_count`.
+
+### Surgical Edits
+
+```python
+# Add to end of document
+do(operation="append", file_id="1abc...", content="\n\n## 18 Feb Update\n\nNew findings...", base_path="...")
+
+# Add to start of document
+do(operation="prepend", file_id="1abc...", content="DRAFT — Do not circulate\n\n", base_path="...")
+
+# Find and replace (case-sensitive, all occurrences)
+do(operation="replace_text", file_id="1abc...", find="Q3", content="Q4", base_path="...")
+
+# Delete matched text (replace with empty string)
+do(operation="replace_text", file_id="1abc...", find="DRAFT — ", content="", base_path="...")
+```
+
+`replace_text` response includes `cues.occurrences_changed` — check it to confirm the replacement happened.
 
 ### Sheet Creation
 
@@ -263,6 +321,8 @@ See `references/deposit-structure.md` for the full attachment layout.
 | Read full search JSON | Token waste on 35 results | Filter with jq first |
 | Stop after first search | Shallow understanding | Loop: new terms → new searches |
 | Omit base_path | Deposits vanish into server directory | Always pass it |
+| Overwrite a doc with images/tables | Content destroyed, not recoverable | Use `prepend`/`append`/`replace_text` |
+| `replace_text` without checking cues | Silent no-op if text not found | Check `cues.occurrences_changed > 0` |
 
 ## Integration
 
@@ -277,7 +337,7 @@ See `references/deposit-structure.md` for the full attachment layout.
 - Research tasks involving multiple Drive/Gmail sources
 - Fetching web content (cleaner than curl/WebFetch)
 - Finding context around a document (who sent it, what was discussed)
-- Creating Google Docs/Sheets/Slides from markdown
+- Creating or editing Google Docs/Sheets/Slides
 - Any task needing cross-source exploration
 
 ## When NOT to Use
