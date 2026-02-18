@@ -1495,8 +1495,9 @@ class TestFetchWebContentHTML:
         assert any("403" in w for w in result.warnings)
         assert any("browser" in w.lower() for w in result.warnings)
 
+    @patch("adapters.web._is_passe_available", return_value=False)
     @patch("adapters.web.httpx.Client")
-    def test_paywall_raises(self, mock_client_cls) -> None:
+    def test_paywall_raises(self, mock_client_cls, _passe) -> None:
         mock_client = _wire_httpx_client(mock_client_cls)
         mock_client.get.return_value = _mock_response(
             text="<html><body>" + "x" * 600 + " subscribe to continue reading</body></html>",
