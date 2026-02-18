@@ -400,7 +400,7 @@ def get_deposit_summary(folder: Path) -> dict[str, str | int | list[str]]:
     for f in files:
         if f.suffix == ".md":
             content_file = f.name
-        elif f.suffix == ".png" and f.name.startswith("slide_"):
+        elif f.suffix == ".png" and (f.name.startswith("slide_") or f.name.startswith("page_")):
             thumbnails.append(f.name)
         elif f.suffix == ".png" and f.name.startswith("chart_"):
             charts.append(f.name)
