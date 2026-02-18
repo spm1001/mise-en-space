@@ -29,7 +29,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from tools import do_search, do_fetch, do_create, do_move, do_overwrite
+from tools import do_search, do_fetch, do_create, do_move, do_overwrite, do_prepend, do_append, do_replace_text
 from resources.tools import get_tool_registry
 
 # Initialize MCP server
@@ -117,22 +117,24 @@ def do(
     destination_folder_id: str | None = None,
     source: str | None = None,
     base_path: str | None = None,
+    find: str | None = None,
 ) -> dict[str, Any]:
     """
     Act on Google Workspace — create, move, rename, edit.
 
     Args:
-        operation: What to do. One of: 'create', 'move', 'overwrite'
-        content: Markdown content (required for create, unless source is provided)
+        operation: What to do. One of: 'create', 'move', 'overwrite', 'prepend', 'append', 'replace_text'
+        content: Text content. Usage varies by operation.
         title: Document title (required for create, falls back to manifest title when using source)
         doc_type: 'doc' | 'sheet' | 'slides' (for create)
         folder_id: Optional destination folder (for create)
-        file_id: Target file (required for move)
+        file_id: Target file (required for move, overwrite, prepend, append, replace_text)
         destination_folder_id: Where to move the file (required for move)
-        source: Path to deposit folder containing content to publish (for create).
+        source: Path to deposit folder containing content to publish (for create/overwrite).
                 Reads content.md (doc) or content.csv (sheet) from the folder.
                 Manifest is enriched with creation receipt after success.
         base_path: Directory for resolving relative source paths (pass your cwd)
+        find: Text to find (required for replace_text)
 
     Returns:
         file_id: File ID
@@ -168,8 +170,29 @@ def do(
             resolved_source = source_path if source_path.is_absolute() else resolved_base / source_path
         return do_overwrite(file_id, content=content, source=resolved_source)
 
+    if operation == "prepend":
+        if not file_id:
+            return {"error": True, "kind": "invalid_input",
+                    "message": "prepend requires 'file_id'"}
+        return do_prepend(file_id, content or "")
+
+    if operation == "append":
+        if not file_id:
+            return {"error": True, "kind": "invalid_input",
+                    "message": "append requires 'file_id'"}
+        return do_append(file_id, content or "")
+
+    if operation == "replace_text":
+        if not file_id:
+            return {"error": True, "kind": "invalid_input",
+                    "message": "replace_text requires 'file_id'"}
+        if not find:
+            return {"error": True, "kind": "invalid_input",
+                    "message": "replace_text requires 'find'"}
+        return do_replace_text(file_id, find, content or "")
+
     return {"error": True, "kind": "invalid_input",
-            "message": f"Unknown operation: {operation}. Supported: create, move, overwrite"}
+            "message": f"Unknown operation: {operation}. Supported: create, move, overwrite, prepend, append, replace_text"}
 
 
 # ============================================================================

@@ -243,3 +243,46 @@ def test_overwrite_doc_round_trip(cleanup_created_files: list[str]) -> None:
     assert "New body text" in content
     # Original content should be gone
     assert "Original body text" not in content
+
+
+@pytest.mark.integration
+def test_surgical_edits_round_trip(cleanup_created_files: list[str]) -> None:
+    """Create a doc, prepend, append, replace_text, verify all edits."""
+    from adapters.docs import fetch_document
+    from extractors.docs import extract_doc_content
+
+    # 1. Create
+    create_result = do(
+        operation="create",
+        content="Middle content. Status: DRAFT.",
+        title="Surgical Edit Test",
+    )
+    assert "error" not in create_result
+    file_id = create_result["file_id"]
+    cleanup_created_files.append(file_id)
+
+    # 2. Prepend
+    prepend_result = do(operation="prepend", file_id=file_id, content="HEADER\n\n")
+    assert "error" not in prepend_result
+    assert prepend_result["operation"] == "prepend"
+
+    # 3. Append
+    append_result = do(operation="append", file_id=file_id, content="\n\nFOOTER")
+    assert "error" not in append_result
+    assert append_result["operation"] == "append"
+
+    # 4. Replace text
+    replace_result = do(operation="replace_text", file_id=file_id, find="DRAFT", content="FINAL")
+    assert "error" not in replace_result
+    assert replace_result["operation"] == "replace_text"
+    assert replace_result["cues"]["occurrences_changed"] >= 1
+
+    # 5. Fetch and verify all edits
+    doc_data = fetch_document(file_id)
+    final_content = extract_doc_content(doc_data)
+
+    assert "HEADER" in final_content
+    assert "Middle content" in final_content
+    assert "FOOTER" in final_content
+    assert "FINAL" in final_content
+    assert "DRAFT" not in final_content

@@ -15,5 +15,9 @@ from .fetch import do_fetch
 from .create import do_create
 from .move import do_move
 from .overwrite import do_overwrite
+from .edit import do_prepend, do_append, do_replace_text
 
-__all__ = ["do_search", "do_fetch", "do_create", "do_move", "do_overwrite"]
+__all__ = [
+    "do_search", "do_fetch", "do_create", "do_move", "do_overwrite",
+    "do_prepend", "do_append", "do_replace_text",
+]
