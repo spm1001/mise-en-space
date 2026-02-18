@@ -16,6 +16,8 @@ dependencies = [
     "markitdown[all]>=0.1.4",
     "regex>=2025.11.3",
     "websockets>=16.0",
+    # PDF page thumbnails (requires poppler-utils system package)
+    "pdf2image>=1.17.0",
     # Web content extraction
     "trafilatura>=2.0.0",
     "httpx>=0.28.0",
@@ -28,6 +30,9 @@ dependencies = [
 mise = "cli:main"
 
 [project.optional-dependencies]
+macos = [
+    "pyobjc-framework-Quartz>=10.0",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",

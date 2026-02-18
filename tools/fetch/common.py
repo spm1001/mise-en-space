@@ -75,7 +75,7 @@ def _build_cues(
         for f in folder_path.iterdir():
             if f.is_file():
                 name = f.name
-                if name.startswith("slide_") and name.endswith(".png"):
+                if (name.startswith("slide_") or name.startswith("page_")) and name.endswith(".png"):
                     thumbnail_names.append(name)
                 else:
                     file_names.append(name)

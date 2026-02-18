@@ -9,11 +9,11 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from adapters.office import extract_office_content, get_office_type_from_mime, OfficeType
-from adapters.pdf import extract_pdf_content
+from adapters.pdf import extract_pdf_content, render_pdf_pages
 from adapters.web import fetch_web_content
 from extractors.web import extract_web_content, extract_title, EXTRACTION_FAILED_CUE
 from models import MiseError, ErrorKind, FetchResult, WebData
-from workspace import get_deposit_folder, write_content, write_manifest
+from workspace import get_deposit_folder, write_content, write_manifest, write_page_thumbnail
 
 from .common import _build_cues
 
@@ -53,6 +53,15 @@ def _fetch_web_pdf(url: str, web_data: WebData, base_path: Path | None = None) -
     else:
         raise MiseError(ErrorKind.EXTRACTION_FAILED, f"No PDF content received from {url}")
 
+    # Render thumbnails — uses same bytes/path as text extraction
+    try:
+        if web_data.temp_path:
+            result.thumbnails = render_pdf_pages(file_path=web_data.temp_path)
+        elif web_data.raw_bytes:
+            result.thumbnails = render_pdf_pages(file_bytes=web_data.raw_bytes)
+    except Exception as e:
+        result.warnings.append(f"Thumbnail rendering failed: {e}")
+
     # Use filename from URL or fallback
     url_path = urlparse(url).path
     filename = unquote(url_path.rsplit('/', 1)[-1])
@@ -62,11 +71,23 @@ def _fetch_web_pdf(url: str, web_data: WebData, base_path: Path | None = None) -
     folder = get_deposit_folder("pdf", title, url_hash, base_path=base_path)
     content_path = write_content(folder, result.content)
 
+    # Deposit page thumbnails
+    thumbnail_count = 0
+    if result.thumbnails:
+        for page_img in result.thumbnails.pages:
+            write_page_thumbnail(folder, page_img.image_bytes, page_img.page_index)
+            thumbnail_count += 1
+
     extra: dict[str, Any] = {
         "url": url,
         "char_count": result.char_count,
         "extraction_method": result.method,
     }
+    if result.thumbnails:
+        extra["page_count"] = result.thumbnails.page_count
+        extra["has_thumbnails"] = thumbnail_count > 0
+        extra["thumbnail_count"] = thumbnail_count
+        extra["thumbnail_method"] = result.thumbnails.method
     if result.warnings:
         extra["warnings"] = result.warnings
     write_manifest(folder, "pdf", title, url_hash, extra=extra)

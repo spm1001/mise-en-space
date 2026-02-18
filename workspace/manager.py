@@ -146,6 +146,32 @@ def write_thumbnail(
     return file_path
 
 
+def write_page_thumbnail(
+    folder: Path,
+    image_bytes: bytes,
+    page_index: int,
+) -> Path:
+    """
+    Write a PDF page thumbnail to the deposit folder.
+
+    Args:
+        folder: Deposit folder from get_deposit_folder()
+        image_bytes: PNG image data
+        page_index: 0-based page index
+
+    Returns:
+        Path to the written file
+
+    Example:
+        write_page_thumbnail(folder, png_bytes, 0) -> folder/page_01.png
+    """
+    # 1-indexed, zero-padded for sorting
+    filename = f"page_{page_index + 1:02d}.png"
+    file_path = folder / filename
+    file_path.write_bytes(image_bytes)
+    return file_path
+
+
 def write_image(
     folder: Path,
     image_bytes: bytes,
