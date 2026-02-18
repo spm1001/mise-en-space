@@ -104,13 +104,94 @@ def test_create_doc_empty_content(cleanup_created_files: list[str]) -> None:
 
 
 @pytest.mark.integration
-def test_create_unsupported_type() -> None:
-    """Test that unsupported doc_type returns error."""
-    result = do(operation="create", content="content", title="title", doc_type="sheet")
+def test_create_sheet_basic(cleanup_created_files: list[str]) -> None:
+    """Test creating a basic Google Sheet from CSV."""
+    csv_content = "Name,Amount\nAlice,100\nBob,200"
+    title = "mise-en-space-test-sheet"
 
-    assert "error" in result
-    assert result["error"] is True
-    assert result["kind"] == "not_implemented"
+    result = do(operation="create", content=csv_content, title=title, doc_type="sheet")
+
+    assert "error" not in result, f"Create failed: {result}"
+    assert "file_id" in result
+    assert "web_link" in result
+    assert result["title"] == title
+    assert result["type"] == "sheet"
+
+    cleanup_created_files.append(result["file_id"])
+
+    # Verify it's a spreadsheet
+    service = get_drive_service()
+    file_meta = service.files().get(fileId=result["file_id"], fields="id,name,mimeType").execute()
+    assert file_meta["name"] == title
+    assert file_meta["mimeType"] == "application/vnd.google-apps.spreadsheet"
+
+
+@pytest.mark.integration
+def test_create_sheet_currency_with_commas(cleanup_created_files: list[str]) -> None:
+    """Sheet with UK currency containing commas (£65,000) renders correctly."""
+    csv_content = 'Department,Budget\nEngineering,"£65,000"\nMarketing,"£42,500"\nTotal,"£107,500"'
+    title = "mise-en-space-test-currency"
+
+    result = do(operation="create", content=csv_content, title=title, doc_type="sheet")
+
+    assert "error" not in result, f"Create failed: {result}"
+    cleanup_created_files.append(result["file_id"])
+
+    # Read back via Sheets API to verify values survived
+    from adapters.services import get_sheets_service
+    sheets = get_sheets_service()
+    data = sheets.spreadsheets().values().get(
+        spreadsheetId=result["file_id"], range="A1:B4"
+    ).execute()
+    values = data.get("values", [])
+    assert values[0] == ["Department", "Budget"]
+    assert values[1][1] == "£65,000"  # Commas preserved inside quotes
+
+
+@pytest.mark.integration
+def test_create_sheet_leading_zeros(cleanup_created_files: list[str]) -> None:
+    """Sheet with tick-prefixed leading zeros preserves them as text."""
+    csv_content = "ID,Name\n'00412,Alice\n'00089,Bob"
+    title = "mise-en-space-test-leading-zeros"
+
+    result = do(operation="create", content=csv_content, title=title, doc_type="sheet")
+
+    assert "error" not in result, f"Create failed: {result}"
+    cleanup_created_files.append(result["file_id"])
+
+    # Read back — tick prefix tells Google to treat as text
+    from adapters.services import get_sheets_service
+    sheets = get_sheets_service()
+    data = sheets.spreadsheets().values().get(
+        spreadsheetId=result["file_id"], range="A1:B3"
+    ).execute()
+    values = data.get("values", [])
+    # Drive CSV import should preserve the leading zeros
+    assert values[1][0] in ("00412", "'00412")  # Either form is acceptable
+    assert values[2][0] in ("00089", "'00089")
+
+
+@pytest.mark.integration
+def test_create_sheet_with_formulae(cleanup_created_files: list[str]) -> None:
+    """Sheet with formulae — Drive CSV import preserves formula syntax."""
+    csv_content = "A,B,Sum\n10,20,=A2+B2\n30,40,=A3+B3"
+    title = "mise-en-space-test-formulae"
+
+    result = do(operation="create", content=csv_content, title=title, doc_type="sheet")
+
+    assert "error" not in result, f"Create failed: {result}"
+    cleanup_created_files.append(result["file_id"])
+
+    # Read back with valueRenderOption=FORMULA to see if formulae survived
+    from adapters.services import get_sheets_service
+    sheets = get_sheets_service()
+    data = sheets.spreadsheets().values().get(
+        spreadsheetId=result["file_id"], range="C2:C3",
+        valueRenderOption="FORMULA",
+    ).execute()
+    values = data.get("values", [])
+    # Drive CSV import should keep formulae as formulae
+    assert any("=" in str(v) for row in values for v in row), f"No formulae found in {values}"
 
 
 @pytest.mark.integration
