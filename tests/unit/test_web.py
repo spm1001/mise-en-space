@@ -1507,6 +1507,24 @@ class TestFetchWebContentHTML:
             fetch_web_content("https://news.example.com/article")
         assert exc_info.value.kind == ErrorKind.AUTH_REQUIRED
 
+    @patch("adapters.web._fetch_with_passe")
+    @patch("adapters.web._is_passe_available", return_value=True)
+    @patch("adapters.web.httpx.Client")
+    def test_paywall_falls_back_to_passe(self, mock_client_cls, _passe, mock_passe_fetch) -> None:
+        """Paywall detected + passe available → auto-fallback to browser."""
+        mock_client = _wire_httpx_client(mock_client_cls)
+        mock_client.get.return_value = _mock_response(
+            text="<html><body>" + "x" * 600 + " subscribe to continue reading</body></html>",
+        )
+        mock_passe_fetch.return_value = ("# Full Article\n\nThe real content.", "https://news.example.com/article")
+
+        result = fetch_web_content("https://news.example.com/article")
+
+        assert result.render_method == "passe"
+        assert result.pre_extracted_content == "# Full Article\n\nThe real content."
+        assert any("paywall" in w.lower() or "subscribe" in w.lower() for w in result.warnings)
+        assert any("browser" in w.lower() for w in result.warnings)
+
     @patch("adapters.web._is_passe_available", return_value=False)
     @patch("adapters.web.httpx.Client")
     def test_js_rendered_no_passe_warns(self, mock_client_cls, _passe) -> None:

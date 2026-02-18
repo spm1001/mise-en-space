@@ -166,9 +166,10 @@ def test_create_sheet_leading_zeros(cleanup_created_files: list[str]) -> None:
         spreadsheetId=result["file_id"], range="A1:B3"
     ).execute()
     values = data.get("values", [])
-    # Drive CSV import should preserve the leading zeros
-    assert values[1][0] in ("00412", "'00412")  # Either form is acceptable
-    assert values[2][0] in ("00089", "'00089")
+    # Drive CSV import: tick prefix is a display hint, not stored data.
+    # Sheets API returns the plain value with leading zeros preserved.
+    assert values[1][0] == "00412"
+    assert values[2][0] == "00089"
 
 
 @pytest.mark.integration
