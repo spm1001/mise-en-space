@@ -256,9 +256,8 @@ class TestDoCreateSheet:
         do_create("a,b\n1,2", "Test", doc_type="sheet")
 
         # Inspect the media_body passed to files().create()
-        create_call = mock_service.files().create.call_args
-        media = create_call[1]["media_body"] if "media_body" in create_call[1] else create_call[0][0]
-        assert media.mimetype() == "text/csv"
+        _, kwargs = mock_service.files().create.call_args
+        assert kwargs["media_body"].mimetype() == "text/csv"
 
     @patch("retry.time.sleep")
     @patch("tools.create.get_drive_service")

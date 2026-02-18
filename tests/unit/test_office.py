@@ -249,6 +249,53 @@ class TestFetchOffice:
     @patch("tools.fetch.drive.get_deposit_folder")
     @patch("tools.fetch.drive.write_content")
     @patch("tools.fetch.drive.write_manifest")
+    def test_fetch_xlsx_large_file_copies_instead_of_reading(
+        self,
+        mock_write_manifest: MagicMock,
+        mock_write_content: MagicMock,
+        mock_get_folder: MagicMock,
+        mock_extract: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Large XLSX uses file copy (raw_temp_path) instead of read_bytes."""
+        fake_xlsx_bytes = b"PK\x03\x04large-xlsx-content"
+        deposit_folder = tmp_path / "xlsx--big-budget--abc123"
+        deposit_folder.mkdir()
+
+        # Simulate the streaming path: raw_temp_path set, raw_bytes is None
+        temp_file = tmp_path / "streamed.xlsx"
+        temp_file.write_bytes(fake_xlsx_bytes)
+
+        mock_extract.return_value = OfficeExtractionResult(
+            content="col1\n1",
+            source_type="xlsx",
+            export_format="csv",
+            extension="csv",
+            warnings=["Large file: used streaming download"],
+            raw_temp_path=temp_file,
+        )
+        mock_get_folder.return_value = deposit_folder
+        mock_write_content.return_value = deposit_folder / "content.csv"
+
+        fetch_office("abc123", "Big Budget.xlsx", {}, "xlsx")
+
+        # Raw xlsx deposited via copy
+        raw_path = deposit_folder / "Big Budget.xlsx"
+        assert raw_path.exists()
+        assert raw_path.read_bytes() == fake_xlsx_bytes
+
+        # Temp file cleaned up after copy
+        assert not temp_file.exists()
+
+        # Manifest includes raw_file
+        manifest_call = mock_write_manifest.call_args
+        extra = manifest_call.kwargs.get("extra") or manifest_call[1].get("extra")
+        assert extra["raw_file"] == "Big Budget.xlsx"
+
+    @patch("tools.fetch.drive.fetch_and_extract_office")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
     def test_fetch_docx_no_raw_file(
         self,
         mock_write_manifest: MagicMock,

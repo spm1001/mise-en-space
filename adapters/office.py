@@ -55,7 +55,8 @@ class OfficeExtractionResult:
     extension: str      # 'md', 'csv', 'txt'
     warnings: list[str] = field(default_factory=list)
     spreadsheet_data: SpreadsheetData | None = None  # XLSX: carries tab data for per-tab deposit
-    raw_bytes: bytes | None = None  # Original file bytes for raw deposit (XLSX)
+    raw_bytes: bytes | None = None  # Original file bytes for raw deposit (XLSX, small files)
+    raw_temp_path: Path | None = None  # Original file on disk for raw deposit (XLSX, large streamed files)
 
 
 def extract_office_content(
@@ -195,12 +196,15 @@ def fetch_and_extract_office(
                 file_id=file_id,
             )
             result.warnings.insert(0, "Large file: used streaming download")
-            # Keep raw bytes for xlsx deposit (read before temp is deleted)
+            # Carry temp path for xlsx raw deposit — tool layer copies directly,
+            # avoiding read_bytes which would double peak memory for large files
             if office_type == "xlsx":
-                result.raw_bytes = tmp_path.read_bytes()
+                result.raw_temp_path = tmp_path
             return result
         finally:
-            tmp_path.unlink(missing_ok=True)
+            # Only delete temp if tool layer isn't going to copy it
+            if not (office_type == "xlsx"):
+                tmp_path.unlink(missing_ok=True)
     else:
         # Small file: load into memory
         file_bytes = download_file(file_id)

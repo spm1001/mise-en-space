@@ -433,10 +433,17 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
 
     # Deposit raw xlsx alongside CSV for roundtrip workflows
     raw_file: str | None = None
-    if office_type == "xlsx" and result.raw_bytes:
+    if office_type == "xlsx" and (result.raw_bytes or result.raw_temp_path):
         # Preserve original filename — consistent with Gmail attachment deposits
         raw_file = title if title.lower().endswith(".xlsx") else f"{title}.xlsx"
-        (folder / raw_file).write_bytes(result.raw_bytes)
+        dest = folder / raw_file
+        if result.raw_temp_path:
+            # Large file: copy directly from temp — avoids doubling peak memory
+            import shutil
+            shutil.copy2(result.raw_temp_path, dest)
+            result.raw_temp_path.unlink(missing_ok=True)
+        else:
+            dest.write_bytes(result.raw_bytes)  # type: ignore[arg-type]
 
     # Formula count from spreadsheet data (XLSX only)
     formula_count: int | None = None

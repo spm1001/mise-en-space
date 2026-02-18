@@ -1,7 +1,7 @@
 # Sheet Creation: Design Exploration
 
 **Date:** 2026-02-16
-**Status:** Exploration — benchmarking next
+**Status:** Shipped — single-tab (CSV upload) and multi-tab (Sheets API hybrid) creation both live. Deposit-then-publish (`source=path`) and inline `content=` both work. Per-tab CSV deposits, raw xlsx preservation, and formula pass-through landed. Integration tests pending (mise-nihiwa, mise-sokedi).
 
 ## The Core Insight
 
