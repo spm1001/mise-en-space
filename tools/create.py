@@ -17,7 +17,7 @@ from googleapiclient.http import MediaIoBaseUpload
 from adapters.services import get_drive_service
 from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
 from adapters.sheets import add_sheet, update_sheet_values, rename_sheet
-from models import CreateResult, CreateError, MiseError, ErrorKind
+from models import CreateResult, CreateError, DoResult, MiseError, ErrorKind
 from retry import with_retry
 from workspace import enrich_manifest
 
@@ -123,13 +123,27 @@ def _csv_text_to_values(csv_text: str) -> list[list[str]]:
     return [row for row in reader]
 
 
+def _resolve_source(source: str | None, base_path: str | None) -> Path | None:
+    """Resolve source path relative to base_path.
+
+    Returns None if no source. Raises ValueError if source given without base_path.
+    """
+    if not source:
+        return None
+    if not base_path:
+        raise ValueError("base_path is required when using source — pass your working directory")
+    source_path = Path(source)
+    return source_path if source_path.is_absolute() else Path(base_path) / source_path
+
+
 def do_create(
     content: str | None = None,
     title: str | None = None,
     doc_type: str = "doc",
     folder_id: str | None = None,
-    source: Path | None = None,
-) -> CreateResult | CreateError:
+    source: str | None = None,
+    base_path: str | None = None,
+) -> DoResult | dict[str, Any]:
     """
     Create a Google Workspace document.
 
@@ -143,10 +157,47 @@ def do_create(
         doc_type: 'doc' | 'sheet' | 'slides'
         folder_id: Optional destination folder ID
         source: Path to deposit folder to read content from
+        base_path: Working directory for resolving relative source paths
 
     Returns:
-        CreateResult with file_id and web_link, or CreateError on failure
+        DoResult on success, error dict on failure
     """
+    # Resolve source path
+    try:
+        resolved_source = _resolve_source(source, base_path)
+    except ValueError as e:
+        return {"error": True, "kind": "invalid_input", "message": str(e)}
+
+    if not content and not source:
+        return {"error": True, "kind": "invalid_input",
+                "message": "create requires 'content' or 'source'"}
+
+    result = _do_create_internal(content, title, doc_type, folder_id, resolved_source)
+
+    # Wrap CreateResult → DoResult at boundary
+    if isinstance(result, CreateResult):
+        return DoResult(
+            file_id=result.file_id,
+            title=result.title,
+            web_link=result.web_link,
+            operation="create",
+            cues=result.cues or {},
+            extras={"type": result.doc_type},
+        )
+    elif isinstance(result, CreateError):
+        return result.to_dict()
+    else:
+        return result
+
+
+def _do_create_internal(
+    content: str | None = None,
+    title: str | None = None,
+    doc_type: str = "doc",
+    folder_id: str | None = None,
+    source: Path | None = None,
+) -> CreateResult | CreateError:
+    """Internal create logic — keeps existing CreateResult/CreateError pattern."""
     # Validate doc_type
     if doc_type not in DOC_TYPE_TO_MIME:
         return CreateError(

@@ -125,11 +125,12 @@ Credentials from GCP Secret Manager (in-memory). Token auto-refreshes; `clear_se
 
 ## How to Add a New do() Operation
 
-1. **Implementation** — Create `tools/{operation}.py` with `do_{operation}()` returning `dict` with `file_id`, `title`, `web_link`, `operation`, `cues`
-2. **Route** — Add `elif operation == "{name}":` branch in `server.py` `do()` function
-3. **Validate** — Check required params at the router, return `{"error": True, "kind": "invalid_input", ...}` for missing ones
-4. **Resource docs** — Update `docs_do()` resource in `server.py` with new operation
-5. **Tests** — Unit test for the implementation function
+1. **Implementation** — Create `tools/{op}.py` with `do_{op}()` that validates its own params (accepts `str | None`) and returns `DoResult` on success or error dict on failure
+2. **Dispatch** — Add handler to `_DISPATCH` dict in `server.py`
+3. **Register** — Add name to `OPERATIONS` in `tools/__init__.py`
+4. **Export** — Add `do_{op}` to `tools/__init__.py` imports and `__all__`
+5. **Resource docs** — Update `docs_do()` resource in `server.py` with new operation
+6. **Tests** — Unit test for the implementation + `test_dispatch.py` verifies OPERATIONS/DISPATCH sync automatically
 
 ## Field Reports
 

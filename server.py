@@ -29,22 +29,31 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from tools import do_search, do_fetch, do_create, do_move, do_overwrite, do_prepend, do_append, do_replace_text
+from tools import do_search, do_fetch, do_create, do_move, do_overwrite, do_prepend, do_append, do_replace_text, OPERATIONS
+from models import DoResult
 from resources.tools import get_tool_registry
 
 
-def _resolve_source(source: str | None, base_path: str | None) -> Path | None:
-    """Resolve source path relative to base_path.
-
-    Returns None if no source. Raises ValueError if source given without base_path
-    (MCP server's cwd is not Claude's cwd).
-    """
-    if not source:
-        return None
-    if not base_path:
-        raise ValueError("base_path is required when using source — pass your working directory")
-    source_path = Path(source)
-    return source_path if source_path.is_absolute() else Path(base_path) / source_path
+# Dispatch table for do() operations.
+# Each handler receives the full params dict and handles its own validation.
+_DISPATCH: dict[str, Any] = {
+    "create": lambda p: do_create(
+        content=p["content"], title=p["title"], doc_type=p["doc_type"],
+        folder_id=p["folder_id"], source=p["source"], base_path=p["base_path"],
+    ),
+    "move": lambda p: do_move(
+        file_id=p["file_id"], destination_folder_id=p["destination_folder_id"],
+    ),
+    "overwrite": lambda p: do_overwrite(
+        file_id=p["file_id"], content=p["content"],
+        source=p["source"], base_path=p["base_path"],
+    ),
+    "prepend": lambda p: do_prepend(file_id=p["file_id"], content=p["content"]),
+    "append": lambda p: do_append(file_id=p["file_id"], content=p["content"]),
+    "replace_text": lambda p: do_replace_text(
+        file_id=p["file_id"], find=p["find"], content=p["content"],
+    ),
+}
 
 # Initialize MCP server
 mcp = FastMCP("Google Workspace v2")
@@ -154,52 +163,19 @@ def do(
         file_id: File ID
         web_link: URL to view/edit
     """
-    try:
-        resolved_source = _resolve_source(source, base_path)
-    except ValueError as e:
-        return {"error": True, "kind": "invalid_input", "message": str(e)}
+    handler = _DISPATCH.get(operation)
+    if not handler:
+        return {"error": True, "kind": "invalid_input",
+                "message": f"Unknown operation: {operation}. Supported: {sorted(OPERATIONS)}"}
 
-    if operation == "create":
-        if not content and not source:
-            return {"error": True, "kind": "invalid_input",
-                    "message": "create requires 'content' or 'source'"}
-        return do_create(content, title, doc_type, folder_id, source=resolved_source).to_dict()
-
-    if operation == "move":
-        if not file_id or not destination_folder_id:
-            return {"error": True, "kind": "invalid_input",
-                    "message": "move requires 'file_id' and 'destination_folder_id'"}
-        return do_move(file_id, destination_folder_id)
-
-    if operation == "overwrite":
-        if not file_id:
-            return {"error": True, "kind": "invalid_input",
-                    "message": "overwrite requires 'file_id'"}
-        return do_overwrite(file_id, content=content, source=resolved_source)
-
-    if operation == "prepend":
-        if not file_id:
-            return {"error": True, "kind": "invalid_input",
-                    "message": "prepend requires 'file_id'"}
-        return do_prepend(file_id, content or "")
-
-    if operation == "append":
-        if not file_id:
-            return {"error": True, "kind": "invalid_input",
-                    "message": "append requires 'file_id'"}
-        return do_append(file_id, content or "")
-
-    if operation == "replace_text":
-        if not file_id:
-            return {"error": True, "kind": "invalid_input",
-                    "message": "replace_text requires 'file_id'"}
-        if not find:
-            return {"error": True, "kind": "invalid_input",
-                    "message": "replace_text requires 'find'"}
-        return do_replace_text(file_id, find, content or "")
-
-    return {"error": True, "kind": "invalid_input",
-            "message": f"Unknown operation: {operation}. Supported: create, move, overwrite, prepend, append, replace_text"}
+    params = {
+        "content": content, "title": title, "doc_type": doc_type,
+        "folder_id": folder_id, "file_id": file_id,
+        "destination_folder_id": destination_folder_id,
+        "source": source, "base_path": base_path, "find": find,
+    }
+    result = handler(params)
+    return result.to_dict() if isinstance(result, DoResult) else result
 
 
 # ============================================================================
@@ -460,32 +436,23 @@ do(operation="create", source="mise/sheet--q4-analysis--draft/", base_path="/pat
 Title falls back to `manifest.json` title if not passed explicitly.
 After creation, manifest.json is enriched with `status`, `file_id`, `web_link`, `created_at`.
 
-## Response Shape (create)
+## Response Shape (all operations)
+
+All operations return a consistent shape:
 
 ```json
 {
   "file_id": "1abc...",
-  "web_link": "https://docs.google.com/document/d/1abc.../edit",
-  "title": "My Document",
-  "type": "doc"
-}
-```
-
-## Response Shape (move)
-
-```json
-{
-  "file_id": "1abc...",
-  "title": "Moved File",
-  "web_link": "https://drive.google.com/...",
+  "title": "Document Title",
+  "web_link": "https://docs.google.com/...",
   "operation": "move",
-  "cues": {
-    "destination_folder": "Archive",
-    "destination_folder_id": "1xyz...",
-    "previous_parents": ["0old..."]
-  }
+  "cues": { ... }
 }
 ```
+
+`cues` contains operation-specific context (e.g. `destination_folder` for move, `inserted_chars` for prepend, `occurrences_changed` for replace_text). Create also includes `"type": "doc"|"sheet"`.
+
+Errors return `{"error": true, "kind": "invalid_input", "message": "..."}` with helpful validation messages.
 
 ## Examples
 

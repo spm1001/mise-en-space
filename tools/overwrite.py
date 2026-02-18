@@ -6,10 +6,11 @@ Preserves file ID, sharing, location, and revision history.
 """
 
 import re
+from pathlib import Path
 from typing import Any
 
 from adapters.services import get_docs_service
-from models import MiseError, ErrorKind
+from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 
 
@@ -27,11 +28,25 @@ _HEADING_STYLES = {
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
 
 
+def _resolve_source(source: str | None, base_path: str | None) -> Path | None:
+    """Resolve source path relative to base_path.
+
+    Returns None if no source. Raises ValueError if source given without base_path.
+    """
+    if not source:
+        return None
+    if not base_path:
+        raise ValueError("base_path is required when using source — pass your working directory")
+    source_path = Path(source)
+    return source_path if source_path.is_absolute() else Path(base_path) / source_path
+
+
 def do_overwrite(
-    file_id: str,
+    file_id: str | None = None,
     content: str | None = None,
-    source: "Path | None" = None,
-) -> dict[str, Any]:
+    source: str | None = None,
+    base_path: str | None = None,
+) -> DoResult | dict[str, Any]:
     """
     Replace full content of a Google Doc with new markdown.
 
@@ -39,28 +54,35 @@ def do_overwrite(
         file_id: Target document ID
         content: Markdown content (mutually exclusive with source)
         source: Path to deposit folder with content.md
+        base_path: Working directory for resolving relative source paths
 
     Returns:
-        Dict with file_id, title, web_link, operation, cues
+        DoResult on success, error dict on failure
     """
-    # Resolve content
-    if source and content:
+    if not file_id:
+        return {"error": True, "kind": "invalid_input",
+                "message": "overwrite requires 'file_id'"}
+
+    # Resolve source path
+    try:
+        resolved_source = _resolve_source(source, base_path)
+    except ValueError as e:
+        return {"error": True, "kind": "invalid_input", "message": str(e)}
+
+    if resolved_source and content:
         return {
             "error": True,
             "kind": "invalid_input",
             "message": "Provide 'content' or 'source', not both",
         }
 
-    if source:
-        from pathlib import Path
-
-        source_path = Path(source)
-        content_file = source_path / "content.md"
+    if resolved_source:
+        content_file = resolved_source / "content.md"
         if not content_file.exists():
             return {
                 "error": True,
                 "kind": "invalid_input",
-                "message": f"No content.md in source folder: {source_path}",
+                "message": f"No content.md in source folder: {resolved_source}",
             }
         content = content_file.read_text(encoding="utf-8")
 
@@ -78,7 +100,7 @@ def do_overwrite(
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
-def _overwrite_doc(file_id: str, markdown: str) -> dict[str, Any]:
+def _overwrite_doc(file_id: str, markdown: str) -> DoResult:
     """Replace document content via Docs API batchUpdate."""
     service = get_docs_service()
 
@@ -145,16 +167,16 @@ def _overwrite_doc(file_id: str, markdown: str) -> dict[str, Any]:
             body={"requests": requests},
         ).execute()
 
-    return {
-        "file_id": file_id,
-        "title": title,
-        "web_link": f"https://docs.google.com/document/d/{file_id}/edit",
-        "operation": "overwrite",
-        "cues": {
+    return DoResult(
+        file_id=file_id,
+        title=title,
+        web_link=f"https://docs.google.com/document/d/{file_id}/edit",
+        operation="overwrite",
+        cues={
             "char_count": len(plain_text),
             "heading_count": len(heading_map),
         },
-    }
+    )
 
 
 def _utf16_len(text: str) -> int:

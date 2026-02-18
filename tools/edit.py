@@ -8,7 +8,7 @@ Preserves existing content at other positions.
 from typing import Any
 
 from adapters.services import get_docs_service
-from models import MiseError, ErrorKind
+from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 
 
@@ -24,8 +24,11 @@ def _get_doc_meta(service: Any, file_id: str) -> dict[str, Any]:
     return {"title": doc.get("title", "Untitled"), "end_index": end_index}
 
 
-def do_prepend(file_id: str, content: str) -> dict[str, Any]:
+def do_prepend(file_id: str | None = None, content: str | None = None) -> DoResult | dict[str, Any]:
     """Insert text at the beginning of a Google Doc."""
+    if not file_id:
+        return {"error": True, "kind": "invalid_input",
+                "message": "prepend requires 'file_id'"}
     if not content:
         return {"error": True, "kind": "invalid_input",
                 "message": "prepend requires 'content'"}
@@ -35,8 +38,11 @@ def do_prepend(file_id: str, content: str) -> dict[str, Any]:
         return {"error": True, "kind": e.kind.value, "message": e.message}
 
 
-def do_append(file_id: str, content: str) -> dict[str, Any]:
+def do_append(file_id: str | None = None, content: str | None = None) -> DoResult | dict[str, Any]:
     """Insert text at the end of a Google Doc."""
+    if not file_id:
+        return {"error": True, "kind": "invalid_input",
+                "message": "append requires 'file_id'"}
     if not content:
         return {"error": True, "kind": "invalid_input",
                 "message": "append requires 'content'"}
@@ -46,8 +52,11 @@ def do_append(file_id: str, content: str) -> dict[str, Any]:
         return {"error": True, "kind": e.kind.value, "message": e.message}
 
 
-def do_replace_text(file_id: str, find: str, content: str) -> dict[str, Any]:
+def do_replace_text(file_id: str | None = None, find: str | None = None, content: str | None = None) -> DoResult | dict[str, Any]:
     """Find and replace all occurrences of text in a Google Doc."""
+    if not file_id:
+        return {"error": True, "kind": "invalid_input",
+                "message": "replace_text requires 'file_id'"}
     if not find:
         return {"error": True, "kind": "invalid_input",
                 "message": "replace_text requires 'find'"}
@@ -61,7 +70,7 @@ def do_replace_text(file_id: str, find: str, content: str) -> dict[str, Any]:
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
-def _prepend(file_id: str, text: str) -> dict[str, Any]:
+def _prepend(file_id: str, text: str) -> DoResult:
     """Insert at index 1 (start of body)."""
     service = get_docs_service()
     meta = _get_doc_meta(service, file_id)
@@ -71,17 +80,17 @@ def _prepend(file_id: str, text: str) -> dict[str, Any]:
         body={"requests": [{"insertText": {"location": {"index": 1}, "text": text}}]},
     ).execute()
 
-    return {
-        "file_id": file_id,
-        "title": meta["title"],
-        "web_link": f"https://docs.google.com/document/d/{file_id}/edit",
-        "operation": "prepend",
-        "cues": {"inserted_chars": len(text)},
-    }
+    return DoResult(
+        file_id=file_id,
+        title=meta["title"],
+        web_link=f"https://docs.google.com/document/d/{file_id}/edit",
+        operation="prepend",
+        cues={"inserted_chars": len(text)},
+    )
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
-def _append(file_id: str, text: str) -> dict[str, Any]:
+def _append(file_id: str, text: str) -> DoResult:
     """Insert at end of document body."""
     service = get_docs_service()
     meta = _get_doc_meta(service, file_id)
@@ -94,17 +103,17 @@ def _append(file_id: str, text: str) -> dict[str, Any]:
         body={"requests": [{"insertText": {"location": {"index": insert_index}, "text": text}}]},
     ).execute()
 
-    return {
-        "file_id": file_id,
-        "title": meta["title"],
-        "web_link": f"https://docs.google.com/document/d/{file_id}/edit",
-        "operation": "append",
-        "cues": {"inserted_chars": len(text)},
-    }
+    return DoResult(
+        file_id=file_id,
+        title=meta["title"],
+        web_link=f"https://docs.google.com/document/d/{file_id}/edit",
+        operation="append",
+        cues={"inserted_chars": len(text)},
+    )
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
-def _replace_text(file_id: str, find: str, replace: str) -> dict[str, Any]:
+def _replace_text(file_id: str, find: str, replace: str) -> DoResult:
     """Replace all occurrences via replaceAllText."""
     service = get_docs_service()
     meta = _get_doc_meta(service, file_id)
@@ -123,14 +132,14 @@ def _replace_text(file_id: str, find: str, replace: str) -> dict[str, Any]:
     replies = result.get("replies", [{}])
     occurrences = replies[0].get("replaceAllText", {}).get("occurrencesChanged", 0) if replies else 0
 
-    return {
-        "file_id": file_id,
-        "title": meta["title"],
-        "web_link": f"https://docs.google.com/document/d/{file_id}/edit",
-        "operation": "replace_text",
-        "cues": {
+    return DoResult(
+        file_id=file_id,
+        title=meta["title"],
+        web_link=f"https://docs.google.com/document/d/{file_id}/edit",
+        operation="replace_text",
+        cues={
             "find": find,
             "replace": replace,
             "occurrences_changed": occurrences,
         },
-    }
+    )

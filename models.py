@@ -532,6 +532,32 @@ class SearchResult:
 
 
 @dataclass
+class DoResult:
+    """Successful result from a do() operation.
+
+    Shared return type for all 6 operations (create, move, overwrite,
+    prepend, append, replace_text). Operation-specific fields go in extras.
+    """
+    file_id: str
+    title: str
+    web_link: str
+    operation: str
+    cues: dict[str, Any] = field(default_factory=dict)
+    extras: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "file_id": self.file_id,
+            "title": self.title,
+            "web_link": self.web_link,
+            "operation": self.operation,
+            "cues": self.cues,
+        }
+        result.update(self.extras)
+        return result
+
+
+@dataclass
 class CreateResult:
     """Successful create result."""
     file_id: str

@@ -2,23 +2,34 @@
 
 from unittest.mock import patch, MagicMock
 
+from models import DoResult
 from server import do
 from tools.move import do_move
 
 
 class TestDoMoveValidation:
-    """Input validation via do() wrapper."""
+    """Input validation via do_move() and do() wrapper."""
 
     def test_move_without_file_id_returns_error(self) -> None:
-        result = do(operation="move", destination_folder_id="folder1")
+        result = do_move(destination_folder_id="folder1")
         assert result["error"] is True
         assert result["kind"] == "invalid_input"
         assert "file_id" in result["message"]
 
     def test_move_without_destination_returns_error(self) -> None:
-        result = do(operation="move", file_id="file1")
+        result = do_move(file_id="file1")
         assert result["error"] is True
         assert result["kind"] == "invalid_input"
+        assert "destination_folder_id" in result["message"]
+
+    def test_move_without_both_returns_error(self) -> None:
+        result = do_move()
+        assert result["error"] is True
+        assert "file_id" in result["message"]
+
+    def test_move_validation_through_do(self) -> None:
+        result = do(operation="move", file_id="file1")
+        assert result["error"] is True
         assert "destination_folder_id" in result["message"]
 
 
@@ -51,11 +62,12 @@ class TestDoMove:
 
         result = do_move("file1", "new_folder")
 
-        assert result["file_id"] == "file1"
-        assert result["title"] == "Report.pdf"
-        assert result["operation"] == "move"
-        assert result["cues"]["destination_folder"] == "Archive"
-        assert result["cues"]["previous_parents"] == ["old_folder"]
+        assert isinstance(result, DoResult)
+        assert result.file_id == "file1"
+        assert result.title == "Report.pdf"
+        assert result.operation == "move"
+        assert result.cues["destination_folder"] == "Archive"
+        assert result.cues["previous_parents"] == ["old_folder"]
 
     @patch("retry.time.sleep")
     @patch("tools.move.get_drive_service")
@@ -82,7 +94,8 @@ class TestDoMove:
 
         result = do_move("file1", "target_folder")
 
-        assert result["cues"]["previous_parents"] == ["folder_a", "folder_b"]
+        assert isinstance(result, DoResult)
+        assert result.cues["previous_parents"] == ["folder_a", "folder_b"]
         # Verify removeParents included both old parents
         update_call = mock_service.files().update.call_args
         assert "folder_a,folder_b" == update_call.kwargs.get("removeParents", "")
@@ -109,7 +122,7 @@ class TestDoMove:
     @patch("retry.time.sleep")
     @patch("tools.move.get_drive_service")
     def test_move_routes_through_do(self, mock_svc, _sleep) -> None:
-        """do(operation='move') routes to do_move."""
+        """do(operation='move') routes to do_move and returns dict."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 

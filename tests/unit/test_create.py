@@ -6,11 +6,11 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from models import CreateResult, CreateError
+from models import DoResult
 from server import do
 from tools.create import (
-    do_create, _read_source, _read_multi_tab_source, _csv_text_to_values,
-    DOC_TYPE_TO_MIME,
+    do_create, _do_create_internal, _read_source, _read_multi_tab_source,
+    _csv_text_to_values, DOC_TYPE_TO_MIME,
 )
 
 
@@ -64,13 +64,13 @@ class TestDoCreateValidation:
 
     def test_invalid_doc_type_returns_error(self) -> None:
         result = do_create("content", "Title", doc_type="invalid")
-        assert isinstance(result, CreateError)
-        assert result.kind == "invalid_input"
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
 
     def test_slides_not_implemented(self) -> None:
         result = do_create("content", "Title", doc_type="slides")
-        assert isinstance(result, CreateError)
-        assert result.kind == "not_implemented"
+        assert result["error"] is True
+        assert result["kind"] == "not_implemented"
 
 
 class TestDoCreateDoc:
@@ -89,11 +89,12 @@ class TestDoCreateDoc:
 
         result = do_create("# Hello", "My Document")
 
-        assert isinstance(result, CreateResult)
+        assert isinstance(result, DoResult)
         assert result.file_id == "new_doc_id"
         assert result.web_link == "https://docs.google.com/document/d/new_doc_id/edit"
         assert result.title == "My Document"
-        assert result.doc_type == "doc"
+        assert result.operation == "create"
+        assert result.extras["type"] == "doc"
 
     @patch("retry.time.sleep")
     @patch("tools.create.get_drive_service")
@@ -109,7 +110,7 @@ class TestDoCreateDoc:
 
         result = do_create("content", "In Folder", folder_id="folder123")
 
-        assert isinstance(result, CreateResult)
+        assert isinstance(result, DoResult)
 
     @patch("retry.time.sleep")
     @patch("tools.create.get_drive_service")
@@ -124,7 +125,7 @@ class TestDoCreateDoc:
 
         result = do_create("content", "Fallback Title")
 
-        assert isinstance(result, CreateResult)
+        assert isinstance(result, DoResult)
         assert result.title == "Fallback Title"
 
 
@@ -146,8 +147,7 @@ class TestCreateCues:
 
         result = do_create("# Test", "Test", folder_id="folder123")
 
-        assert isinstance(result, CreateResult)
-        assert result.cues is not None
+        assert isinstance(result, DoResult)
         assert result.cues["folder"] == "Project Files"
         assert result.cues["folder_id"] == "folder123"
 
@@ -165,8 +165,7 @@ class TestCreateCues:
 
         result = do_create("# Test", "Test")
 
-        assert isinstance(result, CreateResult)
-        assert result.cues is not None
+        assert isinstance(result, DoResult)
         assert result.cues["folder"] == "My Drive"
 
     @patch("retry.time.sleep")
@@ -191,32 +190,32 @@ class TestCreateCues:
 
 
 class TestDoCreateErrorHandling:
-    """Unexpected exceptions return CreateError, not crashes."""
+    """Unexpected exceptions return error dicts, not crashes."""
 
     @patch("retry.time.sleep")
     @patch("tools.create.get_drive_service")
-    def test_unexpected_exception_returns_create_error(self, mock_svc, _sleep) -> None:
+    def test_unexpected_exception_returns_error(self, mock_svc, _sleep) -> None:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
         mock_service.files().create().execute.side_effect = Exception("boom")
 
         result = do_create("# Test", "Test")
 
-        assert isinstance(result, CreateError)
-        assert result.kind == "unknown"
-        assert "boom" in result.message
+        assert result["error"] is True
+        assert result["kind"] == "unknown"
+        assert "boom" in result["message"]
 
     @patch("retry.time.sleep")
     @patch("tools.create.get_drive_service")
-    def test_sheet_unexpected_exception_returns_create_error(self, mock_svc, _sleep) -> None:
+    def test_sheet_unexpected_exception_returns_error(self, mock_svc, _sleep) -> None:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
         mock_service.files().create().execute.side_effect = RuntimeError("quota exceeded")
 
         result = do_create("a,b\n1,2", "Test", doc_type="sheet")
 
-        assert isinstance(result, CreateError)
-        assert "quota exceeded" in result.message
+        assert result["error"] is True
+        assert "quota exceeded" in result["message"]
 
 
 class TestDoCreateSheet:
@@ -236,9 +235,9 @@ class TestDoCreateSheet:
         csv_content = "Name,Amount\nAlice,100\nBob,200"
         result = do_create(csv_content, "Q4 Analysis", doc_type="sheet")
 
-        assert isinstance(result, CreateResult)
+        assert isinstance(result, DoResult)
         assert result.file_id == "sheet1"
-        assert result.doc_type == "sheet"
+        assert result.extras["type"] == "sheet"
         assert result.title == "Q4 Analysis"
 
     @patch("retry.time.sleep")
@@ -274,7 +273,7 @@ class TestDoCreateSheet:
 
         result = do_create("a,b\n1,2", "In Folder", doc_type="sheet", folder_id="folder789")
 
-        assert isinstance(result, CreateResult)
+        assert isinstance(result, DoResult)
         assert result.cues["folder"] == "Reports"
 
     @patch("retry.time.sleep")
@@ -372,9 +371,9 @@ class TestSourceParam:
             "name": "From Deposit",
         }
 
-        result = do_create(title="From Deposit", source=tmp_path)
+        result = do_create(title="From Deposit", source=str(tmp_path), base_path=str(tmp_path))
 
-        assert isinstance(result, CreateResult)
+        assert isinstance(result, DoResult)
         assert result.file_id == "doc1"
 
     @patch("retry.time.sleep")
@@ -391,11 +390,11 @@ class TestSourceParam:
             "name": "Data",
         }
 
-        result = do_create(title="Data", doc_type="sheet", source=tmp_path)
+        result = do_create(title="Data", doc_type="sheet", source=str(tmp_path), base_path=str(tmp_path))
 
-        assert isinstance(result, CreateResult)
+        assert isinstance(result, DoResult)
         assert result.file_id == "sheet1"
-        assert result.doc_type == "sheet"
+        assert result.extras["type"] == "sheet"
 
     @patch("retry.time.sleep")
     @patch("tools.create.get_drive_service")
@@ -414,46 +413,46 @@ class TestSourceParam:
             "name": "Manifest Title",
         }
 
-        result = do_create(source=tmp_path)  # No title param
+        result = do_create(source=str(tmp_path), base_path=str(tmp_path))  # No title param
 
-        assert isinstance(result, CreateResult)
+        assert isinstance(result, DoResult)
         assert result.title == "Manifest Title"
 
     def test_source_and_content_conflict(self, tmp_path: Path) -> None:
         """Providing both source and content returns error."""
         (tmp_path / "content.md").write_text("# Test")
 
-        result = do_create(content="# Inline", title="Test", source=tmp_path)
+        result = do_create(content="# Inline", title="Test", source=str(tmp_path), base_path=str(tmp_path))
 
-        assert isinstance(result, CreateError)
-        assert result.kind == "invalid_input"
-        assert "either" in result.message.lower()
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+        assert "either" in result["message"].lower()
 
     def test_no_content_no_source_returns_error(self) -> None:
         """Neither content nor source returns error."""
         result = do_create(title="Test")
 
-        assert isinstance(result, CreateError)
-        assert result.kind == "invalid_input"
-        assert "content" in result.message.lower()
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+        assert "content" in result["message"].lower()
 
     def test_source_missing_file_returns_error(self, tmp_path: Path) -> None:
         """Source folder without expected content file returns error."""
-        result = do_create(title="Test", source=tmp_path)
+        result = do_create(title="Test", source=str(tmp_path), base_path=str(tmp_path))
 
-        assert isinstance(result, CreateError)
-        assert result.kind == "invalid_input"
-        assert "content.md" in result.message
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+        assert "content.md" in result["message"]
 
     def test_source_no_title_no_manifest_returns_error(self, tmp_path: Path) -> None:
         """Source without title param and without manifest returns error."""
         (tmp_path / "content.md").write_text("# Test")
 
-        result = do_create(source=tmp_path)  # No title, no manifest
+        result = do_create(source=str(tmp_path), base_path=str(tmp_path))  # No title, no manifest
 
-        assert isinstance(result, CreateError)
-        assert result.kind == "invalid_input"
-        assert "title" in result.message.lower()
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+        assert "title" in result["message"].lower()
 
 
 class TestManifestEnrichment:
@@ -476,7 +475,7 @@ class TestManifestEnrichment:
             "name": "Report",
         }
 
-        do_create(title="Report", source=tmp_path)
+        do_create(title="Report", source=str(tmp_path), base_path=str(tmp_path))
 
         # Re-read manifest
         manifest = json.loads((tmp_path / "manifest.json").read_text())
@@ -502,9 +501,9 @@ class TestManifestEnrichment:
             "name": "Test",
         }
 
-        result = do_create(title="Test", source=tmp_path)
+        result = do_create(title="Test", source=str(tmp_path), base_path=str(tmp_path))
 
-        assert isinstance(result, CreateResult)
+        assert isinstance(result, DoResult)
         # No manifest.json to enrich — should succeed without error
         assert not (tmp_path / "manifest.json").exists()
 
@@ -522,7 +521,7 @@ class TestManifestEnrichment:
 
         result = do_create(content="# Test", title="Test")
 
-        assert isinstance(result, CreateResult)
+        assert isinstance(result, DoResult)
         # No crash, no enrichment attempt
 
 
@@ -662,11 +661,11 @@ class TestMultiTabSheetCreation:
             "name": "Budget",
         }
 
-        result = do_create(title="Budget", doc_type="sheet", source=deposit)
+        result = do_create(title="Budget", doc_type="sheet", source=str(deposit), base_path=str(deposit))
 
-        assert isinstance(result, CreateResult)
+        assert isinstance(result, DoResult)
         assert result.file_id == "sheet1"
-        assert result.doc_type == "sheet"
+        assert result.extras["type"] == "sheet"
 
         # Tab 1: renamed from CSV upload default
         mock_rename.assert_called_once_with("sheet1", sheet_id=0, new_title="Revenue")
@@ -699,8 +698,9 @@ class TestMultiTabSheetCreation:
             "name": "Budget",
         }
 
-        result = do_create(title="Budget", doc_type="sheet", source=deposit)
+        result = do_create(title="Budget", doc_type="sheet", source=str(deposit), base_path=str(deposit))
 
+        assert isinstance(result, DoResult)
         assert result.cues["tab_count"] == 2
         assert result.cues["tab_names"] == ["Revenue", "Costs"]
 
@@ -721,9 +721,9 @@ class TestMultiTabSheetCreation:
             "name": "Simple",
         }
 
-        result = do_create(doc_type="sheet", source=tmp_path)
+        result = do_create(doc_type="sheet", source=str(tmp_path), base_path=str(tmp_path))
 
-        assert isinstance(result, CreateResult)
+        assert isinstance(result, DoResult)
         # No Sheets API calls — just CSV upload
         assert "tab_count" not in result.cues
 
@@ -746,7 +746,7 @@ class TestMultiTabSheetCreation:
             "name": "Budget",
         }
 
-        do_create(title="Budget", doc_type="sheet", source=deposit)
+        do_create(title="Budget", doc_type="sheet", source=str(deposit), base_path=str(deposit))
 
         manifest = json.loads((deposit / "manifest.json").read_text())
         assert manifest["status"] == "created"
@@ -781,9 +781,9 @@ class TestMultiTabSheetCreation:
             "name": "With Formulae",
         }
 
-        result = do_create(title="With Formulae", doc_type="sheet", source=tmp_path)
+        result = do_create(title="With Formulae", doc_type="sheet", source=str(tmp_path), base_path=str(tmp_path))
 
-        assert isinstance(result, CreateResult)
+        assert isinstance(result, DoResult)
         # The formula is in the values passed to update_sheet_values
         call_args = mock_update.call_args
         values = call_args[1]["values"]

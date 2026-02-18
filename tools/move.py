@@ -8,14 +8,14 @@ Single-parent enforcement: removes existing parents, adds destination.
 from typing import Any
 
 from adapters.services import get_drive_service
-from models import MiseError, ErrorKind
+from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 
 
 def do_move(
-    file_id: str,
-    destination_folder_id: str,
-) -> dict[str, Any]:
+    file_id: str | None = None,
+    destination_folder_id: str | None = None,
+) -> DoResult | dict[str, Any]:
     """
     Move a file to a different Drive folder.
 
@@ -27,8 +27,16 @@ def do_move(
         destination_folder_id: Target folder ID
 
     Returns:
-        Dict with file_id, title, web_link, destination info
+        DoResult on success, error dict on failure
     """
+    if not file_id or not destination_folder_id:
+        missing = []
+        if not file_id:
+            missing.append("file_id")
+        if not destination_folder_id:
+            missing.append("destination_folder_id")
+        return {"error": True, "kind": "invalid_input",
+                "message": f"move requires {' and '.join(missing)}"}
     try:
         return _move_file(file_id, destination_folder_id)
     except MiseError as e:
@@ -36,7 +44,7 @@ def do_move(
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
-def _move_file(file_id: str, destination_folder_id: str) -> dict[str, Any]:
+def _move_file(file_id: str, destination_folder_id: str) -> DoResult:
     """Move via addParents/removeParents on files().update()."""
     service = get_drive_service()
 
@@ -76,14 +84,14 @@ def _move_file(file_id: str, destination_folder_id: str) -> dict[str, Any]:
 
     updated = service.files().update(**update_kwargs).execute()
 
-    return {
-        "file_id": updated["id"],
-        "title": updated.get("name", ""),
-        "web_link": updated.get("webViewLink", ""),
-        "operation": "move",
-        "cues": {
+    return DoResult(
+        file_id=updated["id"],
+        title=updated.get("name", ""),
+        web_link=updated.get("webViewLink", ""),
+        operation="move",
+        cues={
             "destination_folder": dest_meta.get("name", destination_folder_id),
             "destination_folder_id": destination_folder_id,
             "previous_parents": current_parents,
         },
-    }
+    )

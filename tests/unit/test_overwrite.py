@@ -2,6 +2,7 @@
 
 from unittest.mock import patch, MagicMock
 
+from models import DoResult
 from server import do
 from tools.overwrite import do_overwrite, _strip_headings
 
@@ -76,24 +77,28 @@ class TestStripHeadings:
 
 
 class TestDoOverwriteValidation:
-    """Input validation via do() wrapper."""
+    """Input validation via do_overwrite()."""
 
     def test_overwrite_without_file_id_returns_error(self) -> None:
-        result = do(operation="overwrite", content="hello")
+        result = do_overwrite(content="hello")
         assert result["error"] is True
         assert result["kind"] == "invalid_input"
         assert "file_id" in result["message"]
 
     def test_overwrite_without_content_returns_error(self) -> None:
-        result = do_overwrite("doc123")
+        result = do_overwrite(file_id="doc123")
         assert result["error"] is True
         assert result["kind"] == "invalid_input"
 
     def test_overwrite_with_both_content_and_source_returns_error(self) -> None:
-        from pathlib import Path
-        result = do_overwrite("doc123", content="hello", source=Path("/tmp/fake"))
+        result = do_overwrite(file_id="doc123", content="hello", source="/tmp/fake", base_path="/tmp")
         assert result["error"] is True
         assert "not both" in result["message"]
+
+    def test_overwrite_validation_through_do(self) -> None:
+        result = do(operation="overwrite", content="hello")
+        assert result["error"] is True
+        assert "file_id" in result["message"]
 
 
 class TestDoOverwrite:
@@ -114,12 +119,13 @@ class TestDoOverwrite:
             ]},
         }
 
-        result = do_overwrite("doc123", content="New content here")
+        result = do_overwrite(file_id="doc123", content="New content here")
 
-        assert result["file_id"] == "doc123"
-        assert result["title"] == "My Doc"
-        assert result["operation"] == "overwrite"
-        assert result["cues"]["char_count"] == 16
+        assert isinstance(result, DoResult)
+        assert result.file_id == "doc123"
+        assert result.title == "My Doc"
+        assert result.operation == "overwrite"
+        assert result.cues["char_count"] == 16
 
         # Verify batchUpdate was called
         batch_call = mock_service.documents().batchUpdate.call_args
@@ -142,9 +148,10 @@ class TestDoOverwrite:
             "body": {"content": [{"endIndex": 1}]},
         }
 
-        result = do_overwrite("doc123", content="First content")
+        result = do_overwrite(file_id="doc123", content="First content")
 
-        assert result["file_id"] == "doc123"
+        assert isinstance(result, DoResult)
+        assert result.file_id == "doc123"
 
         batch_call = mock_service.documents().batchUpdate.call_args
         requests = batch_call.kwargs["body"]["requests"]
@@ -165,9 +172,10 @@ class TestDoOverwrite:
             "body": {"content": [{"endIndex": 1}]},
         }
 
-        result = do_overwrite("doc123", content="# Title\n\n## Section\n\nBody")
+        result = do_overwrite(file_id="doc123", content="# Title\n\n## Section\n\nBody")
 
-        assert result["cues"]["heading_count"] == 2
+        assert isinstance(result, DoResult)
+        assert result.cues["heading_count"] == 2
 
         batch_call = mock_service.documents().batchUpdate.call_args
         requests = batch_call.kwargs["body"]["requests"]
@@ -212,7 +220,7 @@ class TestDoOverwrite:
             ]},
         }
 
-        do_overwrite("doc123", content="Replacement")
+        do_overwrite(file_id="doc123", content="Replacement")
 
         batch_call = mock_service.documents().batchUpdate.call_args
         requests = batch_call.kwargs["body"]["requests"]
@@ -236,7 +244,7 @@ class TestDoOverwrite:
             resp, b"Document not found"
         )
 
-        result = do_overwrite("nonexistent", content="hello")
+        result = do_overwrite(file_id="nonexistent", content="hello")
 
         assert result["error"] is True
 
@@ -255,6 +263,38 @@ class TestDoOverwrite:
             resp, b"Forbidden"
         )
 
-        result = do_overwrite("readonly_doc", content="hello")
+        result = do_overwrite(file_id="readonly_doc", content="hello")
 
         assert result["error"] is True
+
+
+class TestOverwriteFromSource:
+    """Tests for overwrite with source path."""
+
+    @patch("retry.time.sleep")
+    @patch("tools.overwrite.get_docs_service")
+    def test_overwrite_from_source(self, mock_svc, _sleep, tmp_path) -> None:
+        """Overwrite reads content.md from source folder."""
+        (tmp_path / "content.md").write_text("# From Source\n\nNew content.")
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.documents().get().execute.return_value = {
+            "title": "Doc",
+            "body": {"content": [{"endIndex": 1}]},
+        }
+
+        result = do_overwrite(
+            file_id="doc123",
+            source=str(tmp_path),
+            base_path=str(tmp_path),
+        )
+
+        assert isinstance(result, DoResult)
+        assert result.file_id == "doc123"
+        assert result.operation == "overwrite"
+
+    def test_overwrite_source_without_base_path_returns_error(self) -> None:
+        result = do_overwrite(file_id="doc123", source="mise/some-folder/")
+        assert result["error"] is True
+        assert "base_path" in result["message"]

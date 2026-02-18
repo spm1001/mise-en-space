@@ -2,6 +2,7 @@
 
 from unittest.mock import patch, MagicMock
 
+from models import DoResult
 from server import do
 from tools.edit import do_prepend, do_append, do_replace_text
 
@@ -18,7 +19,7 @@ def _mock_docs_service(end_index: int = 50, title: str = "Test Doc"):
 
 class TestDoPrependValidation:
     def test_prepend_without_file_id_returns_error(self) -> None:
-        result = do(operation="prepend", content="hello")
+        result = do_prepend(content="hello")
         assert result["error"] is True
         assert "file_id" in result["message"]
 
@@ -26,6 +27,11 @@ class TestDoPrependValidation:
         result = do_prepend("doc123", "")
         assert result["error"] is True
         assert "content" in result["message"]
+
+    def test_prepend_validation_through_do(self) -> None:
+        result = do(operation="prepend", content="hello")
+        assert result["error"] is True
+        assert "file_id" in result["message"]
 
 
 class TestDoPrepend:
@@ -37,9 +43,10 @@ class TestDoPrepend:
 
         result = do_prepend("doc123", "Executive Summary\n\n")
 
-        assert result["file_id"] == "doc123"
-        assert result["operation"] == "prepend"
-        assert result["cues"]["inserted_chars"] == 19
+        assert isinstance(result, DoResult)
+        assert result.file_id == "doc123"
+        assert result.operation == "prepend"
+        assert result.cues["inserted_chars"] == 19
 
         # Verify insertText at index 1
         batch_call = mock_service.documents().batchUpdate.call_args
@@ -61,7 +68,7 @@ class TestDoPrepend:
 
 class TestDoAppendValidation:
     def test_append_without_file_id_returns_error(self) -> None:
-        result = do(operation="append", content="hello")
+        result = do_append(content="hello")
         assert result["error"] is True
         assert "file_id" in result["message"]
 
@@ -69,6 +76,11 @@ class TestDoAppendValidation:
         result = do_append("doc123", "")
         assert result["error"] is True
         assert "content" in result["message"]
+
+    def test_append_validation_through_do(self) -> None:
+        result = do(operation="append", content="hello")
+        assert result["error"] is True
+        assert "file_id" in result["message"]
 
 
 class TestDoAppend:
@@ -80,8 +92,9 @@ class TestDoAppend:
 
         result = do_append("doc123", "\n\n--- Notes ---")
 
-        assert result["operation"] == "append"
-        assert result["cues"]["inserted_chars"] == 15
+        assert isinstance(result, DoResult)
+        assert result.operation == "append"
+        assert result.cues["inserted_chars"] == 15
 
         # Verify insertText at endIndex - 1
         batch_call = mock_service.documents().batchUpdate.call_args
@@ -114,12 +127,12 @@ class TestDoAppend:
 
 class TestDoReplaceTextValidation:
     def test_replace_without_file_id_returns_error(self) -> None:
-        result = do(operation="replace_text", find="old", content="new")
+        result = do_replace_text(find="old", content="new")
         assert result["error"] is True
         assert "file_id" in result["message"]
 
     def test_replace_without_find_returns_error(self) -> None:
-        result = do(operation="replace_text", file_id="doc1", content="new")
+        result = do_replace_text(file_id="doc1", content="new")
         assert result["error"] is True
         assert "find" in result["message"]
 
@@ -127,6 +140,11 @@ class TestDoReplaceTextValidation:
         result = do_replace_text("doc123", "old", None)
         assert result["error"] is True
         assert "content" in result["message"]
+
+    def test_replace_validation_through_do(self) -> None:
+        result = do(operation="replace_text", find="old", content="new")
+        assert result["error"] is True
+        assert "file_id" in result["message"]
 
 
 class TestDoReplaceText:
@@ -142,10 +160,11 @@ class TestDoReplaceText:
 
         result = do_replace_text("doc123", "DRAFT", "FINAL")
 
-        assert result["operation"] == "replace_text"
-        assert result["cues"]["find"] == "DRAFT"
-        assert result["cues"]["replace"] == "FINAL"
-        assert result["cues"]["occurrences_changed"] == 3
+        assert isinstance(result, DoResult)
+        assert result.operation == "replace_text"
+        assert result.cues["find"] == "DRAFT"
+        assert result.cues["replace"] == "FINAL"
+        assert result.cues["occurrences_changed"] == 3
 
     @patch("retry.time.sleep")
     @patch("tools.edit.get_docs_service")
@@ -160,8 +179,9 @@ class TestDoReplaceText:
 
         result = do_replace_text("doc123", "remove me", "")
 
-        assert result["cues"]["replace"] == ""
-        assert result["cues"]["occurrences_changed"] == 2
+        assert isinstance(result, DoResult)
+        assert result.cues["replace"] == ""
+        assert result.cues["occurrences_changed"] == 2
 
     @patch("retry.time.sleep")
     @patch("tools.edit.get_docs_service")
@@ -187,7 +207,8 @@ class TestDoReplaceText:
 
         result = do_replace_text("doc123", "nonexistent", "replacement")
 
-        assert result["cues"]["occurrences_changed"] == 0
+        assert isinstance(result, DoResult)
+        assert result.cues["occurrences_changed"] == 0
 
 
 class TestEditErrorPaths:
