@@ -83,8 +83,9 @@ def get_deposit_folder(
         get_deposit_folder("slides", "AMI Deck 2026", "1OepZju...")
         -> Path("mise/slides--ami-deck-2026--1OepZju.../")
     """
-    base = base_path or Path.cwd()
-    mise_fetch = base / "mise"
+    if base_path is None:
+        raise ValueError("base_path is required — deposits must not fall back to MCP server's cwd")
+    mise_fetch = base_path / "mise"
 
     # Build folder name: {type}--{slug}--{id}
     # Truncate ID to first 12 chars for readability
@@ -289,8 +290,9 @@ def write_search_results(
         write_search_results("Q4 planning", {...})
         -> Path("mise/search--q4-planning--2026-01-31T21-12-53.json")
     """
-    base = base_path or Path.cwd()
-    mise_fetch = base / "mise"
+    if base_path is None:
+        raise ValueError("base_path is required — deposits must not fall back to MCP server's cwd")
+    mise_fetch = base_path / "mise"
     mise_fetch.mkdir(parents=True, exist_ok=True)
 
     # Build filename: search--{query-slug}--{timestamp}.json
@@ -313,8 +315,9 @@ def list_deposit_folders(base_path: Path | None = None) -> list[Path]:
     Returns:
         List of deposit folder paths, sorted by modification time (newest first)
     """
-    base = base_path or Path.cwd()
-    mise_fetch = base / "mise"
+    if base_path is None:
+        raise ValueError("base_path is required — deposits must not fall back to MCP server's cwd")
+    mise_fetch = base_path / "mise"
 
     if not mise_fetch.exists():
         return []

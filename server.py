@@ -45,7 +45,7 @@ def search(
     query: str,
     sources: list[str] | None = None,
     max_results: int = 20,
-    base_path: str | None = None,
+    base_path: str = "",
 ) -> dict[str, Any]:
     """
     Search across Drive and Gmail.
@@ -66,12 +66,14 @@ def search(
         drive_count: Number of Drive results
         gmail_count: Number of Gmail results
     """
-    resolved_path = Path(base_path) if base_path else None
-    return do_search(query, sources, max_results, base_path=resolved_path).to_dict()
+    if not base_path:
+        return {"error": True, "kind": "invalid_input",
+                "message": "base_path is required — pass your working directory so deposits land in your project, not the MCP server's directory"}
+    return do_search(query, sources, max_results, base_path=Path(base_path)).to_dict()
 
 
 @mcp.tool()
-def fetch(file_id: str, base_path: str | None = None, attachment: str | None = None) -> dict[str, Any]:
+def fetch(file_id: str, base_path: str = "", attachment: str | None = None) -> dict[str, Any]:
     """
     Fetch content to filesystem.
 
@@ -98,8 +100,10 @@ def fetch(file_id: str, base_path: str | None = None, attachment: str | None = N
         type: Content type (doc, sheet, slides, gmail)
         metadata: File metadata
     """
-    resolved_path = Path(base_path) if base_path else None
-    return do_fetch(file_id, base_path=resolved_path, attachment=attachment).to_dict()
+    if not base_path:
+        return {"error": True, "kind": "invalid_input",
+                "message": "base_path is required — pass your working directory so deposits land in your project, not the MCP server's directory"}
+    return do_fetch(file_id, base_path=Path(base_path), attachment=attachment).to_dict()
 
 
 @mcp.tool()

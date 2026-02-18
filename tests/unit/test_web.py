@@ -42,6 +42,18 @@ from adapters.web import (
 from tests.helpers import wire_httpx_client as _wire_httpx_client
 
 
+@pytest.fixture(autouse=True)
+def _mock_web_deposit(tmp_path):
+    """Prevent web fetch tests from depositing into the MCP server's directory.
+
+    All tests in this file test routing/extraction, not deposit behaviour.
+    The workspace layer now requires an explicit base_path (no cwd fallback),
+    so we mock get_deposit_folder to return tmp_path for every test.
+    """
+    with patch('tools.fetch.web.get_deposit_folder', return_value=tmp_path):
+        yield
+
+
 class TestIsWebUrl:
     """Test URL detection."""
 
