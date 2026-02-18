@@ -40,6 +40,20 @@ def _move_file(file_id: str, destination_folder_id: str) -> dict[str, Any]:
     """Move via addParents/removeParents on files().update()."""
     service = get_drive_service()
 
+    # Validate destination is a folder before attempting the move
+    dest_meta = (
+        service.files()
+        .get(fileId=destination_folder_id, fields="mimeType,name", supportsAllDrives=True)
+        .execute()
+    )
+    if dest_meta.get("mimeType") != "application/vnd.google-apps.folder":
+        dest_name = dest_meta.get("name", destination_folder_id)
+        raise MiseError(
+            ErrorKind.INVALID_INPUT,
+            f"Destination '{dest_name}' ({destination_folder_id}) is not a folder "
+            f"(type: {dest_meta.get('mimeType', 'unknown')})",
+        )
+
     # Get current parents so we can remove them
     current = (
         service.files()
@@ -62,20 +76,13 @@ def _move_file(file_id: str, destination_folder_id: str) -> dict[str, Any]:
 
     updated = service.files().update(**update_kwargs).execute()
 
-    # Get destination folder name for cues
-    dest_folder = (
-        service.files()
-        .get(fileId=destination_folder_id, fields="name", supportsAllDrives=True)
-        .execute()
-    )
-
     return {
         "file_id": updated["id"],
         "title": updated.get("name", ""),
         "web_link": updated.get("webViewLink", ""),
         "operation": "move",
         "cues": {
-            "destination_folder": dest_folder.get("name", destination_folder_id),
+            "destination_folder": dest_meta.get("name", destination_folder_id),
             "destination_folder_id": destination_folder_id,
             "previous_parents": current_parents,
         },

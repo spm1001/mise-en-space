@@ -31,16 +31,16 @@ class TestDoMove:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
 
-        # Current file has one parent
         mock_service.files().get().execute.side_effect = [
+            # Destination folder validation
+            {"mimeType": "application/vnd.google-apps.folder", "name": "Archive"},
+            # Current file parents
             {
                 "id": "file1",
                 "name": "Report.pdf",
                 "parents": ["old_folder"],
                 "webViewLink": "https://drive.google.com/file/d/file1/view",
             },
-            # Destination folder name lookup
-            {"name": "Archive"},
         ]
         mock_service.files().update().execute.return_value = {
             "id": "file1",
@@ -65,13 +65,13 @@ class TestDoMove:
         mock_svc.return_value = mock_service
 
         mock_service.files().get().execute.side_effect = [
+            {"mimeType": "application/vnd.google-apps.folder", "name": "Target"},
             {
                 "id": "file1",
                 "name": "Report.pdf",
                 "parents": ["folder_a", "folder_b"],
                 "webViewLink": "https://drive.google.com/file/d/file1/view",
             },
-            {"name": "Target"},
         ]
         mock_service.files().update().execute.return_value = {
             "id": "file1",
@@ -114,8 +114,8 @@ class TestDoMove:
         mock_svc.return_value = mock_service
 
         mock_service.files().get().execute.side_effect = [
+            {"mimeType": "application/vnd.google-apps.folder", "name": "Dest"},
             {"id": "f1", "name": "Test", "parents": ["old"], "webViewLink": ""},
-            {"name": "Dest"},
         ]
         mock_service.files().update().execute.return_value = {
             "id": "f1", "name": "Test", "parents": ["new"], "webViewLink": "",
@@ -125,3 +125,39 @@ class TestDoMove:
 
         assert result["file_id"] == "f1"
         assert result["operation"] == "move"
+
+    @patch("retry.time.sleep")
+    @patch("tools.move.get_drive_service")
+    def test_move_rejects_non_folder_destination(self, mock_svc, _sleep) -> None:
+        """Passing a file ID as destination returns a clear error."""
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+
+        mock_service.files().get().execute.return_value = {
+            "mimeType": "application/vnd.google-apps.document",
+            "name": "Some Doc",
+        }
+
+        result = do_move("file1", "not_a_folder")
+
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+        assert "not a folder" in result["message"]
+        assert "Some Doc" in result["message"]
+
+    @patch("retry.time.sleep")
+    @patch("tools.move.get_drive_service")
+    def test_move_rejects_spreadsheet_destination(self, mock_svc, _sleep) -> None:
+        """Any non-folder MIME type is rejected."""
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+
+        mock_service.files().get().execute.return_value = {
+            "mimeType": "application/vnd.google-apps.spreadsheet",
+            "name": "Budget",
+        }
+
+        result = do_move("file1", "sheet_id")
+
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
