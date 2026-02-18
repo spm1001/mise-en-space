@@ -106,6 +106,10 @@ def _deposit_attachment_content(
     Returns extraction result dict or None if type not handled.
     """
     if mime_type == "application/pdf":
+        # No thumbnails here — this deposits into the shared thread folder.
+        # Multiple PDF attachments would collide on page_01.png filenames.
+        # The raw PDF is deposited alongside for Claude to view directly.
+        # Single-attachment fetch (fetch_attachment) gets its own folder and does render thumbnails.
         result = extract_pdf_content(content_bytes, file_id=file_id)
 
         content_filename = f"{filename}.md"
