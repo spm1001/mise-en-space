@@ -1,6 +1,4 @@
 # Python
-__pycache__/
-*.py[cod]
 *$py.class
 *.so
 .Python
@@ -25,12 +23,6 @@ wheels/
 venv/
 ENV/
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-.DS_Store
 
 # Testing
 .pytest_cache/
