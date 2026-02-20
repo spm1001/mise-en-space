@@ -2,17 +2,15 @@
 Gmail fetch — thread extraction, attachment handling, pre-exfil routing.
 """
 
-import io
 from pathlib import Path
 from typing import Any
-
-from PIL import Image
 
 from adapters.drive import download_file, lookup_exfiltrated
 from adapters.gmail import fetch_thread, download_attachment
 from adapters.office import extract_office_content, get_office_type_from_mime
 from adapters.pdf import extract_pdf_content, render_pdf_pages
 from extractors.gmail import extract_thread_content
+from extractors.image import validate_image_bytes, MAX_IMAGE_DIMENSION_PX
 from models import MiseError, FetchResult, FetchError, EmailAttachment
 from workspace import get_deposit_folder, write_content, write_manifest, write_image
 
@@ -32,7 +30,7 @@ OFFICE_MIME_TYPES = {
 # Claude API image constraints (hard limits — violation returns 400 and poisons the session)
 # Source: https://platform.claude.com/docs/en/build-with-claude/vision
 MAX_IMAGE_BYTES = 4_500_000  # 4.5MB raw (API hard limit: 5MB; 10% headroom)
-MAX_IMAGE_DIMENSION_PX = 8_000  # Per-axis (API hard limit: 8000px for ≤20 images)
+# MAX_IMAGE_DIMENSION_PX imported from extractors.image
 # NOTE: In conversations with >20 accumulated images the limit drops to 2000px.
 # We can't know conversation context at deposit time — note dimension in metadata
 # so Claude can judge risk in long conversations.
@@ -159,37 +157,24 @@ def _deposit_attachment_content(
         }
 
     elif mime_type.startswith("image/"):
-        # Post-download dimension check using PIL.
+        # Post-download validation using PIL.
         # The pre-download size check (att.size) catches most oversized images,
         # but dimensions can only be verified after the bytes are in hand.
         # A file can be < 4.5MB yet have dimensions > 8000px (e.g. losslessly
-        # compressed scan of a large document).
-        try:
-            img = Image.open(io.BytesIO(content_bytes))
-            w, h = img.size
-            if w > MAX_IMAGE_DIMENSION_PX or h > MAX_IMAGE_DIMENSION_PX:
-                return {
-                    "filename": filename,
-                    "mime_type": mime_type,
-                    "skipped": True,
-                    "dimensions": f"{w}×{h}",
-                    "reason": (
-                        f"dimensions {w}×{h} exceed API limit of "
-                        f"{MAX_IMAGE_DIMENSION_PX}px per axis"
-                    ),
-                }
-            dimension_info = f"{w}×{h}"
-        except Exception:
-            # PIL couldn't read the bytes as an image — content doesn't match
-            # the declared MIME type (e.g. a DOCX renamed to .png).
-            # Do NOT deposit: passing non-image bytes to the API as image/png
-            # causes a hard 400 "Could not process image" that poisons the session.
-            return {
+        # compressed scan of a large document). Also catches MIME mismatch (e.g.
+        # a DOCX renamed .png) — depositing non-image bytes as image/png causes a
+        # hard 400 "Could not process image" that poisons the session.
+        validation = validate_image_bytes(content_bytes, MAX_IMAGE_DIMENSION_PX)
+        if not validation.valid:
+            skip: dict[str, Any] = {
                 "filename": filename,
                 "mime_type": mime_type,
                 "skipped": True,
-                "reason": "bytes are not a valid image (content doesn't match declared MIME type)",
+                "reason": validation.skip_reason,
             }
+            if validation.dimensions:
+                skip["dimensions"] = validation.dimensions
+            return skip
 
         write_image(folder, content_bytes, filename)
 
@@ -199,8 +184,8 @@ def _deposit_attachment_content(
             "extracted": True,
             "deposited_as": filename,
         }
-        if dimension_info:
-            result["dimensions"] = dimension_info
+        if validation.dimensions:
+            result["dimensions"] = validation.dimensions
         return result
 
     return None
@@ -667,6 +652,13 @@ def fetch_attachment(
 
     # Images
     if mime_type.startswith("image/"):
+        validation = validate_image_bytes(content_bytes, MAX_IMAGE_DIMENSION_PX)
+        if not validation.valid:
+            return FetchError(
+                kind="extraction_failed",
+                message=f"Image validation failed: {validation.skip_reason}",
+            )
+
         folder = get_deposit_folder("image", title, thread_id, base_path=base_path)
         image_path = write_image(folder, content_bytes, attachment_name)
 

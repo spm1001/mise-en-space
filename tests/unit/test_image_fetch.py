@@ -1,8 +1,10 @@
 """Tests for image file fetch functionality."""
 
+import io
 import pytest
 from unittest.mock import patch, MagicMock
 from pathlib import Path
+from PIL import Image as PILImage
 
 from adapters.image import (
     is_image_file,
@@ -16,6 +18,15 @@ from adapters.image import (
     _render_svg_to_png,
 )
 from tools.fetch import fetch_image_file
+
+
+def _make_valid_png(width: int = 10, height: int = 10) -> bytes:
+    buf = io.BytesIO()
+    PILImage.new("RGB", (width, height)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+_VALID_PNG = _make_valid_png()
 
 
 class TestIsImageFile:
@@ -195,7 +206,7 @@ class TestFetchImageFile:
     @patch("tools.fetch.drive.adapter_fetch_image")
     def test_fetch_png(self, mock_adapter, mock_folder, mock_write, mock_manifest):
         """Fetches PNG image and deposits correctly."""
-        png_bytes = b"\x89PNG\r\n\x1a\n"
+        png_bytes = _VALID_PNG
         mock_adapter.return_value = ImageResult(
             image_bytes=png_bytes,
             filename="image.png",
@@ -283,7 +294,7 @@ class TestFetchImageFile:
         from models import EmailContext
 
         mock_adapter.return_value = ImageResult(
-            image_bytes=b"image",
+            image_bytes=_VALID_PNG,
             filename="image.png",
             mime_type="image/png",
         )

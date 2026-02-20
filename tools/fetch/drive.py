@@ -14,6 +14,7 @@ from adapters.cdp import is_cdp_available
 from adapters.pdf import fetch_and_extract_pdf, extract_pdf_content
 from adapters.office import fetch_and_extract_office, get_office_type_from_mime, OfficeType
 from adapters.image import fetch_image as adapter_fetch_image, is_image_file, is_svg
+from extractors.image import validate_image_bytes, MAX_IMAGE_DIMENSION_PX
 from extractors.docs import extract_doc_content
 from extractors.sheets import extract_sheets_content, extract_sheets_per_tab
 from extractors.slides import extract_slides_content
@@ -544,17 +545,29 @@ def fetch_text(file_id: str, title: str, metadata: dict[str, Any], email_context
     )
 
 
-def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
+def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult | FetchError:
     """
     Fetch image file (PNG, JPEG, GIF, WEBP, SVG, etc.).
 
-    For raster images: deposit as-is.
+    For raster images: deposit as-is (after PIL validation).
     For SVG: deposit raw SVG + render to PNG (Claude can view PNGs but not SVGs).
     """
     mime_type = metadata.get("mimeType", "")
 
     # Fetch via adapter (handles download + SVG rendering)
     result = adapter_fetch_image(file_id, title, mime_type)
+
+    # Validate raster bytes with PIL before depositing.
+    # SVGs are not raster — PIL cannot open them and they don't need this check.
+    if not is_svg(mime_type):
+        validation = validate_image_bytes(result.image_bytes, MAX_IMAGE_DIMENSION_PX)
+        if not validation.valid:
+            return FetchError(
+                kind="extraction_failed",
+                message=f"Image validation failed: {validation.skip_reason}",
+                file_id=file_id,
+                name=title,
+            )
 
     # Deposit to workspace
     folder = get_deposit_folder("image", title, file_id, base_path=base_path)

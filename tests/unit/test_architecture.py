@@ -99,6 +99,7 @@ class TestLayerBoundaries:
             "markitdown",  # HTML/PDF/Office → markdown conversion
             "regex",       # Enhanced regex (talon needs duplicate named groups)
             "trafilatura",  # Web content extraction (HTML → text)
+            "PIL",          # Image validation (no API calls, pure byte inspection)
         }
 
         violations = []

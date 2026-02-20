@@ -26,6 +26,17 @@ from adapters.office import OfficeExtractionResult
 from adapters.pdf import PdfExtractionResult
 
 
+def _make_valid_png(width: int = 10, height: int = 10) -> bytes:
+    """Return minimal valid PNG bytes that PIL can open."""
+    buf = io.BytesIO()
+    PILImage.new("RGB", (width, height)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+# Module-level constant for use in patch decorators.
+_VALID_PNG = _make_valid_png()
+
+
 class TestDetectIdType:
     """Tests for detect_id_type function."""
 
@@ -775,7 +786,7 @@ class TestFetchAttachment:
         mock_fetch.return_value = _make_thread_data([att])
         mock_download.return_value = AttachmentDownload(
             filename="logo.png", mime_type="image/png",
-            size=2000, content=b"fake png bytes",
+            size=2000, content=_VALID_PNG,
         )
 
         result = fetch_attachment("thread_xyz", "logo.png")
@@ -1605,7 +1616,7 @@ class TestFetchImageFile:
     def test_raster_image(self, mock_manifest, mock_write_img, mock_folder, mock_fetch):
         """Raster image is deposited as-is."""
         mock_result = MagicMock()
-        mock_result.image_bytes = b"png bytes"
+        mock_result.image_bytes = _VALID_PNG
         mock_result.filename = "photo.png"
         mock_result.rendered_png_bytes = None
         mock_result.render_method = None
@@ -1646,7 +1657,7 @@ class TestFetchImageFile:
     def test_image_with_email_context(self, mock_manifest, mock_write_img, mock_folder, mock_fetch):
         """Email context in image result metadata."""
         mock_result = MagicMock()
-        mock_result.image_bytes = b"bytes"
+        mock_result.image_bytes = _VALID_PNG
         mock_result.filename = "photo.png"
         mock_result.rendered_png_bytes = None
         mock_result.render_method = None
@@ -2295,7 +2306,7 @@ class TestFetchAttachmentExfilEdgeCases:
 
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated")
-    @patch("tools.fetch.gmail.download_file", return_value=b"png bytes")
+    @patch("tools.fetch.gmail.download_file", return_value=_VALID_PNG)
     @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/image"))
     @patch("tools.fetch.gmail.write_image", return_value=Path("/tmp/image/logo.png"))
     @patch("tools.fetch.gmail.write_manifest")
@@ -2526,7 +2537,7 @@ class TestFetchAttachmentLookupFailure:
         }
         mock_gmail_dl.return_value = AttachmentDownload(
             filename="logo.png", mime_type="image/png",
-            size=500, content=b"png bytes",
+            size=500, content=_VALID_PNG,
         )
 
         result = fetch_attachment("thread_xyz", "logo.png")
