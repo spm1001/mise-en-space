@@ -1,6 +1,6 @@
 """
-Tests for PIL image validation — extractors/image.py and the two tool paths
-that apply it (fetch_attachment, fetch_image_file).
+Tests for PIL image validation and resize — extractors/image.py and the two
+tool paths that apply it (fetch_attachment, fetch_image_file).
 """
 
 import io
@@ -10,7 +10,14 @@ from pathlib import Path
 
 from PIL import Image
 
-from extractors.image import validate_image_bytes, ImageValidation, MAX_IMAGE_DIMENSION_PX
+from extractors.image import (
+    validate_image_bytes,
+    ImageValidation,
+    MAX_IMAGE_DIMENSION_PX,
+    resize_image_bytes,
+    ImageResizeResult,
+    MAX_LONG_EDGE_PX,
+)
 from models import FetchError
 
 
@@ -78,6 +85,105 @@ class TestValidateImageBytes:
         result = validate_image_bytes(small_limit, max_dimension_px=100)
         assert result.valid is False
         assert "101×50" in result.skip_reason
+
+
+# ---------------------------------------------------------------------------
+# resize_image_bytes unit tests
+# ---------------------------------------------------------------------------
+
+def _make_jpeg_bytes(width: int = 100, height: int = 100) -> bytes:
+    """Create minimal valid JPEG bytes at the given dimensions."""
+    buf = io.BytesIO()
+    Image.new("RGB", (width, height), color=(0, 128, 255)).save(buf, format="JPEG", quality=85)
+    return buf.getvalue()
+
+
+class TestResizeImageBytes:
+    """Unit tests for the pure resize_image_bytes helper."""
+
+    def test_small_image_returned_unchanged(self):
+        """Image within the long-edge limit is returned as-is (no resize)."""
+        png = _make_png_bytes(100, 80)
+        result = resize_image_bytes(png, "image/png")
+        assert result.content_bytes == png
+        assert result.dimensions == "100×80"
+        assert result.original_dimensions is None
+        assert result.scale_factor is None
+        assert result.jpeg_fallback is False
+
+    def test_exactly_at_limit_returned_unchanged(self):
+        """Image exactly at MAX_LONG_EDGE_PX is not resized."""
+        png = _make_png_bytes(MAX_LONG_EDGE_PX, 100)
+        result = resize_image_bytes(png, "image/png")
+        assert result.dimensions == f"{MAX_LONG_EDGE_PX}×100"
+        assert result.original_dimensions is None
+
+    def test_wide_image_resized_on_long_edge(self):
+        """Landscape image: width is long edge, scaled to MAX_LONG_EDGE_PX."""
+        png = _make_png_bytes(2000, 1000)
+        result = resize_image_bytes(png, "image/png", max_long_edge=500)
+        w, h = map(int, result.dimensions.split("×"))
+        assert w == 500
+        assert h == 250
+        assert result.original_dimensions == "2000×1000"
+        assert result.scale_factor == pytest.approx(0.25, abs=0.01)
+        assert result.mime_type == "image/png"
+        # Deposited bytes open as a valid PNG at the new dimensions
+        opened = Image.open(io.BytesIO(result.content_bytes))
+        assert opened.size == (500, 250)
+
+    def test_tall_image_resized_on_long_edge(self):
+        """Portrait image: height is long edge."""
+        png = _make_png_bytes(500, 2000)
+        result = resize_image_bytes(png, "image/png", max_long_edge=400)
+        w, h = map(int, result.dimensions.split("×"))
+        assert h == 400
+        assert w == 100
+        assert result.original_dimensions == "500×2000"
+
+    def test_jpeg_stays_jpeg_after_resize(self):
+        """JPEG input → JPEG output, mime_type unchanged."""
+        jpg = _make_jpeg_bytes(3000, 2000)
+        result = resize_image_bytes(jpg, "image/jpeg", max_long_edge=600)
+        assert result.mime_type == "image/jpeg"
+        assert result.jpeg_fallback is False
+        opened = Image.open(io.BytesIO(result.content_bytes))
+        assert opened.format == "JPEG"
+
+    def test_non_image_bytes_raises_value_error(self):
+        """Non-image bytes raise ValueError (caller should skip)."""
+        with pytest.raises(ValueError, match="not a valid image"):
+            resize_image_bytes(b"PK\x03\x04", "image/png")
+
+    def test_empty_bytes_raises_value_error(self):
+        """Empty bytes raise ValueError."""
+        with pytest.raises(ValueError, match="not a valid image"):
+            resize_image_bytes(b"", "image/png")
+
+    def test_png_jpeg_fallback_when_still_too_large(self):
+        """PNG still > max_size_bytes after resize → converted to JPEG."""
+        # Use a 400×400 PNG (exceeds max_long_edge=200 → resize is triggered)
+        # then set max_size_bytes=1 so the resized PNG still triggers the fallback.
+        png = _make_png_bytes(400, 400)
+        result = resize_image_bytes(
+            png,
+            "image/png",
+            max_long_edge=200,   # triggers resize (400 > 200)
+            max_size_bytes=1,    # 1 byte — resized PNG guaranteed to exceed this
+        )
+        assert result.jpeg_fallback is True
+        assert result.mime_type == "image/jpeg"
+        opened = Image.open(io.BytesIO(result.content_bytes))
+        assert opened.format == "JPEG"
+
+    def test_real_world_dimensions_2746x1908(self):
+        """2746×1908 PNG → 1568px wide after resize (the --done criterion)."""
+        png = _make_png_bytes(2746, 1908)
+        result = resize_image_bytes(png, "image/png")
+        w, h = map(int, result.dimensions.split("×"))
+        assert w == MAX_LONG_EDGE_PX
+        assert result.original_dimensions == "2746×1908"
+        assert result.scale_factor is not None
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +276,96 @@ class TestFetchAttachmentImageValidation:
 
         assert isinstance(result, FetchResult)
         mock_write_image.assert_called_once()
+
+    @patch("tools.fetch.gmail.get_deposit_folder")
+    @patch("tools.fetch.gmail.write_manifest")
+    @patch("tools.fetch.gmail.write_image")
+    @patch("tools.fetch.gmail.lookup_exfiltrated")
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail._download_attachment_bytes")
+    def test_oversized_image_is_resized_not_skipped(
+        self,
+        mock_download_bytes,
+        mock_fetch_thread,
+        mock_lookup_exfil,
+        mock_write_image,
+        mock_write_manifest,
+        mock_get_folder,
+    ):
+        """2746×1908 PNG → deposited at 1568px wide; metadata notes original dimensions."""
+        from tools.fetch.gmail import fetch_attachment
+        from models import FetchResult
+
+        big_png = _make_png_bytes(2746, 1908)
+        thread, msg, att = self._make_thread_data("photo.png", "image/png", big_png)
+        mock_fetch_thread.return_value = thread
+        mock_lookup_exfil.return_value = {}
+        mock_download_bytes.return_value = big_png
+
+        folder = Path("/tmp/mise/image--photo--thread001")
+        mock_get_folder.return_value = folder
+        mock_write_image.return_value = folder / "photo.png"
+
+        result = fetch_attachment("thread001", "photo.png")
+
+        assert isinstance(result, FetchResult)
+        mock_write_image.assert_called_once()
+        # Resize metadata should be present
+        assert result.metadata["original_dimensions"] == "2746×1908"
+        assert result.metadata["scaled_to"].startswith("1568×")
+        assert result.metadata["scale_factor"] is not None
+
+
+# ---------------------------------------------------------------------------
+# _deposit_attachment_content — eager thread extraction path
+# ---------------------------------------------------------------------------
+
+class TestDepositAttachmentContentResize:
+    """
+    _deposit_attachment_content handles images in the eager fetch_gmail path.
+    Oversized images are resized; PIL failures produce a skip dict.
+    """
+
+    def _call(self, content_bytes: bytes, mime_type: str, filename: str = "img.png"):
+        from tools.fetch.gmail import _deposit_attachment_content
+        return _deposit_attachment_content(
+            content_bytes=content_bytes,
+            filename=filename,
+            mime_type=mime_type,
+            file_id="file001",
+            folder=Path("/tmp/fake"),
+        )
+
+    @patch("tools.fetch.gmail.write_image")
+    def test_small_image_deposited_without_resize_metadata(self, mock_write):
+        """Small image (within limit) deposits without resize fields."""
+        mock_write.return_value = Path("/tmp/fake/img.png")
+        result = self._call(_make_png_bytes(100, 80), "image/png")
+        assert result is not None
+        assert result.get("skipped") is None
+        assert result["dimensions"] == "100×80"
+        assert "original_dimensions" not in result
+
+    @patch("tools.fetch.gmail.write_image")
+    def test_oversized_image_deposits_with_resize_metadata(self, mock_write):
+        """2746×1908 PNG → deposited; result has original_dimensions and scaled_to."""
+        mock_write.return_value = Path("/tmp/fake/img.png")
+        result = self._call(_make_png_bytes(2746, 1908), "image/png")
+        assert result is not None
+        assert result.get("skipped") is None
+        assert result["original_dimensions"] == "2746×1908"
+        assert result["scaled_to"].startswith("1568×")
+        assert result["scale_factor"] is not None
+        mock_write.assert_called_once()
+
+    @patch("tools.fetch.gmail.write_image")
+    def test_mime_mismatch_produces_skip_dict(self, mock_write):
+        """DOCX bytes declared as image/png → skip dict, nothing written."""
+        result = self._call(b"PK\x03\x04", "image/png", "doc.png")
+        assert result is not None
+        assert result["skipped"] is True
+        assert "not a valid image" in result["reason"]
+        mock_write.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

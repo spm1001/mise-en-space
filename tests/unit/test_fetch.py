@@ -990,17 +990,20 @@ class TestDepositAttachmentContent:
         assert result["dimensions"] == "100×200"
         mock_img.assert_called_once()
 
-    def test_image_exceeding_dimension_limit_returns_skipped(self):
-        """Image with either axis > 8000px returns skipped dict, nothing written."""
+    @patch("tools.fetch.gmail.write_image")
+    def test_image_exceeding_dimension_limit_is_resized(self, mock_img):
+        """Image with long edge > 1568px is resized and deposited (not skipped)."""
         buf = io.BytesIO()
         PILImage.new("RGB", (9000, 100)).save(buf, format="PNG")
+        mock_img.return_value = Path("/tmp/wide.png")
         result = _deposit_attachment_content(
             buf.getvalue(), "wide.png", "image/png", "f3", Path("/tmp")
         )
         assert result is not None
-        assert result["skipped"] is True
-        assert "9000×100" in result["reason"]
+        assert result.get("skipped") is None
+        assert result["original_dimensions"] == "9000×100"
         assert result["filename"] == "wide.png"
+        mock_img.assert_called_once()
 
     def test_unknown_type_returns_none(self):
         """Non-PDF, non-image MIME type returns None."""
@@ -2123,26 +2126,29 @@ class TestImageSafetyFiltering:
     @patch("tools.fetch.gmail.write_content")
     @patch("tools.fetch.gmail.write_manifest")
     @patch("tools.fetch.gmail.extract_thread_content", return_value="Thread")
-    def test_oversized_image_goes_to_skipped_images(
+    def test_oversized_image_is_no_longer_skipped_before_download(
         self, mock_extract, mock_manifest, mock_write, mock_folder, mock_lookup, mock_fetch
     ):
-        """Image with att.size > 4.5MB is skipped before download."""
+        """Image with att.size > 4.5MB is NOT skipped — it is downloaded and resized.
+
+        Pre-download size checks were removed; oversized images are handled
+        post-download by resize_image_bytes rather than rejected upfront.
+        This test verifies the attachment is attempted (not pre-emptively dropped).
+        """
         att = EmailAttachment(
             filename="huge.png", mime_type="image/png",
-            size=5_000_000,  # > MAX_IMAGE_BYTES (4.5MB)
+            size=5_000_000,
             attachment_id="att_1",
         )
         mock_fetch.return_value = _make_thread_data([att])
 
         result = fetch_gmail("thread_xyz")
 
-        assert "skipped_images" in result.metadata
-        skipped = result.metadata["skipped_images"]
-        assert len(skipped) == 1
-        assert skipped[0]["filename"] == "huge.png"
-        assert "too large" in skipped[0]["reason"]
-        # Hint should reference explicit fetch
-        assert "skipped_images_hint" in result.metadata
+        # Should NOT be in skipped_images (no pre-download size skip)
+        assert "skipped_images" not in result.metadata or (
+            not any(s["filename"] == "huge.png" and "too large" in s.get("reason", "")
+                    for s in result.metadata.get("skipped_images", []))
+        )
 
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})

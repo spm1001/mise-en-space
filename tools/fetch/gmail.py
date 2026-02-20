@@ -10,7 +10,7 @@ from adapters.gmail import fetch_thread, download_attachment
 from adapters.office import extract_office_content, get_office_type_from_mime
 from adapters.pdf import extract_pdf_content, render_pdf_pages
 from extractors.gmail import extract_thread_content
-from extractors.image import validate_image_bytes, MAX_IMAGE_DIMENSION_PX
+from extractors.image import resize_image_bytes
 from models import MiseError, FetchResult, FetchError, EmailAttachment
 from workspace import get_deposit_folder, write_content, write_manifest, write_image
 
@@ -27,10 +27,6 @@ OFFICE_MIME_TYPES = {
     "application/vnd.ms-powerpoint",  # ppt
 }
 
-# Claude API image constraints (hard limits — violation returns 400 and poisons the session)
-# Source: https://platform.claude.com/docs/en/build-with-claude/vision
-MAX_IMAGE_BYTES = 4_500_000  # 4.5MB raw (API hard limit: 5MB; 10% headroom)
-# MAX_IMAGE_DIMENSION_PX imported from extractors.image
 # NOTE: In conversations with >20 accumulated images the limit drops to 2000px.
 # We can't know conversation context at deposit time — note dimension in metadata
 # so Claude can judge risk in long conversations.
@@ -157,35 +153,42 @@ def _deposit_attachment_content(
         }
 
     elif mime_type.startswith("image/"):
-        # Post-download validation using PIL.
-        # The pre-download size check (att.size) catches most oversized images,
-        # but dimensions can only be verified after the bytes are in hand.
-        # A file can be < 4.5MB yet have dimensions > 8000px (e.g. losslessly
-        # compressed scan of a large document). Also catches MIME mismatch (e.g.
-        # a DOCX renamed .png) — depositing non-image bytes as image/png causes a
-        # hard 400 "Could not process image" that poisons the session.
-        validation = validate_image_bytes(content_bytes, MAX_IMAGE_DIMENSION_PX)
-        if not validation.valid:
-            skip: dict[str, Any] = {
+        # Open with PIL, resize if needed, deposit.
+        # Oversized images (long edge > MAX_LONG_EDGE_PX) are scaled down rather
+        # than skipped — the API downscales internally above 1568px anyway.
+        # Only PIL failures (genuine MIME mismatch, e.g. DOCX renamed .png) cause
+        # a skip — depositing non-image bytes as image/png causes a hard 400 that
+        # poisons the session and cannot be fixed by resizing.
+        try:
+            resized = resize_image_bytes(content_bytes, mime_type)
+        except ValueError as e:
+            return {
                 "filename": filename,
                 "mime_type": mime_type,
                 "skipped": True,
-                "reason": validation.skip_reason,
+                "reason": str(e),
             }
-            if validation.dimensions:
-                skip["dimensions"] = validation.dimensions
-            return skip
 
-        write_image(folder, content_bytes, filename)
+        deposited_filename = filename
+        if resized.jpeg_fallback:
+            # PNG was still > 4.5MB after resize — converted to JPEG.
+            deposited_filename = filename.rsplit(".", 1)[0] + ".jpg"
+
+        write_image(folder, resized.content_bytes, deposited_filename)
 
         result: dict[str, Any] = {
             "filename": filename,
-            "mime_type": mime_type,
+            "mime_type": resized.mime_type,
             "extracted": True,
-            "deposited_as": filename,
+            "deposited_as": deposited_filename,
+            "dimensions": resized.dimensions,
         }
-        if validation.dimensions:
-            result["dimensions"] = validation.dimensions
+        if resized.original_dimensions:
+            result["original_dimensions"] = resized.original_dimensions
+            result["scaled_to"] = resized.dimensions
+            result["scale_factor"] = resized.scale_factor
+        if resized.jpeg_fallback:
+            result["jpeg_fallback"] = True
         return result
 
     return None
@@ -303,21 +306,14 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
                 skipped_office.append(att.filename)
                 continue
 
-            # Pre-download image safety check (size from Gmail metadata)
-            # Images that exceed API limits cause a hard 400 that poisons the session.
+            # Pre-download image format check (size is no longer a skip criterion —
+            # oversized images are resized post-download rather than skipped).
             if att.mime_type.startswith("image/"):
                 if att.mime_type not in SUPPORTED_IMAGE_MIME_TYPES:
                     skipped_images.append({
                         "filename": att.filename,
                         "mime_type": att.mime_type,
-                        "reason": f"unsupported format (API supports: jpeg, png, gif, webp)",
-                    })
-                    continue
-                if att.size > MAX_IMAGE_BYTES:
-                    skipped_images.append({
-                        "filename": att.filename,
-                        "size": att.size,
-                        "reason": f"file too large for API ({att.size:,} bytes > {MAX_IMAGE_BYTES:,} byte limit)",
+                        "reason": "unsupported format (API supports: jpeg, png, gif, webp)",
                     })
                     continue
 
@@ -652,17 +648,36 @@ def fetch_attachment(
 
     # Images
     if mime_type.startswith("image/"):
-        validation = validate_image_bytes(content_bytes, MAX_IMAGE_DIMENSION_PX)
-        if not validation.valid:
+        try:
+            resized = resize_image_bytes(content_bytes, mime_type)
+        except ValueError as e:
             return FetchError(
                 kind="extraction_failed",
-                message=f"Image validation failed: {validation.skip_reason}",
+                message=f"Image validation failed: {e}",
             )
 
-        folder = get_deposit_folder("image", title, thread_id, base_path=base_path)
-        image_path = write_image(folder, content_bytes, attachment_name)
+        deposited_filename = attachment_name
+        if resized.jpeg_fallback:
+            deposited_filename = attachment_name.rsplit(".", 1)[0] + ".jpg"
 
-        extra = {"source": source_label, "gmail_thread_id": thread_id}
+        folder = get_deposit_folder("image", title, thread_id, base_path=base_path)
+        image_path = write_image(folder, resized.content_bytes, deposited_filename)
+
+        image_meta: dict[str, Any] = {
+            "title": attachment_name,
+            "source": source_label,
+            "gmail_thread_id": thread_id,
+            "mime_type": resized.mime_type,
+            "dimensions": resized.dimensions,
+        }
+        if resized.original_dimensions:
+            image_meta["original_dimensions"] = resized.original_dimensions
+            image_meta["scaled_to"] = resized.dimensions
+            image_meta["scale_factor"] = resized.scale_factor
+        if resized.jpeg_fallback:
+            image_meta["jpeg_fallback"] = True
+
+        extra: dict[str, Any] = {"source": source_label, "gmail_thread_id": thread_id, **image_meta}
         if warnings:
             extra["warnings"] = warnings
         write_manifest(folder, "image", title, thread_id, extra=extra)
@@ -674,11 +689,7 @@ def fetch_attachment(
             content_file=str(image_path),
             format="image",
             type="image",
-            metadata={
-                "title": attachment_name,
-                "source": source_label,
-                "gmail_thread_id": thread_id,
-            },
+            metadata=image_meta,
             cues=cues,
         )
 

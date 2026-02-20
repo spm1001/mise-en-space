@@ -15,7 +15,7 @@ from adapters.cdp import is_cdp_available
 from adapters.pdf import fetch_and_extract_pdf, extract_pdf_content
 from adapters.office import fetch_and_extract_office, get_office_type_from_mime, OfficeType
 from adapters.image import fetch_image as adapter_fetch_image, is_image_file, is_svg
-from extractors.image import validate_image_bytes, MAX_IMAGE_DIMENSION_PX
+from extractors.image import resize_image_bytes
 from extractors.docs import extract_doc_content
 from extractors.folder import extract_folder_content
 from extractors.sheets import extract_sheets_content, extract_sheets_per_tab
@@ -607,23 +607,40 @@ def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_c
     # Fetch via adapter (handles download + SVG rendering)
     result = adapter_fetch_image(file_id, title, mime_type)
 
-    # Validate raster bytes with PIL before depositing.
-    # SVGs are not raster — PIL cannot open them and they don't need this check.
+    # Open with PIL and resize if needed (raster only; SVG bypasses this).
+    # Oversized images are scaled to MAX_LONG_EDGE_PX rather than rejected.
+    # Only PIL failures (genuine MIME mismatch) return an error.
+    image_bytes = result.image_bytes
+    deposited_mime = mime_type
+    resize_meta: dict[str, Any] = {}
     if not is_svg(mime_type):
-        validation = validate_image_bytes(result.image_bytes, MAX_IMAGE_DIMENSION_PX)
-        if not validation.valid:
+        try:
+            resized = resize_image_bytes(result.image_bytes, mime_type)
+        except ValueError as e:
             return FetchError(
                 kind="extraction_failed",
-                message=f"Image validation failed: {validation.skip_reason}",
+                message=f"Image validation failed: {e}",
                 file_id=file_id,
                 name=title,
             )
+        image_bytes = resized.content_bytes
+        deposited_mime = resized.mime_type
+        resize_meta["dimensions"] = resized.dimensions
+        if resized.original_dimensions:
+            resize_meta["original_dimensions"] = resized.original_dimensions
+            resize_meta["scaled_to"] = resized.dimensions
+            resize_meta["scale_factor"] = resized.scale_factor
+        if resized.jpeg_fallback:
+            resize_meta["jpeg_fallback"] = True
 
     # Deposit to workspace
     folder = get_deposit_folder("image", title, file_id, base_path=base_path)
 
-    # Write the original image
-    image_path = write_image(folder, result.image_bytes, result.filename)
+    # Write the image (possibly resized)
+    deposit_filename = result.filename
+    if resize_meta.get("jpeg_fallback"):
+        deposit_filename = result.filename.rsplit(".", 1)[0] + ".jpg"
+    image_path = write_image(folder, image_bytes, deposit_filename)
 
     # For SVG, also write rendered PNG if available
     rendered_png_filename = None
@@ -633,8 +650,9 @@ def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_c
 
     # Build manifest extras
     extra: dict[str, Any] = {
-        "mime_type": mime_type,
-        "size_bytes": len(result.image_bytes),
+        "mime_type": deposited_mime,
+        "size_bytes": len(image_bytes),
+        **resize_meta,
     }
     if is_svg(mime_type):
         extra["is_svg"] = True
@@ -651,8 +669,9 @@ def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_c
     # Build result metadata
     result_meta: dict[str, Any] = {
         "title": title,
-        "mime_type": mime_type,
-        "size_bytes": len(result.image_bytes),
+        "mime_type": deposited_mime,
+        "size_bytes": len(image_bytes),
+        **resize_meta,
     }
     if is_svg(mime_type):
         result_meta["is_svg"] = True
