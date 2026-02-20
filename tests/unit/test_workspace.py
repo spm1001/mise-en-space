@@ -92,6 +92,51 @@ class TestGetDepositFolder:
             )
             assert folder.name.startswith(f"{content_type}--")
 
+    def test_refetch_removes_stale_files(self, tmp_path: Path) -> None:
+        """Re-fetching the same resource wipes files from the previous deposit."""
+        # First fetch: deposit two files
+        folder = get_deposit_folder("gmail", "Thread", "thread001", base_path=tmp_path)
+        (folder / "content.md").write_text("old content")
+        (folder / "old_attachment.png").write_bytes(b"\x89PNG")
+
+        # Second fetch of the same resource: both old files should be gone
+        folder2 = get_deposit_folder("gmail", "Thread", "thread001", base_path=tmp_path)
+        assert folder2 == folder  # same folder path
+        assert not (folder / "content.md").exists()
+        assert not (folder / "old_attachment.png").exists()
+
+    def test_refetch_leaves_subdirectories_untouched(self, tmp_path: Path) -> None:
+        """Subdirectories inside a deposit folder survive re-fetch (rare but safe)."""
+        folder = get_deposit_folder("gmail", "Thread", "thread002", base_path=tmp_path)
+        subdir = folder / "subdir"
+        subdir.mkdir()
+        (subdir / "nested.txt").write_text("nested")
+
+        get_deposit_folder("gmail", "Thread", "thread002", base_path=tmp_path)
+
+        assert subdir.exists()
+        assert (subdir / "nested.txt").read_text() == "nested"
+
+    def test_fresh_folder_is_empty(self, tmp_path: Path) -> None:
+        """First fetch of a resource: folder is created empty (no files to wipe)."""
+        folder = get_deposit_folder("doc", "New Doc", "newid001", base_path=tmp_path)
+        assert folder.exists()
+        assert list(folder.iterdir()) == []
+
+    def test_different_resources_do_not_interfere(self, tmp_path: Path) -> None:
+        """Re-fetching resource A does not affect resource B's deposit folder."""
+        folder_a = get_deposit_folder("doc", "Doc A", "id_aaa", base_path=tmp_path)
+        (folder_a / "content.md").write_text("Doc A content")
+
+        folder_b = get_deposit_folder("doc", "Doc B", "id_bbb", base_path=tmp_path)
+        (folder_b / "content.md").write_text("Doc B content")
+
+        # Re-fetch A: should not touch B's folder
+        get_deposit_folder("doc", "Doc A", "id_aaa", base_path=tmp_path)
+
+        assert not (folder_a / "content.md").exists()  # A wiped
+        assert (folder_b / "content.md").read_text() == "Doc B content"  # B untouched
+
 
 class TestWriteContent:
     """Tests for content writing."""

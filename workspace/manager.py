@@ -96,6 +96,14 @@ def get_deposit_folder(
     folder_path = mise_fetch / folder_name
     folder_path.mkdir(parents=True, exist_ok=True)
 
+    # Wipe stale files from any previous deposit of this resource.
+    # get_deposit_folder is called once at the start of every fetch — cleaning
+    # here ensures re-fetches never leave ghost files from the previous run
+    # alongside the new content. Subdirectories (rare) are left untouched.
+    for f in folder_path.iterdir():
+        if f.is_file():
+            f.unlink()
+
     return folder_path
 
 
