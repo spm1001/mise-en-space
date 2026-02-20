@@ -2,12 +2,14 @@
 Unit tests for fetch tool ID detection and routing.
 """
 
+import io
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock, call
+from PIL import Image as PILImage
 from tools.fetch import (
     detect_id_type, fetch_gmail, fetch_attachment, do_fetch,
-    _extract_from_drive, _match_exfil_file, _enrich_with_comments,
+    _extract_from_drive, _names_match, _match_exfil_for_message, _enrich_with_comments,
     _is_extractable_attachment, _deposit_attachment_content,
     _extract_attachment_content, _build_email_context_metadata,
     is_text_file, fetch_drive, fetch_doc, fetch_sheet, fetch_slides,
@@ -263,59 +265,109 @@ class TestPreExfilRouting:
         fetch_gmail("thread_xyz")
 
 
-class TestMatchExfilFile:
-    """Tests for _match_exfil_file fuzzy matching."""
+def _make_att(filename: str, mime_type: str, att_id: str = "att1") -> EmailAttachment:
+    return EmailAttachment(filename=filename, mime_type=mime_type, size=1000, attachment_id=att_id)
 
-    def test_exact_name_match(self) -> None:
-        """Standard case: Gmail and Drive names are identical."""
-        exfil = [{"file_id": "d1", "name": "Budget.xlsx", "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}]
-        result = _match_exfil_file("Budget.xlsx", exfil)
-        assert result is not None
-        assert result["file_id"] == "d1"
 
-    def test_stem_match_missing_extension(self) -> None:
+class TestNamesMatch:
+    """Tests for _names_match predicate."""
+
+    def test_exact_match(self) -> None:
+        assert _names_match("report.pdf", "report.pdf") is True
+
+    def test_stem_match_extension_added(self) -> None:
         """Exfil script added extension: Gmail has 'report', Drive has 'report.pdf'."""
-        exfil = [{"file_id": "d1", "name": "report.pdf", "mimeType": "application/pdf"}]
-        result = _match_exfil_file("report", exfil)
-        assert result is not None
-        assert result["file_id"] == "d1"
+        assert _names_match("report", "report.pdf") is True
 
     def test_stem_match_different_extension(self) -> None:
-        """Extension mismatch but same stem still matches."""
-        exfil = [{"file_id": "d1", "name": "data.csv", "mimeType": "text/csv"}]
-        result = _match_exfil_file("data.tsv", exfil)
-        assert result is not None
-        assert result["file_id"] == "d1"
+        assert _names_match("data.tsv", "data.csv") is True
 
-    def test_single_file_fallback(self) -> None:
-        """UUID rename: names completely different but only one exfil file."""
+    def test_no_match_different_names(self) -> None:
+        assert _names_match("alpha.pdf", "beta.pdf") is False
+
+    def test_no_match_uuid_rename(self) -> None:
+        """UUID renamed by exfil script — stems differ entirely."""
+        assert _names_match("a1b2c3.pdf", "2025-01-15_alice_a1b2c3.pdf") is False
+
+
+class TestMatchExfilForMessage:
+    """Tests for _match_exfil_for_message consumed-pool matching."""
+
+    def test_exact_name_match(self) -> None:
+        """Standard case: names identical."""
+        att = _make_att("Budget.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        exfil = [{"file_id": "d1", "name": "Budget.xlsx", "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}]
+        result = _match_exfil_for_message([att], exfil)
+        assert result["att1"]["file_id"] == "d1"
+
+    def test_stem_match_missing_extension(self) -> None:
+        """Exfil added extension, stem match succeeds."""
+        att = _make_att("report", "application/pdf")
+        exfil = [{"file_id": "d1", "name": "report.pdf", "mimeType": "application/pdf"}]
+        result = _match_exfil_for_message([att], exfil)
+        assert result["att1"]["file_id"] == "d1"
+
+    def test_uuid_rename_fallback(self) -> None:
+        """UUID rename: name match fails, 1:1 fallback fires when MIME categories agree."""
+        att = _make_att("a1b2c3d4-e5f6.pdf", "application/pdf")
         exfil = [{"file_id": "d1", "name": "2025-01-15_alice_a1b2c3d4-e5f6.pdf", "mimeType": "application/pdf"}]
-        result = _match_exfil_file("a1b2c3d4-e5f6.pdf", exfil)
-        assert result is not None
-        assert result["file_id"] == "d1"
+        result = _match_exfil_for_message([att], exfil)
+        assert result["att1"]["file_id"] == "d1"
 
-    def test_no_match_multiple_files(self) -> None:
-        """Multiple exfil files with no name match returns None (ambiguous)."""
+    def test_scribbles_bug_docx_does_not_match_png(self) -> None:
+        """Root cause fix: DOCX exfil'd for message that also has PNG attachments.
+
+        Previously the single-file fallback (called once per attachment against the
+        same static pool) would match the DOCX to every PNG in the message.
+        The consumed-pool approach and MIME category guard together prevent this.
+        """
+        png1 = _make_att("avoiding the nightmare.png", "image/png", "att1")
+        png2 = _make_att("end-to-end.png", "image/png", "att2")
+        docx = _make_att("Funding Agreement.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "att3")
+        exfil = [{"file_id": "d1", "name": "Funding Agreement.docx", "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}]
+        result = _match_exfil_for_message([png1, png2, docx], exfil)
+        # DOCX matches to the DOCX attachment only
+        assert "att1" not in result
+        assert "att2" not in result
+        assert result["att3"]["file_id"] == "d1"
+
+    def test_pool_consumed_prevents_double_match(self) -> None:
+        """Each exfil file can only be matched once even if names are ambiguous."""
+        att1 = _make_att("report.pdf", "application/pdf", "att1")
+        att2 = _make_att("report.pdf", "application/pdf", "att2")  # duplicate filename
+        exfil = [{"file_id": "d1", "name": "report.pdf", "mimeType": "application/pdf"}]
+        result = _match_exfil_for_message([att1, att2], exfil)
+        # Only one attachment can claim the one exfil file
+        assert len(result) == 1
+
+    def test_multiple_attachments_matched_correctly(self) -> None:
+        """Multiple exfil files each matched to the right attachment."""
+        att1 = _make_att("photo.png", "image/png", "att1")
+        att2 = _make_att("report.pdf", "application/pdf", "att2")
         exfil = [
-            {"file_id": "d1", "name": "alpha.pdf", "mimeType": "application/pdf"},
-            {"file_id": "d2", "name": "beta.pdf", "mimeType": "application/pdf"},
+            {"file_id": "d1", "name": "photo.png", "mimeType": "image/png"},
+            {"file_id": "d2", "name": "report.pdf", "mimeType": "application/pdf"},
         ]
-        result = _match_exfil_file("gamma.pdf", exfil)
-        assert result is None
+        result = _match_exfil_for_message([att1, att2], exfil)
+        assert result["att1"]["file_id"] == "d1"
+        assert result["att2"]["file_id"] == "d2"
 
-    def test_empty_exfil_list(self) -> None:
-        """No exfil files returns None."""
-        assert _match_exfil_file("report.pdf", []) is None
+    def test_fallback_only_fires_on_true_1_to_1(self) -> None:
+        """Fallback does not fire when multiple attachments are unmatched."""
+        att1 = _make_att("alpha.png", "image/png", "att1")
+        att2 = _make_att("beta.png", "image/png", "att2")
+        exfil = [{"file_id": "d1", "name": "2025-01-15_renamed.png", "mimeType": "image/png"}]
+        # Two unmatched attachments, one exfil file → fallback must not fire
+        result = _match_exfil_for_message([att1, att2], exfil)
+        assert len(result) == 0
 
-    def test_exact_match_preferred_over_stem(self) -> None:
-        """Exact match wins even when stem would also match another file."""
-        exfil = [
-            {"file_id": "d1", "name": "report.pdf", "mimeType": "application/pdf"},
-            {"file_id": "d2", "name": "report.docx", "mimeType": "application/msword"},
-        ]
-        result = _match_exfil_file("report.pdf", exfil)
-        assert result is not None
-        assert result["file_id"] == "d1"
+    def test_empty_exfil(self) -> None:
+        att = _make_att("report.pdf", "application/pdf")
+        assert _match_exfil_for_message([att], []) == {}
+
+    def test_empty_attachments(self) -> None:
+        exfil = [{"file_id": "d1", "name": "report.pdf", "mimeType": "application/pdf"}]
+        assert _match_exfil_for_message([], exfil) == {}
 
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated")
@@ -774,8 +826,17 @@ class TestIsExtractableAttachment:
         assert _is_extractable_attachment("application/pdf") is True
 
     def test_image_extractable(self) -> None:
+        """Supported image formats pass through."""
         assert _is_extractable_attachment("image/png") is True
         assert _is_extractable_attachment("image/jpeg") is True
+        assert _is_extractable_attachment("image/gif") is True
+        assert _is_extractable_attachment("image/webp") is True
+
+    def test_unsupported_image_formats_not_extractable(self) -> None:
+        """Formats the Claude API rejects are not extractable."""
+        assert _is_extractable_attachment("image/svg+xml") is False
+        assert _is_extractable_attachment("image/tiff") is False
+        assert _is_extractable_attachment("image/bmp") is False
 
     def test_office_skipped(self) -> None:
         assert _is_extractable_attachment(
@@ -878,14 +939,57 @@ class TestDepositAttachmentContent:
 
     @patch("tools.fetch.gmail.write_image")
     def test_image_deposited(self, mock_img):
-        """Image bytes are deposited as file."""
+        """Valid image bytes are deposited as file."""
+        buf = io.BytesIO()
+        PILImage.new("RGB", (50, 50)).save(buf, format="PNG")
         result = _deposit_attachment_content(
-            b"png bytes", "photo.png", "image/png", "f2", Path("/tmp")
+            buf.getvalue(), "photo.png", "image/png", "f2", Path("/tmp")
         )
         assert result is not None
         assert result["filename"] == "photo.png"
         assert result["deposited_as"] == "photo.png"
         mock_img.assert_called_once()
+
+    def test_non_image_bytes_with_image_mime_type_returns_skipped(self):
+        """DOCX/ZIP bytes declared as image/png are skipped, not deposited.
+
+        Root cause of the scribbles bug: Word files renamed to .png
+        pass the MIME-type and size filters but fail PIL validation.
+        Previously these were deposited anyway (the 'let the API decide'
+        fallback), causing a hard 400 that poisoned the session.
+        """
+        result = _deposit_attachment_content(
+            b"PK\x03\x04fake-docx-bytes", "diagram.png", "image/png", "f5", Path("/tmp")
+        )
+        assert result is not None
+        assert result["skipped"] is True
+        assert "doesn't match" in result["reason"]
+
+    @patch("tools.fetch.gmail.write_image")
+    def test_image_with_valid_dimensions_includes_dimension_info(self, mock_img):
+        """Valid image bytes: deposited and dimensions noted in result."""
+        buf = io.BytesIO()
+        PILImage.new("RGB", (100, 200)).save(buf, format="PNG")
+        result = _deposit_attachment_content(
+            buf.getvalue(), "screenshot.png", "image/png", "f2", Path("/tmp")
+        )
+        assert result is not None
+        assert result["extracted"] is True
+        assert result.get("skipped") is not True
+        assert result["dimensions"] == "100×200"
+        mock_img.assert_called_once()
+
+    def test_image_exceeding_dimension_limit_returns_skipped(self):
+        """Image with either axis > 8000px returns skipped dict, nothing written."""
+        buf = io.BytesIO()
+        PILImage.new("RGB", (9000, 100)).save(buf, format="PNG")
+        result = _deposit_attachment_content(
+            buf.getvalue(), "wide.png", "image/png", "f3", Path("/tmp")
+        )
+        assert result is not None
+        assert result["skipped"] is True
+        assert "9000×100" in result["reason"]
+        assert result["filename"] == "wide.png"
 
     def test_unknown_type_returns_none(self):
         """Non-PDF, non-image MIME type returns None."""
@@ -1976,6 +2080,148 @@ class TestFetchGmailEdgeCases:
 
         assert "drive_links" in result.metadata
         assert result.metadata["drive_links"][0]["name"] == "Shared Doc"
+
+
+class TestImageSafetyFiltering:
+    """
+    Images that exceed Claude API limits must not be deposited.
+
+    Hard limits:
+    - Raw file size > 5MB → 400 error (we use 4.5MB with headroom)
+    - Either dimension > 8000px → 400 error
+    - Format not in {jpeg, png, gif, webp} → 400 error
+
+    Violations cause session-poisoning in Claude Code (subsequent requests
+    also fail until /clear). Policy: skip with metadata note, never deposit.
+    """
+
+    def _make_fetch_patches(self):
+        """Context managers for standard fetch_gmail infrastructure mocks."""
+        return [
+            patch("tools.fetch.gmail.fetch_thread"),
+            patch("tools.fetch.gmail.lookup_exfiltrated", return_value={}),
+            patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/deposit")),
+            patch("tools.fetch.gmail.write_content"),
+            patch("tools.fetch.gmail.write_manifest"),
+            patch("tools.fetch.gmail.extract_thread_content", return_value="Thread"),
+        ]
+
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
+    @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/deposit"))
+    @patch("tools.fetch.gmail.write_content")
+    @patch("tools.fetch.gmail.write_manifest")
+    @patch("tools.fetch.gmail.extract_thread_content", return_value="Thread")
+    def test_oversized_image_goes_to_skipped_images(
+        self, mock_extract, mock_manifest, mock_write, mock_folder, mock_lookup, mock_fetch
+    ):
+        """Image with att.size > 4.5MB is skipped before download."""
+        att = EmailAttachment(
+            filename="huge.png", mime_type="image/png",
+            size=5_000_000,  # > MAX_IMAGE_BYTES (4.5MB)
+            attachment_id="att_1",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+
+        result = fetch_gmail("thread_xyz")
+
+        assert "skipped_images" in result.metadata
+        skipped = result.metadata["skipped_images"]
+        assert len(skipped) == 1
+        assert skipped[0]["filename"] == "huge.png"
+        assert "too large" in skipped[0]["reason"]
+        # Hint should reference explicit fetch
+        assert "skipped_images_hint" in result.metadata
+
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
+    @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/deposit"))
+    @patch("tools.fetch.gmail.write_content")
+    @patch("tools.fetch.gmail.write_manifest")
+    @patch("tools.fetch.gmail.extract_thread_content", return_value="Thread")
+    def test_unsupported_image_format_goes_to_skipped_images(
+        self, mock_extract, mock_manifest, mock_write, mock_folder, mock_lookup, mock_fetch
+    ):
+        """image/svg+xml (not in SUPPORTED_IMAGE_MIME_TYPES) is skipped without download."""
+        att = EmailAttachment(
+            filename="diagram.svg", mime_type="image/svg+xml",
+            size=50_000,
+            attachment_id="att_2",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+
+        result = fetch_gmail("thread_xyz")
+
+        assert "skipped_images" in result.metadata
+        skipped = result.metadata["skipped_images"]
+        assert skipped[0]["filename"] == "diagram.svg"
+        assert "unsupported format" in skipped[0]["reason"]
+
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
+    @patch("tools.fetch.gmail._extract_attachment_content")
+    @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/deposit"))
+    @patch("tools.fetch.gmail.write_content")
+    @patch("tools.fetch.gmail.write_manifest")
+    @patch("tools.fetch.gmail.extract_thread_content", return_value="Thread")
+    def test_oversized_dimensions_from_extract_goes_to_skipped_images(
+        self, mock_extract, mock_manifest, mock_write, mock_folder,
+        mock_att_extract, mock_lookup, mock_fetch
+    ):
+        """_extract_attachment_content returning skipped:True routes to skipped_images."""
+        att = EmailAttachment(
+            filename="scan.png", mime_type="image/png",
+            size=2_000_000,  # passes size check
+            attachment_id="att_3",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+        # Simulate PIL dimension check firing inside _deposit_attachment_content
+        mock_att_extract.return_value = {
+            "filename": "scan.png",
+            "skipped": True,
+            "dimensions": "9000×12000",
+            "reason": "dimensions 9000×12000 exceed API limit of 8000px per axis",
+        }
+
+        result = fetch_gmail("thread_xyz")
+
+        assert "skipped_images" in result.metadata
+        skipped = result.metadata["skipped_images"]
+        assert skipped[0]["filename"] == "scan.png"
+        assert "9000×12000" in skipped[0]["dimensions"]
+        # Must NOT appear in extracted
+        assert "extracted" not in result.metadata
+
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
+    @patch("tools.fetch.gmail._extract_attachment_content")
+    @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/deposit"))
+    @patch("tools.fetch.gmail.write_content")
+    @patch("tools.fetch.gmail.write_manifest")
+    @patch("tools.fetch.gmail.extract_thread_content", return_value="Thread")
+    def test_safe_image_deposits_normally(
+        self, mock_extract, mock_manifest, mock_write, mock_folder,
+        mock_att_extract, mock_lookup, mock_fetch
+    ):
+        """Image within all limits deposits normally, no skipped_images key."""
+        att = EmailAttachment(
+            filename="screenshot.png", mime_type="image/png",
+            size=500_000,  # passes size check
+            attachment_id="att_4",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+        mock_att_extract.return_value = {
+            "filename": "screenshot.png",
+            "extracted": True,
+            "deposited_as": "screenshot.png",
+            "dimensions": "1280×720",
+        }
+
+        result = fetch_gmail("thread_xyz")
+
+        assert "skipped_images" not in result.metadata
+        assert "extracted" in result.metadata
+        assert result.metadata["extracted"][0]["filename"] == "screenshot.png"
 
 
 class TestFetchAttachmentExfilEdgeCases:

@@ -2,8 +2,11 @@
 Gmail fetch — thread extraction, attachment handling, pre-exfil routing.
 """
 
+import io
 from pathlib import Path
 from typing import Any
+
+from PIL import Image
 
 from adapters.drive import download_file, lookup_exfiltrated
 from adapters.gmail import fetch_thread, download_attachment
@@ -26,6 +29,15 @@ OFFICE_MIME_TYPES = {
     "application/vnd.ms-powerpoint",  # ppt
 }
 
+# Claude API image constraints (hard limits — violation returns 400 and poisons the session)
+# Source: https://platform.claude.com/docs/en/build-with-claude/vision
+MAX_IMAGE_BYTES = 4_500_000  # 4.5MB raw (API hard limit: 5MB; 10% headroom)
+MAX_IMAGE_DIMENSION_PX = 8_000  # Per-axis (API hard limit: 8000px for ≤20 images)
+# NOTE: In conversations with >20 accumulated images the limit drops to 2000px.
+# We can't know conversation context at deposit time — note dimension in metadata
+# so Claude can judge risk in long conversations.
+SUPPORTED_IMAGE_MIME_TYPES = frozenset({"image/jpeg", "image/png", "image/gif", "image/webp"})
+
 # Maximum attachments to extract eagerly (prevent runaway extraction)
 MAX_EAGER_ATTACHMENTS = 10
 
@@ -45,51 +57,72 @@ def _is_extractable_attachment(mime_type: str) -> bool:
     if mime_type == "application/pdf":
         return True
 
-    # Extract images (will be deposited as-is)
-    if mime_type.startswith("image/"):
+    # Extract supported images only — the pre-download size/format check in
+    # fetch_gmail handles the finer filtering; this gates the drive-exfil path too.
+    if mime_type in SUPPORTED_IMAGE_MIME_TYPES:
         return True
 
     return False
 
 
-def _match_exfil_file(
-    att_filename: str,
-    exfil_files: list[dict[str, Any]],
-) -> dict[str, Any] | None:
+def _names_match(att_filename: str, drive_filename: str) -> bool:
     """
-    Match Gmail attachment to pre-exfil'd Drive file with fallbacks.
+    Exact or stem match between an attachment filename and a Drive filename.
 
     The exfil script may modify filenames:
-    - ensureExtension: "report" → "report.pdf"
-    - smartFilename: UUID names get date+sender prefix
-
-    Strategies (in order):
-    1. Exact name match
-    2. Stem match (strip extensions, catches ensureExtension case)
-    3. Single-file fallback (message ID already proved provenance)
+    - ensureExtension: "report" → "report.pdf"  (stem match catches this)
+    - smartFilename: UUID names get date+sender prefix  (no match — falls to fallback)
     """
-    if not exfil_files:
-        return None
-
-    # 1. Exact name match
-    by_name = {f["name"]: f for f in exfil_files}
-    if att_filename in by_name:
-        return by_name[att_filename]
-
-    # 2. Stem match — handles ensureExtension() adding .pdf/.xlsx etc.
+    if att_filename == drive_filename:
+        return True
     att_stem = att_filename.rsplit(".", 1)[0] if "." in att_filename else att_filename
-    for f in exfil_files:
-        drive_name = f["name"]
-        drive_stem = drive_name.rsplit(".", 1)[0] if "." in drive_name else drive_name
-        if att_stem == drive_stem:
-            return f
+    drive_stem = drive_filename.rsplit(".", 1)[0] if "." in drive_filename else drive_filename
+    return att_stem == drive_stem
 
-    # 3. Single-file fallback — if only one exfil file for this message,
-    # the message ID lookup already proved provenance
-    if len(exfil_files) == 1:
-        return exfil_files[0]
 
-    return None
+def _match_exfil_for_message(
+    attachments: list[EmailAttachment],
+    exfil_files: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """
+    Match all attachments for a message to pre-exfil'd Drive files.
+
+    Uses a consumed pool so each exfil file is assigned at most once.
+    This prevents the same Drive file matching multiple attachments — the
+    original bug that deposited DOCX bytes under PNG filenames.
+
+    Two-pass algorithm:
+    1. Name/stem matches consume from pool greedily (deterministic, unambiguous).
+    2. 1:1 fallback: if exactly one attachment is still unmatched AND exactly one
+       exfil file remains AND their MIME categories agree → assign it.
+       This handles UUID-renamed files where name matching fails entirely.
+
+    Returns dict mapping attachment_id → exfil file dict.
+    """
+    if not exfil_files or not attachments:
+        return {}
+
+    pool = list(exfil_files)  # mutable copy — consumed as matches are made
+    matched: dict[str, dict[str, Any]] = {}
+
+    # Pass 1: exact and stem matches, consuming from pool
+    for att in attachments:
+        for i, f in enumerate(pool):
+            if _names_match(att.filename, f["name"]):
+                matched[att.attachment_id] = f
+                pool.pop(i)
+                break
+
+    # Pass 2: 1:1 fallback — only when certainty is absolute
+    unmatched = [a for a in attachments if a.attachment_id not in matched]
+    if len(unmatched) == 1 and len(pool) == 1:
+        att, exfil = unmatched[0], pool[0]
+        exfil_cat = exfil.get("mimeType", "").split("/")[0]
+        att_cat = att.mime_type.split("/")[0]
+        if exfil_cat and exfil_cat == att_cat:
+            matched[att.attachment_id] = exfil
+
+    return matched
 
 
 def _deposit_attachment_content(
@@ -126,14 +159,49 @@ def _deposit_attachment_content(
         }
 
     elif mime_type.startswith("image/"):
+        # Post-download dimension check using PIL.
+        # The pre-download size check (att.size) catches most oversized images,
+        # but dimensions can only be verified after the bytes are in hand.
+        # A file can be < 4.5MB yet have dimensions > 8000px (e.g. losslessly
+        # compressed scan of a large document).
+        try:
+            img = Image.open(io.BytesIO(content_bytes))
+            w, h = img.size
+            if w > MAX_IMAGE_DIMENSION_PX or h > MAX_IMAGE_DIMENSION_PX:
+                return {
+                    "filename": filename,
+                    "mime_type": mime_type,
+                    "skipped": True,
+                    "dimensions": f"{w}×{h}",
+                    "reason": (
+                        f"dimensions {w}×{h} exceed API limit of "
+                        f"{MAX_IMAGE_DIMENSION_PX}px per axis"
+                    ),
+                }
+            dimension_info = f"{w}×{h}"
+        except Exception:
+            # PIL couldn't read the bytes as an image — content doesn't match
+            # the declared MIME type (e.g. a DOCX renamed to .png).
+            # Do NOT deposit: passing non-image bytes to the API as image/png
+            # causes a hard 400 "Could not process image" that poisons the session.
+            return {
+                "filename": filename,
+                "mime_type": mime_type,
+                "skipped": True,
+                "reason": "bytes are not a valid image (content doesn't match declared MIME type)",
+            }
+
         write_image(folder, content_bytes, filename)
 
-        return {
+        result: dict[str, Any] = {
             "filename": filename,
             "mime_type": mime_type,
             "extracted": True,
             "deposited_as": filename,
         }
+        if dimension_info:
+            result["dimensions"] = dimension_info
+        return result
 
     return None
 
@@ -221,6 +289,7 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
     all_attachments: list[dict[str, Any]] = []
     all_drive_links: list[dict[str, str]] = []
     skipped_office: list[str] = []
+    skipped_images: list[dict[str, Any]] = []
     extracted_attachments: list[dict[str, Any]] = []
     extraction_warnings: list[str] = []
     extracted_count = 0
@@ -231,8 +300,10 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
     exfiltrated = lookup_exfiltrated(message_ids)
 
     for msg in thread_data.messages:
-        # Get Drive files matching this message's attachments
+        # Match ALL attachments for this message to exfil'd Drive files at once.
+        # Consumed-pool approach prevents one Drive file matching multiple attachments.
         exfil_files = exfiltrated.get(msg.message_id, [])
+        exfil_matches = _match_exfil_for_message(msg.attachments, exfil_files)
 
         for att in msg.attachments:
             att_info = {
@@ -247,6 +318,24 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
                 skipped_office.append(att.filename)
                 continue
 
+            # Pre-download image safety check (size from Gmail metadata)
+            # Images that exceed API limits cause a hard 400 that poisons the session.
+            if att.mime_type.startswith("image/"):
+                if att.mime_type not in SUPPORTED_IMAGE_MIME_TYPES:
+                    skipped_images.append({
+                        "filename": att.filename,
+                        "mime_type": att.mime_type,
+                        "reason": f"unsupported format (API supports: jpeg, png, gif, webp)",
+                    })
+                    continue
+                if att.size > MAX_IMAGE_BYTES:
+                    skipped_images.append({
+                        "filename": att.filename,
+                        "size": att.size,
+                        "reason": f"file too large for API ({att.size:,} bytes > {MAX_IMAGE_BYTES:,} byte limit)",
+                    })
+                    continue
+
             # Limit eager extraction
             if extracted_count >= MAX_EAGER_ATTACHMENTS:
                 extraction_warnings.append(
@@ -256,7 +345,7 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
                 continue
 
             # Try pre-exfil'd Drive copy first (faster, already indexed)
-            exfil_match = _match_exfil_file(att.filename, exfil_files)
+            exfil_match = exfil_matches.get(att.attachment_id)
             if exfil_match and _is_extractable_attachment(att.mime_type):
                 result = _extract_from_drive(
                     file_id=exfil_match["file_id"],
@@ -265,6 +354,9 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
                     folder=folder,
                     warnings=extraction_warnings,
                 )
+                if result and result.get("skipped"):
+                    skipped_images.append(result)
+                    continue
                 if result:
                     result["source"] = "drive_exfil"
                     extracted_attachments.append(result)
@@ -279,7 +371,9 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
                     folder=folder,
                     warnings=extraction_warnings,
                 )
-                if result:
+                if result and result.get("skipped"):
+                    skipped_images.append(result)
+                elif result:
                     result["source"] = "gmail"
                     extracted_attachments.append(result)
                     extracted_count += 1
@@ -314,6 +408,8 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
         extra["extracted_attachments"] = len(extracted_attachments)
     if skipped_office:
         extra["skipped_office"] = skipped_office
+    if skipped_images:
+        extra["skipped_images"] = skipped_images
 
     write_manifest(
         folder,
@@ -340,6 +436,16 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
         metadata["skipped_office_hint"] = (
             f"Office files take 5-10s each. "
             f"To extract: {'; '.join(examples)}"
+        )
+    if skipped_images:
+        metadata["skipped_images"] = skipped_images
+        img_examples = [
+            "fetch('{}', attachment='{}')".format(thread_id, img["filename"])
+            for img in skipped_images
+        ]
+        metadata["skipped_images_hint"] = (
+            f"Images skipped (too large or unsupported format for Claude API). "
+            f"To fetch individually: {'; '.join(img_examples)}"
         )
 
     # Build participants list (unique, ordered by first appearance)
@@ -437,7 +543,8 @@ def fetch_attachment(
     try:
         exfiltrated = lookup_exfiltrated([target_msg.message_id])
         exfil_files = exfiltrated.get(target_msg.message_id, [])
-        exfil_match = _match_exfil_file(target_att.filename, exfil_files)
+        exfil_matches = _match_exfil_for_message([target_att], exfil_files)
+        exfil_match = exfil_matches.get(target_att.attachment_id)
         if exfil_match:
             exfil_file_id = exfil_match["file_id"]
             source_label = "drive_exfil"
