@@ -295,3 +295,108 @@ class TestDoSearch:
         assert result.path == "/workspace/mise/search-results.json"
 
 
+# ============================================================================
+# SCOPED SEARCH (folder_id)
+# ============================================================================
+
+
+class TestScopedSearch:
+    """Test folder-scoped search via folder_id parameter."""
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_folder_id_passed_to_adapter(self, mock_drive, mock_write) -> None:
+        """folder_id is forwarded to search_files."""
+        mock_drive.return_value = []
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        do_search("GA4", sources=["drive"], folder_id="abc123")
+
+        _, kwargs = mock_drive.call_args
+        assert kwargs.get("folder_id") == "abc123"
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
+    def test_folder_id_forces_drive_only(self, mock_drive, mock_gmail, mock_write) -> None:
+        """When folder_id set, Gmail is excluded even if in sources."""
+        mock_drive.return_value = []
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("GA4", sources=["drive", "gmail"], folder_id="abc123")
+
+        mock_gmail.assert_not_called()
+        assert "gmail" not in result.sources
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_scope_note_in_cues_with_results(self, mock_drive, mock_write) -> None:
+        """Scope note present in cues even when results are found."""
+        mock_drive.return_value = [
+            DriveSearchResult(file_id="f1", name="tv-conversions.md", mime_type="text/markdown"),
+        ]
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("GA4", sources=["drive"], folder_id="folder123")
+
+        assert "scope" in result.cues
+        assert "non-recursive" in result.cues["scope"]
+        assert "folder123" in result.cues["scope"]
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_scope_note_in_cues_zero_results(self, mock_drive, mock_write) -> None:
+        """Scope note present in cues even on zero results."""
+        mock_drive.return_value = []
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("GA4", sources=["drive"], folder_id="folder456")
+
+        assert "scope" in result.cues
+        assert "non-recursive" in result.cues["scope"]
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
+    def test_no_scope_note_without_folder_id(self, mock_drive, mock_gmail, mock_write) -> None:
+        """No cues when folder_id not set (unscoped search)."""
+        mock_drive.return_value = []
+        mock_gmail.return_value = []
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test")
+
+        assert not result.cues  # empty dict
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_cues_in_to_dict_output(self, mock_drive, mock_write) -> None:
+        """Cues appear in the MCP response dict when set."""
+        mock_drive.return_value = []
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("GA4", sources=["drive"], folder_id="folder789")
+        d = result.to_dict()
+
+        assert "cues" in d
+        assert "scope" in d["cues"]
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
+    def test_unscoped_search_unchanged(self, mock_drive, mock_gmail, mock_write) -> None:
+        """folder_id=None produces identical behaviour to omitting it."""
+        mock_drive.return_value = []
+        mock_gmail.return_value = []
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result_none = do_search("test", folder_id=None)
+        result_omit = do_search("test")
+
+        assert result_none.sources == result_omit.sources
+        assert result_none.cues == result_omit.cues
+        # Both calls pass folder_id=None to adapter
+        for call in mock_drive.call_args_list:
+            assert call.kwargs.get("folder_id") is None
+
+

@@ -69,6 +69,7 @@ def search(
     sources: list[str] | None = None,
     max_results: int = 20,
     base_path: str = "",
+    folder_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Search across Drive and Gmail.
@@ -81,6 +82,9 @@ def search(
         sources: ['drive', 'gmail'] — default: both
         max_results: Maximum results per source
         base_path: Directory for deposits (pass your cwd so files land next to your project, not the MCP server's directory)
+        folder_id: Optional Drive folder ID to scope results to immediate children only.
+            Non-recursive — only files directly inside this folder are returned.
+            When set, forces sources=['drive'] (Gmail has no folder concept).
 
     Returns:
         path: Path to deposited search results JSON
@@ -88,11 +92,12 @@ def search(
         sources: Sources searched
         drive_count: Number of Drive results
         gmail_count: Number of Gmail results
+        cues: Scope notes and warnings (present when folder_id is set)
     """
     if not base_path:
         return {"error": True, "kind": "invalid_input",
                 "message": "base_path is required — pass your working directory so deposits land in your project, not the MCP server's directory"}
-    return do_search(query, sources, max_results, base_path=Path(base_path)).to_dict()
+    return do_search(query, sources, max_results, base_path=Path(base_path), folder_id=folder_id).to_dict()
 
 
 @mcp.tool()
@@ -249,6 +254,7 @@ This pattern:
 | `query` | str | required | Search terms |
 | `sources` | list[str] | ['drive', 'gmail'] | Which sources to search |
 | `max_results` | int | 20 | Maximum results per source |
+| `folder_id` | str | None | Drive folder ID to scope results to immediate children only. Non-recursive. Forces sources=['drive']. |
 
 ## Examples
 
@@ -257,6 +263,10 @@ This pattern:
 search("Q4 planning")
 # Returns: {"path": "mise/search--q4-planning--2026-01-31T21-12-53.json",
 #           "drive_count": 15, "gmail_count": 8, ...}
+
+# Scope to a specific folder (non-recursive — immediate children only)
+search("GA4", folder_id="1UclqiqLBfe3BfLRNFTWb0eDbnssxA3Tp")
+# Returns cues.scope note explaining non-recursive limitation
 
 # Then read the file for full results
 Read("mise/search--q4-planning--2026-01-31T21-12-53.json")

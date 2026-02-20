@@ -270,11 +270,25 @@ def get_file_size(file_id: str) -> int:
     return int(metadata.get("size", 0))
 
 
+_DRIVE_ID_RE = re.compile(r'^[A-Za-z0-9_\-]+$')
+
+
+def _validate_drive_id(drive_id: str, param_name: str = "folder_id") -> None:
+    """Raise MiseError if drive_id contains characters outside the Drive ID alphabet."""
+    if not _DRIVE_ID_RE.match(drive_id):
+        raise MiseError(
+            ErrorKind.INVALID_INPUT,
+            f"Invalid {param_name}: must contain only alphanumeric characters, hyphens, and underscores",
+            details={param_name: drive_id},
+        )
+
+
 @with_retry(max_attempts=3, delay_ms=1000)
 def search_files(
     query: str,
     max_results: int = 20,
     include_shared_drives: bool = True,
+    folder_id: str | None = None,
 ) -> list[DriveSearchResult]:
     """
     Search for files in Drive.
@@ -283,13 +297,19 @@ def search_files(
         query: Drive search query (e.g., "fullText contains 'budget'")
         max_results: Maximum number of results
         include_shared_drives: Whether to search shared drives
+        folder_id: Optional folder ID to scope results to immediate children only.
+            Non-recursive — only files directly inside this folder are returned.
 
     Returns:
         List of DriveSearchResult objects
 
     Raises:
-        MiseError: On API failure
+        MiseError: On API failure or invalid folder_id
     """
+    if folder_id is not None:
+        _validate_drive_id(folder_id, "folder_id")
+        query = f"{query} AND '{folder_id}' in parents"
+
     service = get_drive_service()
 
     response = (
@@ -340,6 +360,95 @@ GOOGLE_FOLDER_MIME = "application/vnd.google-apps.folder"
 def is_google_workspace_file(mime_type: str) -> bool:
     """Check if MIME type is a Google Workspace native format."""
     return mime_type.startswith("application/vnd.google-apps.")
+
+
+# Fields for folder listing — name, ID, and MIME type is all we need
+FOLDER_LIST_FIELDS = "nextPageToken,files(id,name,mimeType)"
+
+# Max pages to fetch eagerly (3 pages × 100 items = 300 items)
+FOLDER_LIST_MAX_PAGES = 3
+FOLDER_LIST_PAGE_SIZE = 100
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def list_folder(folder_id: str) -> dict:
+    """
+    List direct children of a Drive folder.
+
+    Fetches up to 3 pages (300 items) ordered by name. Does not recurse.
+
+    CRITICAL: Both supportsAllDrives=True AND includeItemsFromAllDrives=True
+    are required for shared drives — omitting either returns 0 results with no error.
+
+    Args:
+        folder_id: The folder's Drive file ID
+
+    Returns:
+        Dict with:
+            subfolders: list of {id, name} for child folders
+            files: list of {id, name, mimeType} for child files
+            file_count: int
+            folder_count: int
+            item_count: int (total items seen, may be < actual if truncated)
+            types: list of distinct mimeType strings for files
+            truncated: bool (True if nextPageToken remained after page 3)
+
+    Raises:
+        MiseError: On API failure
+    """
+    service = get_drive_service()
+
+    query = f"'{folder_id}' in parents and trashed = false"
+
+    subfolders: list[dict] = []
+    files: list[dict] = []
+    page_token = None
+    pages_fetched = 0
+    truncated = False
+
+    while pages_fetched < FOLDER_LIST_MAX_PAGES:
+        kwargs: dict = dict(
+            q=query,
+            pageSize=FOLDER_LIST_PAGE_SIZE,
+            fields=FOLDER_LIST_FIELDS,
+            orderBy="name",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        )
+        if page_token:
+            kwargs["pageToken"] = page_token
+
+        response = service.files().list(**kwargs).execute()
+        pages_fetched += 1
+
+        for item in response.get("files", []):
+            if item.get("mimeType") == GOOGLE_FOLDER_MIME:
+                subfolders.append({"id": item["id"], "name": item.get("name", "")})
+            else:
+                files.append({
+                    "id": item["id"],
+                    "name": item.get("name", ""),
+                    "mimeType": item.get("mimeType", ""),
+                })
+
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break
+    else:
+        # Exited because pages_fetched == FOLDER_LIST_MAX_PAGES
+        truncated = bool(page_token)
+
+    types = sorted({f["mimeType"] for f in files if f["mimeType"]})
+
+    return {
+        "subfolders": subfolders,
+        "files": files,
+        "file_count": len(files),
+        "folder_count": len(subfolders),
+        "item_count": len(subfolders) + len(files),
+        "types": types,
+        "truncated": truncated,
+    }
 
 
 # =============================================================================

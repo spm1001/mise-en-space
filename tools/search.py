@@ -59,6 +59,7 @@ def do_search(
     sources: list[str] | None = None,
     max_results: int = 20,
     base_path: Path | None = None,
+    folder_id: str | None = None,
 ) -> SearchResult:
     """
     Search across Drive and Gmail.
@@ -71,6 +72,9 @@ def do_search(
         sources: List of sources to search (default: ['drive', 'gmail'])
         max_results: Maximum results per source
         base_path: Base directory for deposits (defaults to cwd)
+        folder_id: Optional Drive folder ID to scope results to immediate children only.
+            Non-recursive — only files directly inside this folder are returned.
+            Implies sources=['drive'] when provided.
 
     Returns:
         SearchResult with path to deposited file and result counts
@@ -78,7 +82,18 @@ def do_search(
     if sources is None:
         sources = ["drive", "gmail"]
 
+    # folder_id scopes to Drive only — Gmail has no folder concept
+    if folder_id is not None and "gmail" in sources:
+        sources = [s for s in sources if s != "gmail"]
+
     result = SearchResult(query=query, sources=sources)
+
+    # Scope note — emitted unconditionally when folder_id is set
+    if folder_id is not None:
+        result.cues["scope"] = (
+            f"non-recursive — results limited to immediate children of folder '{folder_id}'; "
+            "files in subfolders are not included"
+        )
 
     search_drive = "drive" in sources
     search_gmail = "gmail" in sources
@@ -86,7 +101,7 @@ def do_search(
     def _run_drive() -> list[DriveSearchResult]:
         escaped_query = escape_drive_query(query)
         drive_query = f"fullText contains '{escaped_query}' and trashed = false"
-        return search_files(drive_query, max_results=max_results)
+        return search_files(drive_query, max_results=max_results, folder_id=folder_id)
 
     def _run_gmail() -> list[GmailSearchResult]:
         sanitized_query = sanitize_gmail_query(query)

@@ -33,6 +33,7 @@ from adapters.drive import (
     download_file_to_temp,
     is_google_workspace_file,
     _get_email_attachments_folder_id,
+    _validate_drive_id,
     COMMENT_UNSUPPORTED_MIMES,
 )
 
@@ -1188,3 +1189,66 @@ class TestSealCatchesRenamedMethods:
         # But a new chain fails
         with pytest.raises(AttributeError):
             service.files().copy()
+
+
+# ============================================================================
+# SCOPED SEARCH (folder_id in search_files)
+# ============================================================================
+
+
+class TestSearchFilesScoped:
+    """Test folder_id scoping in search_files."""
+
+    def test_folder_id_appended_to_query(self) -> None:
+        """When folder_id provided, 'AND {id} in parents' appended to query."""
+        mock_service = MagicMock()
+        mock_service.files.return_value.list.return_value.execute.return_value = {"files": []}
+
+        with patch("adapters.drive.get_drive_service", return_value=mock_service):
+            search_files("fullText contains 'GA4' and trashed = false", folder_id="folder123")
+
+        call_kwargs = mock_service.files.return_value.list.call_args.kwargs
+        assert "folder123" in call_kwargs["q"]
+        assert "in parents" in call_kwargs["q"]
+
+    def test_unscoped_query_unchanged(self) -> None:
+        """folder_id=None produces the same query as omitting it."""
+        mock_service = MagicMock()
+        mock_service.files.return_value.list.return_value.execute.return_value = {"files": []}
+
+        base_query = "fullText contains 'GA4' and trashed = false"
+
+        with patch("adapters.drive.get_drive_service", return_value=mock_service):
+            search_files(base_query, folder_id=None)
+
+        call_kwargs = mock_service.files.return_value.list.call_args.kwargs
+        assert call_kwargs["q"] == base_query
+
+    def test_both_shared_drive_flags_present(self) -> None:
+        """Both supportsAllDrives and includeItemsFromAllDrives are True."""
+        mock_service = MagicMock()
+        mock_service.files.return_value.list.return_value.execute.return_value = {"files": []}
+
+        with patch("adapters.drive.get_drive_service", return_value=mock_service):
+            search_files("fullText contains 'test' and trashed = false", folder_id="fid123")
+
+        call_kwargs = mock_service.files.return_value.list.call_args.kwargs
+        assert call_kwargs.get("supportsAllDrives") is True
+        assert call_kwargs.get("includeItemsFromAllDrives") is True
+
+
+class TestValidateDriveId:
+    """Test the Drive ID validation helper."""
+
+    def test_valid_ids_pass(self) -> None:
+        for valid_id in ["abc123", "1UclqiqLBfe3BfLRNFTWb0eDbnssxA3Tp", "folder-id_ABC"]:
+            _validate_drive_id(valid_id)  # should not raise
+
+    def test_single_quote_rejected(self) -> None:
+        """Single quote in folder_id would be query injection."""
+        with pytest.raises(Exception):
+            _validate_drive_id("abc' OR '1'='1")
+
+    def test_space_rejected(self) -> None:
+        with pytest.raises(Exception):
+            _validate_drive_id("abc 123")

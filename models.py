@@ -461,6 +461,8 @@ class SearchResult:
     errors: list[str] = field(default_factory=list)
     # Path to deposited results file (filesystem-first pattern)
     path: str | None = None
+    # Decision-tree signals (scope notes, warnings, etc.)
+    cues: dict[str, Any] = field(default_factory=dict)
 
     def full_results(self) -> dict[str, Any]:
         """Get full results dict (for writing to file)."""
@@ -525,6 +527,8 @@ class SearchResult:
                 result["preview"] = preview
             if self.errors:
                 result["errors"] = self.errors
+            if self.cues:
+                result["cues"] = self.cues
             return result
         else:
             # Legacy: return full results inline

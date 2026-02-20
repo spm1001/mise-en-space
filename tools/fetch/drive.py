@@ -5,7 +5,8 @@ Drive file fetch — routes by MIME type, extracts content, deposits to workspac
 from pathlib import Path
 from typing import Any
 
-from adapters.drive import get_file_metadata, parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
+from adapters.drive import get_file_metadata, parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME, GOOGLE_FOLDER_MIME
+from adapters.drive import list_folder as adapter_list_folder
 from adapters.docs import fetch_document
 from adapters.sheets import fetch_spreadsheet
 from adapters.slides import fetch_presentation
@@ -16,6 +17,7 @@ from adapters.office import fetch_and_extract_office, get_office_type_from_mime,
 from adapters.image import fetch_image as adapter_fetch_image, is_image_file, is_svg
 from extractors.image import validate_image_bytes, MAX_IMAGE_DIMENSION_PX
 from extractors.docs import extract_doc_content
+from extractors.folder import extract_folder_content
 from extractors.sheets import extract_sheets_content, extract_sheets_per_tab
 from extractors.slides import extract_slides_content
 from models import FetchResult, FetchError, EmailContext
@@ -38,7 +40,9 @@ def fetch_drive(file_id: str, base_path: Path | None = None) -> FetchResult | Fe
     email_context = parse_email_context(metadata.get("description"))
 
     # Route by MIME type
-    if mime_type == GOOGLE_DOC_MIME:
+    if mime_type == GOOGLE_FOLDER_MIME:
+        return fetch_folder(file_id, title, metadata, base_path=base_path)
+    elif mime_type == GOOGLE_DOC_MIME:
         return fetch_doc(file_id, title, metadata, email_context, base_path=base_path)
     elif mime_type == GOOGLE_SHEET_MIME:
         return fetch_sheet(file_id, title, metadata, email_context, base_path=base_path)
@@ -62,6 +66,54 @@ def fetch_drive(file_id: str, base_path: Path | None = None) -> FetchResult | Fe
             file_id=file_id,
             name=title,
         )
+
+
+def fetch_folder(folder_id: str, title: str, metadata: dict[str, Any], *, base_path: Path | None = None) -> FetchResult:
+    """Fetch Drive folder — deposit directory listing as content.md."""
+    listing = adapter_list_folder(folder_id)
+    content = extract_folder_content(listing)
+
+    folder_path = get_deposit_folder("folder", title, folder_id, base_path=base_path)
+    content_path = write_content(folder_path, content)
+
+    web_view_link = metadata.get("webViewLink", "")
+    extra: dict[str, Any] = {
+        "file_count": listing["file_count"],
+        "folder_count": listing["folder_count"],
+        "types": listing["types"],
+        "truncated": listing["truncated"],
+    }
+    if listing["truncated"]:
+        extra["truncation_warning"] = f"Folder has more than {listing['item_count']} items — only first 300 shown"
+    write_manifest(folder_path, "folder", title, folder_id, extra=extra)
+
+    result_meta: dict[str, Any] = {
+        "title": title,
+        "file_count": listing["file_count"],
+        "folder_count": listing["folder_count"],
+        "types": listing["types"],
+        "web_view_link": web_view_link,
+    }
+
+    warnings: list[str] = []
+    if listing["truncated"]:
+        warnings.append(f"Folder truncated — showing first 300 of {listing['item_count']}+ items")
+
+    cues = _build_cues(folder_path, warnings=warnings if warnings else None)
+    cues["file_count"] = listing["file_count"]
+    cues["folder_count"] = listing["folder_count"]
+    cues["types"] = listing["types"]
+    if listing["truncated"]:
+        cues["truncated"] = True
+
+    return FetchResult(
+        path=str(folder_path),
+        content_file=str(content_path),
+        format="markdown",
+        type="folder",
+        metadata=result_meta,
+        cues=cues,
+    )
 
 
 def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
