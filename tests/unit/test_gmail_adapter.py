@@ -24,6 +24,7 @@ from adapters.gmail import (
     search_threads,
     download_attachment,
     AttachmentDownload,
+    DRIVE_LINK_PATTERN,
 )
 
 
@@ -149,9 +150,136 @@ class TestExtractDriveLinks:
     def test_none_input(self) -> None:
         assert _extract_drive_links(None) == []
 
+    def test_slides_link(self) -> None:
+        text = "Deck: https://slides.google.com/presentation/d/abc123"
+        links = _extract_drive_links(text)
+        assert len(links) == 1
+        assert "slides.google.com" in links[0]["url"]
+
+    def test_drive_folder_link(self) -> None:
+        text = "Folder: https://drive.google.com/drive/folders/abc123"
+        links = _extract_drive_links(text)
+        assert len(links) == 1
+        assert "folders" in links[0]["url"]
+
     def test_non_google_link_ignored(self) -> None:
         text = "See https://example.com/document"
         assert _extract_drive_links(text) == []
+
+
+# ============================================================================
+# DRIVE_LINK_PATTERN — regex unit tests
+# ============================================================================
+
+class TestDriveLinkPattern:
+    """
+    Direct tests for the DRIVE_LINK_PATTERN regex.
+
+    Covers all four subdomains (docs, sheets, slides, drive), URL shapes,
+    terminator behaviour, and case-insensitivity. These tests exercise the
+    regex itself — not the _extract_drive_links wrapper — so a future refactor
+    of the wrapper can't silently break the pattern.
+    """
+
+    # --- subdomains ---
+
+    def test_docs_subdomain_matches(self) -> None:
+        url = "https://docs.google.com/document/d/abc123/edit"
+        assert DRIVE_LINK_PATTERN.search(url) is not None
+
+    def test_sheets_subdomain_matches(self) -> None:
+        url = "https://sheets.google.com/spreadsheets/d/xyz789"
+        assert DRIVE_LINK_PATTERN.search(url) is not None
+
+    def test_slides_subdomain_matches(self) -> None:
+        url = "https://slides.google.com/presentation/d/pqr456"
+        assert DRIVE_LINK_PATTERN.search(url) is not None
+
+    def test_drive_subdomain_matches(self) -> None:
+        url = "https://drive.google.com/file/d/abc/view"
+        assert DRIVE_LINK_PATTERN.search(url) is not None
+
+    def test_unknown_subdomain_does_not_match(self) -> None:
+        url = "https://mail.google.com/mail/u/0/#inbox"
+        assert DRIVE_LINK_PATTERN.search(url) is None
+
+    # --- URL shapes ---
+
+    def test_docs_spreadsheet_url(self) -> None:
+        """Sheets opened via docs.google.com (the common real-world form)."""
+        url = "https://docs.google.com/spreadsheets/d/abc123/edit#gid=0"
+        assert DRIVE_LINK_PATTERN.search(url) is not None
+
+    def test_docs_presentation_url(self) -> None:
+        """Slides opened via docs.google.com."""
+        url = "https://docs.google.com/presentation/d/abc123/edit"
+        assert DRIVE_LINK_PATTERN.search(url) is not None
+
+    def test_drive_folder_url(self) -> None:
+        url = "https://drive.google.com/drive/folders/abc123?usp=sharing"
+        assert DRIVE_LINK_PATTERN.search(url) is not None
+
+    def test_query_params_included_in_match(self) -> None:
+        """Query params are part of the URL and captured."""
+        url = "https://docs.google.com/document/d/abc/edit?usp=sharing"
+        m = DRIVE_LINK_PATTERN.search(url)
+        assert m is not None
+        assert "usp=sharing" in m.group(0)
+
+    # --- terminator behaviour ---
+
+    def test_stops_at_double_quote(self) -> None:
+        """URL inside HTML href terminates at the closing quote."""
+        html = 'href="https://docs.google.com/document/d/abc/edit" class="link"'
+        m = DRIVE_LINK_PATTERN.search(html)
+        assert m is not None
+        assert m.group(0) == "https://docs.google.com/document/d/abc/edit"
+
+    def test_stops_at_single_quote(self) -> None:
+        html = "href='https://docs.google.com/document/d/abc/edit' class='link'"
+        m = DRIVE_LINK_PATTERN.search(html)
+        assert m is not None
+        assert m.group(0) == "https://docs.google.com/document/d/abc/edit"
+
+    def test_stops_at_angle_bracket(self) -> None:
+        """URL in plain-text email followed by >."""
+        text = "See <https://docs.google.com/document/d/abc/edit> for details."
+        m = DRIVE_LINK_PATTERN.search(text)
+        assert m is not None
+        assert m.group(0) == "https://docs.google.com/document/d/abc/edit"
+
+    def test_stops_at_whitespace(self) -> None:
+        text = "Doc: https://docs.google.com/document/d/abc/edit and more."
+        m = DRIVE_LINK_PATTERN.search(text)
+        assert m is not None
+        assert m.group(0) == "https://docs.google.com/document/d/abc/edit"
+
+    # --- case-insensitivity ---
+
+    def test_uppercase_scheme_matches(self) -> None:
+        url = "HTTPS://DOCS.GOOGLE.COM/document/d/abc123/edit"
+        assert DRIVE_LINK_PATTERN.search(url) is not None
+
+    # --- non-matches ---
+
+    def test_non_google_domain_ignored(self) -> None:
+        assert DRIVE_LINK_PATTERN.search("https://example.com/docs/file") is None
+
+    def test_plain_text_no_urls_ignored(self) -> None:
+        assert DRIVE_LINK_PATTERN.search("No links in this message.") is None
+
+    def test_findall_returns_all_urls(self) -> None:
+        """Multiple Drive URLs in one string all captured."""
+        text = (
+            "Doc: https://docs.google.com/document/d/1/edit "
+            "Folder: https://drive.google.com/drive/folders/abc "
+            "Deck: https://slides.google.com/presentation/d/xyz"
+        )
+        matches = DRIVE_LINK_PATTERN.findall(text)
+        assert len(matches) == 3
+        assert any("document" in m for m in matches)
+        assert any("folders" in m for m in matches)
+        assert any("presentation" in m for m in matches)
 
 
 # ============================================================================
