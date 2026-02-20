@@ -33,7 +33,6 @@ from adapters.drive import (
     download_file_to_temp,
     is_google_workspace_file,
     _get_email_attachments_folder_id,
-    _validate_drive_id,
     COMMENT_UNSUPPORTED_MIMES,
 )
 
@@ -1237,18 +1236,3 @@ class TestSearchFilesScoped:
         assert call_kwargs.get("includeItemsFromAllDrives") is True
 
 
-class TestValidateDriveId:
-    """Test the Drive ID validation helper."""
-
-    def test_valid_ids_pass(self) -> None:
-        for valid_id in ["abc123", "1UclqiqLBfe3BfLRNFTWb0eDbnssxA3Tp", "folder-id_ABC"]:
-            _validate_drive_id(valid_id)  # should not raise
-
-    def test_single_quote_rejected(self) -> None:
-        """Single quote in folder_id would be query injection."""
-        with pytest.raises(Exception):
-            _validate_drive_id("abc' OR '1'='1")
-
-    def test_space_rejected(self) -> None:
-        with pytest.raises(Exception):
-            _validate_drive_id("abc 123")

@@ -384,6 +384,30 @@ class TestScopedSearch:
     @patch('tools.search.write_search_results')
     @patch('tools.search.search_threads')
     @patch('tools.search.search_files')
+    def test_sources_note_when_gmail_dropped(self, mock_drive, mock_gmail, mock_write) -> None:
+        """sources_note present in cues when Gmail is excluded due to folder_id."""
+        mock_drive.return_value = []
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("GA4", sources=["drive", "gmail"], folder_id="folder123")
+
+        assert "sources_note" in result.cues
+        assert "Gmail" in result.cues["sources_note"]
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_no_sources_note_when_drive_only_from_start(self, mock_drive, mock_write) -> None:
+        """No sources_note when caller already requested drive-only with folder_id."""
+        mock_drive.return_value = []
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("GA4", sources=["drive"], folder_id="folder123")
+
+        assert "sources_note" not in result.cues
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
     def test_unscoped_search_unchanged(self, mock_drive, mock_gmail, mock_write) -> None:
         """folder_id=None produces identical behaviour to omitting it."""
         mock_drive.return_value = []

@@ -13,6 +13,7 @@ from validation import (
     is_gmail_web_id,
     is_gmail_api_id,
     sanitize_gmail_query,
+    validate_drive_id,
 )
 
 
@@ -202,3 +203,25 @@ class TestQueryEscaping:
         """Unicode characters pass through."""
         assert sanitize_gmail_query("日本語 email") == "日本語 email"
         assert sanitize_gmail_query("émoji 🎉") == "émoji 🎉"
+
+
+class TestValidateDriveId:
+    """Test the Drive ID validation helper — injection guard for query strings."""
+
+    def test_valid_ids_pass(self) -> None:
+        for valid_id in ["abc123", "1UclqiqLBfe3BfLRNFTWb0eDbnssxA3Tp", "folder-id_ABC"]:
+            validate_drive_id(valid_id)  # should not raise
+
+    def test_single_quote_rejected(self) -> None:
+        """Single quote would enable query injection into Drive search strings."""
+        with pytest.raises(ValueError):
+            validate_drive_id("abc' OR '1'='1")
+
+    def test_space_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            validate_drive_id("abc 123")
+
+    def test_param_name_in_error(self) -> None:
+        """Error message includes the parameter name for debuggability."""
+        with pytest.raises(ValueError, match="folder_id"):
+            validate_drive_id("bad id!", param_name="folder_id")

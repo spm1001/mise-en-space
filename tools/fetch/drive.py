@@ -71,7 +71,7 @@ def fetch_drive(file_id: str, base_path: Path | None = None) -> FetchResult | Fe
 def fetch_folder(folder_id: str, title: str, metadata: dict[str, Any], *, base_path: Path | None = None) -> FetchResult:
     """Fetch Drive folder — deposit directory listing as content.md."""
     listing = adapter_list_folder(folder_id)
-    content = extract_folder_content(listing)
+    content = extract_folder_content(listing, title=title)
 
     folder_path = get_deposit_folder("folder", title, folder_id, base_path=base_path)
     content_path = write_content(folder_path, content)

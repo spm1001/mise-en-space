@@ -25,6 +25,7 @@ from models import (
 )
 from retry import with_retry
 from adapters.services import get_drive_service
+from validation import validate_drive_id
 
 
 def parse_email_context(description: str | None) -> EmailContext | None:
@@ -270,19 +271,6 @@ def get_file_size(file_id: str) -> int:
     return int(metadata.get("size", 0))
 
 
-_DRIVE_ID_RE = re.compile(r'^[A-Za-z0-9_\-]+$')
-
-
-def _validate_drive_id(drive_id: str, param_name: str = "folder_id") -> None:
-    """Raise MiseError if drive_id contains characters outside the Drive ID alphabet."""
-    if not _DRIVE_ID_RE.match(drive_id):
-        raise MiseError(
-            ErrorKind.INVALID_INPUT,
-            f"Invalid {param_name}: must contain only alphanumeric characters, hyphens, and underscores",
-            details={param_name: drive_id},
-        )
-
-
 @with_retry(max_attempts=3, delay_ms=1000)
 def search_files(
     query: str,
@@ -304,10 +292,11 @@ def search_files(
         List of DriveSearchResult objects
 
     Raises:
-        MiseError: On API failure or invalid folder_id
+        MiseError: On API failure
+        ValueError: On invalid folder_id
     """
     if folder_id is not None:
-        _validate_drive_id(folder_id, "folder_id")
+        validate_drive_id(folder_id, "folder_id")
         query = f"{query} AND '{folder_id}' in parents"
 
     service = get_drive_service()

@@ -8,7 +8,7 @@ Subfolders first (with IDs as action targets), files grouped by MIME type.
 from collections import defaultdict
 
 
-def extract_folder_content(listing: dict) -> str:
+def extract_folder_content(listing: dict, title: str = "") -> str:
     """
     Convert a folder listing dict into markdown.
 
@@ -19,11 +19,17 @@ def extract_folder_content(listing: dict) -> str:
             file_count: int
             folder_count: int
             truncated: bool
+        title: Human-readable folder name — written as H1 heading.
 
     Returns:
-        Markdown string with subfolders section and files section.
+        Markdown string with optional H1, subfolders section, files section.
     """
     lines: list[str] = []
+
+    # --- Title ---
+    if title:
+        lines.append(f"# {title}")
+        lines.append("")
 
     # --- Subfolders ---
     lines.append("## Subfolders")
@@ -52,8 +58,7 @@ def extract_folder_content(listing: dict) -> str:
 
         for mime_type, names in sorted(by_type.items()):
             count = len(names)
-            label = f"## Files ({count} · {mime_type})" if len(by_type) > 1 else f"## Files ({count})"
-            lines.append(label)
+            lines.append(f"## Files ({count} · {mime_type})")
             lines.append("")
             lines.append(" · ".join(sorted(names)))
             lines.append("")

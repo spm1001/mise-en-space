@@ -406,3 +406,32 @@ def sanitize_gmail_query(query: str) -> str:
 
     return sanitized.strip()
 
+
+# =============================================================================
+# DRIVE ID VALIDATION
+# =============================================================================
+
+_DRIVE_ID_RE = re.compile(r'^[A-Za-z0-9_\-]+$')
+
+
+def validate_drive_id(drive_id: str, param_name: str = "drive_id") -> None:
+    """
+    Raise ValueError if drive_id contains characters outside the Drive ID alphabet.
+
+    Drive file/folder IDs are base62-ish: [A-Za-z0-9_-]. Anything else
+    (spaces, quotes, operators) indicates either a malformed ID or an
+    injection attempt against Drive query strings.
+
+    Args:
+        drive_id: The Drive file or folder ID to validate
+        param_name: Name used in the error message (e.g. 'folder_id')
+
+    Raises:
+        ValueError: If drive_id contains disallowed characters
+    """
+    if not _DRIVE_ID_RE.match(drive_id):
+        raise ValueError(
+            f"Invalid {param_name}: must contain only alphanumeric characters, "
+            f"hyphens, and underscores"
+        )
+

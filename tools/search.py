@@ -83,17 +83,20 @@ def do_search(
         sources = ["drive", "gmail"]
 
     # folder_id scopes to Drive only — Gmail has no folder concept
-    if folder_id is not None and "gmail" in sources:
+    gmail_excluded = folder_id is not None and "gmail" in sources
+    if gmail_excluded:
         sources = [s for s in sources if s != "gmail"]
 
     result = SearchResult(query=query, sources=sources)
 
-    # Scope note — emitted unconditionally when folder_id is set
+    # Scope notes — emitted unconditionally when folder_id is set
     if folder_id is not None:
         result.cues["scope"] = (
             f"non-recursive — results limited to immediate children of folder '{folder_id}'; "
             "files in subfolders are not included"
         )
+        if gmail_excluded:
+            result.cues["sources_note"] = "Gmail excluded — folder_id scopes to Drive only"
 
     search_drive = "drive" in sources
     search_gmail = "gmail" in sources

@@ -83,7 +83,7 @@ class TestExtractFolderContent:
         assert "data.csv" in content
         assert "a.md" in content and "b.md" in content
 
-    def test_single_type_no_type_in_header(self) -> None:
+    def test_single_type_shows_mime_in_header(self) -> None:
         listing = make_listing(
             files=[
                 {"id": "f1", "name": "a.md", "mimeType": "text/markdown"},
@@ -91,10 +91,18 @@ class TestExtractFolderContent:
             ]
         )
         content = extract_folder_content(listing)
-        # Single type: header shows count but not the MIME type repeated in a second section
-        # The MIME type appears in the count header for multi-type, but for single-type
-        # just shows (N)
-        assert "## Files (2)" in content
+        # Always show MIME type even for a homogeneous listing
+        assert "## Files (2 · text/markdown)" in content
+
+    def test_title_as_h1(self) -> None:
+        listing = make_listing()
+        content = extract_folder_content(listing, title="My Knowledge Base")
+        assert content.startswith("# My Knowledge Base")
+
+    def test_no_title_no_h1(self) -> None:
+        listing = make_listing()
+        content = extract_folder_content(listing)
+        assert not content.startswith("# ")  # no H1; ## sections are fine
 
     def test_mixed_subfolders_and_files(self) -> None:
         listing = make_listing(
