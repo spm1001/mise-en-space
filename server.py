@@ -280,9 +280,15 @@ Read("mise/search--q4-planning--2026-01-31T21-12-53.json")
   "query": "Q4 planning",
   "sources": ["drive", "gmail"],
   "drive_count": 15,
-  "gmail_count": 8
+  "gmail_count": 8,
+  "cues": {
+    "scope": "non-recursive — results limited to immediate children of folder '...'",
+    "sources_note": "Gmail excluded — folder_id scopes to Drive only"
+  }
 }
 ```
+
+`cues` is only present when `folder_id` is set. `sources_note` only present when Gmail was in the requested sources and was excluded.
 
 ## Deposited File Shape
 

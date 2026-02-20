@@ -8,6 +8,7 @@ import pytest
 
 from tests.helpers import mock_api_chain, seal_service
 from adapters.drive import list_folder, GOOGLE_FOLDER_MIME
+from models import FolderItem, FolderFile, FolderListing
 
 
 def _make_item(id: str, name: str, mime: str) -> dict:
@@ -24,7 +25,7 @@ def _make_file_item(id: str, name: str, mime: str = "text/markdown") -> dict:
 
 class TestListFolder:
     def test_single_page_result(self) -> None:
-        """Single-page folder — returns all items, not truncated."""
+        """Single-page folder — returns FolderListing, not truncated."""
         mock_service = MagicMock()
         page1 = {
             "files": [
@@ -39,12 +40,13 @@ class TestListFolder:
         with patch("adapters.drive.get_drive_service", return_value=mock_service):
             result = list_folder("folder-id-123")
 
-        assert result["folder_count"] == 1
-        assert result["file_count"] == 2
-        assert result["truncated"] is False
-        assert result["subfolders"] == [{"id": "sf1", "name": "docs"}]
-        assert len(result["files"]) == 2
-        assert "text/markdown" in result["types"]
+        assert isinstance(result, FolderListing)
+        assert result.folder_count == 1
+        assert result.file_count == 2
+        assert result.truncated is False
+        assert result.subfolders == [FolderItem(id="sf1", name="docs")]
+        assert len(result.files) == 2
+        assert "text/markdown" in result.types
 
     def test_supportsAllDrives_and_includeItems_always_set(self) -> None:
         """Both shared-drive flags must be True on every API call."""
@@ -71,8 +73,8 @@ class TestListFolder:
         with patch("adapters.drive.get_drive_service", return_value=mock_service):
             result = list_folder("folder-id-123")
 
-        assert result["file_count"] == 250
-        assert result["truncated"] is False
+        assert result.file_count == 250
+        assert result.truncated is False
         assert mock_service.files.return_value.list.call_count == 3
 
     def test_truncation_when_page_token_after_page3(self) -> None:
@@ -88,9 +90,9 @@ class TestListFolder:
         with patch("adapters.drive.get_drive_service", return_value=mock_service):
             result = list_folder("folder-id-123")
 
-        assert result["file_count"] == 300
-        assert result["truncated"] is True
-        assert result["item_count"] == 300
+        assert result.file_count == 300
+        assert result.truncated is True
+        assert result.item_count == 300
 
     def test_empty_folder(self) -> None:
         """Empty folder — both counts zero, no error."""
@@ -100,12 +102,12 @@ class TestListFolder:
         with patch("adapters.drive.get_drive_service", return_value=mock_service):
             result = list_folder("empty-folder-id")
 
-        assert result["file_count"] == 0
-        assert result["folder_count"] == 0
-        assert result["truncated"] is False
-        assert result["subfolders"] == []
-        assert result["files"] == []
-        assert result["types"] == []
+        assert result.file_count == 0
+        assert result.folder_count == 0
+        assert result.truncated is False
+        assert result.subfolders == []
+        assert result.files == []
+        assert result.types == []
 
     def test_mixed_types_collected(self) -> None:
         """Types list contains distinct MIME types from files (not folders)."""
@@ -122,10 +124,9 @@ class TestListFolder:
         with patch("adapters.drive.get_drive_service", return_value=mock_service):
             result = list_folder("folder-id-123")
 
-        assert result["types"] == sorted(["application/pdf", "text/csv", "text/markdown"])
-        assert result["folder_count"] == 1
-        # Folder MIME type not in types list
-        assert GOOGLE_FOLDER_MIME not in result["types"]
+        assert result.types == sorted(["application/pdf", "text/csv", "text/markdown"])
+        assert result.folder_count == 1
+        assert GOOGLE_FOLDER_MIME not in result.types
 
     def test_page_token_passed_on_subsequent_pages(self) -> None:
         """pageToken from page N passed to page N+1 call."""
@@ -141,6 +142,5 @@ class TestListFolder:
 
         calls = mock_service.files.return_value.list.call_args_list
         assert len(calls) == 2
-        # Second call must include the page token
         assert calls[1].kwargs.get("pageToken") == "page2token"
-        assert result["file_count"] == 2
+        assert result.file_count == 2

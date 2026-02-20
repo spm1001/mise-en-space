@@ -360,6 +360,37 @@ class WebData:
 
 
 # ============================================================================
+# DRIVE FOLDER TYPES
+# ============================================================================
+
+@dataclass
+class FolderItem:
+    """A subfolder entry in a Drive folder listing."""
+    id: str
+    name: str
+
+
+@dataclass
+class FolderFile:
+    """A file entry in a Drive folder listing."""
+    id: str
+    name: str
+    mime_type: str
+
+
+@dataclass
+class FolderListing:
+    """Result of list_folder() — direct children of a Drive folder."""
+    subfolders: list[FolderItem]
+    files: list[FolderFile]
+    file_count: int
+    folder_count: int
+    item_count: int
+    types: list[str]          # Distinct MIME types from files (not folders)
+    truncated: bool           # True if more than 300 items exist
+
+
+# ============================================================================
 # SEARCH RESULT TYPES
 # ============================================================================
 

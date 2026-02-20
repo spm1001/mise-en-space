@@ -4,6 +4,7 @@ Tests for extractors/folder.py — pure function, no I/O.
 
 import pytest
 from extractors.folder import extract_folder_content
+from models import FolderItem, FolderFile, FolderListing
 
 
 def make_listing(
@@ -11,21 +12,23 @@ def make_listing(
     files: list | None = None,
     truncated: bool = False,
     item_count: int | None = None,
-) -> dict:
-    """Build a minimal listing dict as list_folder() would return."""
-    sf = subfolders or []
-    fs = files or []
-    types = sorted({f["mimeType"] for f in fs if f.get("mimeType")})
+) -> FolderListing:
+    """Build a minimal FolderListing as list_folder() would return."""
+    sf_dicts = subfolders or []
+    f_dicts = files or []
+    sf = [FolderItem(id=s["id"], name=s["name"]) for s in sf_dicts]
+    fs = [FolderFile(id=f["id"], name=f["name"], mime_type=f["mimeType"]) for f in f_dicts]
+    types = sorted({f.mime_type for f in fs if f.mime_type})
     count = item_count if item_count is not None else len(sf) + len(fs)
-    return {
-        "subfolders": sf,
-        "files": fs,
-        "file_count": len(fs),
-        "folder_count": len(sf),
-        "item_count": count,
-        "types": types,
-        "truncated": truncated,
-    }
+    return FolderListing(
+        subfolders=sf,
+        files=fs,
+        file_count=len(fs),
+        folder_count=len(sf),
+        item_count=count,
+        types=types,
+        truncated=truncated,
+    )
 
 
 class TestExtractFolderContent:

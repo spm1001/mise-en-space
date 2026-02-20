@@ -17,6 +17,9 @@ import re
 from models import (
     DriveSearchResult,
     EmailContext,
+    FolderItem,
+    FolderFile,
+    FolderListing,
     MiseError,
     ErrorKind,
     FileCommentsData,
@@ -25,7 +28,6 @@ from models import (
 )
 from retry import with_retry
 from adapters.services import get_drive_service
-from validation import validate_drive_id
 
 
 def parse_email_context(description: str | None) -> EmailContext | None:
@@ -293,10 +295,8 @@ def search_files(
 
     Raises:
         MiseError: On API failure
-        ValueError: On invalid folder_id
     """
     if folder_id is not None:
-        validate_drive_id(folder_id, "folder_id")
         query = f"{query} AND '{folder_id}' in parents"
 
     service = get_drive_service()
@@ -360,7 +360,7 @@ FOLDER_LIST_PAGE_SIZE = 100
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
-def list_folder(folder_id: str) -> dict:
+def list_folder(folder_id: str) -> FolderListing:
     """
     List direct children of a Drive folder.
 
@@ -373,14 +373,7 @@ def list_folder(folder_id: str) -> dict:
         folder_id: The folder's Drive file ID
 
     Returns:
-        Dict with:
-            subfolders: list of {id, name} for child folders
-            files: list of {id, name, mimeType} for child files
-            file_count: int
-            folder_count: int
-            item_count: int (total items seen, may be < actual if truncated)
-            types: list of distinct mimeType strings for files
-            truncated: bool (True if nextPageToken remained after page 3)
+        FolderListing with subfolders, files, counts, types, and truncation flag.
 
     Raises:
         MiseError: On API failure
@@ -389,8 +382,8 @@ def list_folder(folder_id: str) -> dict:
 
     query = f"'{folder_id}' in parents and trashed = false"
 
-    subfolders: list[dict] = []
-    files: list[dict] = []
+    subfolders: list[FolderItem] = []
+    files: list[FolderFile] = []
     page_token = None
     pages_fetched = 0
     truncated = False
@@ -412,13 +405,13 @@ def list_folder(folder_id: str) -> dict:
 
         for item in response.get("files", []):
             if item.get("mimeType") == GOOGLE_FOLDER_MIME:
-                subfolders.append({"id": item["id"], "name": item.get("name", "")})
+                subfolders.append(FolderItem(id=item["id"], name=item.get("name", "")))
             else:
-                files.append({
-                    "id": item["id"],
-                    "name": item.get("name", ""),
-                    "mimeType": item.get("mimeType", ""),
-                })
+                files.append(FolderFile(
+                    id=item["id"],
+                    name=item.get("name", ""),
+                    mime_type=item.get("mimeType", ""),
+                ))
 
         page_token = response.get("nextPageToken")
         if not page_token:
@@ -427,17 +420,17 @@ def list_folder(folder_id: str) -> dict:
         # Exited because pages_fetched == FOLDER_LIST_MAX_PAGES
         truncated = bool(page_token)
 
-    types = sorted({f["mimeType"] for f in files if f["mimeType"]})
+    types = sorted({f.mime_type for f in files if f.mime_type})
 
-    return {
-        "subfolders": subfolders,
-        "files": files,
-        "file_count": len(files),
-        "folder_count": len(subfolders),
-        "item_count": len(subfolders) + len(files),
-        "types": types,
-        "truncated": truncated,
-    }
+    return FolderListing(
+        subfolders=subfolders,
+        files=files,
+        file_count=len(files),
+        folder_count=len(subfolders),
+        item_count=len(subfolders) + len(files),
+        types=types,
+        truncated=truncated,
+    )
 
 
 # =============================================================================

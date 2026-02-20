@@ -12,7 +12,7 @@ from typing import Any
 from adapters.drive import search_files
 from adapters.gmail import search_threads
 from models import DriveSearchResult, GmailSearchResult, MiseError, SearchResult
-from validation import escape_drive_query, sanitize_gmail_query
+from validation import escape_drive_query, sanitize_gmail_query, validate_drive_id
 from workspace.manager import write_search_results
 
 
@@ -81,6 +81,11 @@ def do_search(
     """
     if sources is None:
         sources = ["drive", "gmail"]
+
+    # Validate folder_id before entering retry scope — ValueError here would
+    # be swallowed into MiseError(UNKNOWN) by @with_retry in search_files()
+    if folder_id is not None:
+        validate_drive_id(folder_id, "folder_id")
 
     # folder_id scopes to Drive only — Gmail has no folder concept
     gmail_excluded = folder_id is not None and "gmail" in sources

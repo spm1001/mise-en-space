@@ -76,34 +76,32 @@ def fetch_folder(folder_id: str, title: str, metadata: dict[str, Any], *, base_p
     folder_path = get_deposit_folder("folder", title, folder_id, base_path=base_path)
     content_path = write_content(folder_path, content)
 
-    web_view_link = metadata.get("webViewLink", "")
     extra: dict[str, Any] = {
-        "file_count": listing["file_count"],
-        "folder_count": listing["folder_count"],
-        "types": listing["types"],
-        "truncated": listing["truncated"],
+        "file_count": listing.file_count,
+        "folder_count": listing.folder_count,
+        "types": listing.types,
+        "truncated": listing.truncated,
     }
-    if listing["truncated"]:
-        extra["truncation_warning"] = f"Folder has more than {listing['item_count']} items — only first 300 shown"
+    if listing.truncated:
+        extra["truncation_warning"] = f"Folder has more than {listing.item_count} items — only first 300 shown"
     write_manifest(folder_path, "folder", title, folder_id, extra=extra)
 
     result_meta: dict[str, Any] = {
         "title": title,
-        "file_count": listing["file_count"],
-        "folder_count": listing["folder_count"],
-        "types": listing["types"],
-        "web_view_link": web_view_link,
+        "file_count": listing.file_count,
+        "folder_count": listing.folder_count,
+        "types": listing.types,
     }
 
     warnings: list[str] = []
-    if listing["truncated"]:
-        warnings.append(f"Folder truncated — showing first 300 of {listing['item_count']}+ items")
+    if listing.truncated:
+        warnings.append(f"Folder truncated — showing first 300 of {listing.item_count}+ items")
 
     cues = _build_cues(folder_path, warnings=warnings if warnings else None)
-    cues["file_count"] = listing["file_count"]
-    cues["folder_count"] = listing["folder_count"]
-    cues["types"] = listing["types"]
-    if listing["truncated"]:
+    cues["file_count"] = listing.file_count
+    cues["folder_count"] = listing.folder_count
+    cues["types"] = listing.types
+    if listing.truncated:
         cues["truncated"] = True
 
     return FetchResult(
