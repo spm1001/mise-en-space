@@ -22,6 +22,7 @@ Architecture:
 - server.py: Thin MCP wrappers (this file)
 """
 
+import os
 import signal
 import sys
 from pathlib import Path
@@ -698,8 +699,14 @@ def tool_resource(tool_name: str) -> str:
 # ============================================================================
 
 def _shutdown_handler(signum: int, frame: object) -> None:
-    """Handle termination signals by exiting cleanly."""
-    sys.exit(0)
+    """Handle termination signals by exiting immediately.
+
+    os._exit() is required because sys.exit() raises SystemExit,
+    which asyncio's event loop catches and ignores. The server
+    would survive SIGTERM until stdin closes, causing CC to report
+    "1 MCP server failed" on exit.
+    """
+    os._exit(0)
 
 
 if __name__ == "__main__":
