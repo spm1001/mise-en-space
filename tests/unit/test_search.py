@@ -10,6 +10,10 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from models import (
+    ActivityActor,
+    ActivitySearchResult,
+    ActivityTarget,
+    CommentActivity,
     DriveSearchResult,
     GmailSearchResult,
     EmailContext,
@@ -19,6 +23,7 @@ from models import (
 from tools.search import (
     format_drive_result,
     format_gmail_result,
+    format_activity_result,
     do_search,
 )
 
@@ -422,5 +427,234 @@ class TestScopedSearch:
         # Both calls pass folder_id=None to adapter
         for call in mock_drive.call_args_list:
             assert call.kwargs.get("folder_id") is None
+
+
+# ============================================================================
+# FORMAT ACTIVITY RESULT (pure, no mocks needed)
+# ============================================================================
+
+
+def _make_activity(
+    *,
+    file_id: str = "doc123",
+    file_name: str = "Test Doc",
+    action_type: str = "comment",
+    actor_name: str = "Alice",
+    timestamp: str = "2026-02-23T10:00:00Z",
+    mentioned_users: list[str] | None = None,
+    mime_type: str = "application/vnd.google-apps.document",
+    web_link: str = "https://docs.google.com/document/d/doc123/edit",
+) -> CommentActivity:
+    """Build a CommentActivity for testing."""
+    return CommentActivity(
+        activity_id="act/1",
+        timestamp=timestamp,
+        actor=ActivityActor(name=actor_name),
+        target=ActivityTarget(
+            file_id=file_id,
+            file_name=file_name,
+            mime_type=mime_type,
+            web_link=web_link,
+        ),
+        action_type=action_type,
+        mentioned_users=mentioned_users or [],
+    )
+
+
+class TestFormatActivityResult:
+    """Test Activity result serialization."""
+
+    def test_basic_fields(self) -> None:
+        activity = _make_activity()
+        formatted = format_activity_result(activity)
+
+        assert formatted["file_id"] == "doc123"
+        assert formatted["file_name"] == "Test Doc"
+        assert formatted["action_type"] == "comment"
+        assert formatted["actor"] == "Alice"
+        assert formatted["timestamp"] == "2026-02-23T10:00:00Z"
+        assert formatted["url"] == "https://docs.google.com/document/d/doc123/edit"
+        assert "mentioned_users" not in formatted  # Empty list omitted
+
+    def test_with_mentions(self) -> None:
+        activity = _make_activity(mentioned_users=["Bob", "Carol"])
+        formatted = format_activity_result(activity)
+
+        assert formatted["mentioned_users"] == ["Bob", "Carol"]
+
+    def test_mime_type_included(self) -> None:
+        activity = _make_activity(mime_type="application/vnd.google-apps.spreadsheet")
+        formatted = format_activity_result(activity)
+
+        assert formatted["mime_type"] == "application/vnd.google-apps.spreadsheet"
+
+
+# ============================================================================
+# ACTIVITY SEARCH ORCHESTRATION
+# ============================================================================
+
+
+class TestActivitySearch:
+    """Test activity source in do_search."""
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_comment_activities')
+    def test_activity_only(self, mock_activity, mock_write) -> None:
+        """Activity-only search returns activity results."""
+        mock_activity.return_value = ActivitySearchResult(
+            activities=[_make_activity()],
+        )
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test", sources=["activity"])
+
+        assert result.sources == ["activity"]
+        assert len(result.activity_results) == 1
+        assert result.activity_results[0]["file_id"] == "doc123"
+        mock_activity.assert_called_once()
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_comment_activities')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
+    def test_activity_with_drive_and_gmail(self, mock_drive, mock_gmail, mock_activity, mock_write) -> None:
+        """All three sources can run together."""
+        mock_drive.return_value = [
+            DriveSearchResult(file_id="d1", name="Doc", mime_type="text/plain"),
+        ]
+        mock_gmail.return_value = [
+            GmailSearchResult(thread_id="t1", subject="Email", snippet="..."),
+        ]
+        mock_activity.return_value = ActivitySearchResult(
+            activities=[_make_activity()],
+        )
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test", sources=["drive", "gmail", "activity"])
+
+        assert len(result.drive_results) == 1
+        assert len(result.gmail_results) == 1
+        assert len(result.activity_results) == 1
+        mock_drive.assert_called_once()
+        mock_gmail.assert_called_once()
+        mock_activity.assert_called_once()
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_comment_activities')
+    def test_activity_error_captured(self, mock_activity, mock_write) -> None:
+        """Activity failure captured in errors, not raised."""
+        mock_activity.side_effect = MiseError(
+            ErrorKind.NETWORK_ERROR, "API timeout"
+        )
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test", sources=["activity"])
+
+        assert result.activity_results == []
+        assert any("Activity search failed" in e for e in result.errors)
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_comment_activities')
+    def test_activity_empty_results(self, mock_activity, mock_write) -> None:
+        """Empty activity results handled cleanly."""
+        mock_activity.return_value = ActivitySearchResult(activities=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test", sources=["activity"])
+
+        assert result.activity_results == []
+        assert result.errors == []
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_comment_activities')
+    def test_activity_max_results_forwarded(self, mock_activity, mock_write) -> None:
+        """max_results passed as page_size to activity search."""
+        mock_activity.return_value = ActivitySearchResult(activities=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        do_search("test", sources=["activity"], max_results=10)
+
+        mock_activity.assert_called_once_with(page_size=10)
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_comment_activities')
+    @patch('tools.search.search_files')
+    def test_activity_excluded_by_folder_id(self, mock_drive, mock_activity, mock_write) -> None:
+        """Activity source dropped when folder_id is set."""
+        mock_drive.return_value = []
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test", sources=["drive", "activity"], folder_id="folder123")
+
+        assert result.sources == ["drive"]
+        mock_activity.assert_not_called()
+        assert "Activity" in result.cues.get("sources_note", "")
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_comment_activities')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
+    def test_activity_error_doesnt_block_others(self, mock_drive, mock_gmail, mock_activity, mock_write) -> None:
+        """Activity failure doesn't block Drive/Gmail results."""
+        mock_drive.return_value = [
+            DriveSearchResult(file_id="d1", name="Doc", mime_type="text/plain"),
+        ]
+        mock_gmail.return_value = [
+            GmailSearchResult(thread_id="t1", subject="Email", snippet="..."),
+        ]
+        mock_activity.side_effect = Exception("API broke")
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test", sources=["drive", "gmail", "activity"])
+
+        assert len(result.drive_results) == 1
+        assert len(result.gmail_results) == 1
+        assert result.activity_results == []
+        assert any("Activity search failed" in e for e in result.errors)
+
+
+class TestSearchResultModel:
+    """Test SearchResult model with activity_results."""
+
+    def test_full_results_includes_activity(self) -> None:
+        from models import SearchResult
+        result = SearchResult(
+            query="test",
+            sources=["activity"],
+            activity_results=[{"file_id": "f1", "action_type": "comment"}],
+        )
+        full = result.full_results()
+        assert "activity_results" in full
+        assert len(full["activity_results"]) == 1
+
+    def test_to_dict_includes_activity_count(self) -> None:
+        from models import SearchResult
+        result = SearchResult(
+            query="test",
+            sources=["activity"],
+            activity_results=[{"file_id": "f1", "action_type": "comment", "file_name": "Doc", "actor": "Alice", "timestamp": "2026-02-23"}],
+            path="/tmp/fake/results.json",
+        )
+        d = result.to_dict()
+        assert d["activity_count"] == 1
+
+    def test_preview_includes_activity(self) -> None:
+        from models import SearchResult
+        result = SearchResult(
+            query="test",
+            sources=["activity"],
+            activity_results=[{
+                "file_id": "f1",
+                "file_name": "Doc",
+                "action_type": "comment",
+                "actor": "Alice",
+                "timestamp": "2026-02-23",
+                "mentioned_users": ["Bob"],
+            }],
+            path="/tmp/fake/results.json",
+        )
+        d = result.to_dict()
+        assert "activity" in d["preview"]
+        assert d["preview"]["activity"][0]["mentioned_users"] == ["Bob"]
 
 

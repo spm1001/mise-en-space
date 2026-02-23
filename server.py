@@ -93,6 +93,7 @@ def search(
         sources: Sources searched
         drive_count: Number of Drive results
         gmail_count: Number of Gmail results
+        activity_count: Number of Activity results
         cues: Scope notes and warnings (present when folder_id is set)
     """
     if not base_path:

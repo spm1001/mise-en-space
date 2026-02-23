@@ -489,6 +489,7 @@ class SearchResult:
     sources: list[str]
     drive_results: list[dict[str, Any]] = field(default_factory=list)
     gmail_results: list[dict[str, Any]] = field(default_factory=list)
+    activity_results: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     # Path to deposited results file (filesystem-first pattern)
     path: str | None = None
@@ -502,6 +503,8 @@ class SearchResult:
             result["drive_results"] = self.drive_results
         if "gmail" in self.sources:
             result["gmail_results"] = self.gmail_results
+        if "activity" in self.sources:
+            result["activity_results"] = self.activity_results
         if self.errors:
             result["errors"] = self.errors
         return result
@@ -535,6 +538,20 @@ class SearchResult:
                     item["attachment_names"] = att_names
                 gmail_items.append(item)
             preview["gmail"] = gmail_items
+        if self.activity_results:
+            activity_items = []
+            for r in self.activity_results[:max_per_source]:
+                item = {
+                    "file_name": r.get("file_name", ""),
+                    "file_id": r.get("file_id", ""),
+                    "action_type": r.get("action_type", ""),
+                    "actor": r.get("actor", ""),
+                    "timestamp": r.get("timestamp", ""),
+                }
+                if r.get("mentioned_users"):
+                    item["mentioned_users"] = r["mentioned_users"]
+                activity_items.append(item)
+            preview["activity"] = activity_items
         return preview
 
     def to_dict(self) -> dict[str, Any]:
@@ -552,6 +569,7 @@ class SearchResult:
                 "sources": self.sources,
                 "drive_count": len(self.drive_results) if "drive" in self.sources else 0,
                 "gmail_count": len(self.gmail_results) if "gmail" in self.sources else 0,
+                "activity_count": len(self.activity_results) if "activity" in self.sources else 0,
             }
             preview = self._build_preview()
             if preview:
