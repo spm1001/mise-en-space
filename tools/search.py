@@ -1,10 +1,11 @@
 """
 Search tool implementation.
 
-Unified search across Drive, Gmail, and Activity.
+Unified search across Drive, Gmail, Activity, and Calendar.
 Deposits results to file (filesystem-first pattern).
 """
 
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, Future
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,9 @@ from typing import Any
 from adapters.drive import search_files
 from adapters.gmail import search_threads
 from adapters.activity import search_comment_activities
+from adapters.calendar import list_events
 from models import (
+    CalendarEvent,
     CommentActivity,
     DriveSearchResult,
     GmailSearchResult,
@@ -77,6 +80,70 @@ def format_activity_result(activity: CommentActivity) -> dict[str, Any]:
     return result
 
 
+def format_calendar_result(event: CalendarEvent) -> dict[str, Any]:
+    """Convert CalendarEvent to JSON-serializable dict for search results."""
+    human_attendees = [a for a in event.attendees if not a.is_resource]
+    result: dict[str, Any] = {
+        "event_id": event.event_id,
+        "summary": event.summary,
+        "start_time": event.start_time,
+        "end_time": event.end_time,
+        "html_link": event.html_link,
+        "organizer": event.organizer_email,
+        "attendee_count": len(human_attendees),
+        "attendees": [
+            {"email": a.email, "name": a.display_name, "status": a.response_status}
+            for a in human_attendees[:10]  # Cap for token efficiency
+        ],
+    }
+    if event.attachments:
+        result["attachments"] = [
+            {"file_id": a.file_id, "title": a.title}
+            for a in event.attachments
+        ]
+        result["attachment_count"] = len(event.attachments)
+    if event.meet_link:
+        result["meet_link"] = event.meet_link
+    return result
+
+
+def _build_meeting_context_index(
+    calendar_events: list[CalendarEvent],
+) -> dict[str, list[dict[str, Any]]]:
+    """Build file_id → meeting context lookup from calendar events.
+
+    Returns a dict mapping Drive file IDs to lists of meeting context dicts.
+    A file may appear in multiple meetings.
+    """
+    index: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for event in calendar_events:
+        if not event.attachments:
+            continue
+        human_attendees = [a for a in event.attendees if not a.is_resource]
+        context = {
+            "summary": event.summary,
+            "start_time": event.start_time,
+            "attendee_count": len(human_attendees),
+            "html_link": event.html_link,
+        }
+        if event.meet_link:
+            context["meet_link"] = event.meet_link
+        for att in event.attachments:
+            index[att.file_id].append(context)
+    return dict(index)
+
+
+def _enrich_drive_results_with_meetings(
+    drive_results: list[dict[str, Any]],
+    meeting_index: dict[str, list[dict[str, Any]]],
+) -> None:
+    """Annotate Drive results with meeting context (mutates in place)."""
+    for dr in drive_results:
+        file_id = dr.get("id")
+        if file_id and file_id in meeting_index:
+            dr["meeting_context"] = meeting_index[file_id]
+
+
 def do_search(
     query: str,
     sources: list[str] | None = None,
@@ -85,16 +152,20 @@ def do_search(
     folder_id: str | None = None,
 ) -> SearchResult:
     """
-    Search across Drive, Gmail, and Activity.
+    Search across Drive, Gmail, Activity, and Calendar.
 
     Deposits results to mise/ and returns path + summary.
     Follows filesystem-first pattern for token efficiency.
 
+    When both 'drive' and 'calendar' are in sources, Drive results are
+    enriched with meeting context from matching calendar event attachments.
+
     Args:
-        query: Search terms (not used for activity source — activity returns
-            recent comment events regardless of query).
+        query: Search terms (not used for activity/calendar sources —
+            activity returns recent comment events, calendar returns
+            recent events with attachments).
         sources: List of sources to search (default: ['drive', 'gmail']).
-            Valid sources: 'drive', 'gmail', 'activity'.
+            Valid sources: 'drive', 'gmail', 'activity', 'calendar'.
         max_results: Maximum results per source
         base_path: Base directory for deposits (defaults to cwd)
         folder_id: Optional Drive folder ID to scope results to immediate children only.
@@ -112,7 +183,7 @@ def do_search(
     if folder_id is not None:
         validate_drive_id(folder_id, "folder_id")
 
-    # folder_id scopes to Drive only — Gmail and Activity have no folder concept
+    # folder_id scopes to Drive only — other sources have no folder concept
     excluded_sources: list[str] = []
     if folder_id is not None:
         excluded_sources = [s for s in sources if s != "drive"]
@@ -133,6 +204,7 @@ def do_search(
     search_drive = "drive" in sources
     search_gmail = "gmail" in sources
     search_activity = "activity" in sources
+    search_calendar = "calendar" in sources
 
     def _run_drive() -> list[DriveSearchResult]:
         escaped_query = escape_drive_query(query)
@@ -149,15 +221,23 @@ def do_search(
         activity_result = search_comment_activities(page_size=max_results)
         return activity_result.activities
 
+    def _run_calendar() -> list[CalendarEvent]:
+        # Calendar returns recent events (±7 days by default).
+        # max_results caps event count.
+        calendar_result = list_events(max_results=max_results)
+        return calendar_result.events
+
     # Run searches in parallel
     futures: dict[str, Future] = {}
-    active_sources = []
+    active_sources: list[tuple[str, Any]] = []
     if search_drive:
         active_sources.append(("drive", _run_drive))
     if search_gmail:
         active_sources.append(("gmail", _run_gmail))
     if search_activity:
         active_sources.append(("activity", _run_activity))
+    if search_calendar:
+        active_sources.append(("calendar", _run_calendar))
 
     if active_sources:
         with ThreadPoolExecutor(max_workers=len(active_sources)) as executor:
@@ -188,6 +268,23 @@ def do_search(
             result.errors.append(f"Activity search failed: {e.message}")
         except Exception as e:
             result.errors.append(f"Activity search failed: {str(e)}")
+
+    # Calendar: collect results and cross-reference with Drive
+    calendar_events: list[CalendarEvent] = []
+    if "calendar" in futures:
+        try:
+            calendar_events = futures["calendar"].result()
+            result.calendar_results = [format_calendar_result(e) for e in calendar_events]
+        except MiseError as e:
+            result.errors.append(f"Calendar search failed: {e.message}")
+        except Exception as e:
+            result.errors.append(f"Calendar search failed: {str(e)}")
+
+    # Cross-reference: enrich Drive results with meeting context
+    if result.drive_results and calendar_events:
+        meeting_index = _build_meeting_context_index(calendar_events)
+        if meeting_index:
+            _enrich_drive_results_with_meetings(result.drive_results, meeting_index)
 
     # Deposit results to file (filesystem-first pattern)
     path = write_search_results(query, result.full_results(), base_path=base_path)

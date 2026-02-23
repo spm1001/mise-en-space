@@ -490,6 +490,7 @@ class SearchResult:
     drive_results: list[dict[str, Any]] = field(default_factory=list)
     gmail_results: list[dict[str, Any]] = field(default_factory=list)
     activity_results: list[dict[str, Any]] = field(default_factory=list)
+    calendar_results: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     # Path to deposited results file (filesystem-first pattern)
     path: str | None = None
@@ -505,6 +506,8 @@ class SearchResult:
             result["gmail_results"] = self.gmail_results
         if "activity" in self.sources:
             result["activity_results"] = self.activity_results
+        if "calendar" in self.sources:
+            result["calendar_results"] = self.calendar_results
         if self.errors:
             result["errors"] = self.errors
         return result
@@ -552,6 +555,20 @@ class SearchResult:
                     item["mentioned_users"] = r["mentioned_users"]
                 activity_items.append(item)
             preview["activity"] = activity_items
+        if self.calendar_results:
+            calendar_items = []
+            for r in self.calendar_results[:max_per_source]:
+                item = {
+                    "summary": r.get("summary", ""),
+                    "start_time": r.get("start_time", ""),
+                    "attendee_count": r.get("attendee_count", 0),
+                }
+                if r.get("attachment_count"):
+                    item["attachment_count"] = r["attachment_count"]
+                if r.get("meet_link"):
+                    item["has_meet"] = True
+                calendar_items.append(item)
+            preview["calendar"] = calendar_items
         return preview
 
     def to_dict(self) -> dict[str, Any]:
@@ -570,6 +587,7 @@ class SearchResult:
                 "drive_count": len(self.drive_results) if "drive" in self.sources else 0,
                 "gmail_count": len(self.gmail_results) if "gmail" in self.sources else 0,
                 "activity_count": len(self.activity_results) if "activity" in self.sources else 0,
+                "calendar_count": len(self.calendar_results) if "calendar" in self.sources else 0,
             }
             preview = self._build_preview()
             if preview:

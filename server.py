@@ -80,7 +80,7 @@ def search(
 
     Args:
         query: Search terms
-        sources: ['drive', 'gmail'] — default: both
+        sources: ['drive', 'gmail'] — default: both. Also: 'activity' (recent comments), 'calendar' (recent events with attachments)
         max_results: Maximum results per source
         base_path: Directory for deposits (pass your cwd so files land next to your project, not the MCP server's directory)
         folder_id: Optional Drive folder ID to scope results to immediate children only.
@@ -94,6 +94,7 @@ def search(
         drive_count: Number of Drive results
         gmail_count: Number of Gmail results
         activity_count: Number of Activity results
+        calendar_count: Number of Calendar results
         cues: Scope notes and warnings (present when folder_id is set)
     """
     if not base_path:

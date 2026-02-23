@@ -13,6 +13,10 @@ from models import (
     ActivityActor,
     ActivitySearchResult,
     ActivityTarget,
+    CalendarAttachment,
+    CalendarAttendee,
+    CalendarEvent,
+    CalendarSearchResult,
     CommentActivity,
     DriveSearchResult,
     GmailSearchResult,
@@ -24,6 +28,9 @@ from tools.search import (
     format_drive_result,
     format_gmail_result,
     format_activity_result,
+    format_calendar_result,
+    _build_meeting_context_index,
+    _enrich_drive_results_with_meetings,
     do_search,
 )
 
@@ -656,5 +663,285 @@ class TestSearchResultModel:
         d = result.to_dict()
         assert "activity" in d["preview"]
         assert d["preview"]["activity"][0]["mentioned_users"] == ["Bob"]
+
+    def test_full_results_includes_calendar(self) -> None:
+        from models import SearchResult
+        result = SearchResult(
+            query="test",
+            sources=["calendar"],
+            calendar_results=[{"event_id": "e1", "summary": "Standup"}],
+        )
+        full = result.full_results()
+        assert "calendar_results" in full
+
+    def test_to_dict_includes_calendar_count(self) -> None:
+        from models import SearchResult
+        result = SearchResult(
+            query="test",
+            sources=["calendar"],
+            calendar_results=[{"event_id": "e1", "summary": "Standup", "start_time": "2026-02-23", "attendee_count": 3}],
+            path="/tmp/fake/results.json",
+        )
+        d = result.to_dict()
+        assert d["calendar_count"] == 1
+
+    def test_preview_includes_calendar(self) -> None:
+        from models import SearchResult
+        result = SearchResult(
+            query="test",
+            sources=["calendar"],
+            calendar_results=[{
+                "event_id": "e1",
+                "summary": "Planning",
+                "start_time": "2026-02-23T10:00:00Z",
+                "attendee_count": 5,
+                "attachment_count": 2,
+                "meet_link": "https://meet.google.com/abc",
+            }],
+            path="/tmp/fake/results.json",
+        )
+        d = result.to_dict()
+        assert "calendar" in d["preview"]
+        item = d["preview"]["calendar"][0]
+        assert item["summary"] == "Planning"
+        assert item["has_meet"] is True
+        assert item["attachment_count"] == 2
+
+
+# ============================================================================
+# FORMAT CALENDAR RESULT (pure, no mocks needed)
+# ============================================================================
+
+
+def _make_calendar_event(
+    *,
+    event_id: str = "evt1",
+    summary: str = "Team Sync",
+    start_time: str = "2026-02-23T10:00:00Z",
+    end_time: str = "2026-02-23T11:00:00Z",
+    attendees: list[CalendarAttendee] | None = None,
+    attachments: list[CalendarAttachment] | None = None,
+    meet_link: str | None = None,
+    organizer_email: str | None = "boss@example.com",
+) -> CalendarEvent:
+    """Build a CalendarEvent for testing."""
+    return CalendarEvent(
+        event_id=event_id,
+        summary=summary,
+        start_time=start_time,
+        end_time=end_time,
+        attendees=attendees or [],
+        attachments=attachments or [],
+        meet_link=meet_link,
+        organizer_email=organizer_email,
+    )
+
+
+class TestFormatCalendarResult:
+    """Test Calendar result serialization."""
+
+    def test_basic_fields(self) -> None:
+        event = _make_calendar_event()
+        formatted = format_calendar_result(event)
+
+        assert formatted["event_id"] == "evt1"
+        assert formatted["summary"] == "Team Sync"
+        assert formatted["start_time"] == "2026-02-23T10:00:00Z"
+        assert formatted["organizer"] == "boss@example.com"
+        assert formatted["attendee_count"] == 0
+        assert "attachments" not in formatted
+        assert "meet_link" not in formatted
+
+    def test_with_attendees(self) -> None:
+        event = _make_calendar_event(attendees=[
+            CalendarAttendee(email="alice@example.com", display_name="Alice", response_status="accepted"),
+            CalendarAttendee(email="room@resource.calendar.google.com", is_resource=True),
+        ])
+        formatted = format_calendar_result(event)
+
+        assert formatted["attendee_count"] == 1  # Room excluded
+        assert len(formatted["attendees"]) == 1
+        assert formatted["attendees"][0]["email"] == "alice@example.com"
+
+    def test_with_attachments(self) -> None:
+        event = _make_calendar_event(attachments=[
+            CalendarAttachment(file_id="doc1", title="Agenda"),
+            CalendarAttachment(file_id="doc2", title="Notes"),
+        ])
+        formatted = format_calendar_result(event)
+
+        assert formatted["attachment_count"] == 2
+        assert formatted["attachments"][0]["file_id"] == "doc1"
+
+    def test_with_meet_link(self) -> None:
+        event = _make_calendar_event(meet_link="https://meet.google.com/abc-defg")
+        formatted = format_calendar_result(event)
+
+        assert formatted["meet_link"] == "https://meet.google.com/abc-defg"
+
+
+# ============================================================================
+# MEETING CONTEXT INDEX (pure)
+# ============================================================================
+
+
+class TestBuildMeetingContextIndex:
+    """Test _build_meeting_context_index cross-referencing."""
+
+    def test_builds_index_from_attachments(self) -> None:
+        events = [
+            _make_calendar_event(
+                summary="Review",
+                attachments=[CalendarAttachment(file_id="doc1", title="Draft")],
+            ),
+        ]
+        index = _build_meeting_context_index(events)
+
+        assert "doc1" in index
+        assert index["doc1"][0]["summary"] == "Review"
+
+    def test_multiple_events_same_file(self) -> None:
+        events = [
+            _make_calendar_event(
+                event_id="e1", summary="Draft review",
+                attachments=[CalendarAttachment(file_id="doc1", title="Draft")],
+            ),
+            _make_calendar_event(
+                event_id="e2", summary="Final review",
+                attachments=[CalendarAttachment(file_id="doc1", title="Draft")],
+            ),
+        ]
+        index = _build_meeting_context_index(events)
+
+        assert len(index["doc1"]) == 2
+
+    def test_events_without_attachments_skipped(self) -> None:
+        events = [_make_calendar_event()]  # No attachments
+        index = _build_meeting_context_index(events)
+
+        assert index == {}
+
+    def test_empty_events(self) -> None:
+        assert _build_meeting_context_index([]) == {}
+
+
+class TestEnrichDriveResults:
+    """Test _enrich_drive_results_with_meetings mutation."""
+
+    def test_enriches_matching_file(self) -> None:
+        drive_results = [{"id": "doc1", "name": "Draft"}]
+        index = {"doc1": [{"summary": "Review", "start_time": "2026-02-23T10:00:00Z"}]}
+
+        _enrich_drive_results_with_meetings(drive_results, index)
+
+        assert "meeting_context" in drive_results[0]
+        assert drive_results[0]["meeting_context"][0]["summary"] == "Review"
+
+    def test_non_matching_file_unchanged(self) -> None:
+        drive_results = [{"id": "doc2", "name": "Other"}]
+        index = {"doc1": [{"summary": "Review"}]}
+
+        _enrich_drive_results_with_meetings(drive_results, index)
+
+        assert "meeting_context" not in drive_results[0]
+
+    def test_empty_index(self) -> None:
+        drive_results = [{"id": "doc1", "name": "Draft"}]
+
+        _enrich_drive_results_with_meetings(drive_results, {})
+
+        assert "meeting_context" not in drive_results[0]
+
+
+# ============================================================================
+# CALENDAR SEARCH ORCHESTRATION
+# ============================================================================
+
+
+class TestCalendarSearch:
+    """Test calendar source in do_search."""
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.list_events')
+    def test_calendar_only(self, mock_calendar, mock_write) -> None:
+        """Calendar-only search returns events."""
+        mock_calendar.return_value = CalendarSearchResult(
+            events=[_make_calendar_event()],
+        )
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test", sources=["calendar"])
+
+        assert result.sources == ["calendar"]
+        assert len(result.calendar_results) == 1
+        assert result.calendar_results[0]["summary"] == "Team Sync"
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.list_events')
+    @patch('tools.search.search_files')
+    def test_drive_enriched_with_calendar(self, mock_drive, mock_calendar, mock_write) -> None:
+        """Drive results get meeting_context when calendar has matching attachments."""
+        mock_drive.return_value = [
+            DriveSearchResult(file_id="doc1", name="Agenda", mime_type="text/plain"),
+        ]
+        mock_calendar.return_value = CalendarSearchResult(
+            events=[
+                _make_calendar_event(
+                    summary="Team standup",
+                    attachments=[CalendarAttachment(file_id="doc1", title="Agenda")],
+                    attendees=[CalendarAttendee(email="alice@example.com")],
+                ),
+            ],
+        )
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("agenda", sources=["drive", "calendar"])
+
+        assert len(result.drive_results) == 1
+        assert "meeting_context" in result.drive_results[0]
+        assert result.drive_results[0]["meeting_context"][0]["summary"] == "Team standup"
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.list_events')
+    @patch('tools.search.search_files')
+    def test_no_enrichment_when_no_matches(self, mock_drive, mock_calendar, mock_write) -> None:
+        """No meeting_context added when calendar has no matching attachments."""
+        mock_drive.return_value = [
+            DriveSearchResult(file_id="doc1", name="Random", mime_type="text/plain"),
+        ]
+        mock_calendar.return_value = CalendarSearchResult(
+            events=[_make_calendar_event()],  # No attachments
+        )
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test", sources=["drive", "calendar"])
+
+        assert "meeting_context" not in result.drive_results[0]
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.list_events')
+    def test_calendar_error_captured(self, mock_calendar, mock_write) -> None:
+        """Calendar failure captured in errors."""
+        mock_calendar.side_effect = MiseError(ErrorKind.NETWORK_ERROR, "timeout")
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test", sources=["calendar"])
+
+        assert result.calendar_results == []
+        assert any("Calendar search failed" in e for e in result.errors)
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.list_events')
+    @patch('tools.search.search_files')
+    def test_calendar_excluded_by_folder_id(self, mock_drive, mock_calendar, mock_write) -> None:
+        """Calendar source dropped when folder_id is set."""
+        mock_drive.return_value = []
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test", sources=["drive", "calendar"], folder_id="folder123")
+
+        assert result.sources == ["drive"]
+        mock_calendar.assert_not_called()
+        assert "Calendar" in result.cues.get("sources_note", "")
 
 
