@@ -21,6 +21,8 @@ __all__ = [
     "get_slides_service",
     "build_slides_service",
     "get_activity_service",
+    "get_calendar_service",
+    "get_tasks_service",
     "clear_service_cache",
 ]
 
@@ -104,6 +106,20 @@ def get_activity_service() -> Resource:
     return build("driveactivity", "v2", http=_get_authorized_http(creds))
 
 
+@lru_cache(maxsize=1)
+def get_calendar_service() -> Resource:
+    """Get authenticated Google Calendar API v3 service (cached, thread-safe)."""
+    creds = _get_credentials()
+    return build("calendar", "v3", http=_get_authorized_http(creds))
+
+
+@lru_cache(maxsize=1)
+def get_tasks_service() -> Resource:
+    """Get authenticated Google Tasks API v1 service (cached, thread-safe)."""
+    creds = _get_credentials()
+    return build("tasks", "v1", http=_get_authorized_http(creds))
+
+
 def clear_service_cache() -> None:
     """Clear cached services. Useful for testing or after re-auth."""
     get_sheets_service.cache_clear()
@@ -112,3 +128,5 @@ def clear_service_cache() -> None:
     get_gmail_service.cache_clear()
     get_slides_service.cache_clear()
     get_activity_service.cache_clear()
+    get_calendar_service.cache_clear()
+    get_tasks_service.cache_clear()

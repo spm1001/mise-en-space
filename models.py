@@ -715,3 +715,84 @@ class ActivitySearchResult:
     activities: list[CommentActivity]
     next_page_token: str | None = None
     warnings: list[str] = field(default_factory=list)
+
+
+# ============================================================================
+# CALENDAR TYPES
+# ============================================================================
+
+@dataclass
+class CalendarAttachment:
+    """A file attached to a calendar event."""
+    file_id: str
+    title: str
+    mime_type: str | None = None
+    file_url: str | None = None
+
+
+@dataclass
+class CalendarAttendee:
+    """An attendee of a calendar event."""
+    email: str
+    display_name: str | None = None
+    response_status: str = "needsAction"  # needsAction, declined, tentative, accepted
+    is_self: bool = False
+    is_resource: bool = False  # Room/equipment booking
+
+
+@dataclass
+class CalendarEvent:
+    """A calendar event with meeting context."""
+    event_id: str
+    summary: str
+    start_time: str  # ISO format
+    end_time: str  # ISO format
+    html_link: str | None = None
+    attendees: list[CalendarAttendee] = field(default_factory=list)
+    attachments: list[CalendarAttachment] = field(default_factory=list)
+    meet_link: str | None = None
+    description: str | None = None
+    organizer_email: str | None = None
+
+
+@dataclass
+class CalendarSearchResult:
+    """Results from Calendar API query."""
+    events: list[CalendarEvent]
+    next_page_token: str | None = None
+    warnings: list[str] = field(default_factory=list)
+
+
+# ============================================================================
+# TASKS TYPES
+# ============================================================================
+
+@dataclass
+class TaskItem:
+    """A Google Tasks task."""
+    task_id: str
+    title: str
+    status: str  # "needsAction" or "completed"
+    due: str | None = None  # RFC3339 date
+    notes: str | None = None
+    updated: str | None = None  # RFC3339 timestamp
+    completed: str | None = None  # RFC3339 timestamp
+    parent_id: str | None = None  # For subtasks
+    web_link: str | None = None
+
+
+@dataclass
+class TaskList:
+    """A Google Tasks task list."""
+    list_id: str
+    title: str
+    updated: str | None = None
+
+
+@dataclass
+class TaskSearchResult:
+    """Results from Tasks API query."""
+    tasks: list[TaskItem]
+    task_list_title: str | None = None
+    next_page_token: str | None = None
+    warnings: list[str] = field(default_factory=list)
