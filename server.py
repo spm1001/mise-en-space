@@ -30,7 +30,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from tools import do_search, do_fetch, do_create, do_move, do_overwrite, do_prepend, do_append, do_replace_text, OPERATIONS
+from tools import do_search, do_fetch, do_create, do_move, do_overwrite, do_prepend, do_append, do_replace_text, do_draft, OPERATIONS
 from models import DoResult
 from resources.tools import get_tool_registry
 
@@ -53,6 +53,10 @@ _DISPATCH: dict[str, Any] = {
     "append": lambda p: do_append(file_id=p["file_id"], content=p["content"]),
     "replace_text": lambda p: do_replace_text(
         file_id=p["file_id"], find=p["find"], content=p["content"],
+    ),
+    "draft": lambda p: do_draft(
+        to=p["to"], subject=p["subject"], content=p["content"],
+        cc=p["cc"], include=p["include"],
     ),
 }
 
@@ -149,12 +153,16 @@ def do(
     source: str | None = None,
     base_path: str | None = None,
     find: str | None = None,
+    to: str | None = None,
+    subject: str | None = None,
+    cc: str | None = None,
+    include: list[str] | None = None,
 ) -> dict[str, Any]:
     """
-    Act on Google Workspace — create, move, rename, edit.
+    Act on Google Workspace — create, move, edit, draft emails.
 
     Args:
-        operation: What to do. One of: 'create', 'move', 'overwrite', 'prepend', 'append', 'replace_text'
+        operation: What to do. One of: 'create', 'move', 'overwrite', 'prepend', 'append', 'replace_text', 'draft'
         content: Text content. Usage varies by operation.
         title: Document title (required for create, falls back to manifest title when using source)
         doc_type: 'doc' | 'sheet' | 'slides' (for create)
@@ -166,10 +174,14 @@ def do(
                 Manifest is enriched with creation receipt after success.
         base_path: Directory for resolving relative source paths (pass your cwd)
         find: Text to find (required for replace_text)
+        to: Recipient email address(es), comma-separated (for draft)
+        subject: Email subject (for draft; separate from title which is for create)
+        cc: CC address(es), comma-separated (for draft)
+        include: List of Drive file IDs to include as links in the email body (for draft)
 
     Returns:
-        file_id: File ID
-        web_link: URL to view/edit
+        file_id: File ID (or draft ID for draft)
+        web_link: URL to view/edit (or Gmail draft link for draft)
     """
     handler = _DISPATCH.get(operation)
     if not handler:
@@ -181,6 +193,7 @@ def do(
         "folder_id": folder_id, "file_id": file_id,
         "destination_folder_id": destination_folder_id,
         "source": source, "base_path": base_path, "find": find,
+        "to": to, "subject": subject, "cc": cc, "include": include,
     }
     result = handler(params)
     return result.to_dict() if isinstance(result, DoResult) else result
@@ -203,7 +216,7 @@ Google Workspace MCP server with filesystem-first design.
 |------|---------|---------------|
 | `search` | Find files/emails, deposit results to `mise/` | Yes |
 | `fetch` | Download content to `mise/`, return path | Yes |
-| `do` | Act on Workspace (create, move, rename, edit) | Varies |
+| `do` | Act on Workspace (create, move, edit, draft emails) | Varies |
 
 ## Sous-Chef Philosophy
 
@@ -411,7 +424,7 @@ def docs_do() -> str:
     """Detailed documentation for the do tool."""
     return """# do
 
-Act on Google Workspace — create, move, overwrite, and edit documents.
+Act on Google Workspace — create, move, edit documents, and draft emails.
 
 ## Operations
 
@@ -423,15 +436,20 @@ Act on Google Workspace — create, move, overwrite, and edit documents.
 | `prepend` | Insert text at start of document | `file_id`, `content` |
 | `append` | Insert text at end of document | `file_id`, `content` |
 | `replace_text` | Find and replace text in document | `file_id`, `find`, `content` |
+| `draft` | Create Gmail draft (does NOT send) | `to`, `subject`, `content` |
 
 **Overwrite** destroys existing content (images, tables, formatting). Use `prepend`/`append`/`replace_text` when existing content matters.
 
+**Draft** creates a draft in Gmail's Drafts folder — user reviews and sends from Gmail. Drive file IDs in `include` are resolved to formatted links in the email body.
+
 ## Parameters
+
+### Drive operations
 
 | Param | Type | Default | Used by |
 |-------|------|---------|---------|
 | `operation` | str | 'create' | All |
-| `content` | str | None | create, overwrite, prepend, append, replace_text (replacement) |
+| `content` | str | None | create, overwrite, prepend, append, replace_text, draft (email body) |
 | `title` | str | None | create |
 | `doc_type` | str | 'doc' | create ('doc', 'sheet', 'slides') |
 | `folder_id` | str | None | create |
@@ -440,6 +458,15 @@ Act on Google Workspace — create, move, overwrite, and edit documents.
 | `source` | str | None | create, overwrite (path to deposit folder) |
 | `base_path` | str | None | Required with source (your cwd) |
 | `find` | str | None | replace_text (case-sensitive) |
+
+### Email operations
+
+| Param | Type | Default | Used by |
+|-------|------|---------|---------|
+| `to` | str | None | draft (recipient email, comma-separated for multiple) |
+| `subject` | str | None | draft (email subject line) |
+| `cc` | str | None | draft (CC addresses, comma-separated) |
+| `include` | list[str] | None | draft (Drive file IDs — resolved to formatted links in body) |
 
 ## Deposit-Then-Publish (source param)
 
@@ -496,6 +523,17 @@ do(operation="append", file_id="1abc...", content="\\n\\n---\\nLast updated: 202
 
 # Find and replace text (case-sensitive)
 do(operation="replace_text", file_id="1abc...", find="DRAFT", content="FINAL")
+
+# --- Email drafts ---
+
+# Compose a new email draft
+do(operation="draft", to="alice@example.com", subject="Q4 Findings", content="Hi Alice,\\n\\nHere are the key findings from the Q4 analysis.")
+
+# Draft with CC
+do(operation="draft", to="alice@example.com", cc="bob@example.com", subject="Q4 Findings", content="Hi team,\\n\\nSee findings below.")
+
+# Draft with Drive file links included in body
+do(operation="draft", to="alice@example.com", subject="Q4 Analysis", content="Please review the attached documents.", include=["1abc...", "1xyz..."])
 ```
 """
 

@@ -2,14 +2,17 @@
 Gmail adapter — Gmail API wrapper.
 
 Fetches threads and messages, parses into typed models.
+Creates drafts for the do() verb.
 """
 
 import base64
 import logging
 import re
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
@@ -403,4 +406,111 @@ def download_attachment(
         size=size,
         content=data,
         temp_path=temp_path,
+    )
+
+
+# =============================================================================
+# DRAFT CREATION
+# =============================================================================
+
+
+@dataclass
+class IncludedLink:
+    """A Drive file resolved for inclusion in a draft."""
+    file_id: str
+    title: str
+    mime_type: str
+    web_link: str
+
+
+@dataclass
+class DraftResult:
+    """Result of creating a Gmail draft."""
+    draft_id: str
+    message_id: str
+    web_link: str
+    to: str
+    subject: str
+    included_links: list[IncludedLink] = field(default_factory=list)
+
+
+def _build_draft_message(
+    to: str,
+    subject: str,
+    body_text: str,
+    body_html: str,
+    cc: str | None = None,
+) -> str:
+    """
+    Build RFC 2822 message as base64url string for Gmail API.
+
+    Creates multipart/alternative with text and HTML parts.
+    """
+    msg = MIMEMultipart("alternative")
+    msg["To"] = to
+    msg["Subject"] = subject
+    if cc:
+        msg["Cc"] = cc
+
+    msg.attach(MIMEText(body_text, "plain", "utf-8"))
+    msg.attach(MIMEText(body_html, "html", "utf-8"))
+
+    return base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")
+
+
+def _draft_web_link(draft_id: str) -> str:
+    """Build Gmail web link for a draft."""
+    return f"https://mail.google.com/mail/#drafts/{draft_id}"
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def create_draft(
+    to: str,
+    subject: str,
+    body_text: str,
+    body_html: str,
+    cc: str | None = None,
+    included_links: list[IncludedLink] | None = None,
+) -> DraftResult:
+    """
+    Create a Gmail draft.
+
+    Builds an RFC 2822 message with multipart/alternative (text + HTML)
+    and creates it as a draft via the Gmail API. Does NOT send.
+
+    Args:
+        to: Recipient email address(es), comma-separated
+        subject: Email subject
+        body_text: Plain text body (with any included links appended)
+        body_html: HTML body (with any included links appended)
+        cc: Optional CC address(es), comma-separated
+        included_links: Resolved Drive links (for result metadata only)
+
+    Returns:
+        DraftResult with draft_id, message_id, and web_link
+
+    Raises:
+        MiseError: On API failure
+    """
+    service = get_gmail_service()
+
+    raw = _build_draft_message(to, subject, body_text, body_html, cc=cc)
+
+    draft = (
+        service.users()
+        .drafts()
+        .create(userId="me", body={"message": {"raw": raw}})
+        .execute()
+    )
+
+    draft_id = draft["id"]
+    message_id = draft.get("message", {}).get("id", "")
+
+    return DraftResult(
+        draft_id=draft_id,
+        message_id=message_id,
+        web_link=_draft_web_link(draft_id),
+        to=to,
+        subject=subject,
+        included_links=included_links or [],
     )

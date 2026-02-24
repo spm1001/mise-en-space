@@ -16,11 +16,12 @@ from .create import do_create
 from .move import do_move
 from .overwrite import do_overwrite
 from .edit import do_prepend, do_append, do_replace_text
+from .draft import do_draft
 
 # Single source of truth for valid do() operation names.
-OPERATIONS = frozenset({"create", "move", "overwrite", "prepend", "append", "replace_text"})
+OPERATIONS = frozenset({"create", "move", "overwrite", "prepend", "append", "replace_text", "draft"})
 
 __all__ = [
     "do_search", "do_fetch", "do_create", "do_move", "do_overwrite",
-    "do_prepend", "do_append", "do_replace_text", "OPERATIONS",
+    "do_prepend", "do_append", "do_replace_text", "do_draft", "OPERATIONS",
 ]
