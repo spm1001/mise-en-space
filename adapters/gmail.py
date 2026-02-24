@@ -40,7 +40,10 @@ THREAD_FIELDS = (
 )
 
 # Headers we care about
-WANTED_HEADERS = frozenset({"From", "To", "Cc", "Subject", "Date"})
+WANTED_HEADERS = frozenset({
+    "From", "To", "Cc", "Subject", "Date",
+    "Message-ID", "In-Reply-To", "References",
+})
 
 # Fields for search results — lighter than full thread fetch
 SEARCH_THREAD_FIELDS = (
@@ -152,6 +155,9 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
         date=_parse_date(headers.get("Date"), msg.get("internalDate")),
         body_text=body_text,
         body_html=body_html,
+        message_id_header=headers.get("Message-ID"),
+        in_reply_to=headers.get("In-Reply-To"),
+        references=headers.get("References"),
         attachments=attachments,
         drive_links=drive_links,
         forwarded_messages=forwarded,
@@ -440,17 +446,24 @@ def _build_draft_message(
     body_text: str,
     body_html: str,
     cc: str | None = None,
+    in_reply_to: str | None = None,
+    references: str | None = None,
 ) -> str:
     """
     Build RFC 2822 message as base64url string for Gmail API.
 
     Creates multipart/alternative with text and HTML parts.
+    Threading headers (In-Reply-To, References) are added for reply drafts.
     """
     msg = MIMEMultipart("alternative")
     msg["To"] = to
     msg["Subject"] = subject
     if cc:
         msg["Cc"] = cc
+    if in_reply_to:
+        msg["In-Reply-To"] = in_reply_to
+    if references:
+        msg["References"] = references
 
     msg.attach(MIMEText(body_text, "plain", "utf-8"))
     msg.attach(MIMEText(body_html, "html", "utf-8"))
@@ -512,5 +525,118 @@ def create_draft(
         web_link=_draft_web_link(draft_id),
         to=to,
         subject=subject,
+        included_links=included_links or [],
+    )
+
+
+@dataclass
+class ReplyDraftResult:
+    """Result of creating a threaded reply draft."""
+    draft_id: str
+    message_id: str
+    thread_id: str
+    web_link: str
+    to: str
+    subject: str
+    cc: str | None = None
+    included_links: list[IncludedLink] = field(default_factory=list)
+
+
+def _build_references(last_message: EmailMessage) -> tuple[str | None, str | None]:
+    """
+    Build In-Reply-To and References headers from the last message in a thread.
+
+    RFC 2822: In-Reply-To is the Message-ID of the message being replied to.
+    References is the existing References chain plus that Message-ID.
+
+    Returns:
+        (in_reply_to, references) — either may be None if no Message-ID available.
+    """
+    msg_id = last_message.message_id_header
+    if not msg_id:
+        return None, None
+
+    in_reply_to = msg_id
+
+    # Build References: existing chain + this message's ID
+    existing_refs = last_message.references or ""
+    if existing_refs:
+        references = f"{existing_refs} {msg_id}"
+    else:
+        references = msg_id
+
+    return in_reply_to, references
+
+
+def _ensure_re_prefix(subject: str) -> str:
+    """Add 'Re: ' prefix if not already present (case-insensitive check)."""
+    if subject.lower().startswith("re:"):
+        return subject
+    return f"Re: {subject}"
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def create_reply_draft(
+    thread_id: str,
+    to: str,
+    subject: str,
+    body_text: str,
+    body_html: str,
+    in_reply_to: str | None = None,
+    references: str | None = None,
+    cc: str | None = None,
+    included_links: list[IncludedLink] | None = None,
+) -> ReplyDraftResult:
+    """
+    Create a threaded reply draft in Gmail.
+
+    Builds an RFC 2822 message with threading headers and creates it as a
+    draft associated with the given thread. Does NOT send.
+
+    Args:
+        thread_id: Gmail thread ID to reply to
+        to: Recipient email address(es), comma-separated
+        subject: Email subject (should already have Re: prefix)
+        body_text: Plain text body
+        body_html: HTML body
+        in_reply_to: Message-ID of the message being replied to
+        references: References header chain
+        cc: Optional CC address(es), comma-separated
+        included_links: Resolved Drive links (for result metadata only)
+
+    Returns:
+        ReplyDraftResult with draft_id, thread_id, and web_link
+
+    Raises:
+        MiseError: On API failure
+    """
+    service = get_gmail_service()
+
+    raw = _build_draft_message(
+        to, subject, body_text, body_html,
+        cc=cc, in_reply_to=in_reply_to, references=references,
+    )
+
+    # threadId associates the draft with the existing conversation
+    draft = (
+        service.users()
+        .drafts()
+        .create(userId="me", body={
+            "message": {"raw": raw, "threadId": thread_id},
+        })
+        .execute()
+    )
+
+    draft_id = draft["id"]
+    message_id = draft.get("message", {}).get("id", "")
+
+    return ReplyDraftResult(
+        draft_id=draft_id,
+        message_id=message_id,
+        thread_id=thread_id,
+        web_link=_draft_web_link(draft_id),
+        to=to,
+        subject=subject,
+        cc=cc,
         included_links=included_links or [],
     )

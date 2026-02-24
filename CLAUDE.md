@@ -47,7 +47,7 @@ docs/           Design documents and references
 |------|---------|---------------|
 | `search` | Find files/emails, return metadata + inline preview | No |
 | `fetch` | Download content to `mise/` in cwd, return path + cues | Yes |
-| `do` | Act on Workspace (create, move, overwrite, prepend, append, replace_text, draft) | Varies |
+| `do` | Act on Workspace (create, move, overwrite, prepend, append, replace_text, draft, reply_draft) | Varies |
 
 **Key behaviors:**
 - `search` returns metadata only — Claude triages before fetching

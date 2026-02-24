@@ -30,7 +30,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from tools import do_search, do_fetch, do_create, do_move, do_overwrite, do_prepend, do_append, do_replace_text, do_draft, OPERATIONS
+from tools import do_search, do_fetch, do_create, do_move, do_overwrite, do_prepend, do_append, do_replace_text, do_draft, do_reply_draft, OPERATIONS
 from models import DoResult
 from resources.tools import get_tool_registry
 
@@ -57,6 +57,10 @@ _DISPATCH: dict[str, Any] = {
     "draft": lambda p: do_draft(
         to=p["to"], subject=p["subject"], content=p["content"],
         cc=p["cc"], include=p["include"],
+    ),
+    "reply_draft": lambda p: do_reply_draft(
+        file_id=p["file_id"], content=p["content"],
+        cc=p["cc"], include=p["include"], reply_all=p.get("reply_all", False),
     ),
 }
 
@@ -157,17 +161,18 @@ def do(
     subject: str | None = None,
     cc: str | None = None,
     include: list[str] | None = None,
+    reply_all: bool = False,
 ) -> dict[str, Any]:
     """
     Act on Google Workspace — create, move, edit, draft emails.
 
     Args:
-        operation: What to do. One of: 'create', 'move', 'overwrite', 'prepend', 'append', 'replace_text', 'draft'
+        operation: What to do. One of: 'create', 'move', 'overwrite', 'prepend', 'append', 'replace_text', 'draft', 'reply_draft'
         content: Text content. Usage varies by operation.
         title: Document title (required for create, falls back to manifest title when using source)
         doc_type: 'doc' | 'sheet' | 'slides' (for create)
         folder_id: Optional destination folder (for create)
-        file_id: Target file (required for move, overwrite, prepend, append, replace_text)
+        file_id: Target file (required for move, overwrite, prepend, append, replace_text, reply_draft)
         destination_folder_id: Where to move the file (required for move)
         source: Path to deposit folder containing content to publish (for create/overwrite).
                 Reads content.md (doc) or content.csv (sheet) from the folder.
@@ -176,12 +181,13 @@ def do(
         find: Text to find (required for replace_text)
         to: Recipient email address(es), comma-separated (for draft)
         subject: Email subject (for draft; separate from title which is for create)
-        cc: CC address(es), comma-separated (for draft)
-        include: List of Drive file IDs to include as links in the email body (for draft)
+        cc: CC address(es), comma-separated (for draft, reply_draft). Overrides inferred Cc for reply_draft.
+        include: List of Drive file IDs to include as links in the email body (for draft, reply_draft)
+        reply_all: If True, infer Cc from all recipients on the last message (for reply_draft)
 
     Returns:
-        file_id: File ID (or draft ID for draft)
-        web_link: URL to view/edit (or Gmail draft link for draft)
+        file_id: File ID (or draft ID for draft/reply_draft)
+        web_link: URL to view/edit (or Gmail draft link for draft/reply_draft)
     """
     handler = _DISPATCH.get(operation)
     if not handler:
@@ -194,6 +200,7 @@ def do(
         "destination_folder_id": destination_folder_id,
         "source": source, "base_path": base_path, "find": find,
         "to": to, "subject": subject, "cc": cc, "include": include,
+        "reply_all": reply_all,
     }
     result = handler(params)
     return result.to_dict() if isinstance(result, DoResult) else result
@@ -216,7 +223,7 @@ Google Workspace MCP server with filesystem-first design.
 |------|---------|---------------|
 | `search` | Find files/emails, deposit results to `mise/` | Yes |
 | `fetch` | Download content to `mise/`, return path | Yes |
-| `do` | Act on Workspace (create, move, edit, draft emails) | Varies |
+| `do` | Act on Workspace (create, move, edit, draft/reply emails) | Varies |
 
 ## Sous-Chef Philosophy
 
@@ -437,10 +444,13 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `append` | Insert text at end of document | `file_id`, `content` |
 | `replace_text` | Find and replace text in document | `file_id`, `find`, `content` |
 | `draft` | Create Gmail draft (does NOT send) | `to`, `subject`, `content` |
+| `reply_draft` | Create threaded reply draft | `file_id` (thread ID), `content` |
 
 **Overwrite** destroys existing content (images, tables, formatting). Use `prepend`/`append`/`replace_text` when existing content matters.
 
 **Draft** creates a draft in Gmail's Drafts folder — user reviews and sends from Gmail. Drive file IDs in `include` are resolved to formatted links in the email body.
+
+**Reply draft** fetches a thread, infers recipients from the last message, adds threading headers (In-Reply-To, References), and creates a draft in the correct conversation. Recipients auto-populated; use `reply_all=True` to Cc all original recipients.
 
 ## Parameters
 
@@ -465,8 +475,9 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 |-------|------|---------|---------|
 | `to` | str | None | draft (recipient email, comma-separated for multiple) |
 | `subject` | str | None | draft (email subject line) |
-| `cc` | str | None | draft (CC addresses, comma-separated) |
-| `include` | list[str] | None | draft (Drive file IDs — resolved to formatted links in body) |
+| `cc` | str | None | draft, reply_draft (CC addresses, comma-separated; overrides inferred Cc for reply_draft) |
+| `include` | list[str] | None | draft, reply_draft (Drive file IDs — resolved to formatted links in body) |
+| `reply_all` | bool | False | reply_draft (if True, Cc all original recipients) |
 
 ## Deposit-Then-Publish (source param)
 
@@ -534,6 +545,17 @@ do(operation="draft", to="alice@example.com", cc="bob@example.com", subject="Q4 
 
 # Draft with Drive file links included in body
 do(operation="draft", to="alice@example.com", subject="Q4 Analysis", content="Please review the attached documents.", include=["1abc...", "1xyz..."])
+
+# --- Reply drafts (threaded) ---
+
+# Reply to a thread (recipients auto-inferred from last message)
+do(operation="reply_draft", file_id="thread_abc123", content="Thanks for the update. I'll review this today.")
+
+# Reply-all (Cc inferred from all original recipients)
+do(operation="reply_draft", file_id="thread_abc123", content="Good points. Let me follow up.", reply_all=True)
+
+# Reply with Drive links
+do(operation="reply_draft", file_id="thread_abc123", content="Here's the analysis you requested.", include=["1abc..."])
 ```
 """
 

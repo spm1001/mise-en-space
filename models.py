@@ -219,6 +219,11 @@ class EmailMessage:
     # Attachments
     attachments: list[EmailAttachment] = field(default_factory=list)
 
+    # Threading headers (for reply drafts)
+    message_id_header: str | None = None  # Message-ID header (RFC 5322)
+    in_reply_to: str | None = None  # In-Reply-To header
+    references: str | None = None  # References header (space-separated message IDs)
+
     # Drive links mentioned in body (people say "attached" when they mean "linked")
     drive_links: list[dict[str, str]] = field(default_factory=list)
 
