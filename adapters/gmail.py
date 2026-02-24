@@ -2,7 +2,8 @@
 Gmail adapter — Gmail API wrapper.
 
 Fetches threads and messages, parses into typed models.
-Creates drafts for the do() verb.
+Creates drafts and reply drafts for the do() verb.
+Modifies threads (archive, label, star) for the do() verb.
 """
 
 import base64
@@ -639,4 +640,118 @@ def create_reply_draft(
         subject=subject,
         cc=cc,
         included_links=included_links or [],
+    )
+
+
+# =============================================================================
+# THREAD MODIFICATION (archive, label, star)
+# =============================================================================
+
+
+# System labels have fixed IDs — no resolution needed
+SYSTEM_LABELS = {
+    "INBOX": "INBOX",
+    "STARRED": "STARRED",
+    "UNREAD": "UNREAD",
+    "IMPORTANT": "IMPORTANT",
+    "SENT": "SENT",
+    "DRAFT": "DRAFT",
+    "SPAM": "SPAM",
+    "TRASH": "TRASH",
+    "CATEGORY_PERSONAL": "CATEGORY_PERSONAL",
+    "CATEGORY_SOCIAL": "CATEGORY_SOCIAL",
+    "CATEGORY_PROMOTIONS": "CATEGORY_PROMOTIONS",
+    "CATEGORY_UPDATES": "CATEGORY_UPDATES",
+    "CATEGORY_FORUMS": "CATEGORY_FORUMS",
+}
+
+
+@dataclass
+class ModifyThreadResult:
+    """Result of modifying a Gmail thread's labels."""
+    thread_id: str
+    added_labels: list[str]
+    removed_labels: list[str]
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def resolve_label_name(name: str) -> str:
+    """
+    Resolve a human-readable label name to a Gmail label ID.
+
+    System labels (INBOX, STARRED, etc.) are returned as-is.
+    User labels are looked up via labels().list() — case-insensitive match.
+
+    Args:
+        name: Label name (e.g., "Projects/Active", "INBOX")
+
+    Returns:
+        Label ID string
+
+    Raises:
+        MiseError: If label not found
+    """
+    from models import MiseError, ErrorKind
+
+    # Check system labels first (case-insensitive)
+    upper = name.upper()
+    if upper in SYSTEM_LABELS:
+        return SYSTEM_LABELS[upper]
+
+    # Fetch user labels and match by name
+    service = get_gmail_service()
+    response = service.users().labels().list(userId="me").execute()
+    labels = response.get("labels", [])
+
+    # Case-insensitive match on name
+    name_lower = name.lower()
+    for label in labels:
+        if label.get("name", "").lower() == name_lower:
+            return label["id"]
+
+    raise MiseError(
+        ErrorKind.NOT_FOUND,
+        f"Label '{name}' not found. Available labels: {sorted(l['name'] for l in labels if l.get('type') == 'user')}",
+    )
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def modify_thread(
+    thread_id: str,
+    add_label_ids: list[str] | None = None,
+    remove_label_ids: list[str] | None = None,
+) -> ModifyThreadResult:
+    """
+    Modify labels on a Gmail thread.
+
+    This is the primitive that archive, star, and label operations use.
+    Archive = remove INBOX. Star = add STARRED. Label = add/remove by ID.
+
+    Args:
+        thread_id: Gmail thread ID
+        add_label_ids: Label IDs to add
+        remove_label_ids: Label IDs to remove
+
+    Returns:
+        ModifyThreadResult with the labels that were changed
+
+    Raises:
+        MiseError: On API failure
+    """
+    service = get_gmail_service()
+
+    body: dict[str, Any] = {}
+    if add_label_ids:
+        body["addLabelIds"] = add_label_ids
+    if remove_label_ids:
+        body["removeLabelIds"] = remove_label_ids
+
+    service.users().threads().modify(
+        userId="me", id=thread_id, body=body,
+    ).execute()
+
+    return ModifyThreadResult(
+        thread_id=thread_id,
+        added_labels=add_label_ids or [],
+        removed_labels=remove_label_ids or [],
     )

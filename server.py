@@ -30,7 +30,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from tools import do_search, do_fetch, do_create, do_move, do_overwrite, do_prepend, do_append, do_replace_text, do_draft, do_reply_draft, OPERATIONS
+from tools import do_search, do_fetch, do_create, do_move, do_overwrite, do_prepend, do_append, do_replace_text, do_draft, do_reply_draft, do_archive, do_star, do_label, OPERATIONS
 from models import DoResult
 from resources.tools import get_tool_registry
 
@@ -61,6 +61,12 @@ _DISPATCH: dict[str, Any] = {
     "reply_draft": lambda p: do_reply_draft(
         file_id=p["file_id"], content=p["content"],
         cc=p["cc"], include=p["include"], reply_all=p.get("reply_all", False),
+    ),
+    "archive": lambda p: do_archive(file_id=p["file_id"]),
+    "star": lambda p: do_star(file_id=p["file_id"]),
+    "label": lambda p: do_label(
+        file_id=p["file_id"], label=p.get("label"),
+        remove=p.get("remove", False),
     ),
 }
 
@@ -162,17 +168,19 @@ def do(
     cc: str | None = None,
     include: list[str] | None = None,
     reply_all: bool = False,
+    label: str | None = None,
+    remove: bool = False,
 ) -> dict[str, Any]:
     """
-    Act on Google Workspace — create, move, edit, draft emails.
+    Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail.
 
     Args:
-        operation: What to do. One of: 'create', 'move', 'overwrite', 'prepend', 'append', 'replace_text', 'draft', 'reply_draft'
+        operation: What to do. One of: 'create', 'move', 'overwrite', 'prepend', 'append', 'replace_text', 'draft', 'reply_draft', 'archive', 'star', 'label'
         content: Text content. Usage varies by operation.
         title: Document title (required for create, falls back to manifest title when using source)
         doc_type: 'doc' | 'sheet' | 'slides' (for create)
         folder_id: Optional destination folder (for create)
-        file_id: Target file (required for move, overwrite, prepend, append, replace_text, reply_draft)
+        file_id: Target file or thread (required for move, overwrite, prepend, append, replace_text, reply_draft, archive, star, label)
         destination_folder_id: Where to move the file (required for move)
         source: Path to deposit folder containing content to publish (for create/overwrite).
                 Reads content.md (doc) or content.csv (sheet) from the folder.
@@ -184,10 +192,12 @@ def do(
         cc: CC address(es), comma-separated (for draft, reply_draft). Overrides inferred Cc for reply_draft.
         include: List of Drive file IDs to include as links in the email body (for draft, reply_draft)
         reply_all: If True, infer Cc from all recipients on the last message (for reply_draft)
+        label: Label name to add/remove (for label operation; resolved to ID automatically)
+        remove: If True, remove the label instead of adding it (for label operation)
 
     Returns:
-        file_id: File ID (or draft ID for draft/reply_draft)
-        web_link: URL to view/edit (or Gmail draft link for draft/reply_draft)
+        file_id: File ID, draft ID, or thread ID
+        web_link: URL to view/edit
     """
     handler = _DISPATCH.get(operation)
     if not handler:
@@ -200,7 +210,7 @@ def do(
         "destination_folder_id": destination_folder_id,
         "source": source, "base_path": base_path, "find": find,
         "to": to, "subject": subject, "cc": cc, "include": include,
-        "reply_all": reply_all,
+        "reply_all": reply_all, "label": label, "remove": remove,
     }
     result = handler(params)
     return result.to_dict() if isinstance(result, DoResult) else result
@@ -445,12 +455,17 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `replace_text` | Find and replace text in document | `file_id`, `find`, `content` |
 | `draft` | Create Gmail draft (does NOT send) | `to`, `subject`, `content` |
 | `reply_draft` | Create threaded reply draft | `file_id` (thread ID), `content` |
+| `archive` | Remove thread from Inbox | `file_id` (thread ID) |
+| `star` | Star a thread | `file_id` (thread ID) |
+| `label` | Add/remove a label on a thread | `file_id` (thread ID), `label` |
 
 **Overwrite** destroys existing content (images, tables, formatting). Use `prepend`/`append`/`replace_text` when existing content matters.
 
 **Draft** creates a draft in Gmail's Drafts folder — user reviews and sends from Gmail. Drive file IDs in `include` are resolved to formatted links in the email body.
 
 **Reply draft** fetches a thread, infers recipients from the last message, adds threading headers (In-Reply-To, References), and creates a draft in the correct conversation. Recipients auto-populated; use `reply_all=True` to Cc all original recipients.
+
+**Archive/star/label** modify Gmail thread labels. Label names are resolved to IDs automatically (case-insensitive). Use `remove=True` with label to remove instead of add.
 
 ## Parameters
 
@@ -478,6 +493,8 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `cc` | str | None | draft, reply_draft (CC addresses, comma-separated; overrides inferred Cc for reply_draft) |
 | `include` | list[str] | None | draft, reply_draft (Drive file IDs — resolved to formatted links in body) |
 | `reply_all` | bool | False | reply_draft (if True, Cc all original recipients) |
+| `label` | str | None | label (label name — resolved to Gmail label ID automatically) |
+| `remove` | bool | False | label (if True, remove the label instead of adding it) |
 
 ## Deposit-Then-Publish (source param)
 
@@ -556,6 +573,20 @@ do(operation="reply_draft", file_id="thread_abc123", content="Good points. Let m
 
 # Reply with Drive links
 do(operation="reply_draft", file_id="thread_abc123", content="Here's the analysis you requested.", include=["1abc..."])
+
+# --- Gmail organisation ---
+
+# Archive a thread (remove from Inbox)
+do(operation="archive", file_id="thread_abc123")
+
+# Star a thread
+do(operation="star", file_id="thread_abc123")
+
+# Add a label (resolved by name)
+do(operation="label", file_id="thread_abc123", label="Projects/Active")
+
+# Remove a label
+do(operation="label", file_id="thread_abc123", label="Follow-up", remove=True)
 ```
 """
 
