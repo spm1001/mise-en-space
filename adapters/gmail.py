@@ -17,8 +17,8 @@ from typing import Any
 from models import GmailThreadData, GmailSearchResult, EmailMessage, EmailAttachment, ForwardedMessage
 from retry import with_retry
 from adapters.services import get_gmail_service
-from extractors.gmail import parse_message_payload, parse_attachments_from_payload, parse_forwarded_messages, _clean_html_for_conversion
-from html_convert import convert_html_to_markdown
+from extractors.gmail import parse_message_payload, parse_attachments_from_payload, parse_forwarded_messages
+from html_convert import clean_html_for_conversion, convert_html_to_markdown
 from filters import is_trivial_attachment, filter_attachments
 
 logger = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
     # This keeps the extractor layer pure — by the time it sees the
     # EmailMessage, body_text is already populated.
     if body_html and not body_text:
-        cleaned = _clean_html_for_conversion(body_html)
+        cleaned = clean_html_for_conversion(body_html)
         body_text, _ = convert_html_to_markdown(cleaned)
 
     # Parse attachments (filtered - hide trivials from Claude)
@@ -137,7 +137,7 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
     forwarded = parse_forwarded_messages(payload)
     for fwd in forwarded:
         if not fwd.body_text and fwd.body_html:
-            cleaned = _clean_html_for_conversion(fwd.body_html)
+            cleaned = clean_html_for_conversion(fwd.body_html)
             fwd.body_text, _ = convert_html_to_markdown(cleaned)
 
     return EmailMessage(

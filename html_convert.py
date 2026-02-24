@@ -60,6 +60,70 @@ def convert_html_to_markdown(html: str) -> tuple[str, bool]:
         return strip_html_tags(html), True
 
 
+def clean_html_for_conversion(html: str) -> str:
+    """
+    Strip common email HTML cruft before markdown conversion.
+
+    Email HTML is notoriously messy — this pre-filter removes patterns
+    that cause artifacts in markdown conversion: tracking pixels, MSO
+    conditionals, hidden elements, spacer cells, empty paragraphs.
+
+    Pure function (no I/O). Called before convert_html_to_markdown.
+    """
+    if not html:
+        return html
+
+    # Hidden line breaks (Adobe's anti-tracking trick: 7.<br style="display:none"/>1.<br/>26)
+    html = re.sub(
+        r'<br\s+style="[^"]*display:\s*none[^"]*"\s*/?>',
+        '',
+        html,
+        flags=re.IGNORECASE
+    )
+
+    # MSO conditionals (Outlook-specific blocks)
+    html = re.sub(
+        r'<!--\[if\s+.*?\]>.*?<!\[endif\]-->',
+        '',
+        html,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+
+    # Tracking pixels (1x1 images)
+    html = re.sub(
+        r'<img[^>]*(?:width|height)=["\']1["\'][^>]*/?>',
+        '',
+        html,
+        flags=re.IGNORECASE
+    )
+
+    # Completely hidden elements (display:none)
+    html = re.sub(
+        r'<[^>]+style="[^"]*display:\s*none[^"]*"[^>]*>.*?</[^>]+>',
+        '',
+        html,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+
+    # Spacer cells with just &nbsp;
+    html = re.sub(
+        r'<td[^>]*>\s*(&nbsp;|\s)*\s*</td>',
+        '',
+        html,
+        flags=re.IGNORECASE
+    )
+
+    # Empty paragraphs and divs (collapse whitespace)
+    html = re.sub(
+        r'<(p|div)[^>]*>\s*(&nbsp;|\s)*\s*</\1>',
+        '',
+        html,
+        flags=re.IGNORECASE
+    )
+
+    return html
+
+
 def strip_html_tags(html: str) -> str:
     """
     Strip HTML tags and collapse whitespace. Pure, no I/O.

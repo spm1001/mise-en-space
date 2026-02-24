@@ -164,28 +164,28 @@ class TestHTMLCleaning:
 
     def test_removes_tracking_pixels(self):
         """Remove 1x1 tracking images."""
-        from extractors.gmail import _clean_html_for_conversion
+        from html_convert import clean_html_for_conversion
 
         html = '<p>Content</p><img width="1" height="1" src="track.gif"><p>More</p>'
-        result = _clean_html_for_conversion(html)
+        result = clean_html_for_conversion(html)
         assert 'width="1"' not in result
         assert "Content" in result
 
     def test_removes_mso_conditionals(self):
         """Remove Outlook-specific blocks."""
-        from extractors.gmail import _clean_html_for_conversion
+        from html_convert import clean_html_for_conversion
 
         html = '<p>Content</p><!--[if mso]>Outlook stuff<![endif]--><p>More</p>'
-        result = _clean_html_for_conversion(html)
+        result = clean_html_for_conversion(html)
         assert "mso" not in result
         assert "Outlook" not in result
 
     def test_removes_hidden_elements(self):
         """Remove display:none elements."""
-        from extractors.gmail import _clean_html_for_conversion
+        from html_convert import clean_html_for_conversion
 
         html = '<p>Visible</p><span style="display:none">Hidden</span><p>More</p>'
-        result = _clean_html_for_conversion(html)
+        result = clean_html_for_conversion(html)
         assert "Hidden" not in result
         assert "Visible" in result
 
