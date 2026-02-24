@@ -1,5 +1,5 @@
 """
-Office file extraction adapter — DOCX, XLSX, PPTX via Drive conversion.
+Office file conversion adapter — DOCX, XLSX, PPTX via Drive conversion.
 
 Strategy: Upload with conversion to Google format, then export.
 This produces cleaner output than local conversion tools, especially for XLSX.
@@ -47,7 +47,7 @@ OfficeType = Literal["docx", "xlsx", "pptx"]
 
 
 @dataclass
-class OfficeExtractionResult:
+class OfficeConversionResult:
     """Result of Office file extraction."""
     content: str
     source_type: OfficeType
@@ -59,13 +59,13 @@ class OfficeExtractionResult:
     raw_temp_path: Path | None = None  # Original file on disk for raw deposit (XLSX, large streamed files)
 
 
-def extract_office_content(
+def convert_office_content(
     office_type: OfficeType,
     file_bytes: bytes | None = None,
     file_path: Path | None = None,
     file_id: str = "",
     source_file_id: str | None = None,
-) -> OfficeExtractionResult:
+) -> OfficeConversionResult:
     """
     Extract content from Office file via Drive conversion.
 
@@ -83,13 +83,13 @@ def extract_office_content(
         source_file_id: Drive file ID to copy+convert (skips upload)
 
     Returns:
-        OfficeExtractionResult with content and format info
+        OfficeConversionResult with content and format info
     """
     source_mime, target_type, export_format, extension = OFFICE_FORMATS[office_type]
 
     # XLSX: use Sheets API to get all tabs (Drive CSV export is first-tab-only)
     if office_type == "xlsx":
-        return _extract_xlsx_via_sheets_api(
+        return _convert_xlsx_via_sheets_api(
             source_mime=source_mime,
             file_bytes=file_bytes,
             file_path=file_path,
@@ -108,7 +108,7 @@ def extract_office_content(
         source_file_id=source_file_id,
     )
 
-    return OfficeExtractionResult(
+    return OfficeConversionResult(
         content=conversion_result.content,
         source_type=office_type,
         export_format=export_format,
@@ -117,13 +117,13 @@ def extract_office_content(
     )
 
 
-def _extract_xlsx_via_sheets_api(
+def _convert_xlsx_via_sheets_api(
     source_mime: str,
     file_bytes: bytes | None = None,
     file_path: Path | None = None,
     file_id: str = "",
     source_file_id: str | None = None,
-) -> OfficeExtractionResult:
+) -> OfficeConversionResult:
     """
     Extract XLSX via Sheets API: upload+convert, read all tabs, delete temp.
 
@@ -155,7 +155,7 @@ def _extract_xlsx_via_sheets_api(
         if not delete_temp_file(temp_id, f"_mise_temp_{file_id}"):
             warnings.append(f"Failed to delete temp file (ID: {temp_id})")
 
-    return OfficeExtractionResult(
+    return OfficeConversionResult(
         content=content,
         source_type="xlsx",
         export_format="csv",
@@ -165,10 +165,10 @@ def _extract_xlsx_via_sheets_api(
     )
 
 
-def fetch_and_extract_office(
+def fetch_and_convert_office(
     file_id: str,
     office_type: OfficeType,
-) -> OfficeExtractionResult:
+) -> OfficeConversionResult:
     """
     Download Office file from Drive and extract content.
 
@@ -180,7 +180,7 @@ def fetch_and_extract_office(
         office_type: 'docx', 'xlsx', or 'pptx'
 
     Returns:
-        OfficeExtractionResult with content and format info
+        OfficeConversionResult with content and format info
     """
     # Check file size to determine download strategy
     file_size = get_file_size(file_id)
@@ -190,7 +190,7 @@ def fetch_and_extract_office(
         # Large file: stream to temp, pass path (not bytes) to avoid OOM
         tmp_path = download_file_to_temp(file_id, suffix=suffix)
         try:
-            result = extract_office_content(
+            result = convert_office_content(
                 file_path=tmp_path,
                 office_type=office_type,
                 file_id=file_id,
@@ -208,7 +208,7 @@ def fetch_and_extract_office(
     else:
         # Small file: load into memory
         file_bytes = download_file(file_id)
-        result = extract_office_content(
+        result = convert_office_content(
             file_bytes=file_bytes,
             office_type=office_type,
             file_id=file_id,

@@ -1,5 +1,5 @@
 """
-PDF extraction adapter — hybrid markitdown + Drive conversion.
+PDF conversion adapter — hybrid markitdown + Drive conversion.
 
 Strategy:
 1. Try markitdown first (fast, ~1-5s, handles simple text PDFs)
@@ -67,7 +67,7 @@ class PdfThumbnailResult:
 
 
 @dataclass
-class PdfExtractionResult:
+class PdfConversionResult:
     """Result of PDF extraction."""
     content: str
     method: Literal["markitdown", "drive"]
@@ -76,13 +76,13 @@ class PdfExtractionResult:
     thumbnails: PdfThumbnailResult | None = None
 
 
-def extract_pdf_content(
+def convert_pdf_content(
     file_bytes: bytes | None = None,
     file_id: str = "",
     min_chars_threshold: int = DEFAULT_MIN_CHARS_THRESHOLD,
     *,
     file_path: Path | None = None,
-) -> PdfExtractionResult:
+) -> PdfConversionResult:
     """
     Extract text from PDF using hybrid strategy.
 
@@ -96,7 +96,7 @@ def extract_pdf_content(
         file_path: Path to PDF on disk (mutually exclusive with file_bytes)
 
     Returns:
-        PdfExtractionResult with content and extraction method used
+        PdfConversionResult with content and extraction method used
     """
     if file_bytes is None and file_path is None:
         raise ValueError("Must provide either file_bytes or file_path")
@@ -111,7 +111,7 @@ def extract_pdf_content(
         result = md.convert_local(str(file_path))
         content = result.text_content or ""
     else:
-        content = _extract_with_markitdown(file_bytes)
+        content = _convert_with_markitdown(file_bytes)
     char_count = len(content.strip())
 
     # 2. If markitdown produced enough content, check structural quality
@@ -123,7 +123,7 @@ def extract_pdf_content(
                 "falling back to Drive conversion"
             )
         else:
-            return PdfExtractionResult(
+            return PdfConversionResult(
                 content=content,
                 method="markitdown",
                 char_count=char_count,
@@ -149,7 +149,7 @@ def extract_pdf_content(
     # Collect conversion warnings
     warnings.extend(conversion_result.warnings)
 
-    return PdfExtractionResult(
+    return PdfConversionResult(
         content=conversion_result.content,
         method="drive",
         char_count=len(conversion_result.content.strip()),
@@ -157,10 +157,10 @@ def extract_pdf_content(
     )
 
 
-def fetch_and_extract_pdf(
+def fetch_and_convert_pdf(
     file_id: str,
     min_chars_threshold: int = DEFAULT_MIN_CHARS_THRESHOLD,
-) -> PdfExtractionResult:
+) -> PdfConversionResult:
     """
     Download PDF from Drive and extract content.
 
@@ -172,18 +172,18 @@ def fetch_and_extract_pdf(
         min_chars_threshold: Minimum chars to consider markitdown successful
 
     Returns:
-        PdfExtractionResult with content and extraction method used
+        PdfConversionResult with content and extraction method used
     """
     # Check file size to determine download strategy
     file_size = get_file_size(file_id)
 
     if file_size > STREAMING_THRESHOLD_BYTES:
         # Large file: stream to temp, extract from path
-        return _fetch_and_extract_pdf_large(file_id, min_chars_threshold)
+        return _fetch_and_convert_pdf_large(file_id, min_chars_threshold)
     else:
         # Small file: load into memory
         pdf_bytes = download_file(file_id)
-        result = extract_pdf_content(
+        result = convert_pdf_content(
             file_bytes=pdf_bytes,
             file_id=file_id,
             min_chars_threshold=min_chars_threshold,
@@ -195,20 +195,20 @@ def fetch_and_extract_pdf(
         return result
 
 
-def _fetch_and_extract_pdf_large(
+def _fetch_and_convert_pdf_large(
     file_id: str,
     min_chars_threshold: int = DEFAULT_MIN_CHARS_THRESHOLD,
-) -> PdfExtractionResult:
+) -> PdfConversionResult:
     """
     Extract large PDF using streaming download.
 
-    Downloads to temp file, delegates to extract_pdf_content(file_path=...),
+    Downloads to temp file, delegates to convert_pdf_content(file_path=...),
     then cleans up.
     """
     tmp_path = download_file_to_temp(file_id, suffix=".pdf")
 
     try:
-        result = extract_pdf_content(
+        result = convert_pdf_content(
             file_id=file_id,
             min_chars_threshold=min_chars_threshold,
             file_path=tmp_path,
@@ -518,7 +518,7 @@ def _render_via_pdf2image(
     )
 
 
-def _extract_with_markitdown(pdf_bytes: bytes) -> str:
+def _convert_with_markitdown(pdf_bytes: bytes) -> str:
     """
     Extract PDF content using markitdown.
 

@@ -187,6 +187,7 @@ class ForwardedMessage:
     date: str = ""
     subject: str = ""
     body_text: str = ""
+    body_html: str | None = None  # Raw HTML when no plain text; adapter converts
 
 
 @dataclass

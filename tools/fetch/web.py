@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-from adapters.office import extract_office_content, get_office_type_from_mime, OfficeType
-from adapters.pdf import extract_pdf_content, render_pdf_pages
+from adapters.office import convert_office_content, get_office_type_from_mime, OfficeType
+from adapters.pdf import convert_pdf_content, render_pdf_pages
 from adapters.web import fetch_web_content
 from extractors.web import extract_web_content, extract_title, EXTRACTION_FAILED_CUE
 from models import MiseError, ErrorKind, FetchResult, WebData
@@ -23,8 +23,8 @@ def _fetch_web_pdf(url: str, web_data: WebData, base_path: Path | None = None) -
     Handle a web URL that returned application/pdf Content-Type.
 
     Two paths depending on response size:
-    - Small PDFs: raw_bytes in memory → extract_pdf_content(file_bytes=...)
-    - Large PDFs: temp_path on disk → extract_pdf_content(file_path=...)
+    - Small PDFs: raw_bytes in memory → convert_pdf_content(file_bytes=...)
+    - Large PDFs: temp_path on disk → convert_pdf_content(file_path=...)
 
     Caller (fetch_web) is responsible for temp_path cleanup via finally block.
     """
@@ -40,7 +40,7 @@ def _fetch_web_pdf(url: str, web_data: WebData, base_path: Path | None = None) -
                 f"Content-Type says application/pdf but content is not PDF (starts with {magic[:20]!r}). "
                 f"The server at {urlparse(url).netloc} may be returning an error page.",
             )
-        result = extract_pdf_content(file_id=url_hash, file_path=web_data.temp_path)
+        result = convert_pdf_content(file_id=url_hash, file_path=web_data.temp_path)
     elif web_data.raw_bytes:
         # Small PDF: check magic bytes before extraction
         if not web_data.raw_bytes.startswith(b"%PDF-"):
@@ -49,7 +49,7 @@ def _fetch_web_pdf(url: str, web_data: WebData, base_path: Path | None = None) -
                 f"Content-Type says application/pdf but content is not PDF (starts with {web_data.raw_bytes[:20]!r}). "
                 f"The server at {urlparse(url).netloc} may be returning an error page.",
             )
-        result = extract_pdf_content(file_bytes=web_data.raw_bytes, file_id=url_hash)
+        result = convert_pdf_content(file_bytes=web_data.raw_bytes, file_id=url_hash)
     else:
         raise MiseError(ErrorKind.EXTRACTION_FAILED, f"No PDF content received from {url}")
 
@@ -110,8 +110,8 @@ def _fetch_web_office(url: str, web_data: WebData, office_type: OfficeType, base
     Handle a web URL that returned an Office Content-Type.
 
     Two paths depending on response size:
-    - Small files: raw_bytes in memory → extract_office_content(file_bytes=...)
-    - Large files: temp_path on disk → extract_office_content(file_path=...)
+    - Small files: raw_bytes in memory → convert_office_content(file_bytes=...)
+    - Large files: temp_path on disk → convert_office_content(file_path=...)
 
     Caller (fetch_web) is responsible for temp_path cleanup via finally block.
     """
@@ -119,7 +119,7 @@ def _fetch_web_office(url: str, web_data: WebData, office_type: OfficeType, base
 
     if web_data.temp_path:
         # Large file: convert directly from disk (memory-safe)
-        result = extract_office_content(
+        result = convert_office_content(
             office_type,
             file_path=web_data.temp_path,
             file_id=url_hash,
@@ -127,7 +127,7 @@ def _fetch_web_office(url: str, web_data: WebData, office_type: OfficeType, base
         result.warnings.insert(0, "Large file: extracted from temp file")
     elif web_data.raw_bytes:
         # Small file: convert from memory
-        result = extract_office_content(
+        result = convert_office_content(
             office_type,
             file_bytes=web_data.raw_bytes,
             file_id=url_hash,

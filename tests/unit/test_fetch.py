@@ -22,8 +22,8 @@ from models import (
 )
 from adapters.gmail import AttachmentDownload
 from tools.fetch.common import _build_cues
-from adapters.office import OfficeExtractionResult
-from adapters.pdf import PdfExtractionResult
+from adapters.office import OfficeConversionResult
+from adapters.pdf import PdfConversionResult
 
 
 def _make_valid_png(width: int = 10, height: int = 10) -> bytes:
@@ -591,7 +591,7 @@ class TestFetchAttachment:
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
     @patch("tools.fetch.gmail.download_attachment")
-    @patch("tools.fetch.gmail.extract_office_content")
+    @patch("tools.fetch.gmail.convert_office_content")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value="/tmp/test-deposit")
     @patch("tools.fetch.gmail.write_content", return_value="/tmp/test-deposit/content.csv")
     @patch("tools.fetch.gmail.write_manifest")
@@ -610,7 +610,7 @@ class TestFetchAttachment:
             filename="Budget.xlsx", mime_type=xlsx_mime,
             size=5000, content=b"fake xlsx bytes",
         )
-        mock_office.return_value = OfficeExtractionResult(
+        mock_office.return_value = OfficeConversionResult(
             content="data", source_type="xlsx", export_format="csv", extension="csv",
         )
 
@@ -632,7 +632,7 @@ class TestFetchAttachment:
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
     @patch("tools.fetch.gmail.download_attachment")
-    @patch("tools.fetch.gmail.extract_office_content")
+    @patch("tools.fetch.gmail.convert_office_content")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value="/tmp/test-deposit")
     @patch("tools.fetch.gmail.write_content", return_value="/tmp/test-deposit/content.csv")
     @patch("tools.fetch.gmail.write_manifest")
@@ -640,7 +640,7 @@ class TestFetchAttachment:
         self, mock_manifest, mock_write, mock_folder,
         mock_office, mock_download, mock_lookup, mock_fetch
     ):
-        """XLSX attachment routes to extract_office_content."""
+        """XLSX attachment routes to convert_office_content."""
         xlsx_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         att = EmailAttachment(
             filename="budget.xlsx", mime_type=xlsx_mime,
@@ -651,7 +651,7 @@ class TestFetchAttachment:
             filename="budget.xlsx", mime_type=xlsx_mime,
             size=5000, content=b"fake xlsx bytes",
         )
-        mock_office.return_value = OfficeExtractionResult(
+        mock_office.return_value = OfficeConversionResult(
             content="Sheet1\ncol1,col2\n1,2",
             source_type="xlsx", export_format="csv", extension="csv",
         )
@@ -668,7 +668,7 @@ class TestFetchAttachment:
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
     @patch("tools.fetch.gmail.download_attachment")
-    @patch("tools.fetch.gmail.extract_pdf_content")
+    @patch("tools.fetch.gmail.convert_pdf_content")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value="/tmp/test-deposit")
     @patch("tools.fetch.gmail.write_content", return_value="/tmp/test-deposit/content.md")
     @patch("tools.fetch.gmail.write_manifest")
@@ -676,7 +676,7 @@ class TestFetchAttachment:
         self, mock_manifest, mock_write, mock_folder,
         mock_pdf, mock_download, mock_lookup, mock_fetch
     ):
-        """PDF attachment routes to extract_pdf_content."""
+        """PDF attachment routes to convert_pdf_content."""
         att = EmailAttachment(
             filename="report.pdf", mime_type="application/pdf",
             size=3000, attachment_id="att_2",
@@ -686,7 +686,7 @@ class TestFetchAttachment:
             filename="report.pdf", mime_type="application/pdf",
             size=3000, content=b"fake pdf bytes",
         )
-        mock_pdf.return_value = PdfExtractionResult(
+        mock_pdf.return_value = PdfConversionResult(
             content="# Report\nSome content", method="markitdown", char_count=25,
         )
 
@@ -699,7 +699,7 @@ class TestFetchAttachment:
 
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated")
-    @patch("tools.fetch.gmail.extract_office_content")
+    @patch("tools.fetch.gmail.convert_office_content")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value="/tmp/test-deposit")
     @patch("tools.fetch.gmail.write_content", return_value="/tmp/test-deposit/content.csv")
     @patch("tools.fetch.gmail.write_manifest")
@@ -717,7 +717,7 @@ class TestFetchAttachment:
         mock_lookup.return_value = {
             "msg_abc123": [{"file_id": "drive_99", "name": "budget.xlsx", "mimeType": xlsx_mime}]
         }
-        mock_office.return_value = OfficeExtractionResult(
+        mock_office.return_value = OfficeConversionResult(
             content="Sheet1\ncol1,col2\n1,2",
             source_type="xlsx", export_format="csv", extension="csv",
         )
@@ -732,7 +732,7 @@ class TestFetchAttachment:
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated")
     @patch("tools.fetch.gmail.download_attachment")
-    @patch("tools.fetch.gmail.extract_office_content")
+    @patch("tools.fetch.gmail.convert_office_content")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value="/tmp/test-deposit")
     @patch("tools.fetch.gmail.write_content", return_value="/tmp/test-deposit/content.csv")
     @patch("tools.fetch.gmail.write_manifest")
@@ -750,7 +750,7 @@ class TestFetchAttachment:
         mock_lookup.return_value = {
             "msg_abc123": [{"file_id": "drive_99", "name": "budget.xlsx", "mimeType": xlsx_mime}]
         }
-        office_result = OfficeExtractionResult(
+        office_result = OfficeConversionResult(
             content="Sheet1\ncol1,col2\n1,2",
             source_type="xlsx", export_format="csv", extension="csv",
         )
@@ -929,12 +929,12 @@ class TestEnrichWithComments:
 class TestDepositAttachmentContent:
     """Tests for _deposit_attachment_content."""
 
-    @patch("tools.fetch.gmail.extract_pdf_content")
+    @patch("tools.fetch.gmail.convert_pdf_content")
     @patch("tools.fetch.gmail.write_content")
     @patch("tools.fetch.gmail.write_image")
     def test_pdf_extracted_and_deposited(self, mock_img, mock_write, mock_pdf):
         """PDF bytes are extracted and both .md and raw file deposited."""
-        mock_pdf.return_value = PdfExtractionResult(
+        mock_pdf.return_value = PdfConversionResult(
             content="# PDF Content", method="markitdown", char_count=14,
         )
         result = _deposit_attachment_content(
@@ -1470,13 +1470,13 @@ class TestFetchVideo:
 class TestFetchPdf:
     """Tests for fetch_pdf orchestration."""
 
-    @patch("tools.fetch.drive.fetch_and_extract_pdf")
+    @patch("tools.fetch.drive.fetch_and_convert_pdf")
     @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/pdf"))
     @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/pdf/content.md"))
     @patch("tools.fetch.drive.write_manifest")
     def test_basic_pdf(self, mock_manifest, mock_write, mock_folder, mock_fetch):
         """PDF is extracted and deposited."""
-        mock_fetch.return_value = PdfExtractionResult(
+        mock_fetch.return_value = PdfConversionResult(
             content="# PDF", method="markitdown", char_count=5,
         )
         result = fetch_pdf("f1", "Report", _drive_metadata("application/pdf"))
@@ -1484,13 +1484,13 @@ class TestFetchPdf:
         assert result.type == "pdf"
         assert result.metadata["extraction_method"] == "markitdown"
 
-    @patch("tools.fetch.drive.fetch_and_extract_pdf")
+    @patch("tools.fetch.drive.fetch_and_convert_pdf")
     @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/pdf"))
     @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/pdf/content.md"))
     @patch("tools.fetch.drive.write_manifest")
     def test_pdf_with_email_context(self, mock_manifest, mock_write, mock_folder, mock_fetch):
         """Email context in PDF result metadata."""
-        mock_fetch.return_value = PdfExtractionResult(content="x", method="drive", char_count=1)
+        mock_fetch.return_value = PdfConversionResult(content="x", method="drive", char_count=1)
         ctx = EmailContext(message_id="m1", from_address="a@b.com", subject="pdf")
 
         result = fetch_pdf("f1", "Report", _drive_metadata("application/pdf"), email_context=ctx)
@@ -1501,13 +1501,13 @@ class TestFetchPdf:
 class TestFetchOffice:
     """Tests for fetch_office orchestration."""
 
-    @patch("tools.fetch.drive.fetch_and_extract_office")
+    @patch("tools.fetch.drive.fetch_and_convert_office")
     @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/docx"))
     @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/docx/content.md"))
     @patch("tools.fetch.drive.write_manifest")
     def test_docx(self, mock_manifest, mock_write, mock_folder, mock_fetch):
         """DOCX is extracted and deposited as markdown."""
-        mock_fetch.return_value = OfficeExtractionResult(
+        mock_fetch.return_value = OfficeConversionResult(
             content="# Doc", source_type="docx", export_format="markdown", extension="md",
         )
         result = fetch_office("f1", "Report", _drive_metadata("application/vnd.openxmlformats-officedocument.wordprocessingml.document"), "docx")
@@ -1515,26 +1515,26 @@ class TestFetchOffice:
         assert result.type == "docx"
         assert result.format == "markdown"
 
-    @patch("tools.fetch.drive.fetch_and_extract_office")
+    @patch("tools.fetch.drive.fetch_and_convert_office")
     @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/xlsx"))
     @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/xlsx/content.csv"))
     @patch("tools.fetch.drive.write_manifest")
     def test_xlsx_format_is_csv(self, mock_manifest, mock_write, mock_folder, mock_fetch):
         """XLSX outputs CSV format."""
-        mock_fetch.return_value = OfficeExtractionResult(
+        mock_fetch.return_value = OfficeConversionResult(
             content="a,b\n1,2", source_type="xlsx", export_format="csv", extension="csv",
         )
         result = fetch_office("f1", "Data", _drive_metadata("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"), "xlsx")
 
         assert result.format == "csv"
 
-    @patch("tools.fetch.drive.fetch_and_extract_office")
+    @patch("tools.fetch.drive.fetch_and_convert_office")
     @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/docx"))
     @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/docx/content.md"))
     @patch("tools.fetch.drive.write_manifest")
     def test_office_with_warnings(self, mock_manifest, mock_write, mock_folder, mock_fetch):
         """Office warnings appear in manifest."""
-        mock_fetch.return_value = OfficeExtractionResult(
+        mock_fetch.return_value = OfficeConversionResult(
             content="x", source_type="docx", export_format="markdown", extension="md",
             warnings=["Conversion warning"],
         )
@@ -1543,13 +1543,13 @@ class TestFetchOffice:
         extra = mock_manifest.call_args[1].get("extra", {})
         assert "warnings" in extra
 
-    @patch("tools.fetch.drive.fetch_and_extract_office")
+    @patch("tools.fetch.drive.fetch_and_convert_office")
     @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/docx"))
     @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/docx/content.md"))
     @patch("tools.fetch.drive.write_manifest")
     def test_office_with_email_context(self, mock_manifest, mock_write, mock_folder, mock_fetch):
         """Email context in office result metadata."""
-        mock_fetch.return_value = OfficeExtractionResult(
+        mock_fetch.return_value = OfficeConversionResult(
             content="x", source_type="docx", export_format="markdown", extension="md",
         )
         ctx = EmailContext(message_id="m1", from_address="a@b.com", subject="doc")
@@ -1842,13 +1842,13 @@ class TestFetchWeb:
 class TestFetchWebPdf:
     """Tests for _fetch_web_pdf helper."""
 
-    @patch("tools.fetch.web.extract_pdf_content")
+    @patch("tools.fetch.web.convert_pdf_content")
     @patch("tools.fetch.web.get_deposit_folder", return_value=Path("/tmp/pdf"))
     @patch("tools.fetch.web.write_content", return_value=Path("/tmp/pdf/content.md"))
     @patch("tools.fetch.web.write_manifest")
     def test_small_pdf_from_bytes(self, mock_manifest, mock_write, mock_folder, mock_pdf):
         """Small PDF (raw_bytes) extracted successfully."""
-        mock_pdf.return_value = PdfExtractionResult(content="# PDF", method="markitdown", char_count=5)
+        mock_pdf.return_value = PdfConversionResult(content="# PDF", method="markitdown", char_count=5)
         web_data = WebData(
             url="https://example.com/doc.pdf",
             html="", content_type="application/pdf", final_url="https://example.com/doc.pdf",
@@ -1882,13 +1882,13 @@ class TestFetchWebPdf:
         with pytest.raises(MiseError, match="No PDF content"):
             _fetch_web_pdf("https://example.com/doc.pdf", web_data)
 
-    @patch("tools.fetch.web.extract_pdf_content")
+    @patch("tools.fetch.web.convert_pdf_content")
     @patch("tools.fetch.web.get_deposit_folder", return_value=Path("/tmp/pdf"))
     @patch("tools.fetch.web.write_content", return_value=Path("/tmp/pdf/content.md"))
     @patch("tools.fetch.web.write_manifest")
     def test_pdf_with_warnings(self, mock_manifest, mock_write, mock_folder, mock_pdf):
         """PDF extraction warnings pass through to metadata."""
-        mock_pdf.return_value = PdfExtractionResult(
+        mock_pdf.return_value = PdfConversionResult(
             content="# PDF", method="drive", char_count=5,
             warnings=["Low content, used Drive fallback"],
         )
@@ -1906,13 +1906,13 @@ class TestFetchWebPdf:
 class TestFetchWebOffice:
     """Tests for _fetch_web_office helper."""
 
-    @patch("tools.fetch.web.extract_office_content")
+    @patch("tools.fetch.web.convert_office_content")
     @patch("tools.fetch.web.get_deposit_folder", return_value=Path("/tmp/docx"))
     @patch("tools.fetch.web.write_content", return_value=Path("/tmp/docx/content.md"))
     @patch("tools.fetch.web.write_manifest")
     def test_small_docx_from_bytes(self, mock_manifest, mock_write, mock_folder, mock_office):
         """Small DOCX (raw_bytes) extracted successfully."""
-        mock_office.return_value = OfficeExtractionResult(
+        mock_office.return_value = OfficeConversionResult(
             content="# Doc", source_type="docx", export_format="markdown", extension="md",
         )
         web_data = WebData(
@@ -1937,13 +1937,13 @@ class TestFetchWebOffice:
         with pytest.raises(MiseError, match="No Office content"):
             _fetch_web_office("https://example.com/report.docx", web_data, "docx")
 
-    @patch("tools.fetch.web.extract_office_content")
+    @patch("tools.fetch.web.convert_office_content")
     @patch("tools.fetch.web.get_deposit_folder", return_value=Path("/tmp/xlsx"))
     @patch("tools.fetch.web.write_content", return_value=Path("/tmp/xlsx/content.csv"))
     @patch("tools.fetch.web.write_manifest")
     def test_xlsx_format(self, mock_manifest, mock_write, mock_folder, mock_office):
         """XLSX from web uses CSV format."""
-        mock_office.return_value = OfficeExtractionResult(
+        mock_office.return_value = OfficeConversionResult(
             content="a,b\n1,2", source_type="xlsx", export_format="csv", extension="csv",
         )
         web_data = WebData(
@@ -2247,7 +2247,7 @@ class TestFetchAttachmentExfilEdgeCases:
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated")
     @patch("tools.fetch.gmail.download_file", return_value=b"%PDF-1.4 content")
-    @patch("tools.fetch.gmail.extract_pdf_content")
+    @patch("tools.fetch.gmail.convert_pdf_content")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/pdf"))
     @patch("tools.fetch.gmail.write_content", return_value=Path("/tmp/pdf/content.md"))
     @patch("tools.fetch.gmail.write_manifest")
@@ -2264,7 +2264,7 @@ class TestFetchAttachmentExfilEdgeCases:
         mock_lookup.return_value = {
             "msg_abc123": [{"file_id": "drive_99", "name": "report.pdf", "mimeType": "application/pdf"}]
         }
-        mock_pdf.return_value = PdfExtractionResult(
+        mock_pdf.return_value = PdfConversionResult(
             content="# PDF", method="markitdown", char_count=5,
         )
 
@@ -2279,7 +2279,7 @@ class TestFetchAttachmentExfilEdgeCases:
     @patch("tools.fetch.gmail.lookup_exfiltrated")
     @patch("tools.fetch.gmail.download_file", side_effect=RuntimeError("Drive error"))
     @patch("tools.fetch.gmail.download_attachment")
-    @patch("tools.fetch.gmail.extract_pdf_content")
+    @patch("tools.fetch.gmail.convert_pdf_content")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/pdf"))
     @patch("tools.fetch.gmail.write_content", return_value=Path("/tmp/pdf/content.md"))
     @patch("tools.fetch.gmail.write_manifest")
@@ -2300,7 +2300,7 @@ class TestFetchAttachmentExfilEdgeCases:
             filename="report.pdf", mime_type="application/pdf",
             size=1000, content=b"%PDF-1.4",
         )
-        mock_pdf.return_value = PdfExtractionResult(
+        mock_pdf.return_value = PdfConversionResult(
             content="# PDF", method="markitdown", char_count=5,
             warnings=["Drive fallback"],
         )
@@ -2494,7 +2494,7 @@ class TestFetchAttachmentLookupFailure:
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated", side_effect=RuntimeError("API down"))
     @patch("tools.fetch.gmail.download_attachment")
-    @patch("tools.fetch.gmail.extract_pdf_content")
+    @patch("tools.fetch.gmail.convert_pdf_content")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/pdf"))
     @patch("tools.fetch.gmail.write_content", return_value=Path("/tmp/pdf/content.md"))
     @patch("tools.fetch.gmail.write_manifest")
@@ -2512,7 +2512,7 @@ class TestFetchAttachmentLookupFailure:
             filename="report.pdf", mime_type="application/pdf",
             size=1000, content=b"%PDF-1.4",
         )
-        mock_pdf.return_value = PdfExtractionResult(
+        mock_pdf.return_value = PdfConversionResult(
             content="# PDF", method="markitdown", char_count=5,
         )
 

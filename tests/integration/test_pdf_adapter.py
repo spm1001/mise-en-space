@@ -8,7 +8,7 @@ import json
 import pytest
 from pathlib import Path
 
-from adapters.pdf import fetch_and_extract_pdf, DEFAULT_MIN_CHARS_THRESHOLD
+from adapters.pdf import fetch_and_convert_pdf, DEFAULT_MIN_CHARS_THRESHOLD
 
 
 IDS_FILE = Path(__file__).parent.parent.parent / "fixtures" / "integration_ids.json"
@@ -24,13 +24,13 @@ def integration_ids() -> dict[str, str]:
 
 
 @pytest.mark.integration
-def test_fetch_and_extract_pdf_returns_content(integration_ids: dict[str, str]) -> None:
+def test_fetch_and_convert_pdf_returns_content(integration_ids: dict[str, str]) -> None:
     """Test that PDF extraction returns content."""
     pdf_id = integration_ids.get("test_pdf_id")
     if not pdf_id:
         pytest.skip("test_pdf_id not in integration_ids.json")
 
-    result = fetch_and_extract_pdf(pdf_id)
+    result = fetch_and_convert_pdf(pdf_id)
 
     assert result.content
     assert len(result.content) > 0
@@ -45,7 +45,7 @@ def test_pdf_extraction_method_reported(integration_ids: dict[str, str]) -> None
     if not pdf_id:
         pytest.skip("test_pdf_id not in integration_ids.json")
 
-    result = fetch_and_extract_pdf(pdf_id)
+    result = fetch_and_convert_pdf(pdf_id)
 
     # Method should match the threshold logic
     if result.char_count >= DEFAULT_MIN_CHARS_THRESHOLD and result.method == "markitdown":
@@ -64,7 +64,7 @@ def test_pdf_extraction_with_high_threshold(integration_ids: dict[str, str]) -> 
         pytest.skip("test_pdf_id not in integration_ids.json")
 
     # Set threshold impossibly high to force Drive fallback
-    result = fetch_and_extract_pdf(pdf_id, min_chars_threshold=1_000_000)
+    result = fetch_and_convert_pdf(pdf_id, min_chars_threshold=1_000_000)
 
     # Should have fallen back to Drive
     assert result.method == "drive"
@@ -79,7 +79,7 @@ def test_pdf_extraction_with_zero_threshold(integration_ids: dict[str, str]) -> 
         pytest.skip("test_pdf_id not in integration_ids.json")
 
     # Set threshold to 0 - markitdown always "succeeds"
-    result = fetch_and_extract_pdf(pdf_id, min_chars_threshold=0)
+    result = fetch_and_convert_pdf(pdf_id, min_chars_threshold=0)
 
     # Should use markitdown (unless it extracts literally nothing)
     if result.char_count > 0:

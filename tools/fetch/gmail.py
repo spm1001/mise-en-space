@@ -7,8 +7,8 @@ from typing import Any
 
 from adapters.drive import download_file, lookup_exfiltrated
 from adapters.gmail import fetch_thread, download_attachment
-from adapters.office import extract_office_content, get_office_type_from_mime
-from adapters.pdf import extract_pdf_content, render_pdf_pages
+from adapters.office import convert_office_content, get_office_type_from_mime
+from adapters.pdf import convert_pdf_content, render_pdf_pages
 from extractors.gmail import extract_thread_content
 from extractors.image import resize_image_bytes
 from models import MiseError, FetchResult, FetchError, EmailAttachment
@@ -137,7 +137,7 @@ def _deposit_attachment_content(
         # Multiple PDF attachments would collide on page_01.png filenames.
         # The raw PDF is deposited alongside for Claude to view directly.
         # Single-attachment fetch (fetch_attachment) gets its own folder and does render thumbnails.
-        result = extract_pdf_content(content_bytes, file_id=file_id)
+        result = convert_pdf_content(content_bytes, file_id=file_id)
 
         content_filename = f"{filename}.md"
         write_content(folder, result.content, filename=content_filename)
@@ -541,7 +541,7 @@ def fetch_attachment(
     if office_type:
         if exfil_file_id:
             try:
-                result = extract_office_content(
+                result = convert_office_content(
                     office_type=office_type,
                     source_file_id=exfil_file_id,
                     file_id=thread_id,
@@ -553,7 +553,7 @@ def fetch_attachment(
 
         if not exfil_file_id:
             content_bytes = _download_attachment_bytes(target_msg, target_att, mime_type)
-            result = extract_office_content(
+            result = convert_office_content(
                 office_type=office_type,
                 file_bytes=content_bytes,
                 file_id=thread_id,
@@ -604,7 +604,7 @@ def fetch_attachment(
 
     # PDF
     if mime_type == "application/pdf":
-        pdf_result = extract_pdf_content(file_bytes=content_bytes, file_id=thread_id)
+        pdf_result = convert_pdf_content(file_bytes=content_bytes, file_id=thread_id)
 
         # Render thumbnails (own folder, no collision risk)
         try:

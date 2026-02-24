@@ -7,9 +7,9 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from adapters.pdf import (
-    extract_pdf_content,
-    fetch_and_extract_pdf,
-    PdfExtractionResult,
+    convert_pdf_content,
+    fetch_and_convert_pdf,
+    PdfConversionResult,
     DEFAULT_MIN_CHARS_THRESHOLD,
     STREAMING_THRESHOLD_BYTES,
     _looks_like_flattened_tables,
@@ -28,7 +28,7 @@ class TestPdfExtraction:
         """Sample PDF bytes for testing."""
         return b"%PDF-1.4 sample content"
 
-    @patch("adapters.pdf._extract_with_markitdown")
+    @patch("adapters.pdf._convert_with_markitdown")
     def test_markitdown_success_above_threshold(
         self,
         mock_markitdown: MagicMock,
@@ -38,7 +38,7 @@ class TestPdfExtraction:
         # Markitdown returns content above threshold
         mock_markitdown.return_value = "A" * (DEFAULT_MIN_CHARS_THRESHOLD + 100)
 
-        result = extract_pdf_content(sample_pdf_bytes, "file123")
+        result = convert_pdf_content(sample_pdf_bytes, "file123")
 
         assert result.method == "markitdown"
         assert result.char_count >= DEFAULT_MIN_CHARS_THRESHOLD
@@ -46,7 +46,7 @@ class TestPdfExtraction:
         mock_markitdown.assert_called_once_with(sample_pdf_bytes)
 
     @patch("adapters.pdf.convert_via_drive")
-    @patch("adapters.pdf._extract_with_markitdown")
+    @patch("adapters.pdf._convert_with_markitdown")
     def test_drive_fallback_below_threshold(
         self,
         mock_markitdown: MagicMock,
@@ -65,7 +65,7 @@ class TestPdfExtraction:
             warnings=[],
         )
 
-        result = extract_pdf_content(sample_pdf_bytes, "file123")
+        result = convert_pdf_content(sample_pdf_bytes, "file123")
 
         assert result.method == "drive"
         assert result.char_count == 1000
@@ -73,7 +73,7 @@ class TestPdfExtraction:
         assert any("falling back to Drive" in w for w in result.warnings)
         mock_convert.assert_called_once()
 
-    @patch("adapters.pdf._extract_with_markitdown")
+    @patch("adapters.pdf._convert_with_markitdown")
     def test_custom_threshold(
         self,
         mock_markitdown: MagicMock,
@@ -83,7 +83,7 @@ class TestPdfExtraction:
         # Return 200 chars - below default (500) but above custom (100)
         mock_markitdown.return_value = "A" * 200
 
-        result = extract_pdf_content(
+        result = convert_pdf_content(
             sample_pdf_bytes,
             "file123",
             min_chars_threshold=100,
@@ -93,7 +93,7 @@ class TestPdfExtraction:
         assert result.method == "markitdown"
         assert result.char_count == 200
 
-    @patch("adapters.pdf._extract_with_markitdown")
+    @patch("adapters.pdf._convert_with_markitdown")
     def test_threshold_boundary_exactly_at(
         self,
         mock_markitdown: MagicMock,
@@ -102,14 +102,14 @@ class TestPdfExtraction:
         """Test that exactly threshold chars uses markitdown (>= comparison)."""
         mock_markitdown.return_value = "A" * DEFAULT_MIN_CHARS_THRESHOLD  # Exactly 500
 
-        result = extract_pdf_content(sample_pdf_bytes, "file123")
+        result = convert_pdf_content(sample_pdf_bytes, "file123")
 
         # Should use markitdown (>= threshold)
         assert result.method == "markitdown"
         assert result.char_count == DEFAULT_MIN_CHARS_THRESHOLD
 
     @patch("adapters.pdf.convert_via_drive")
-    @patch("adapters.pdf._extract_with_markitdown")
+    @patch("adapters.pdf._convert_with_markitdown")
     def test_threshold_boundary_one_below(
         self,
         mock_markitdown: MagicMock,
@@ -126,13 +126,13 @@ class TestPdfExtraction:
             warnings=[],
         )
 
-        result = extract_pdf_content(sample_pdf_bytes, "file123")
+        result = convert_pdf_content(sample_pdf_bytes, "file123")
 
         # Should fall back to Drive since 499 < 500
         assert result.method == "drive"
 
     @patch("adapters.pdf.convert_via_drive")
-    @patch("adapters.pdf._extract_with_markitdown")
+    @patch("adapters.pdf._convert_with_markitdown")
     def test_empty_content_triggers_fallback(
         self,
         mock_markitdown: MagicMock,
@@ -149,14 +149,14 @@ class TestPdfExtraction:
             warnings=[],
         )
 
-        result = extract_pdf_content(sample_pdf_bytes, "file123")
+        result = convert_pdf_content(sample_pdf_bytes, "file123")
 
         # Should fall back to Drive
         assert result.method == "drive"
         assert any("0 chars" in w for w in result.warnings)
 
     @patch("adapters.pdf.convert_via_drive")
-    @patch("adapters.pdf._extract_with_markitdown")
+    @patch("adapters.pdf._convert_with_markitdown")
     def test_whitespace_only_counts_as_zero(
         self,
         mock_markitdown: MagicMock,
@@ -173,14 +173,14 @@ class TestPdfExtraction:
             warnings=[],
         )
 
-        result = extract_pdf_content(sample_pdf_bytes, "file123")
+        result = convert_pdf_content(sample_pdf_bytes, "file123")
 
         # Should fall back to Drive because stripped content is 0 chars
         assert result.method == "drive"
         assert any("0 chars" in w for w in result.warnings)
 
     @patch("adapters.pdf.convert_via_drive")
-    @patch("adapters.pdf._extract_with_markitdown")
+    @patch("adapters.pdf._convert_with_markitdown")
     def test_conversion_warnings_propagated(
         self,
         mock_markitdown: MagicMock,
@@ -197,7 +197,7 @@ class TestPdfExtraction:
             warnings=["Failed to delete temp file: _mise_temp_file123"],
         )
 
-        result = extract_pdf_content(sample_pdf_bytes, "file123")
+        result = convert_pdf_content(sample_pdf_bytes, "file123")
 
         assert "Failed to delete temp file" in str(result.warnings)
 
@@ -205,7 +205,7 @@ class TestPdfExtraction:
 class TestFetchPdf:
     """Tests for PDF fetch tool function."""
 
-    @patch("tools.fetch.drive.fetch_and_extract_pdf")
+    @patch("tools.fetch.drive.fetch_and_convert_pdf")
     @patch("tools.fetch.drive.get_deposit_folder")
     @patch("tools.fetch.drive.write_content")
     @patch("tools.fetch.drive.write_manifest")
@@ -218,7 +218,7 @@ class TestFetchPdf:
         tmp_path: Path,
     ) -> None:
         """Test that fetch_pdf deposits content to workspace."""
-        mock_extract.return_value = PdfExtractionResult(
+        mock_extract.return_value = PdfConversionResult(
             content="# PDF Content",
             method="markitdown",
             char_count=100,
@@ -238,7 +238,7 @@ class TestFetchPdf:
         mock_write_content.assert_called_once()
         mock_write_manifest.assert_called_once()
 
-    @patch("tools.fetch.drive.fetch_and_extract_pdf")
+    @patch("tools.fetch.drive.fetch_and_convert_pdf")
     @patch("tools.fetch.drive.get_deposit_folder")
     @patch("tools.fetch.drive.write_content")
     @patch("tools.fetch.drive.write_manifest")
@@ -251,7 +251,7 @@ class TestFetchPdf:
         tmp_path: Path,
     ) -> None:
         """Test that warnings are included in manifest."""
-        mock_extract.return_value = PdfExtractionResult(
+        mock_extract.return_value = PdfConversionResult(
             content="content",
             method="drive",
             char_count=500,
@@ -279,7 +279,7 @@ class TestLargeFileStreaming:
 
     @patch("adapters.pdf.get_file_size")
     @patch("adapters.pdf.download_file")
-    @patch("adapters.pdf._extract_with_markitdown")
+    @patch("adapters.pdf._convert_with_markitdown")
     def test_small_file_uses_memory_download(
         self,
         mock_markitdown: MagicMock,
@@ -292,7 +292,7 @@ class TestLargeFileStreaming:
         mock_download.return_value = b"PDF content"
         mock_markitdown.return_value = "Extracted content " * 100
 
-        result = fetch_and_extract_pdf("small_file_id")
+        result = fetch_and_convert_pdf("small_file_id")
 
         # Should use memory download
         mock_download.assert_called_once_with("small_file_id")
@@ -324,7 +324,7 @@ class TestLargeFileStreaming:
         )
         mock_markitdown_class.return_value = mock_md_instance
 
-        result = fetch_and_extract_pdf("large_file_id")
+        result = fetch_and_convert_pdf("large_file_id")
 
         # Should use streaming download
         mock_download_temp.assert_called_once_with("large_file_id", suffix=".pdf")
@@ -367,7 +367,7 @@ class TestLargeFileStreaming:
             warnings=[],
         )
 
-        result = fetch_and_extract_pdf("large_file_id")
+        result = fetch_and_convert_pdf("large_file_id")
 
         # Should fall back to Drive
         assert result.method == "drive"
@@ -541,10 +541,10 @@ class TestFlattenedTableDetection:
         lines.extend([f"| Ch{i} | {i*100} | £{i*10} |" for i in range(30)])
         assert not _looks_like_flattened_tables("\n".join(lines))
 
-    # --- Integration: extract_pdf_content triggers Drive fallback ---
+    # --- Integration: convert_pdf_content triggers Drive fallback ---
 
     @patch("adapters.pdf.convert_via_drive")
-    @patch("adapters.pdf._extract_with_markitdown")
+    @patch("adapters.pdf._convert_with_markitdown")
     def test_flattened_content_triggers_drive_fallback(
         self,
         mock_markitdown: MagicMock,
@@ -564,7 +564,7 @@ class TestFlattenedTableDetection:
             warnings=[],
         )
 
-        result = extract_pdf_content(b"%PDF-test", "file123")
+        result = convert_pdf_content(b"%PDF-test", "file123")
 
         assert result.method == "drive"
         assert any("flattened tables" in w for w in result.warnings)

@@ -641,7 +641,12 @@ class TestRfc822Extraction:
         assert messages == []
 
     def test_rfc822_html_fallback(self):
-        """HTML body extracted when no plain text in rfc822 part."""
+        """HTML-only rfc822 part stores body_html for adapter to convert.
+
+        The extractor is pure — it doesn't do markitdown I/O. Instead it
+        stores the raw HTML in body_html and leaves body_text empty. The
+        adapter layer (adapters/gmail.py) handles the conversion.
+        """
         import base64
         payload = {
             "mimeType": "multipart/mixed",
@@ -671,7 +676,9 @@ class TestRfc822Extraction:
         }
         messages = parse_forwarded_messages(payload)
         assert len(messages) == 1
-        assert "HTML forwarded content" in messages[0].body_text
+        # Extractor stores raw HTML; adapter converts later
+        assert messages[0].body_text == ""
+        assert "HTML forwarded content" in messages[0].body_html
 
     def test_rfc822_appended_in_extraction(self):
         """MIME-forwarded messages appear in extract_message_content output."""

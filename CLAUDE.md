@@ -16,11 +16,13 @@ docs/           Design documents and references
 **Key references:** `docs/information-flow.md` (flow diagrams, timing data), `docs/decisions.md` (full design decision history with rationale).
 
 **Layer rules:**
-- Extractors NEVER import from adapters or tools (no I/O)
+- Extractors NEVER import from adapters or tools (no I/O, no tempfile, no os)
 - Adapters NEVER import from tools
 - Adapters MAY import parsing utilities from extractors
+- Adapters use `convert_*` names, not `extract_*` (extract_* reserved for pure extractors/)
 - Tools wire adapters → extractors → workspace
 - server.py just registers tools
+- `html_convert.py` is a shared I/O helper (markitdown needs tempfile); used by adapters, not extractors
 
 ### Adapter Specializations
 
@@ -33,8 +35,8 @@ docs/           Design documents and references
 | `gmail.py` | Gmail threads and messages |
 | `activity.py` | Drive Activity API v2 |
 | `conversion.py` | **Shared** Drive upload→convert→export→delete pattern |
-| `pdf.py` | PDF extraction (hybrid: markitdown → Drive fallback) |
-| `office.py` | Office files (DOCX/XLSX/PPTX via Drive conversion) |
+| `pdf.py` | PDF conversion (hybrid: markitdown → Drive fallback) |
+| `office.py` | Office file conversion (DOCX/XLSX/PPTX via Drive) |
 | `image.py` | Image files (raster + SVG→PNG rendering) |
 | `genai.py` | Video summaries via internal GenAI API (requires chrome-debug) |
 | `web.py` | Web content fetching (HTTP + passe browser fallback) |

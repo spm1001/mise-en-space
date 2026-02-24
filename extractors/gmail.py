@@ -7,8 +7,6 @@ No API calls, no MCP awareness.
 
 import base64
 import re
-import tempfile
-import os
 from datetime import datetime
 from typing import Any
 
@@ -85,54 +83,26 @@ def _clean_html_for_conversion(html: str) -> str:
 
 def _convert_html_to_markdown(html: str) -> tuple[str, bool]:
     """
-    Convert HTML to markdown using markitdown (local, fast).
+    Pure HTML-to-text fallback — strips tags and collapses whitespace.
 
-    Previous approach used Google Docs API as intermediary (create temp doc,
-    export as markdown, delete). That was ~10s for a 64KB email. markitdown
-    does the same conversion locally in ~100ms — 98x faster.
-
-    Falls back to basic HTML tag stripping if markitdown fails.
+    The high-quality markitdown conversion (which requires temp file I/O)
+    now lives in html_convert.py and is called by the adapter layer before
+    data reaches the extractor. This pure fallback only fires if the adapter
+    didn't pre-convert (e.g., in unit tests with hand-built EmailMessages).
 
     Args:
         html: HTML content to convert
 
     Returns:
-        Tuple of (markdown_string, used_fallback)
-        used_fallback is True if markitdown failed and we stripped tags
+        Tuple of (text_string, used_fallback)
+        used_fallback is always True since this is the fallback path
     """
     if not html or not html.strip():
         return '', False
 
-    try:
-        from markitdown import MarkItDown
-
-        # markitdown needs a file, so write to temp
-        with tempfile.NamedTemporaryFile(
-            mode='w', suffix='.html', delete=False, encoding='utf-8'
-        ) as f:
-            f.write(html)
-            temp_path = f.name
-
-        try:
-            md = MarkItDown()
-            result = md.convert(temp_path)
-            markdown = result.text_content if result else ''
-
-            if markdown:
-                return markdown, False
-            else:
-                raise ValueError("markitdown returned empty result")
-
-        finally:
-            # Clean up temp file
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
-
-    except Exception:
-        # Fallback: basic HTML tag stripping
-        text = re.sub(r'<[^>]+>', ' ', html)  # Remove HTML tags
-        text = re.sub(r'\s+', ' ', text)  # Collapse whitespace
-        return text.strip(), True
+    text = re.sub(r'<[^>]+>', ' ', html)  # Remove HTML tags
+    text = re.sub(r'\s+', ' ', text)  # Collapse whitespace
+    return text.strip(), True
 
 
 # =============================================================================
@@ -450,20 +420,20 @@ def _parse_rfc822_part(part: dict[str, Any]) -> ForwardedMessage | None:
     """
     Parse a nested message/rfc822 part into a ForwardedMessage.
 
-    Extracts From/Date/Subject headers and body text (plain preferred, html fallback).
+    Extracts From/Date/Subject headers and body text (plain preferred).
+    When only HTML is available, stores it as body_html for the adapter
+    to convert via markitdown (keeps this function pure — no I/O).
     """
     headers = part.get('headers', [])
     header_dict = {h['name']: h['value'] for h in headers if 'name' in h and 'value' in h}
 
     # Extract body text (reuse existing MIME walker)
     body_text = _extract_body_by_mime_type(part, 'text/plain')
+    body_html: str | None = None
     if not body_text:
-        html = _extract_body_by_mime_type(part, 'text/html')
-        if html:
-            cleaned = _clean_html_for_conversion(html)
-            body_text, _ = _convert_html_to_markdown(cleaned)
+        body_html = _extract_body_by_mime_type(part, 'text/html')
 
-    if not body_text and not header_dict:
+    if not body_text and not body_html and not header_dict:
         return None
 
     return ForwardedMessage(
@@ -471,6 +441,7 @@ def _parse_rfc822_part(part: dict[str, Any]) -> ForwardedMessage | None:
         date=header_dict.get('Date', ''),
         subject=header_dict.get('Subject', ''),
         body_text=body_text or '',
+        body_html=body_html,
     )
 
 

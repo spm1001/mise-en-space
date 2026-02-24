@@ -9,7 +9,7 @@ import pytest
 from pathlib import Path
 
 from adapters.office import (
-    fetch_and_extract_office,
+    fetch_and_convert_office,
     get_office_type_from_mime,
     OFFICE_FORMATS,
 )
@@ -37,7 +37,7 @@ def test_fetch_and_extract_docx(integration_ids: dict[str, str]) -> None:
     if not docx_id:
         pytest.skip("test_docx_id not in integration_ids.json")
 
-    result = fetch_and_extract_office(docx_id, "docx")
+    result = fetch_and_convert_office(docx_id, "docx")
 
     assert result.content
     assert len(result.content) > 0
@@ -53,7 +53,7 @@ def test_docx_extraction_produces_markdown(integration_ids: dict[str, str]) -> N
     if not docx_id:
         pytest.skip("test_docx_id not in integration_ids.json")
 
-    result = fetch_and_extract_office(docx_id, "docx")
+    result = fetch_and_convert_office(docx_id, "docx")
 
     # Should have some markdown-like content (headings, paragraphs, etc.)
     # At minimum, should have text content
@@ -70,7 +70,7 @@ def test_fetch_and_extract_xlsx(integration_ids: dict[str, str]) -> None:
     if not xlsx_id:
         pytest.skip("test_xlsx_id not in integration_ids.json")
 
-    result = fetch_and_extract_office(xlsx_id, "xlsx")
+    result = fetch_and_convert_office(xlsx_id, "xlsx")
 
     assert result.content
     assert len(result.content) > 0
@@ -86,7 +86,7 @@ def test_xlsx_extraction_produces_csv(integration_ids: dict[str, str]) -> None:
     if not xlsx_id:
         pytest.skip("test_xlsx_id not in integration_ids.json")
 
-    result = fetch_and_extract_office(xlsx_id, "xlsx")
+    result = fetch_and_convert_office(xlsx_id, "xlsx")
 
     # CSV should have at least one line with commas or data
     lines = result.content.strip().split("\n")

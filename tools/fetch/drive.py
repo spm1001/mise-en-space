@@ -12,14 +12,15 @@ from adapters.sheets import fetch_spreadsheet
 from adapters.slides import fetch_presentation
 from adapters.genai import get_video_summary, is_media_file
 from adapters.cdp import is_cdp_available
-from adapters.pdf import fetch_and_extract_pdf, extract_pdf_content
-from adapters.office import fetch_and_extract_office, get_office_type_from_mime, OfficeType
+from adapters.pdf import fetch_and_convert_pdf, convert_pdf_content
+from adapters.office import fetch_and_convert_office, get_office_type_from_mime, OfficeType
 from adapters.image import fetch_image as adapter_fetch_image, is_image_file, is_svg
 from extractors.image import resize_image_bytes
 from extractors.docs import extract_doc_content
 from extractors.folder import extract_folder_content
 from extractors.sheets import extract_sheets_content, extract_sheets_per_tab
 from extractors.slides import extract_slides_content
+from extractors.video import extract_video_content
 from models import FetchResult, FetchError, EmailContext
 from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata, slugify
 
@@ -329,56 +330,18 @@ def fetch_video(file_id: str, title: str, metadata: dict[str, Any], email_contex
     # Try to get AI summary
     summary_result = get_video_summary(file_id)
 
-    # Build content
-    content_lines = [f"# {title}", ""]
-
-    if summary_result and summary_result.has_content:
-        content_lines.append("## AI Summary")
-        content_lines.append("")
-        if summary_result.summary:
-            content_lines.append(summary_result.summary)
-            content_lines.append("")
-
-        if summary_result.transcript_snippets:
-            content_lines.append("## Transcript Snippets")
-            content_lines.append("")
-            for snippet in summary_result.transcript_snippets:
-                content_lines.append(f"- {snippet}")
-            content_lines.append("")
-    elif summary_result and summary_result.error == "stale_cookies":
-        content_lines.append("*AI summary unavailable — browser session expired.*")
-        content_lines.append("")
-        content_lines.append(
-            "_Tip: Refresh your Google session in chrome-debug, then retry._"
-        )
-        content_lines.append("")
-    elif summary_result and summary_result.error == "permission_denied":
-        content_lines.append("*AI summary unavailable — no access to this video.*")
-        content_lines.append("")
-    else:
-        content_lines.append("*No AI summary available.*")
-        content_lines.append("")
-        if not is_cdp_available():
-            content_lines.append(
-                "_Tip: Run `chrome-debug` to enable AI summaries for videos._"
-            )
-        content_lines.append("")
-
-    # Add metadata section
-    content_lines.append("## Metadata")
-    content_lines.append("")
-    content_lines.append(f"- **Type:** {mime_type}")
-    if duration_ms:
-        duration_s = int(duration_ms) // 1000
-        minutes, seconds = divmod(duration_s, 60)
-        hours, minutes = divmod(minutes, 60)
-        if hours:
-            content_lines.append(f"- **Duration:** {hours}:{minutes:02d}:{seconds:02d}")
-        else:
-            content_lines.append(f"- **Duration:** {minutes}:{seconds:02d}")
-    content_lines.append(f"- **Link:** {metadata.get('webViewLink', '')}")
-
-    content = "\n".join(content_lines)
+    # Build content via extractor (pure markdown assembly)
+    content = extract_video_content(
+        title,
+        summary=summary_result.summary if summary_result else None,
+        transcript_snippets=summary_result.transcript_snippets if summary_result else None,
+        summary_error=summary_result.error if summary_result else None,
+        has_summary=summary_result.has_content if summary_result else False,
+        mime_type=mime_type,
+        duration_ms=duration_ms,
+        web_view_link=metadata.get("webViewLink", ""),
+        cdp_available=is_cdp_available(),
+    )
 
     # Deposit to workspace
     folder = get_deposit_folder("video", title, file_id, base_path=base_path)
@@ -420,7 +383,7 @@ def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context:
     conversion for complex/image-heavy PDFs.
     """
     # Extract via adapter (handles download + hybrid extraction + thumbnail rendering)
-    result = fetch_and_extract_pdf(file_id)
+    result = fetch_and_convert_pdf(file_id)
 
     # Deposit to workspace
     folder = get_deposit_folder("pdf", title, file_id, base_path=base_path)
@@ -468,7 +431,7 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
     Uses adapters/office.py which handles download, conversion, and cleanup.
     """
     # Extract via adapter (handles download + conversion)
-    result = fetch_and_extract_office(file_id, office_type)
+    result = fetch_and_convert_office(file_id, office_type)
 
     # Determine output format
     output_format = "csv" if office_type == "xlsx" else "markdown"

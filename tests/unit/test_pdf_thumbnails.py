@@ -11,7 +11,7 @@ from adapters.pdf import (
     _calculate_dpi,
     render_pdf_pages,
     PageImage,
-    PdfExtractionResult,
+    PdfConversionResult,
     PdfThumbnailResult,
     TARGET_MAX_PX,
     FIXED_DPI,
@@ -198,7 +198,7 @@ class TestRenderFailsGracefully:
     @patch("adapters.pdf.render_pdf_pages")
     @patch("adapters.pdf.get_file_size")
     @patch("adapters.pdf.download_file")
-    @patch("adapters.pdf._extract_with_markitdown")
+    @patch("adapters.pdf._convert_with_markitdown")
     def test_thumbnail_failure_preserves_text_extraction(
         self,
         mock_markitdown: MagicMock,
@@ -207,14 +207,14 @@ class TestRenderFailsGracefully:
         mock_render: MagicMock,
     ) -> None:
         """Rendering failure → thumbnails=None, warning, content intact."""
-        from adapters.pdf import fetch_and_extract_pdf
+        from adapters.pdf import fetch_and_convert_pdf
 
         mock_get_size.return_value = 1024  # Small file
         mock_download.return_value = b"%PDF-content"
         mock_markitdown.return_value = "Extracted text " * 100
         mock_render.side_effect = RuntimeError("poppler exploded")
 
-        result = fetch_and_extract_pdf("file123")
+        result = fetch_and_convert_pdf("file123")
 
         assert result.content == "Extracted text " * 100
         assert result.method == "markitdown"
@@ -234,7 +234,7 @@ class TestRenderFailsGracefully:
         tmp_path: Path,
     ) -> None:
         """Large file path: rendering failure → content intact, temp cleaned up."""
-        from adapters.pdf import fetch_and_extract_pdf, STREAMING_THRESHOLD_BYTES
+        from adapters.pdf import fetch_and_convert_pdf, STREAMING_THRESHOLD_BYTES
 
         mock_get_size.return_value = STREAMING_THRESHOLD_BYTES + 1
         temp_file = tmp_path / "large.pdf"
@@ -247,7 +247,7 @@ class TestRenderFailsGracefully:
 
         mock_render.side_effect = ImportError("No poppler")
 
-        result = fetch_and_extract_pdf("large_id")
+        result = fetch_and_convert_pdf("large_id")
 
         assert result.content == "Large file content " * 100
         assert result.thumbnails is None
@@ -256,7 +256,7 @@ class TestRenderFailsGracefully:
     @patch("adapters.pdf.render_pdf_pages")
     @patch("adapters.pdf.get_file_size")
     @patch("adapters.pdf.download_file")
-    @patch("adapters.pdf._extract_with_markitdown")
+    @patch("adapters.pdf._convert_with_markitdown")
     def test_successful_thumbnails_attached_to_result(
         self,
         mock_markitdown: MagicMock,
@@ -265,7 +265,7 @@ class TestRenderFailsGracefully:
         mock_render: MagicMock,
     ) -> None:
         """Successful rendering → thumbnails attached to result."""
-        from adapters.pdf import fetch_and_extract_pdf
+        from adapters.pdf import fetch_and_convert_pdf
 
         mock_get_size.return_value = 1024
         mock_download.return_value = b"%PDF-content"
@@ -279,7 +279,7 @@ class TestRenderFailsGracefully:
             method="pdf2image",
         )
 
-        result = fetch_and_extract_pdf("file123")
+        result = fetch_and_convert_pdf("file123")
 
         assert result.thumbnails is not None
         assert len(result.thumbnails.pages) == 2
@@ -316,7 +316,7 @@ class TestPageCap:
 class TestPdfThumbnailDeposit:
     """Test deposit of thumbnails via tool layer (drive path)."""
 
-    @patch("tools.fetch.drive.fetch_and_extract_pdf")
+    @patch("tools.fetch.drive.fetch_and_convert_pdf")
     @patch("tools.fetch.drive.get_deposit_folder")
     @patch("tools.fetch.drive.write_content")
     @patch("tools.fetch.drive._deposit_pdf_thumbnails")
@@ -336,7 +336,7 @@ class TestPdfThumbnailDeposit:
         folder = tmp_path / "pdf--test--abc123"
         folder.mkdir()
 
-        result_obj = PdfExtractionResult(
+        result_obj = PdfConversionResult(
             content="# PDF Content",
             method="markitdown",
             char_count=100,
@@ -372,7 +372,7 @@ class TestPdfThumbnailDeposit:
         assert extra["has_thumbnails"] is True
         assert extra["thumbnail_count"] == 3
 
-    @patch("tools.fetch.drive.fetch_and_extract_pdf")
+    @patch("tools.fetch.drive.fetch_and_convert_pdf")
     @patch("tools.fetch.drive.get_deposit_folder")
     @patch("tools.fetch.drive.write_content")
     @patch("tools.fetch.drive._deposit_pdf_thumbnails")
@@ -392,7 +392,7 @@ class TestPdfThumbnailDeposit:
         folder = tmp_path / "pdf--test--abc123"
         folder.mkdir()
 
-        mock_extract.return_value = PdfExtractionResult(
+        mock_extract.return_value = PdfConversionResult(
             content="# PDF Content",
             method="markitdown",
             char_count=100,
@@ -414,7 +414,7 @@ class TestWebPdfThumbnails:
     """Test thumbnail rendering in the web PDF path."""
 
     @patch("tools.fetch.web.render_pdf_pages")
-    @patch("tools.fetch.web.extract_pdf_content")
+    @patch("tools.fetch.web.convert_pdf_content")
     @patch("tools.fetch.web._deposit_pdf_thumbnails")
     @patch("tools.fetch.web.get_deposit_folder")
     @patch("tools.fetch.web.write_content")
@@ -444,7 +444,7 @@ class TestWebPdfThumbnails:
             raw_bytes=b"%PDF-test-content",
         )
 
-        mock_extract.return_value = PdfExtractionResult(
+        mock_extract.return_value = PdfConversionResult(
             content="PDF text",
             method="markitdown",
             char_count=100,
@@ -466,7 +466,7 @@ class TestWebPdfThumbnails:
         mock_deposit_thumbs.assert_called_once()
 
     @patch("tools.fetch.web.render_pdf_pages")
-    @patch("tools.fetch.web.extract_pdf_content")
+    @patch("tools.fetch.web.convert_pdf_content")
     @patch("tools.fetch.web._deposit_pdf_thumbnails")
     @patch("tools.fetch.web.get_deposit_folder")
     @patch("tools.fetch.web.write_content")
@@ -499,7 +499,7 @@ class TestWebPdfThumbnails:
             temp_path=temp_pdf,
         )
 
-        mock_extract.return_value = PdfExtractionResult(
+        mock_extract.return_value = PdfConversionResult(
             content="PDF text",
             method="markitdown",
             char_count=100,
@@ -521,7 +521,7 @@ class TestWebPdfThumbnails:
         mock_deposit_thumbs.assert_called_once()
 
     @patch("tools.fetch.web.render_pdf_pages")
-    @patch("tools.fetch.web.extract_pdf_content")
+    @patch("tools.fetch.web.convert_pdf_content")
     @patch("tools.fetch.web.get_deposit_folder")
     @patch("tools.fetch.web.write_content")
     @patch("tools.fetch.web.write_manifest")
@@ -549,7 +549,7 @@ class TestWebPdfThumbnails:
             raw_bytes=b"%PDF-test",
         )
 
-        mock_extract.return_value = PdfExtractionResult(
+        mock_extract.return_value = PdfConversionResult(
             content="PDF text",
             method="markitdown",
             char_count=100,
@@ -576,7 +576,7 @@ class TestDepositPdfThumbnailsHelper:
         folder = tmp_path / "deposit"
         folder.mkdir()
 
-        result = PdfExtractionResult(
+        result = PdfConversionResult(
             content="text",
             method="markitdown",
             char_count=4,
@@ -610,7 +610,7 @@ class TestDepositPdfThumbnailsHelper:
         folder = tmp_path / "deposit"
         folder.mkdir()
 
-        result = PdfExtractionResult(
+        result = PdfConversionResult(
             content="text", method="markitdown", char_count=4, thumbnails=None
         )
 
@@ -627,7 +627,7 @@ class TestDepositPdfThumbnailsHelper:
         folder.mkdir()
 
         # 3 pages total, but only page 0 and 2 rendered (page 1 missing)
-        result = PdfExtractionResult(
+        result = PdfConversionResult(
             content="text",
             method="markitdown",
             char_count=4,
@@ -651,7 +651,7 @@ class TestGmailAttachmentThumbnails:
     """Test thumbnail rendering in the Gmail single-attachment PDF path."""
 
     @patch("tools.fetch.gmail.render_pdf_pages")
-    @patch("tools.fetch.gmail.extract_pdf_content")
+    @patch("tools.fetch.gmail.convert_pdf_content")
     @patch("tools.fetch.gmail._deposit_pdf_thumbnails")
     @patch("tools.fetch.gmail.get_deposit_folder")
     @patch("tools.fetch.gmail.write_content")
@@ -701,7 +701,7 @@ class TestGmailAttachmentThumbnails:
         mock_dl.content = b"%PDF-report-content"
         mock_download_att.return_value = mock_dl
 
-        mock_extract.return_value = PdfExtractionResult(
+        mock_extract.return_value = PdfConversionResult(
             content="Report text",
             method="markitdown",
             char_count=100,

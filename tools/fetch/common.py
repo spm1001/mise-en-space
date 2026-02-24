@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from adapters.drive import fetch_file_comments
-from adapters.pdf import PdfExtractionResult
+from adapters.pdf import PdfConversionResult
 from extractors.comments import extract_comments_content
 from models import MiseError, EmailContext
 from workspace import write_content, write_page_thumbnail
@@ -49,7 +49,7 @@ def _enrich_with_comments(file_id: str, folder: Path) -> tuple[int, str | None]:
 
 def _deposit_pdf_thumbnails(
     folder: Path,
-    result: PdfExtractionResult,
+    result: PdfConversionResult,
 ) -> dict[str, Any]:
     """
     Write PDF page thumbnails to deposit folder and return manifest extras.

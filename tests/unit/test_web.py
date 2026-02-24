@@ -514,12 +514,12 @@ class TestWebPdfRouting:
         )
         assert web_data.raw_bytes is None
 
-    @patch('tools.fetch.web.extract_pdf_content')
+    @patch('tools.fetch.web.convert_pdf_content')
     @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_routes_pdf_to_extraction(self, mock_fetch, mock_extract) -> None:
         """fetch_web() detects PDF content type and routes to PDF extraction."""
         from tools.fetch import fetch_web
-        from adapters.pdf import PdfExtractionResult
+        from adapters.pdf import PdfConversionResult
 
         pdf_bytes = b"%PDF-1.4 test content"
         mock_fetch.return_value = WebData(
@@ -532,7 +532,7 @@ class TestWebPdfRouting:
             render_method='http',
             raw_bytes=pdf_bytes,
         )
-        mock_extract.return_value = PdfExtractionResult(
+        mock_extract.return_value = PdfConversionResult(
             content="# Extracted PDF Content",
             method="markitdown",
             char_count=25,
@@ -561,12 +561,12 @@ class TestWebPdfRouting:
         assert web_data.temp_path == tmp
         assert web_data.raw_bytes is None
 
-    @patch('tools.fetch.web.extract_pdf_content')
+    @patch('tools.fetch.web.convert_pdf_content')
     @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_routes_large_pdf_via_temp_path(self, mock_fetch, mock_extract) -> None:
         """fetch_web() uses temp_path for large streamed PDFs."""
         from tools.fetch import fetch_web
-        from adapters.pdf import PdfExtractionResult
+        from adapters.pdf import PdfConversionResult
         import tempfile
 
         # Create a real temp file so cleanup works
@@ -585,7 +585,7 @@ class TestWebPdfRouting:
             render_method='http',
             temp_path=tmp_path,
         )
-        mock_extract.return_value = PdfExtractionResult(
+        mock_extract.return_value = PdfConversionResult(
             content="# Large PDF Content",
             method="markitdown",
             char_count=20,
@@ -600,7 +600,7 @@ class TestWebPdfRouting:
         # Verify temp file was cleaned up
         assert not tmp_path.exists(), "temp file should be cleaned up after extraction"
 
-    @patch('tools.fetch.web.extract_pdf_content')
+    @patch('tools.fetch.web.convert_pdf_content')
     @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_cleans_up_temp_on_extraction_error(self, mock_fetch, mock_extract) -> None:
         """Temp file is cleaned up even if extraction fails."""
@@ -679,12 +679,12 @@ class TestWebOfficeRouting:
         assert web_data.raw_bytes == docx_bytes
         assert web_data.html == ''
 
-    @patch('tools.fetch.web.extract_office_content')
+    @patch('tools.fetch.web.convert_office_content')
     @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_routes_docx_to_extraction(self, mock_fetch, mock_extract) -> None:
         """fetch_web() detects DOCX content type and routes to Office extraction."""
         from tools.fetch import fetch_web
-        from adapters.office import OfficeExtractionResult
+        from adapters.office import OfficeConversionResult
 
         docx_bytes = b"PK\x03\x04 fake docx"
         mock_fetch.return_value = WebData(
@@ -697,7 +697,7 @@ class TestWebOfficeRouting:
             render_method='http',
             raw_bytes=docx_bytes,
         )
-        mock_extract.return_value = OfficeExtractionResult(
+        mock_extract.return_value = OfficeConversionResult(
             content="# Report Content",
             source_type="docx",
             export_format="markdown",
@@ -714,12 +714,12 @@ class TestWebOfficeRouting:
         assert call_args.args[0] == "docx"
         assert call_args.kwargs["file_bytes"] == docx_bytes
 
-    @patch('tools.fetch.web.extract_office_content')
+    @patch('tools.fetch.web.convert_office_content')
     @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_routes_xlsx_to_extraction(self, mock_fetch, mock_extract) -> None:
         """fetch_web() detects XLSX content type and routes to Office extraction."""
         from tools.fetch import fetch_web
-        from adapters.office import OfficeExtractionResult
+        from adapters.office import OfficeConversionResult
 
         xlsx_bytes = b"PK\x03\x04 fake xlsx"
         mock_fetch.return_value = WebData(
@@ -732,7 +732,7 @@ class TestWebOfficeRouting:
             render_method='http',
             raw_bytes=xlsx_bytes,
         )
-        mock_extract.return_value = OfficeExtractionResult(
+        mock_extract.return_value = OfficeConversionResult(
             content="Name,Value\nAlice,100",
             source_type="xlsx",
             export_format="csv",
@@ -747,12 +747,12 @@ class TestWebOfficeRouting:
         mock_extract.assert_called_once()
         assert mock_extract.call_args.args[0] == "xlsx"
 
-    @patch('tools.fetch.web.extract_office_content')
+    @patch('tools.fetch.web.convert_office_content')
     @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_routes_pptx_to_extraction(self, mock_fetch, mock_extract) -> None:
         """fetch_web() detects PPTX content type and routes to Office extraction."""
         from tools.fetch import fetch_web
-        from adapters.office import OfficeExtractionResult
+        from adapters.office import OfficeConversionResult
 
         pptx_bytes = b"PK\x03\x04 fake pptx"
         mock_fetch.return_value = WebData(
@@ -765,7 +765,7 @@ class TestWebOfficeRouting:
             render_method='http',
             raw_bytes=pptx_bytes,
         )
-        mock_extract.return_value = OfficeExtractionResult(
+        mock_extract.return_value = OfficeConversionResult(
             content="Slide 1: Title",
             source_type="pptx",
             export_format="plain",
@@ -778,12 +778,12 @@ class TestWebOfficeRouting:
         assert result.format == "markdown"  # non-xlsx → markdown
         assert result.metadata["title"] == "slides"
 
-    @patch('tools.fetch.web.extract_office_content')
+    @patch('tools.fetch.web.convert_office_content')
     @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_routes_large_office_via_temp_path(self, mock_fetch, mock_extract) -> None:
         """fetch_web() uses temp_path for large streamed Office files."""
         from tools.fetch import fetch_web
-        from adapters.office import OfficeExtractionResult
+        from adapters.office import OfficeConversionResult
         import tempfile
 
         # Create a real temp file so cleanup works
@@ -802,7 +802,7 @@ class TestWebOfficeRouting:
             render_method='http',
             temp_path=tmp_path,
         )
-        mock_extract.return_value = OfficeExtractionResult(
+        mock_extract.return_value = OfficeConversionResult(
             content="# Huge Report",
             source_type="docx",
             export_format="markdown",
@@ -818,7 +818,7 @@ class TestWebOfficeRouting:
         # Verify temp file was cleaned up
         assert not tmp_path.exists(), "temp file should be cleaned up after extraction"
 
-    @patch('tools.fetch.web.extract_office_content')
+    @patch('tools.fetch.web.convert_office_content')
     @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_cleans_up_office_temp_on_error(self, mock_fetch, mock_extract) -> None:
         """Temp file is cleaned up even if Office extraction fails."""
@@ -847,7 +847,7 @@ class TestWebOfficeRouting:
 
         assert not tmp_path.exists(), "temp file should be cleaned up even on error"
 
-    @patch('tools.fetch.web.extract_office_content')
+    @patch('tools.fetch.web.convert_office_content')
     @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_office_no_content_raises(self, mock_fetch, mock_extract) -> None:
         """fetch_web() raises MiseError when Office response has neither bytes nor temp_path."""
@@ -867,12 +867,12 @@ class TestWebOfficeRouting:
         with pytest.raises(MiseError, match="No Office content received"):
             fetch_web("https://example.com/empty.docx")
 
-    @patch('tools.fetch.web.extract_office_content')
+    @patch('tools.fetch.web.convert_office_content')
     @patch('tools.fetch.web.fetch_web_content')
     def test_fetch_web_office_content_type_with_charset(self, mock_fetch, mock_extract) -> None:
         """Office Content-Type with charset parameter still routes correctly."""
         from tools.fetch import fetch_web
-        from adapters.office import OfficeExtractionResult
+        from adapters.office import OfficeConversionResult
 
         mock_fetch.return_value = WebData(
             url="https://example.com/report.docx",
@@ -884,7 +884,7 @@ class TestWebOfficeRouting:
             render_method='http',
             raw_bytes=b"PK\x03\x04 docx",
         )
-        mock_extract.return_value = OfficeExtractionResult(
+        mock_extract.return_value = OfficeConversionResult(
             content="# Report",
             source_type="docx",
             export_format="markdown",
@@ -975,12 +975,12 @@ class TestPdfContentTypeMismatch:
         finally:
             tmp_path.unlink(missing_ok=True)
 
-    @patch('tools.fetch.web.extract_pdf_content')
+    @patch('tools.fetch.web.convert_pdf_content')
     @patch('tools.fetch.web.fetch_web_content')
     def test_real_pdf_bytes_pass_through(self, mock_fetch, mock_extract) -> None:
         """Actual PDF bytes pass the magic check and reach extraction."""
         from tools.fetch import fetch_web
-        from adapters.pdf import PdfExtractionResult
+        from adapters.pdf import PdfConversionResult
 
         mock_fetch.return_value = WebData(
             url="https://example.com/real.pdf",
@@ -992,7 +992,7 @@ class TestPdfContentTypeMismatch:
             render_method='http',
             raw_bytes=b"%PDF-1.4 real pdf content",
         )
-        mock_extract.return_value = PdfExtractionResult(
+        mock_extract.return_value = PdfConversionResult(
             content="# Real PDF", method="markitdown", char_count=10,
         )
 

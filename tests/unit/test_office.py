@@ -5,9 +5,9 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from adapters.office import (
-    extract_office_content,
+    convert_office_content,
     get_office_type_from_mime,
-    OfficeExtractionResult,
+    OfficeConversionResult,
     OFFICE_FORMATS,
 )
 from tools.fetch import fetch_office
@@ -26,7 +26,7 @@ class TestOfficeExtraction:
             warnings=[],
         )
 
-        result = extract_office_content("docx", file_bytes=b"fake docx bytes", file_id="file123")
+        result = convert_office_content("docx", file_bytes=b"fake docx bytes", file_id="file123")
 
         assert result.source_type == "docx"
         assert result.export_format == "markdown"
@@ -65,7 +65,7 @@ class TestOfficeExtraction:
             "=== Sheet: Sheet2 ===\nID,Desc\n1,Widget"
         )
 
-        result = extract_office_content("xlsx", file_bytes=b"fake xlsx bytes", file_id="file123")
+        result = convert_office_content("xlsx", file_bytes=b"fake xlsx bytes", file_id="file123")
 
         assert result.source_type == "xlsx"
         assert result.export_format == "csv"
@@ -89,7 +89,7 @@ class TestOfficeExtraction:
             warnings=[],
         )
 
-        result = extract_office_content("pptx", file_bytes=b"fake pptx bytes", file_id="file123")
+        result = convert_office_content("pptx", file_bytes=b"fake pptx bytes", file_id="file123")
 
         assert result.source_type == "pptx"
         assert result.export_format == "plain"
@@ -109,7 +109,7 @@ class TestOfficeExtraction:
             warnings=["Failed to delete temp file"],
         )
 
-        result = extract_office_content("docx", file_bytes=b"bytes", file_id="file123")
+        result = convert_office_content("docx", file_bytes=b"bytes", file_id="file123")
 
         assert "Failed to delete temp file" in result.warnings
 
@@ -141,7 +141,7 @@ class TestOfficeTypeDetection:
 class TestFetchOffice:
     """Tests for Office fetch tool function."""
 
-    @patch("tools.fetch.drive.fetch_and_extract_office")
+    @patch("tools.fetch.drive.fetch_and_convert_office")
     @patch("tools.fetch.drive.get_deposit_folder")
     @patch("tools.fetch.drive.write_content")
     @patch("tools.fetch.drive.write_manifest")
@@ -154,7 +154,7 @@ class TestFetchOffice:
         tmp_path: Path,
     ) -> None:
         """Test that fetch_office deposits content to workspace."""
-        mock_extract.return_value = OfficeExtractionResult(
+        mock_extract.return_value = OfficeConversionResult(
             content="# Document",
             source_type="docx",
             export_format="markdown",
@@ -173,7 +173,7 @@ class TestFetchOffice:
         mock_extract.assert_called_once_with("abc123", "docx")
         mock_write_content.assert_called_once()
 
-    @patch("tools.fetch.drive.fetch_and_extract_office")
+    @patch("tools.fetch.drive.fetch_and_convert_office")
     @patch("tools.fetch.drive.get_deposit_folder")
     @patch("tools.fetch.drive.write_content")
     @patch("tools.fetch.drive.write_manifest")
@@ -186,7 +186,7 @@ class TestFetchOffice:
         tmp_path: Path,
     ) -> None:
         """Test that XLSX fetch uses CSV format."""
-        mock_extract.return_value = OfficeExtractionResult(
+        mock_extract.return_value = OfficeConversionResult(
             content="A,B,C",
             source_type="xlsx",
             export_format="csv",
@@ -205,7 +205,7 @@ class TestFetchOffice:
         call_args = mock_write_content.call_args
         assert call_args.kwargs.get("filename") == "content.csv" or "content.csv" in str(call_args)
 
-    @patch("tools.fetch.drive.fetch_and_extract_office")
+    @patch("tools.fetch.drive.fetch_and_convert_office")
     @patch("tools.fetch.drive.get_deposit_folder")
     @patch("tools.fetch.drive.write_content")
     @patch("tools.fetch.drive.write_manifest")
@@ -222,7 +222,7 @@ class TestFetchOffice:
         deposit_folder = tmp_path / "xlsx--budget--abc123"
         deposit_folder.mkdir()
 
-        mock_extract.return_value = OfficeExtractionResult(
+        mock_extract.return_value = OfficeConversionResult(
             content="A,B\n1,2",
             source_type="xlsx",
             export_format="csv",
@@ -245,7 +245,7 @@ class TestFetchOffice:
         extra = manifest_call.kwargs.get("extra") or manifest_call[1].get("extra")
         assert extra["raw_file"] == "Budget.xlsx"
 
-    @patch("tools.fetch.drive.fetch_and_extract_office")
+    @patch("tools.fetch.drive.fetch_and_convert_office")
     @patch("tools.fetch.drive.get_deposit_folder")
     @patch("tools.fetch.drive.write_content")
     @patch("tools.fetch.drive.write_manifest")
@@ -266,7 +266,7 @@ class TestFetchOffice:
         temp_file = tmp_path / "streamed.xlsx"
         temp_file.write_bytes(fake_xlsx_bytes)
 
-        mock_extract.return_value = OfficeExtractionResult(
+        mock_extract.return_value = OfficeConversionResult(
             content="col1\n1",
             source_type="xlsx",
             export_format="csv",
@@ -292,7 +292,7 @@ class TestFetchOffice:
         extra = manifest_call.kwargs.get("extra") or manifest_call[1].get("extra")
         assert extra["raw_file"] == "Big Budget.xlsx"
 
-    @patch("tools.fetch.drive.fetch_and_extract_office")
+    @patch("tools.fetch.drive.fetch_and_convert_office")
     @patch("tools.fetch.drive.get_deposit_folder")
     @patch("tools.fetch.drive.write_content")
     @patch("tools.fetch.drive.write_manifest")
@@ -308,7 +308,7 @@ class TestFetchOffice:
         deposit_folder = tmp_path / "docx--report--def456"
         deposit_folder.mkdir()
 
-        mock_extract.return_value = OfficeExtractionResult(
+        mock_extract.return_value = OfficeConversionResult(
             content="# Report",
             source_type="docx",
             export_format="markdown",
