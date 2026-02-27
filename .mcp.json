@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mise": {
+      "command": "uv",
+      "args": ["run", "--project", "${CLAUDE_PLUGIN_ROOT}", "python3", "server.py"],
+      "cwd": "${CLAUDE_PLUGIN_ROOT}"
+    }
+  }
+}
