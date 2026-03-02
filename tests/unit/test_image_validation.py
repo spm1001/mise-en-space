@@ -160,6 +160,24 @@ class TestResizeImageBytes:
         with pytest.raises(ValueError, match="not a valid image"):
             resize_image_bytes(b"", "image/png")
 
+    def test_unsupported_mime_type_raises_value_error(self):
+        """Unknown MIME type raises ValueError instead of silently defaulting to PNG."""
+        png = _make_png_bytes(2000, 1000)
+        with pytest.raises(ValueError, match="unsupported image MIME type"):
+            resize_image_bytes(png, "image/tiff", max_long_edge=500)
+
+    def test_typo_in_mime_type_raises_value_error(self):
+        """Typo in MIME type (image/webpp) raises ValueError."""
+        png = _make_png_bytes(2000, 1000)
+        with pytest.raises(ValueError, match="unsupported image MIME type"):
+            resize_image_bytes(png, "image/webpp", max_long_edge=500)
+
+    def test_unsupported_mime_small_image_still_raises(self):
+        """Unknown MIME type raises even when image is small (no resize needed)."""
+        png = _make_png_bytes(100, 100)
+        with pytest.raises(ValueError, match="unsupported image MIME type"):
+            resize_image_bytes(png, "image/tiff")
+
     def test_png_jpeg_fallback_when_still_too_large(self):
         """PNG still > max_size_bytes after resize → converted to JPEG."""
         # Use a 400×400 PNG (exceeds max_long_edge=200 → resize is triggered)

@@ -24,6 +24,9 @@ _MIME_TO_FORMAT: dict[str, str] = {
     "image/webp": "WEBP",
 }
 
+# Callers can pre-check before downloading (e.g. Gmail attachment filtering).
+SUPPORTED_IMAGE_MIME_TYPES: frozenset[str] = frozenset(_MIME_TO_FORMAT)
+
 
 @dataclass
 class ImageValidation:
@@ -83,8 +86,10 @@ def resize_image_bytes(
     """
     Open image bytes and resize if the long edge exceeds max_long_edge.
 
-    Raises ValueError if PIL cannot open the bytes (genuine MIME mismatch —
-    cannot be fixed by resizing; caller should skip the image).
+    Raises ValueError if:
+    - PIL cannot open the bytes (genuine MIME mismatch)
+    - mime_type is not in SUPPORTED_IMAGE_MIME_TYPES
+    Caller should skip the image on ValueError.
 
     Resize rules:
     - If max(w, h) ≤ max_long_edge: return bytes and mime_type unchanged.
@@ -107,6 +112,12 @@ def resize_image_bytes(
     w, h = img.size
     original_dimensions = f"{w}×{h}"
 
+    if mime_type not in _MIME_TO_FORMAT:
+        raise ValueError(
+            f"unsupported image MIME type {mime_type!r}"
+            f" (supported: {', '.join(sorted(_MIME_TO_FORMAT))})"
+        )
+
     if max(w, h) <= max_long_edge:
         return ImageResizeResult(
             content_bytes=content_bytes,
@@ -120,7 +131,7 @@ def resize_image_bytes(
     new_h = max(1, round(h * scale))
     img = img.resize((new_w, new_h), Image.LANCZOS)
 
-    fmt = _MIME_TO_FORMAT.get(mime_type, "PNG")
+    fmt = _MIME_TO_FORMAT[mime_type]
     out_mime = mime_type
     jpeg_fallback = False
 

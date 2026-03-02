@@ -10,7 +10,7 @@ from adapters.gmail import fetch_thread, download_attachment
 from adapters.office import convert_office_content, get_office_type_from_mime
 from adapters.pdf import convert_pdf_content, render_pdf_pages
 from extractors.gmail import extract_thread_content
-from extractors.image import resize_image_bytes
+from extractors.image import resize_image_bytes, SUPPORTED_IMAGE_MIME_TYPES
 from models import MiseError, FetchResult, FetchError, EmailAttachment
 from workspace import get_deposit_folder, write_content, write_manifest, write_image
 
@@ -30,7 +30,7 @@ OFFICE_MIME_TYPES = {
 # NOTE: In conversations with >20 accumulated images the limit drops to 2000px.
 # We can't know conversation context at deposit time — note dimension in metadata
 # so Claude can judge risk in long conversations.
-SUPPORTED_IMAGE_MIME_TYPES = frozenset({"image/jpeg", "image/png", "image/gif", "image/webp"})
+# SUPPORTED_IMAGE_MIME_TYPES imported from extractors.image (single source of truth)
 
 # Maximum attachments to extract eagerly (prevent runaway extraction)
 MAX_EAGER_ATTACHMENTS = 10
