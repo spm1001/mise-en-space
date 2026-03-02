@@ -51,6 +51,36 @@ class TestAllOperationsReturnDoResult:
         assert result.operation == "move"
 
     @patch("retry.time.sleep")
+    @patch("tools.rename.get_drive_service")
+    def test_rename_returns_do_result(self, mock_svc, _sleep) -> None:
+        from tools.rename import do_rename
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().update().execute.return_value = {
+            "id": "f1", "name": "New Name", "webViewLink": "",
+        }
+
+        result = do_rename("f1", "New Name")
+        assert isinstance(result, DoResult)
+        assert result.operation == "rename"
+
+    @patch("retry.time.sleep")
+    @patch("tools.share.get_drive_service")
+    def test_share_returns_do_result(self, mock_svc, _sleep) -> None:
+        from tools.share import do_share
+
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().get().execute.return_value = {
+            "id": "f1", "name": "Doc", "webViewLink": "",
+        }
+
+        result = do_share("f1", "alice@example.com", confirm=True)
+        assert isinstance(result, DoResult)
+        assert result.operation == "share"
+
+    @patch("retry.time.sleep")
     @patch("tools.edit.get_docs_service")
     def test_prepend_returns_do_result(self, mock_svc, _sleep) -> None:
         from tools.edit import do_prepend

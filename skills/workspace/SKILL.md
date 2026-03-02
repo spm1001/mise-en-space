@@ -27,9 +27,9 @@ fetch("1abc...", base_path="/Users/modha/Repos/my-project")
 
 | Tool | Purpose | Output |
 |------|---------|--------|
-| `search` | Find files/emails | Path to deposited JSON + counts |
+| `search` | Find files/emails/activity/calendar events | Path to deposited JSON + counts |
 | `fetch` | Extract content to disk | Deposit folder: content.md, comments.md, manifest.json |
-| `do` | Act on Workspace (create, move, overwrite, edit) | File ID + web URL + cues |
+| `do` | Act on Workspace (create, move, rename, share, overwrite, edit, email, Gmail ops) | File ID + web URL + cues |
 
 `fetch` auto-detects input: Drive file ID, Drive URL, Gmail thread ID, or web URL.
 
@@ -140,16 +140,39 @@ Rule of thumb: <10 results → just read. >15 → filter with jq first.
 
 See `references/filtering-results.md` for patterns.
 
+### Search Sources
+
+Default sources are `['drive', 'gmail']`. Two additional sources are available:
+
+| Source | What it returns | When to use |
+|--------|----------------|-------------|
+| `activity` | Recent comment events from Drive Activity API | "What's been discussed recently?" / "Any comments on my files?" |
+| `calendar` | Calendar events with Drive attachments | Enriches Drive results with meeting context |
+
+```python
+# Recent comment activity
+search("project update", sources=["activity"], base_path="...")
+
+# Calendar enrichment (adds meeting_context to Drive results)
+search("Q4 report", sources=["drive", "calendar"], base_path="...")
+```
+
+**`activity`** returns comment events — who commented, on what, when. Actors show as "Unknown" (people/ID limitation); the content and file are accurate.
+
+**`calendar`** is NOT in default sources (adds an API call with ±7 day window). When included alongside `drive`, matching calendar event attachments add `meeting_context` to Drive results — connecting a file to the meeting where it was discussed.
+
 ## Workflow 4: Do (Act on Workspace)
 
 **When:** "Make a Google Doc from this" / "Move this file" / "Update that doc" / "Add a note to the meeting minutes"
 
-### The 6 Operations
+### The Operations
 
 | Operation | What it does | Key params |
 |-----------|-------------|------------|
 | `create` | New Doc/Sheet/Slides | `content`+`title` OR `source` |
 | `move` | Move file between folders | `file_id`, `destination_folder_id` |
+| `rename` | Rename a file in-place | `file_id`, `title` |
+| `share` | Share file with people (confirm gate) | `file_id`, `to`, `confirm=True` |
 | `overwrite` | Replace full doc content | `file_id`, `content` OR `source` |
 | `prepend` | Insert at start of doc | `file_id`, `content` |
 | `append` | Insert at end of doc | `file_id`, `content` |
@@ -187,6 +210,28 @@ do(operation="move", file_id="1abc...", destination_folder_id="1xyz...")
 **Create:** Without `folder_id`, the doc lands in Drive root. Response includes `cues.folder` showing where it landed.
 
 **Move:** Enforces single parent — removes all existing parents, adds destination. Response includes `cues.destination_folder` (name) and `cues.previous_parents`.
+
+### Rename and Share
+
+```python
+# Rename
+do(operation="rename", file_id="1abc...", title="Final Q4 Report")
+
+# Share — TWO-STEP confirm gate
+# Step 1: Preview (returns what would happen, does NOT share)
+do(operation="share", file_id="1abc...", to="alice@example.com")
+# → {"preview": true, "message": "Would share 'Report' with alice@example.com as reader", ...}
+
+# Step 2: Execute after user approves
+do(operation="share", file_id="1abc...", to="alice@example.com", confirm=True)
+
+# Share with role and multiple people
+do(operation="share", file_id="1abc...", to="alice@example.com, bob@example.com", role="writer", confirm=True)
+```
+
+**Share requires user approval.** The first call without `confirm=True` always returns a preview. Show it to the user and only call again with `confirm=True` after they approve. Roles: `reader` (default), `writer`, `commenter`.
+
+**Non-Google accounts** (iCloud, Outlook, etc.): Google requires a notification email. The tool handles this automatically — check `cues.notified` to see which recipients got an invite email.
 
 ### Overwrite
 
@@ -323,6 +368,7 @@ See `references/deposit-structure.md` for the full attachment layout.
 | Omit base_path | Deposits vanish into server directory | Always pass it |
 | Overwrite a doc with images/tables | Content destroyed, not recoverable | Use `prepend`/`append`/`replace_text` |
 | `replace_text` without checking cues | Silent no-op if text not found | Check `cues.occurrences_changed > 0` |
+| Share with `confirm=True` without preview | Bypasses user approval | Always call without confirm first, show preview, then confirm |
 
 ## Integration
 

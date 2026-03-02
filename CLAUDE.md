@@ -45,9 +45,9 @@ docs/           Design documents and references
 
 | Tool | Purpose | Writes files? |
 |------|---------|---------------|
-| `search` | Find files/emails, return metadata + inline preview | No |
+| `search` | Find files/emails/activity/calendar events, return metadata + inline preview | No |
 | `fetch` | Download content to `mise/` in cwd, return path + cues | Yes |
-| `do` | Act on Workspace (create, move, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label) | Varies |
+| `do` | Act on Workspace (create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label) | Varies |
 
 **Key behaviors:**
 - `search` returns metadata only — Claude triages before fetching
@@ -97,6 +97,7 @@ mise/
 | **Image size skip vs format skip asymmetry** | `att.size > 4.5MB` no longer causes a pre-download skip — oversized images are downloaded and resized. Unsupported MIME types (not in `SUPPORTED_IMAGE_MIME_TYPES`) still skip pre-download. Reason: size is fixable by resizing; unsupported format is not. Don't restore the size check without also removing the resize logic. |
 | **get_deposit_folder wipes on re-fetch** | Every call to `get_deposit_folder` deletes existing files in that folder before returning it. This prevents stale files from previous fetches. Do NOT call `get_deposit_folder` twice for the same folder mid-operation (e.g. inside a retry loop) — the second call will wipe files the first call's writes produced. |
 | **MCP server must restart after code changes** | The MCP server loads code at session start. Edits to `extractors/`, `adapters/`, `tools/`, `workspace/` are not live until the next Claude Code session. Smoke-test new features in a fresh session. |
+| **Share requires confirm gate** | `do(operation="share")` without `confirm=True` returns a preview — the API won't execute. Call once to preview, show user, call again with `confirm=True`. Non-Google emails (iCloud, Outlook) automatically fall back to notification email (Google requires it); check `cues.notified` to see which recipients were notified. |
 
 ## Development
 

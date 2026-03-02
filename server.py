@@ -30,7 +30,7 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from tools import do_search, do_fetch, do_create, do_move, do_overwrite, do_prepend, do_append, do_replace_text, do_draft, do_reply_draft, do_archive, do_star, do_label, OPERATIONS
+from tools import do_search, do_fetch, do_create, do_move, do_rename, do_share, do_overwrite, do_prepend, do_append, do_replace_text, do_draft, do_reply_draft, do_archive, do_star, do_label, OPERATIONS
 from models import DoResult
 from resources.tools import get_tool_registry
 
@@ -44,6 +44,13 @@ _DISPATCH: dict[str, Any] = {
     ),
     "move": lambda p: do_move(
         file_id=p["file_id"], destination_folder_id=p["destination_folder_id"],
+    ),
+    "rename": lambda p: do_rename(
+        file_id=p["file_id"], title=p["title"],
+    ),
+    "share": lambda p: do_share(
+        file_id=p["file_id"], to=p["to"], role=p.get("role"),
+        confirm=p.get("confirm", False),
     ),
     "overwrite": lambda p: do_overwrite(
         file_id=p["file_id"], content=p["content"],
@@ -168,6 +175,8 @@ def do(
     cc: str | None = None,
     include: list[str] | None = None,
     reply_all: bool = False,
+    role: str | None = None,
+    confirm: bool = False,
     label: str | None = None,
     remove: bool = False,
 ) -> dict[str, Any]:
@@ -175,23 +184,25 @@ def do(
     Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail.
 
     Args:
-        operation: What to do. One of: 'create', 'move', 'overwrite', 'prepend', 'append', 'replace_text', 'draft', 'reply_draft', 'archive', 'star', 'label'
+        operation: What to do. One of: 'create', 'move', 'rename', 'share', 'overwrite', 'prepend', 'append', 'replace_text', 'draft', 'reply_draft', 'archive', 'star', 'label'
         content: Text content. Usage varies by operation.
         title: Document title (required for create, falls back to manifest title when using source)
         doc_type: 'doc' | 'sheet' | 'slides' (for create)
         folder_id: Optional destination folder (for create)
-        file_id: Target file or thread (required for move, overwrite, prepend, append, replace_text, reply_draft, archive, star, label)
+        file_id: Target file or thread (required for move, rename, share, overwrite, prepend, append, replace_text, reply_draft, archive, star, label)
         destination_folder_id: Where to move the file (required for move)
         source: Path to deposit folder containing content to publish (for create/overwrite).
                 Reads content.md (doc) or content.csv (sheet) from the folder.
                 Manifest is enriched with creation receipt after success.
         base_path: Directory for resolving relative source paths (pass your cwd)
         find: Text to find (required for replace_text)
-        to: Recipient email address(es), comma-separated (for draft)
+        to: Recipient email address(es), comma-separated (for draft, share)
         subject: Email subject (for draft; separate from title which is for create)
         cc: CC address(es), comma-separated (for draft, reply_draft). Overrides inferred Cc for reply_draft.
         include: List of Drive file IDs to include as links in the email body (for draft, reply_draft)
         reply_all: If True, infer Cc from all recipients on the last message (for reply_draft)
+        role: Permission role for share — 'reader' (default), 'writer', or 'commenter'
+        confirm: Required True to execute share (safety gate — first call previews, second executes)
         label: Label name to add/remove (for label operation; resolved to ID automatically)
         remove: If True, remove the label instead of adding it (for label operation)
 
@@ -210,7 +221,8 @@ def do(
         "destination_folder_id": destination_folder_id,
         "source": source, "base_path": base_path, "find": find,
         "to": to, "subject": subject, "cc": cc, "include": include,
-        "reply_all": reply_all, "label": label, "remove": remove,
+        "reply_all": reply_all, "role": role, "confirm": confirm,
+        "label": label, "remove": remove,
     }
     result = handler(params)
     return result.to_dict() if isinstance(result, DoResult) else result
@@ -449,6 +461,8 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 |-----------|-------------|-----------------|
 | `create` | Create Doc/Sheet from content or deposit | `content`+`title` OR `source` |
 | `move` | Move file to different folder | `file_id`, `destination_folder_id` |
+| `rename` | Rename a file in-place | `file_id`, `title` |
+| `share` | Share file with people by email | `file_id`, `to` |
 | `overwrite` | Replace full document content | `file_id`, plus `content` OR `source` |
 | `prepend` | Insert text at start of document | `file_id`, `content` |
 | `append` | Insert text at end of document | `file_id`, `content` |
@@ -465,6 +479,8 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 
 **Reply draft** fetches a thread, infers recipients from the last message, adds threading headers (In-Reply-To, References), and creates a draft in the correct conversation. Recipients auto-populated; use `reply_all=True` to Cc all original recipients.
 
+**Share** is a two-step operation (confirm gate). First call returns a preview showing what would happen. Second call with `confirm=True` executes. This ensures the user approves before files become visible to others. Default role is `reader` (least privilege). Notification emails are suppressed.
+
 **Archive/star/label** modify Gmail thread labels. Label names are resolved to IDs automatically (case-insensitive). Use `remove=True` with label to remove instead of add.
 
 ## Parameters
@@ -475,20 +491,22 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 |-------|------|---------|---------|
 | `operation` | str | 'create' | All |
 | `content` | str | None | create, overwrite, prepend, append, replace_text, draft (email body) |
-| `title` | str | None | create |
+| `title` | str | None | create, rename |
 | `doc_type` | str | 'doc' | create ('doc', 'sheet', 'slides') |
 | `folder_id` | str | None | create |
-| `file_id` | str | None | move, overwrite, prepend, append, replace_text |
+| `file_id` | str | None | move, rename, share, overwrite, prepend, append, replace_text |
 | `destination_folder_id` | str | None | move |
 | `source` | str | None | create, overwrite (path to deposit folder) |
 | `base_path` | str | None | Required with source (your cwd) |
 | `find` | str | None | replace_text (case-sensitive) |
+| `role` | str | 'reader' | share ('reader', 'writer', 'commenter') |
+| `confirm` | bool | False | share (must be True to execute — first call previews) |
 
 ### Email operations
 
 | Param | Type | Default | Used by |
 |-------|------|---------|---------|
-| `to` | str | None | draft (recipient email, comma-separated for multiple) |
+| `to` | str | None | draft (recipient email), share (email to share with; comma-separated for multiple) |
 | `subject` | str | None | draft (email subject line) |
 | `cc` | str | None | draft, reply_draft (CC addresses, comma-separated; overrides inferred Cc for reply_draft) |
 | `include` | list[str] | None | draft, reply_draft (Drive file IDs — resolved to formatted links in body) |
@@ -539,6 +557,19 @@ do(operation="create", source="mise/sheet--q4-analysis--draft/", title="Q4 Analy
 
 # Move a file to a different folder
 do(operation="move", file_id="1abc...", destination_folder_id="1xyz...")
+
+# Rename a file
+do(operation="rename", file_id="1abc...", title="Final Q4 Report")
+
+# Share a file — step 1: preview (returns what would happen)
+do(operation="share", file_id="1abc...", to="alice@example.com")
+# → {"preview": true, "message": "Would share 'Report' with alice@example.com as reader", ...}
+
+# Share a file — step 2: execute after user approves
+do(operation="share", file_id="1abc...", to="alice@example.com", confirm=True)
+
+# Share with multiple people as writer
+do(operation="share", file_id="1abc...", to="alice@example.com, bob@example.com", role="writer", confirm=True)
 
 # Overwrite document content (replaces everything)
 do(operation="overwrite", file_id="1abc...", content="# New Content\\n\\nFresh start.")
