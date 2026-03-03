@@ -11,47 +11,9 @@ from datetime import datetime
 from typing import Any
 
 from models import GmailThreadData, EmailMessage, ForwardedMessage
+from html_convert import clean_html_for_conversion as _clean_html_for_conversion
 
 from .talon_signature import strip_signature_and_quotes
-
-
-# =============================================================================
-# HTML CLEANING (pure regex — also available in html_convert.py for adapters)
-# =============================================================================
-
-
-def _clean_html_for_conversion(html: str) -> str:
-    """
-    Strip common email HTML cruft before markdown conversion.
-
-    Pure regex — no I/O. Removes tracking pixels, MSO conditionals,
-    hidden elements, spacer cells, empty paragraphs. Canonical copy
-    lives in html_convert.py; this is a local copy so extractors/
-    stays stdlib-only (no cross-module imports).
-    """
-    if not html:
-        return html
-
-    html = re.sub(
-        r'<br\s+style="[^"]*display:\s*none[^"]*"\s*/?>',
-        '', html, flags=re.IGNORECASE)
-    html = re.sub(
-        r'<!--\[if\s+.*?\]>.*?<!\[endif\]-->',
-        '', html, flags=re.DOTALL | re.IGNORECASE)
-    html = re.sub(
-        r'<img[^>]*(?:width|height)=["\']1["\'][^>]*/?>',
-        '', html, flags=re.IGNORECASE)
-    html = re.sub(
-        r'<[^>]+style="[^"]*display:\s*none[^"]*"[^>]*>.*?</[^>]+>',
-        '', html, flags=re.DOTALL | re.IGNORECASE)
-    html = re.sub(
-        r'<td[^>]*>\s*(&nbsp;|\s)*\s*</td>',
-        '', html, flags=re.IGNORECASE)
-    html = re.sub(
-        r'<(p|div)[^>]*>\s*(&nbsp;|\s)*\s*</\1>',
-        '', html, flags=re.IGNORECASE)
-
-    return html
 
 
 def _convert_html_to_markdown(html: str) -> tuple[str, bool]:

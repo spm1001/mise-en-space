@@ -189,6 +189,18 @@ class TestHTMLCleaning:
         assert "Hidden" not in result
         assert "Visible" in result
 
+    def test_removes_nested_hidden_elements(self):
+        """Nested display:none elements must be fully removed without corrupting surrounding HTML."""
+        from html_convert import clean_html_for_conversion
+
+        html = '<p>Before</p><div style="display:none"><div>Inner</div></div><p>After</p>'
+        result = clean_html_for_conversion(html)
+        assert "Inner" not in result
+        assert "Before" in result
+        assert "After" in result
+        # No dangling closing tags
+        assert result.count("</div>") == result.count("<div")
+
 
 class TestMessageExtraction:
     """Tests for extracting content from EmailMessage."""

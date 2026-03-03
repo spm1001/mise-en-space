@@ -634,41 +634,6 @@ class DoResult:
         return result
 
 
-@dataclass
-class CreateResult:
-    """Successful create result."""
-    file_id: str
-    web_link: str
-    title: str
-    doc_type: str
-    cues: dict[str, Any] | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "file_id": self.file_id,
-            "title": self.title,
-            "web_link": self.web_link,
-            "operation": "create",
-            "type": self.doc_type,
-            "cues": self.cues or {},
-        }
-
-
-@dataclass
-class CreateError:
-    """Create error result."""
-    error: bool = True
-    kind: str = "unknown"
-    message: str = ""
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "error": self.error,
-            "kind": self.kind,
-            "message": self.message,
-        }
-
-
 # ============================================================================
 # COMMENTS TYPES
 # ============================================================================
@@ -805,36 +770,3 @@ class CalendarSearchResult:
     warnings: list[str] = field(default_factory=list)
 
 
-# ============================================================================
-# TASKS TYPES
-# ============================================================================
-
-@dataclass
-class TaskItem:
-    """A Google Tasks task."""
-    task_id: str
-    title: str
-    status: str  # "needsAction" or "completed"
-    due: str | None = None  # RFC3339 date
-    notes: str | None = None
-    updated: str | None = None  # RFC3339 timestamp
-    completed: str | None = None  # RFC3339 timestamp
-    parent_id: str | None = None  # For subtasks
-    web_link: str | None = None
-
-
-@dataclass
-class TaskList:
-    """A Google Tasks task list."""
-    list_id: str
-    title: str
-    updated: str | None = None
-
-
-@dataclass
-class TaskSearchResult:
-    """Results from Tasks API query."""
-    tasks: list[TaskItem]
-    task_list_title: str | None = None
-    next_page_token: str | None = None
-    warnings: list[str] = field(default_factory=list)

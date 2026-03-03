@@ -35,6 +35,25 @@ from models import DoResult
 from resources.tools import get_tool_registry
 
 
+# Required params per operation — validated before dispatch.
+# Only lists unconditionally required params (e.g. file_id for move).
+# Conditional requirements (create needs content OR source) stay in handlers.
+_REQUIRED_PARAMS: dict[str, set[str]] = {
+    "create": set(),  # content OR source — handler validates
+    "move": {"file_id", "destination_folder_id"},
+    "rename": {"file_id", "title"},
+    "share": {"file_id", "to"},
+    "overwrite": {"file_id"},  # content OR source — handler validates
+    "prepend": {"file_id", "content"},
+    "append": {"file_id", "content"},
+    "replace_text": {"file_id", "find", "content"},
+    "draft": {"to", "subject", "content"},
+    "reply_draft": {"file_id", "content"},
+    "archive": {"file_id"},
+    "star": {"file_id"},
+    "label": {"file_id", "label"},
+}
+
 # Dispatch table for do() operations.
 # Each handler receives the full params dict and handles its own validation.
 _DISPATCH: dict[str, Any] = {
@@ -160,7 +179,7 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None) -> d
 
 @mcp.tool()
 def do(
-    operation: str = "create",
+    operation: str,
     content: str | None = None,
     title: str | None = None,
     doc_type: str = "doc",
@@ -224,8 +243,19 @@ def do(
         "reply_all": reply_all, "role": role, "confirm": confirm,
         "label": label, "remove": remove,
     }
-    result = handler(params)
-    return result.to_dict() if isinstance(result, DoResult) else result
+
+    required = _REQUIRED_PARAMS.get(operation, set())
+    missing = {p for p in required if params.get(p) is None}
+    if missing:
+        return {"error": True, "kind": "INVALID_INPUT",
+                "message": f"'{operation}' requires: {', '.join(sorted(missing))}"}
+
+    try:
+        result = handler(params)
+    except Exception as e:
+        return {"error": True, "kind": "INTERNAL",
+                "message": f"Operation '{operation}' failed: {e}", "retryable": False}
+    return result.to_dict() if hasattr(result, "to_dict") else result
 
 
 # ============================================================================
@@ -489,7 +519,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 
 | Param | Type | Default | Used by |
 |-------|------|---------|---------|
-| `operation` | str | 'create' | All |
+| `operation` | str | **required** | All |
 | `content` | str | None | create, overwrite, prepend, append, replace_text, draft (email body) |
 | `title` | str | None | create, rename |
 | `doc_type` | str | 'doc' | create ('doc', 'sheet', 'slides') |

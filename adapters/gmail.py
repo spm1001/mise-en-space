@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.utils import parsedate_to_datetime
+from email.utils import formataddr, getaddresses, parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -70,11 +70,20 @@ def _parse_headers(headers: list[dict[str, str]]) -> dict[str, str]:
 
 
 def _parse_address_list(value: str | None) -> list[str]:
-    """Parse comma-separated email addresses."""
+    """Parse email addresses from a header value, handling RFC 5322 edge cases.
+
+    Uses email.utils.getaddresses to correctly handle commas inside quoted
+    display names (e.g., "Doe, Jane" <jane@example.com>).
+    """
     if not value:
         return []
-    # Simple split — doesn't handle quoted names, but good enough
-    return [addr.strip() for addr in value.split(",") if addr.strip()]
+    # Strip trailing comma — sloppy clients emit it, getaddresses misparses it
+    cleaned = value.strip().rstrip(",")
+    if not cleaned:
+        return []
+    parsed = getaddresses([cleaned])
+    return [formataddr(pair) if pair[0] else pair[1]
+            for pair in parsed if pair[1]]
 
 
 def _parse_date(date_str: str | None, internal_date: str | None) -> datetime | None:
@@ -396,7 +405,7 @@ def download_attachment(
     data = base64.urlsafe_b64decode(response["data"])
     size = len(data)
 
-    # For large files, write to temp
+    # For large files, write to temp and release memory
     temp_path = None
     if size > ATTACHMENT_STREAMING_THRESHOLD:
         suffix = ""
@@ -406,6 +415,7 @@ def download_attachment(
         tmp.write(data)
         tmp.close()
         temp_path = Path(tmp.name)
+        data = b""  # Release decoded bytes — content lives on disk now
 
     return AttachmentDownload(
         filename=filename or "attachment",

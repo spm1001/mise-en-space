@@ -97,13 +97,22 @@ def clean_html_for_conversion(html: str) -> str:
         flags=re.IGNORECASE
     )
 
-    # Completely hidden elements (display:none)
-    html = re.sub(
-        r'<[^>]+style="[^"]*display:\s*none[^"]*"[^>]*>.*?</[^>]+>',
-        '',
-        html,
-        flags=re.DOTALL | re.IGNORECASE
-    )
+    # Completely hidden elements (display:none) — use BeautifulSoup for correct
+    # nesting (regex can't handle nested tags like <div style="display:none"><div>x</div></div>)
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "html.parser")
+        for el in soup.find_all(style=re.compile(r'display:\s*none', re.IGNORECASE)):
+            el.decompose()
+        html = str(soup)
+    except ImportError:
+        # Fallback: strip only self-closing/void hidden elements (safe subset)
+        html = re.sub(
+            r'<[^>]+style="[^"]*display:\s*none[^"]*"[^>]*/?>',
+            '',
+            html,
+            flags=re.IGNORECASE
+        )
 
     # Spacer cells with just &nbsp;
     html = re.sub(

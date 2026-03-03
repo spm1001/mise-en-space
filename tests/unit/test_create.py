@@ -51,12 +51,10 @@ class TestDoToolRouting:
         assert result["file_id"] == "doc1"
         assert result["type"] == "doc"
 
-    def test_default_operation_is_create(self) -> None:
-        """Calling do() without operation should default to create."""
-        result = do(content=None, title=None)
-        # Should hit the create validation (missing content/title), not unknown operation
-        assert result["kind"] == "invalid_input"
-        assert "content" in result["message"]
+    def test_operation_is_required(self) -> None:
+        """Calling do() without operation should raise TypeError (no dangerous default)."""
+        with pytest.raises(TypeError, match="missing 1 required positional argument"):
+            do(content=None, title=None)
 
 
 class TestDoCreateValidation:

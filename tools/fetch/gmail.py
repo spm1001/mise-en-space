@@ -233,12 +233,18 @@ def _extract_attachment_content(
             mime_type=att.mime_type,
         )
 
+        # Prefer temp_path for large files (content is cleared to save memory)
+        if download.temp_path:
+            content_bytes = download.temp_path.read_bytes()
+        else:
+            content_bytes = download.content
+
         result = _deposit_attachment_content(
-            download.content, att.filename, att.mime_type, att.attachment_id, folder
+            content_bytes, att.filename, att.mime_type, att.attachment_id, folder
         )
 
-        # Clean up temp file if created and type not handled
-        if result is None and download.temp_path:
+        # Clean up temp file if created
+        if download.temp_path:
             download.temp_path.unlink(missing_ok=True)
 
         return result
@@ -475,6 +481,11 @@ def _download_attachment_bytes(msg: Any, att: Any, mime_type: str) -> bytes:
         filename=att.filename,
         mime_type=mime_type,
     )
+    # Prefer temp_path for large files (content is cleared to save memory)
+    if dl.temp_path:
+        data = dl.temp_path.read_bytes()
+        dl.temp_path.unlink(missing_ok=True)
+        return data
     return dl.content
 
 

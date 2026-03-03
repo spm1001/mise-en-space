@@ -84,6 +84,18 @@ class TestParseAddressList:
         result = _parse_address_list("alice@example.com,")
         assert result == ["alice@example.com"]
 
+    def test_comma_in_display_name(self) -> None:
+        """RFC 5322: commas inside quoted display names must not split the address."""
+        result = _parse_address_list('"Doe, Jane" <jane@example.com>, bob@example.com')
+        assert len(result) == 2
+        assert "jane@example.com" in result[0]
+        assert "Doe, Jane" in result[0]
+        assert result[1] == "bob@example.com"
+
+    def test_display_name_preserved(self) -> None:
+        result = _parse_address_list("Alice Smith <alice@example.com>")
+        assert result == ["Alice Smith <alice@example.com>"]
+
 
 class TestParseDate:
     """Test date parsing from header or internal timestamp."""
@@ -711,3 +723,33 @@ class TestDownloadAttachment:
 
         assert result.filename == "attachment"
         assert result.mime_type == "application/octet-stream"
+
+    @patch('adapters.gmail.get_gmail_service')
+    def test_large_attachment_clears_content(self, mock_get_service) -> None:
+        """Large attachment writes to temp and clears content bytes to save memory."""
+        import base64
+        from adapters.gmail import ATTACHMENT_STREAMING_THRESHOLD
+
+        # Create data larger than threshold
+        content = b"x" * (ATTACHMENT_STREAMING_THRESHOLD + 1)
+        encoded = base64.urlsafe_b64encode(content).decode()
+
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_api_chain(mock_service, "users.messages.attachments.get.execute", {
+            "data": encoded,
+        })
+
+        with patch('retry.time.sleep'):
+            result = download_attachment("msg1", "att1", filename="big.pdf", mime_type="application/pdf")
+
+        assert result.temp_path is not None
+        assert result.temp_path.exists()
+        assert result.content == b""  # Memory released
+        assert result.size == len(content)  # Size still recorded
+
+        # Temp file has the actual content
+        assert result.temp_path.read_bytes() == content
+
+        # Clean up
+        result.temp_path.unlink()

@@ -5,9 +5,10 @@ Shared infrastructure for PDF and Office file extraction.
 Both use Drive's implicit conversion: upload with target mimeType → auto-converts.
 """
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Generator, Literal
 import logging
 
 from googleapiclient.http import MediaFileUpload, MediaInMemoryUpload
@@ -220,6 +221,43 @@ def delete_temp_file(file_id: str, file_name: str = "") -> bool:
     return _delete_temp_file(service, file_id, file_name)
 
 
+@contextmanager
+def drive_temp_file(
+    file_bytes: bytes | None = None,
+    source_mime: str = "",
+    target_type: Literal["doc", "sheet", "slides"] = "doc",
+    temp_name_prefix: str = "_mise_temp_",
+    file_id_hint: str = "",
+    file_path: Path | None = None,
+    source_file_id: str | None = None,
+) -> Generator[str, None, None]:
+    """Context manager wrapping upload_and_convert with guaranteed cleanup.
+
+    Yields the temp file ID. Deletes the temp file in finally block,
+    so callers can't forget cleanup even on exception.
+
+    Usage:
+        with drive_temp_file(file_bytes=data, source_mime="application/pdf") as temp_id:
+            content = export(temp_id)
+    """
+    temp_id = upload_and_convert(
+        file_bytes=file_bytes,
+        source_mime=source_mime,
+        target_type=target_type,
+        temp_name_prefix=temp_name_prefix,
+        file_id_hint=file_id_hint,
+        file_path=file_path,
+        source_file_id=source_file_id,
+    )
+    temp_name = f"{temp_name_prefix}{file_id_hint}" if file_id_hint else temp_name_prefix
+    try:
+        yield temp_id
+    finally:
+        deleted = delete_temp_file(temp_id, temp_name)
+        if not deleted:
+            logger.warning(f"Orphaned temp file: {temp_name} (ID: {temp_id})")
+
+
 def _delete_temp_file(service: Any, file_id: str, file_name: str) -> bool:
     """
     Delete temporary file from Drive. Best-effort, logs failures.
@@ -233,3 +271,38 @@ def _delete_temp_file(service: Any, file_id: str, file_name: str) -> bool:
     except Exception as e:
         logger.warning(f"Failed to delete temp file {file_name} ({file_id}): {e}")
         return False
+
+
+def cleanup_orphaned_temp_files() -> int:
+    """Find and delete orphaned _mise_temp_* files in Drive.
+
+    Best-effort cleanup — logs failures, doesn't raise.
+    Returns count of files successfully deleted.
+    """
+    service = get_drive_service()
+    deleted = 0
+    try:
+        result = (
+            service.files()
+            .list(
+                q="name contains '_mise_temp_' and trashed = false",
+                fields="files(id, name, createdTime)",
+                pageSize=50,
+            )
+            .execute()
+        )
+        files = result.get("files", [])
+        if not files:
+            return 0
+
+        logger.info(f"Found {len(files)} orphaned _mise_temp_* files in Drive")
+        for f in files:
+            if _delete_temp_file(service, f["id"], f["name"]):
+                deleted += 1
+
+        if deleted:
+            logger.info(f"Cleaned up {deleted}/{len(files)} orphaned temp files")
+    except Exception as e:
+        logger.warning(f"Orphan cleanup failed: {e}")
+
+    return deleted

@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, TYPE_CHECKING, cast
 
-from adapters.conversion import convert_via_drive, upload_and_convert, delete_temp_file
+from adapters.conversion import convert_via_drive, drive_temp_file
 from adapters.drive import download_file, download_file_to_temp, get_file_size, STREAMING_THRESHOLD_BYTES
 from adapters.sheets import fetch_spreadsheet
 from extractors.sheets import extract_sheets_content
@@ -132,28 +132,21 @@ def _convert_xlsx_via_sheets_api(
     """
     warnings: list[str] = []
 
-    # Step 1: upload and convert to Google Sheet
-    temp_id = upload_and_convert(
+    # Upload, convert, read, and auto-cleanup via context manager
+    with drive_temp_file(
         file_bytes=file_bytes,
         file_path=file_path,
         source_mime=source_mime,
         target_type="sheet",
         file_id_hint=file_id,
         source_file_id=source_file_id,
-    )
-
-    try:
-        # Step 2: read all tabs via Sheets API (no chart rendering for temp files)
+    ) as temp_id:
+        # Read all tabs via Sheets API (no chart rendering for temp files)
         spreadsheet_data = fetch_spreadsheet(temp_id, render_charts=False)
 
-        # Step 3: extract content (gets all tabs with === Sheet: Name === headers)
+        # Extract content (gets all tabs with === Sheet: Name === headers)
         content = extract_sheets_content(spreadsheet_data)
         warnings.extend(spreadsheet_data.warnings)
-
-    finally:
-        # Step 4: always clean up temp file
-        if not delete_temp_file(temp_id, f"_mise_temp_{file_id}"):
-            warnings.append(f"Failed to delete temp file (ID: {temp_id})")
 
     return OfficeConversionResult(
         content=content,

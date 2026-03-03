@@ -13,6 +13,16 @@ server.py       FastMCP entry point
 docs/           Design documents and references
 ```
 
+**Shared utilities (root level)** — infrastructure that multiple layers need but doesn't belong in any single layer:
+
+| File | Purpose | Used by |
+|------|---------|---------|
+| `html_convert.py` | HTML→markdown via markitdown (needs tempfile — why it's not in extractors) | adapters |
+| `filters.py` | Attachment filtering logic (`is_trivial_attachment`, `filter_attachments`) | adapters, tools |
+| `validation.py` | ID/URL validation (`validate_drive_id`, `validate_gmail_id`, etc.) | tools, adapters |
+| `retry.py` | Retry decorator with exponential backoff and jitter | adapters |
+| `logging_config.py` | Structured logging setup (`logger`, `log_retry`) | everywhere |
+
 **Key references:** `docs/information-flow.md` (flow diagrams, timing data), `docs/decisions.md` (full design decision history with rationale).
 
 **Layer rules:**
@@ -22,7 +32,7 @@ docs/           Design documents and references
 - Adapters use `convert_*` names, not `extract_*` (extract_* reserved for pure extractors/)
 - Tools wire adapters → extractors → workspace
 - server.py just registers tools
-- `html_convert.py` is a shared I/O helper (markitdown needs tempfile); used by adapters, not extractors
+- Shared utilities live at root level — don't add new ones without understanding the pattern above
 
 ### Adapter Specializations
 

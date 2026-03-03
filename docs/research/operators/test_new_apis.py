@@ -12,7 +12,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from adapters.services import (
     get_activity_service,
-    get_tasks_service,
     get_calendar_service,
     get_labels_service,
     get_drive_service,
@@ -77,56 +76,6 @@ def test_activity_api():
                     print(f"      Mentions: {len(comment['mentionedUsers'])} users")
                 if "assignment" in comment:
                     print(f"      Assignment: {comment['assignment']}")
-
-    except HttpError as e:
-        print(f"❌ API error: {e.resp.status} - {e.reason}")
-    except Exception as e:
-        print(f"❌ Error: {type(e).__name__}: {e}")
-
-
-def test_tasks_api():
-    """Test Google Tasks API."""
-    print("\n" + "=" * 60)
-    print("GOOGLE TASKS API")
-    print("=" * 60)
-
-    try:
-        tasks = get_tasks_service()
-
-        # List task lists
-        result = tasks.tasklists().list(maxResults=10).execute()
-        lists = result.get("items", [])
-        print(f"✅ Found {len(lists)} task lists")
-
-        for tl in lists:
-            print(f"\n  List: {tl.get('title')}")
-
-            # Get tasks including assigned ones
-            tasks_result = tasks.tasks().list(
-                tasklist=tl["id"],
-                maxResults=10,
-                showCompleted=False,
-                showHidden=True,
-                showAssigned=True,  # Important: include assigned tasks from Docs
-            ).execute()
-
-            items = tasks_result.get("items", [])
-            print(f"  Tasks: {len(items)}")
-
-            for task in items[:5]:
-                title = task.get("title", "(no title)")[:50]
-                status = task.get("status", "?")
-                print(f"    [{status}] {title}")
-
-                # Check for assignment info
-                if task.get("assignmentInfo"):
-                    info = task["assignmentInfo"]
-                    print(f"           Assigned via: {info.get('linkBack', '?')}")
-
-                # Check for notes with Drive links
-                notes = task.get("notes", "")
-                if "drive.google" in notes:
-                    print(f"           Has Drive link")
 
     except HttpError as e:
         print(f"❌ API error: {e.resp.status} - {e.reason}")
@@ -233,7 +182,6 @@ def main():
     print("Testing new APIs with expanded scopes...")
 
     test_activity_api()
-    test_tasks_api()
     test_calendar_api()
     test_labels_api()
 

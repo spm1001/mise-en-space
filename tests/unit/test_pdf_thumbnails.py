@@ -696,9 +696,10 @@ class TestGmailAttachmentThumbnails:
         mock_fetch_thread.return_value = thread
         mock_exfil.return_value = {}
 
-        # Mock download
+        # Mock download (temp_path=None means content stays in memory)
         mock_dl = MagicMock()
         mock_dl.content = b"%PDF-report-content"
+        mock_dl.temp_path = None
         mock_download_att.return_value = mock_dl
 
         mock_extract.return_value = PdfConversionResult(

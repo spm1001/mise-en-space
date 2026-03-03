@@ -17,9 +17,15 @@ from googleapiclient.http import MediaIoBaseUpload
 from adapters.services import get_drive_service
 from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
 from adapters.sheets import add_sheet, update_sheet_values, rename_sheet
-from models import CreateResult, CreateError, DoResult, MiseError, ErrorKind
+from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 from workspace import enrich_manifest
+from tools.common import resolve_source as _resolve_source
+
+
+def _create_error(kind: str, message: str) -> dict[str, Any]:
+    """Structured error dict for create operations."""
+    return {"error": True, "kind": kind, "message": message}
 
 
 # Supported doc types and their target MIME types
@@ -123,19 +129,6 @@ def _csv_text_to_values(csv_text: str) -> list[list[str]]:
     return [row for row in reader]
 
 
-def _resolve_source(source: str | None, base_path: str | None) -> Path | None:
-    """Resolve source path relative to base_path.
-
-    Returns None if no source. Raises ValueError if source given without base_path.
-    """
-    if not source:
-        return None
-    if not base_path:
-        raise ValueError("base_path is required when using source — pass your working directory")
-    source_path = Path(source)
-    return source_path if source_path.is_absolute() else Path(base_path) / source_path
-
-
 def do_create(
     content: str | None = None,
     title: str | None = None,
@@ -172,22 +165,7 @@ def do_create(
         return {"error": True, "kind": "invalid_input",
                 "message": "create requires 'content' or 'source'"}
 
-    result = _do_create_internal(content, title, doc_type, folder_id, resolved_source)
-
-    # Wrap CreateResult → DoResult at boundary
-    if isinstance(result, CreateResult):
-        return DoResult(
-            file_id=result.file_id,
-            title=result.title,
-            web_link=result.web_link,
-            operation="create",
-            cues=result.cues or {},
-            extras={"type": result.doc_type},
-        )
-    elif isinstance(result, CreateError):
-        return result.to_dict()
-    else:
-        return result
+    return _do_create_internal(content, title, doc_type, folder_id, resolved_source)
 
 
 def _do_create_internal(
@@ -196,21 +174,18 @@ def _do_create_internal(
     doc_type: str = "doc",
     folder_id: str | None = None,
     source: Path | None = None,
-) -> CreateResult | CreateError:
-    """Internal create logic — keeps existing CreateResult/CreateError pattern."""
+) -> DoResult | dict[str, Any]:
+    """Internal create logic. Returns DoResult on success, error dict on failure."""
     # Validate doc_type
     if doc_type not in DOC_TYPE_TO_MIME:
-        return CreateError(
-            kind="invalid_input",
-            message=f"Unsupported doc_type: {doc_type}. Must be one of: {list(DOC_TYPE_TO_MIME.keys())}",
+        return _create_error(
+            "invalid_input",
+            f"Unsupported doc_type: {doc_type}. Must be one of: {list(DOC_TYPE_TO_MIME.keys())}",
         )
 
     # Resolve content from source or inline
     if source and content:
-        return CreateError(
-            kind="invalid_input",
-            message="Provide either 'content' or 'source', not both.",
-        )
+        return _create_error("invalid_input", "Provide either 'content' or 'source', not both.")
 
     # Check for multi-tab sheet deposit (source with tabs in manifest)
     multi_tab_data: list[tuple[str, str]] | None = None
@@ -220,7 +195,7 @@ def _do_create_internal(
             try:
                 multi_tab_data = _read_multi_tab_source(source)
             except MiseError as e:
-                return CreateError(kind=e.kind.value, message=e.message)
+                return _create_error(e.kind.value, e.message)
             if not title:
                 title = manifest.get("title")
 
@@ -228,20 +203,17 @@ def _do_create_internal(
         try:
             source_content, manifest_title = _read_source(source, doc_type)
         except MiseError as e:
-            return CreateError(kind=e.kind.value, message=e.message)
+            return _create_error(e.kind.value, e.message)
         content = source_content
         if not title:
             title = manifest_title
 
     if not multi_tab_data and not content:
-        return CreateError(
-            kind="invalid_input",
-            message="No content provided. Pass 'content' or 'source'.",
-        )
+        return _create_error("invalid_input", "No content provided. Pass 'content' or 'source'.")
     if not title:
-        return CreateError(
-            kind="invalid_input",
-            message="No title provided. Pass 'title' or include it in the source manifest.",
+        return _create_error(
+            "invalid_input",
+            "No title provided. Pass 'title' or include it in the source manifest.",
         )
 
     try:
@@ -252,13 +224,13 @@ def _do_create_internal(
         elif doc_type == "sheet":
             result = _create_sheet(content, title, folder_id)
         else:
-            return CreateError(
-                kind="not_implemented",
-                message=f"Creating {doc_type} is not yet implemented. Currently supported: doc, sheet.",
+            return _create_error(
+                "not_implemented",
+                f"Creating {doc_type} is not yet implemented. Currently supported: doc, sheet.",
             )
 
         # Enrich manifest if created from source
-        if source and isinstance(result, CreateResult):
+        if source and isinstance(result, DoResult):
             try:
                 enrich_manifest(source, {
                     "status": "created",
@@ -271,9 +243,9 @@ def _do_create_internal(
 
         return result
     except MiseError as e:
-        return CreateError(kind=e.kind.value, message=e.message)
+        return _create_error(e.kind.value, e.message)
     except Exception as e:
-        return CreateError(kind="unknown", message=f"Unexpected error creating {doc_type}: {e}")
+        return _create_error("unknown", f"Unexpected error creating {doc_type}: {e}")
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
@@ -281,7 +253,7 @@ def _create_doc(
     content: str,
     title: str,
     folder_id: str | None = None,
-) -> CreateResult | CreateError:
+) -> DoResult:
     """
     Create a Google Doc from markdown using Drive's native import.
 
@@ -339,12 +311,13 @@ def _create_doc(
         "folder_id": parents[0] if parents else folder_id,
     }
 
-    return CreateResult(
+    return DoResult(
         file_id=result["id"],
         web_link=result["webViewLink"],
         title=result.get("name", title),
-        doc_type="doc",
+        operation="create",
         cues=cues,
+        extras={"type": "doc"},
     )
 
 
@@ -353,7 +326,7 @@ def _create_sheet(
     content: str,
     title: str,
     folder_id: str | None = None,
-) -> CreateResult | CreateError:
+) -> DoResult:
     """
     Create a Google Sheet from CSV using Drive's native import.
 
@@ -406,12 +379,13 @@ def _create_sheet(
         "folder_id": parents[0] if parents else folder_id,
     }
 
-    return CreateResult(
+    return DoResult(
         file_id=result["id"],
         web_link=result["webViewLink"],
         title=result.get("name", title),
-        doc_type="sheet",
+        operation="create",
         cues=cues,
+        extras={"type": "sheet"},
     )
 
 
@@ -419,7 +393,7 @@ def _create_multi_tab_sheet(
     tabs: list[tuple[str, str]],
     title: str,
     folder_id: str | None = None,
-) -> CreateResult | CreateError:
+) -> DoResult | dict[str, Any]:
     """
     Create a multi-tab Google Sheet using hybrid path.
 
@@ -432,13 +406,13 @@ def _create_multi_tab_sheet(
     dates, numbers, booleans — same behaviour as typing into a cell.
     """
     if not tabs:
-        return CreateError(kind="invalid_input", message="No tabs provided for multi-tab sheet.")
+        return _create_error("invalid_input", "No tabs provided for multi-tab sheet.")
 
     first_tab_name, first_tab_csv = tabs[0]
 
     # Step 1: CSV upload creates the spreadsheet with tab 1
     result = _create_sheet(first_tab_csv, title, folder_id)
-    if isinstance(result, CreateError):
+    if isinstance(result, dict):
         return result
 
     spreadsheet_id = result.file_id

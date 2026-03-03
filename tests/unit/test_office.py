@@ -39,19 +39,25 @@ class TestOfficeExtraction:
         assert call_kwargs["target_type"] == "doc"
         assert call_kwargs["export_format"] == "markdown"
 
-    @patch("adapters.office.delete_temp_file", return_value=True)
     @patch("adapters.office.extract_sheets_content")
     @patch("adapters.office.fetch_spreadsheet")
-    @patch("adapters.office.upload_and_convert", return_value="temp_sheet_id")
+    @patch("adapters.office.drive_temp_file")
     def test_extract_xlsx(
         self,
-        mock_upload: MagicMock,
+        mock_drive_temp: MagicMock,
         mock_fetch_sheet: MagicMock,
         mock_extract_sheets: MagicMock,
-        mock_delete: MagicMock,
     ) -> None:
         """Test XLSX extraction uses Sheets API for all tabs."""
+        from contextlib import contextmanager
         from models import SpreadsheetData, SheetTab
+
+        @contextmanager
+        def fake_drive_temp(**kwargs):
+            yield "temp_sheet_id"
+
+        mock_drive_temp.side_effect = fake_drive_temp
+
         mock_fetch_sheet.return_value = SpreadsheetData(
             title="Test",
             spreadsheet_id="temp_sheet_id",
@@ -74,10 +80,9 @@ class TestOfficeExtraction:
         assert "Sheet2" in result.content  # Both tabs present
         assert "Widget" in result.content
 
-        # Verify Sheets API path used (not CSV export)
-        mock_upload.assert_called_once()
+        # Verify Sheets API path used
+        mock_drive_temp.assert_called_once()
         mock_fetch_sheet.assert_called_once_with("temp_sheet_id", render_charts=False)
-        mock_delete.assert_called_once()
 
     @patch("adapters.office.convert_via_drive")
     def test_extract_pptx(self, mock_convert: MagicMock) -> None:

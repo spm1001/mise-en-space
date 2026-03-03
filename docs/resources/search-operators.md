@@ -313,20 +313,6 @@ for act in result.get("activities", []):
 
 **Cost:** Single API call returns all recent comment activity. Much more efficient than N+1.
 
-### Alternative: Google Tasks API
-
-Tasks assigned from Docs appear in Google Tasks with `showAssigned=True`:
-
-```python
-from adapters.services import get_tasks_service
-
-tasks = get_tasks_service()
-result = tasks.tasks().list(
-    tasklist="@default",
-    showAssigned=True,  # Include doc-assigned tasks
-).execute()
-```
-
 ---
 
 ## Extended Capabilities (Beyond UI)

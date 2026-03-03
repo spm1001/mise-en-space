@@ -47,10 +47,10 @@ def get_imports_from_file(filepath: Path) -> set[str]:
 
 
 def get_python_files(directory: Path) -> list[Path]:
-    """Get all Python files in a directory (non-recursive for top-level packages)."""
+    """Get all Python files in a directory (recursive to cover subpackages like tools/fetch/)."""
     if not directory.exists():
         return []
-    return list(directory.glob("*.py"))
+    return list(directory.rglob("*.py"))
 
 
 class TestLayerBoundaries:
@@ -67,8 +67,9 @@ class TestLayerBoundaries:
             bad_imports = imports & forbidden
 
             if bad_imports:
+                rel_path = filepath.relative_to(PROJECT_ROOT)
                 violations.append(
-                    f"{filepath.name} imports {bad_imports}"
+                    f"{rel_path} imports {bad_imports}"
                 )
 
         assert not violations, (
@@ -100,6 +101,7 @@ class TestLayerBoundaries:
             "regex",       # Enhanced regex (talon needs duplicate named groups)
             "trafilatura",  # Web content extraction (HTML → text)
             "PIL",          # Image validation (no API calls, pure byte inspection)
+            "html_convert", # Shared HTML cleaning (clean_html_for_conversion is pure)
         }
 
         violations = []
@@ -114,8 +116,9 @@ class TestLayerBoundaries:
             non_stdlib = imports - stdlib_modules - allowed_stdlib
 
             if non_stdlib:
+                rel_path = filepath.relative_to(PROJECT_ROOT)
                 violations.append(
-                    f"{filepath.name} imports non-stdlib: {non_stdlib}"
+                    f"{rel_path} imports non-stdlib: {non_stdlib}"
                 )
 
         assert not violations, (

@@ -3,7 +3,7 @@
 from unittest.mock import patch, MagicMock
 
 from models import DoResult
-from server import _DISPATCH, do
+from server import _DISPATCH, _REQUIRED_PARAMS, do
 from tools import OPERATIONS
 
 
@@ -18,6 +18,10 @@ class TestDispatchConstant:
         """OPERATIONS is immutable."""
         assert isinstance(OPERATIONS, frozenset)
 
+    def test_required_params_matches_dispatch_keys(self) -> None:
+        """Every operation in _DISPATCH has a _REQUIRED_PARAMS entry."""
+        assert set(_REQUIRED_PARAMS.keys()) == set(_DISPATCH.keys())
+
     def test_unknown_operation_returns_error(self) -> None:
         result = do(operation="explode")
         assert result["error"] is True
@@ -26,6 +30,19 @@ class TestDispatchConstant:
         # Error message lists supported operations
         for op in OPERATIONS:
             assert op in result["message"]
+
+    def test_missing_required_params_returns_error(self) -> None:
+        """do() with missing required params returns clear error naming them."""
+        result = do(operation="move")
+        assert result["error"] is True
+        assert result["kind"] == "INVALID_INPUT"
+        assert "file_id" in result["message"]
+        assert "destination_folder_id" in result["message"]
+
+    def test_missing_single_required_param(self) -> None:
+        result = do(operation="rename", file_id="f1")
+        assert result["error"] is True
+        assert "title" in result["message"]
 
 
 class TestAllOperationsReturnDoResult:

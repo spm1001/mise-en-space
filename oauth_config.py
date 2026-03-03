@@ -28,9 +28,6 @@ SCOPES = [
     # via comment events (workaround for followup:actionitems).
     'https://www.googleapis.com/auth/drive.activity.readonly',
 
-    # Tasks: See Google Tasks. Action items from Docs/Chat can sync here.
-    'https://www.googleapis.com/auth/tasks.readonly',
-
     # Drive Labels: Organizational metadata (priority, status, etc.)
     # Enterprise feature but useful when available.
     'https://www.googleapis.com/auth/drive.labels.readonly',
