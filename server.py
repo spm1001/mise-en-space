@@ -22,17 +22,36 @@ Architecture:
 - server.py: Thin MCP wrappers (this file)
 """
 
+import asyncio
+import logging
 import os
 import signal
 import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from adapters.conversion import cleanup_orphaned_temp_files
 from tools import do_search, do_fetch, do_create, do_move, do_rename, do_share, do_overwrite, do_prepend, do_append, do_replace_text, do_draft, do_reply_draft, do_archive, do_star, do_label, OPERATIONS
 from models import DoResult
 from resources.tools import get_tool_registry
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastMCP) -> AsyncIterator[None]:
+    """Run startup tasks — best-effort orphan cleanup."""
+    try:
+        count = await asyncio.to_thread(cleanup_orphaned_temp_files)
+        if count:
+            logger.info(f"Startup: cleaned up {count} orphaned temp files")
+    except Exception as e:
+        logger.debug(f"Startup orphan cleanup skipped: {e}")
+    yield
 
 
 # Required params per operation — validated before dispatch.
@@ -97,7 +116,7 @@ _DISPATCH: dict[str, Any] = {
 }
 
 # Initialize MCP server
-mcp = FastMCP("Google Workspace v2")
+mcp = FastMCP("Google Workspace v2", lifespan=lifespan)
 
 
 # ============================================================================
