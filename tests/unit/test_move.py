@@ -32,6 +32,16 @@ class TestDoMoveValidation:
         assert result["error"] is True
         assert "destination_folder_id" in result["message"]
 
+    def test_rejects_bad_file_id(self) -> None:
+        result = do_move(file_id="bad id!", destination_folder_id="folder1")
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+
+    def test_rejects_bad_destination_id(self) -> None:
+        result = do_move(file_id="abc123", destination_folder_id="has spaces")
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+
 
 class TestDoMove:
     """Move logic with mocked Drive API."""

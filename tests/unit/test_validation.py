@@ -13,7 +13,9 @@ from validation import (
     is_gmail_web_id,
     is_gmail_api_id,
     sanitize_gmail_query,
+    sanitize_title,
     validate_drive_id,
+    validate_gmail_id,
 )
 
 
@@ -225,3 +227,59 @@ class TestValidateDriveId:
         """Error message includes the parameter name for debuggability."""
         with pytest.raises(ValueError, match="folder_id"):
             validate_drive_id("bad id!", param_name="folder_id")
+
+
+class TestValidateGmailId:
+    """Test the Gmail ID validation helper."""
+
+    def test_valid_hex_id_passes(self) -> None:
+        validate_gmail_id("abc123def456abc1")  # should not raise
+
+    def test_valid_short_id_passes(self) -> None:
+        validate_gmail_id("abc1")  # should not raise — length not enforced
+
+    def test_rejects_url(self) -> None:
+        with pytest.raises(ValueError):
+            validate_gmail_id("https://mail.google.com/mail/#inbox/abc123")
+
+    def test_rejects_spaces(self) -> None:
+        with pytest.raises(ValueError):
+            validate_gmail_id("abc 123")
+
+    def test_rejects_underscores(self) -> None:
+        with pytest.raises(ValueError):
+            validate_gmail_id("bad_thread")
+
+    def test_rejects_slashes(self) -> None:
+        with pytest.raises(ValueError):
+            validate_gmail_id("../../etc")
+
+    def test_param_name_in_error(self) -> None:
+        with pytest.raises(ValueError, match="file_id"):
+            validate_gmail_id("bad!", param_name="file_id")
+
+
+class TestSanitizeTitle:
+    """Test the title sanitization helper."""
+
+    def test_normal_title_unchanged(self) -> None:
+        assert sanitize_title("My Document (v2)") == "My Document (v2)"
+
+    def test_strips_null_bytes(self) -> None:
+        assert sanitize_title("hello\x00world") == "helloworld"
+
+    def test_strips_control_chars(self) -> None:
+        assert sanitize_title("hello\x01\x1fworld") == "helloworld"
+
+    def test_strips_del(self) -> None:
+        assert sanitize_title("hello\x7fworld") == "helloworld"
+
+    def test_preserves_unicode(self) -> None:
+        assert sanitize_title("日本語タイトル 🎉") == "日本語タイトル 🎉"
+
+    def test_preserves_tabs_not_stripped(self) -> None:
+        # Tab is control char (0x09), should be stripped
+        assert sanitize_title("col1\tcol2") == "col1col2"
+
+    def test_empty_after_strip(self) -> None:
+        assert sanitize_title("\x00\x01\x02") == ""

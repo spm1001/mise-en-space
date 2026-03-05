@@ -33,6 +33,16 @@ class TestDoRenameValidation:
         result = do_rename(file_id="f1", title="")
         assert result["error"] is True
 
+    def test_rejects_bad_file_id(self) -> None:
+        result = do_rename(file_id="bad id!", title="New Name")
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+
+    def test_control_chars_stripped_from_title(self) -> None:
+        result = do_rename(file_id="abc123", title="\x00\x01\x02")
+        assert result["error"] is True
+        assert "empty after removing" in result["message"]
+
 
 class TestDoRenameSuccess:
     """Successful rename calls."""
