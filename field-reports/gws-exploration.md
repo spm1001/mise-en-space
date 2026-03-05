@@ -77,12 +77,8 @@ gws generates 108 skills from Discovery Documents. The descriptions scored F on 
 
 The `openclaw` metadata convention (category, domain, requires.bins, requires.skills) and the prerequisite chain pattern (`gws-shared` → `gws-drive` → `recipe-audit-sharing`) are worth studying even if we wouldn't auto-generate skills ourselves.
 
-**MCP server mode (unexplored)**
-`gws mcp --services drive,gmail` runs a stdio JSON-RPC MCP server. Each API method becomes a tool. We didn't test this. Questions:
-- Could `gws mcp --services calendar` be a lightweight calendar MCP?
-- How many tools does it register per service? (Potentially hundreds — too noisy?)
-- Does the `--helpers` flag limit to just the ergonomic `+commands`?
-- What's the tool naming? (`drive_files_list` — flat, could collide)
+**MCP server mode (tested — not viable)**
+`gws mcp --services calendar` registers 37 tools (full API surface). `--helpers` doesn't filter. Generic schemas (`params: object`), no validation, destructive ops exposed, pipe fragility. See "MCP Server Mode — Tested" section below for full details. Tool naming: `calendar_events_list` (flat, `service_resource_method`).
 
 ## Speed Comparison
 
@@ -118,11 +114,40 @@ print(creds.token)
 
 **Scope gap:** mise's `token.json` doesn't have Apps Script scopes. The slides-formatter token (`~/Repos/itv-slides-formatter/token.slides.json`) does — borrow it for script operations.
 
+## MCP Server Mode — Tested 2026-03-05 (evening)
+
+**Command:** `gws mcp --services calendar --helpers`
+
+**Findings:**
+
+- Registers **37 tools** for calendar — the full API surface, not a curated subset
+- `--helpers` flag did NOT filter to helper commands only — all raw API methods exposed
+- Tool schemas are generic (`params: object`) with no parameter names, required fields, or enums
+- Destructive operations (`calendars_clear`, `events_delete`) sit alongside reads
+- Stdio JSON-RPC pipe was fragile — second request produced no output in testing
+
+**Verdict: Not suitable as a calendar adapter for mise.** Too noisy (37 tools for 1-2 we need), no input validation, destructive ops exposed, pipe fragility. The raw CLI (`gws calendar events list`) is reliable and useful for ad-hoc exploration, but the MCP wrapper adds complexity without benefit.
+
+**Better path:** Thin `adapters/calendar.py` (~60 lines) using Google Calendar API directly, consistent with mise's existing adapter pattern. The data shape is confirmed — Calendar API returns attendees, descriptions, Meet links, Drive attachments, and event types.
+
+**Data shape confirmed (tomorrow's calendar, 9 events):**
+
+| Field | Present | Example |
+|-------|---------|---------|
+| `summary` | Always | "Desired Outcomes and StW Update" |
+| `start.dateTime` | For timed events | `2026-03-06T09:30:00Z` |
+| `attendees[].displayName` | When attendees exist | "Rupert Coghlan" |
+| `attendees[].responseStatus` | Always on attendees | "accepted", "needsAction" |
+| `hangoutLink` | When Meet attached | `https://meet.google.com/...` |
+| `description` | When set | HTML content (agenda, links) |
+| `attachments[].fileUrl` | When docs attached | Google Docs URLs (fetchable by mise) |
+| `eventType` | Always | "default", "workingLocation", "focusTime" |
+
 ## What We Explicitly Didn't Explore
 
 These are the gaps for a follow-up session:
 
-1. **MCP server mode** — `gws mcp --services calendar --helpers`. Is it viable as a calendar adapter? How many tools? What's the DX?
+1. ~~**MCP server mode**~~ — Tested, verdict: not suitable (see above)
 2. **Discovery Document structure** — What exactly is in a Discovery doc? Could we parse it in Python to validate mise inputs?
 3. **Pagination behaviour** — `--page-all` streams NDJSON. How does it handle rate limits? Is it usable for large result sets?
 4. **Model Armor** — What does sanitised output look like? How does the `--sanitize` flag work in practice?
