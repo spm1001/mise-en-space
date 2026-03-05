@@ -180,9 +180,10 @@ All security-focused: Drive file ID format (`[A-Za-z0-9_-]+`), URL→ID extracti
 
 **Verdict: Not worth building.** The overlap between what Discovery provides (API parameter descriptions) and what we validate (security boundaries, ID formats, URL conversion) is essentially zero. gws confirms this — they don't do it either.
 
-**What IS worth adapting from gws validate.rs:**
-- LLM-safety validation mindset — our `do()` params should reject control characters and path traversal in user-supplied content (title, description, content fields)
+**What IS worth adapting from gws validate.rs (actioned → mise-kawega):**
+- LLM-safety validation mindset — audit found `validate_drive_id()` used in search but missing from all 13 do() operations. `source` param has path traversal gap. `title` doesn't strip control chars.
 - `validate_resource_name` pattern — reject `..`, `?`, `#`, `%` in resource-name-like inputs
+- Filed as mise-kawega with 4 concrete steps
 
 **Where Discovery WOULD help (not validation):**
 - Documentation generation — parameter names, types, descriptions for mise's tool docs
