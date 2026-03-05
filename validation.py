@@ -279,6 +279,31 @@ def is_gmail_api_id(id_value: str) -> bool:
     return bool(GMAIL_API_ID_PATTERN.match(id_value))
 
 
+_GMAIL_ID_SAFE_RE = re.compile(r'^[0-9a-zA-Z]+$')
+
+
+def validate_gmail_id(gmail_id: str, param_name: str = "thread_id") -> None:
+    """
+    Raise ValueError if gmail_id looks malformed — URLs, control chars, spaces, etc.
+
+    Gmail API thread/message IDs are alphanumeric. This rejects URLs,
+    query strings, control characters, and other obviously wrong inputs
+    without being overly strict about exact format.
+
+    Args:
+        gmail_id: The Gmail thread or message ID to validate
+        param_name: Name used in the error message
+
+    Raises:
+        ValueError: If gmail_id contains non-alphanumeric characters
+    """
+    if not _GMAIL_ID_SAFE_RE.match(gmail_id):
+        raise ValueError(
+            f"Invalid {param_name}: must contain only alphanumeric characters, "
+            f"got '{gmail_id[:30]}'"
+        )
+
+
 def extract_gmail_id(input_value: str) -> str:
     """
     Extract Gmail thread/message ID from URL, web ID, or validate API ID.
@@ -412,6 +437,15 @@ def sanitize_gmail_query(query: str) -> str:
 # =============================================================================
 
 _DRIVE_ID_RE = re.compile(r'^[A-Za-z0-9_\-]+$')
+
+
+def sanitize_title(title: str) -> str:
+    """Strip control characters from a title intended for Drive file names.
+
+    Removes ASCII control chars (0x00-0x1F) and DEL (0x7F). Preserves
+    all printable characters including unicode.
+    """
+    return "".join(c for c in title if ord(c) >= 32 and ord(c) != 0x7F)
 
 
 def validate_drive_id(drive_id: str, param_name: str = "drive_id") -> None:

@@ -13,6 +13,7 @@ from adapters.services import get_docs_service
 from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 from tools.common import resolve_source as _resolve_source
+from validation import validate_drive_id
 
 
 # Markdown heading level → Docs named style
@@ -50,6 +51,10 @@ def do_overwrite(
     if not file_id:
         return {"error": True, "kind": "invalid_input",
                 "message": "overwrite requires 'file_id'"}
+    try:
+        validate_drive_id(file_id, "file_id")
+    except ValueError as e:
+        return {"error": True, "kind": "invalid_input", "message": str(e)}
 
     # Resolve source path
     try:

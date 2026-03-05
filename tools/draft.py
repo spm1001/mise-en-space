@@ -12,6 +12,7 @@ from typing import Any
 from adapters.drive import get_file_metadata
 from adapters.gmail import create_draft, IncludedLink
 from models import DoResult, MiseError
+from validation import validate_drive_id
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ def _resolve_include(file_ids: list[str]) -> tuple[list[IncludedLink], list[str]
 
     for file_id in file_ids:
         try:
+            validate_drive_id(file_id, "include file_id")
             meta = get_file_metadata(file_id)
             links.append(IncludedLink(
                 file_id=file_id,

@@ -10,6 +10,7 @@ from typing import Any
 from adapters.services import get_docs_service
 from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
+from validation import validate_drive_id
 
 
 def _get_doc_meta(service: Any, file_id: str) -> dict[str, Any]:
@@ -33,6 +34,10 @@ def do_prepend(file_id: str | None = None, content: str | None = None) -> DoResu
         return {"error": True, "kind": "invalid_input",
                 "message": "prepend requires 'content'"}
     try:
+        validate_drive_id(file_id, "file_id")
+    except ValueError as e:
+        return {"error": True, "kind": "invalid_input", "message": str(e)}
+    try:
         return _prepend(file_id, content)
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
@@ -46,6 +51,10 @@ def do_append(file_id: str | None = None, content: str | None = None) -> DoResul
     if not content:
         return {"error": True, "kind": "invalid_input",
                 "message": "append requires 'content'"}
+    try:
+        validate_drive_id(file_id, "file_id")
+    except ValueError as e:
+        return {"error": True, "kind": "invalid_input", "message": str(e)}
     try:
         return _append(file_id, content)
     except MiseError as e:
@@ -63,6 +72,10 @@ def do_replace_text(file_id: str | None = None, find: str | None = None, content
     if content is None:
         return {"error": True, "kind": "invalid_input",
                 "message": "replace_text requires 'content' (use empty string to delete matches)"}
+    try:
+        validate_drive_id(file_id, "file_id")
+    except ValueError as e:
+        return {"error": True, "kind": "invalid_input", "message": str(e)}
     try:
         return _replace_text(file_id, find, content)
     except MiseError as e:

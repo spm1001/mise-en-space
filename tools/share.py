@@ -20,6 +20,7 @@ from googleapiclient.errors import HttpError
 from adapters.services import get_drive_service
 from models import DoResult, MiseError
 from retry import with_retry
+from validation import validate_drive_id
 
 VALID_ROLES = frozenset({"reader", "writer", "commenter"})
 
@@ -65,6 +66,11 @@ def do_share(
     if not emails:
         return {"error": True, "kind": "invalid_input",
                 "message": "No valid email addresses in 'to'"}
+
+    try:
+        validate_drive_id(file_id, "file_id")
+    except ValueError as e:
+        return {"error": True, "kind": "invalid_input", "message": str(e)}
 
     try:
         return _share_file(file_id, emails, effective_role, confirm)

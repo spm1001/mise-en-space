@@ -9,6 +9,7 @@ from typing import Any
 from adapters.services import get_drive_service
 from models import DoResult, MiseError
 from retry import with_retry
+from validation import validate_drive_id, sanitize_title
 
 
 def do_rename(
@@ -33,6 +34,14 @@ def do_rename(
             missing.append("title")
         return {"error": True, "kind": "invalid_input",
                 "message": f"rename requires {' and '.join(missing)}"}
+    try:
+        validate_drive_id(file_id, "file_id")
+    except ValueError as e:
+        return {"error": True, "kind": "invalid_input", "message": str(e)}
+    title = sanitize_title(title)
+    if not title:
+        return {"error": True, "kind": "invalid_input",
+                "message": "title is empty after removing control characters"}
     try:
         return _rename_file(file_id, title)
     except MiseError as e:

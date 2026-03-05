@@ -24,6 +24,7 @@ from tools.draft import (
     _format_links_html,
     _resolve_include,
 )
+from validation import validate_gmail_id
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,10 @@ def do_reply_draft(
     if not content:
         return {"error": True, "kind": "invalid_input",
                 "message": "reply_draft requires 'content' (reply body)"}
+    try:
+        validate_gmail_id(file_id, "file_id")
+    except ValueError as e:
+        return {"error": True, "kind": "invalid_input", "message": str(e)}
 
     # Fetch the thread to get threading info and recipients
     try:

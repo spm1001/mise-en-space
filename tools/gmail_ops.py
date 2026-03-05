@@ -10,6 +10,7 @@ from typing import Any
 
 from adapters.gmail import modify_thread, resolve_label_name
 from models import DoResult, MiseError
+from validation import validate_gmail_id
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,10 @@ def do_archive(
     if not file_id:
         return {"error": True, "kind": "invalid_input",
                 "message": "archive requires 'file_id' (Gmail thread ID)"}
+    try:
+        validate_gmail_id(file_id, "file_id")
+    except ValueError as e:
+        return {"error": True, "kind": "invalid_input", "message": str(e)}
 
     try:
         result = modify_thread(
@@ -69,6 +74,10 @@ def do_star(
     if not file_id:
         return {"error": True, "kind": "invalid_input",
                 "message": "star requires 'file_id' (Gmail thread ID)"}
+    try:
+        validate_gmail_id(file_id, "file_id")
+    except ValueError as e:
+        return {"error": True, "kind": "invalid_input", "message": str(e)}
 
     try:
         result = modify_thread(
@@ -112,6 +121,10 @@ def do_label(
     if not label:
         return {"error": True, "kind": "invalid_input",
                 "message": "label requires 'label' (label name to add/remove)"}
+    try:
+        validate_gmail_id(file_id, "file_id")
+    except ValueError as e:
+        return {"error": True, "kind": "invalid_input", "message": str(e)}
 
     # Resolve label name to ID
     try:

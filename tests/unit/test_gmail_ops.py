@@ -161,19 +161,19 @@ class TestDoArchiveSuccess:
     @patch("tools.gmail_ops.modify_thread")
     def test_archives_thread(self, mock_modify, _sleep) -> None:
         mock_modify.return_value = ModifyThreadResult(
-            thread_id="t1", added_labels=[], removed_labels=["INBOX"],
+            thread_id="a1b2c3d4e5f6a7b8", added_labels=[], removed_labels=["INBOX"],
         )
 
-        result = do_archive(file_id="t1")
+        result = do_archive(file_id="a1b2c3d4e5f6a7b8")
 
         assert isinstance(result, DoResult)
         assert result.operation == "archive"
-        assert result.file_id == "t1"
+        assert result.file_id == "a1b2c3d4e5f6a7b8"
         assert "archived" in result.cues["action"].lower()
 
         # Verify modify was called to remove INBOX
         mock_modify.assert_called_once_with(
-            thread_id="t1", remove_label_ids=["INBOX"],
+            thread_id="a1b2c3d4e5f6a7b8", remove_label_ids=["INBOX"],
         )
 
     @patch("retry.time.sleep")
@@ -181,9 +181,14 @@ class TestDoArchiveSuccess:
     def test_api_error(self, mock_modify, _sleep) -> None:
         mock_modify.side_effect = MiseError(ErrorKind.NOT_FOUND, "Thread not found")
 
-        result = do_archive(file_id="bad_thread")
+        result = do_archive(file_id="abc123def456abc1")
         assert result["error"] is True
         assert result["kind"] == "not_found"
+
+    def test_rejects_malformed_thread_id(self) -> None:
+        result = do_archive(file_id="bad_thread!")
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
 
 
 # =============================================================================
@@ -203,17 +208,17 @@ class TestDoStarSuccess:
     @patch("tools.gmail_ops.modify_thread")
     def test_stars_thread(self, mock_modify, _sleep) -> None:
         mock_modify.return_value = ModifyThreadResult(
-            thread_id="t1", added_labels=["STARRED"], removed_labels=[],
+            thread_id="a1b2c3d4e5f6a7b8", added_labels=["STARRED"], removed_labels=[],
         )
 
-        result = do_star(file_id="t1")
+        result = do_star(file_id="a1b2c3d4e5f6a7b8")
 
         assert isinstance(result, DoResult)
         assert result.operation == "star"
         assert "starred" in result.cues["action"].lower()
 
         mock_modify.assert_called_once_with(
-            thread_id="t1", add_label_ids=["STARRED"],
+            thread_id="a1b2c3d4e5f6a7b8", add_label_ids=["STARRED"],
         )
 
 
@@ -229,7 +234,7 @@ class TestDoLabelValidation:
         assert "file_id" in result["message"]
 
     def test_missing_label(self) -> None:
-        result = do_label(file_id="t1")
+        result = do_label(file_id="a1b2c3d4e5f6a7b8")
         assert result["error"] is True
         assert "label" in result["message"]
 
@@ -241,10 +246,10 @@ class TestDoLabelSuccess:
     def test_adds_label(self, mock_resolve, mock_modify, _sleep) -> None:
         mock_resolve.return_value = "Label_1"
         mock_modify.return_value = ModifyThreadResult(
-            thread_id="t1", added_labels=["Label_1"], removed_labels=[],
+            thread_id="a1b2c3d4e5f6a7b8", added_labels=["Label_1"], removed_labels=[],
         )
 
-        result = do_label(file_id="t1", label="Projects/Active")
+        result = do_label(file_id="a1b2c3d4e5f6a7b8", label="Projects/Active")
 
         assert isinstance(result, DoResult)
         assert result.operation == "label"
@@ -254,7 +259,7 @@ class TestDoLabelSuccess:
 
         mock_resolve.assert_called_once_with("Projects/Active")
         mock_modify.assert_called_once_with(
-            thread_id="t1", add_label_ids=["Label_1"],
+            thread_id="a1b2c3d4e5f6a7b8", add_label_ids=["Label_1"],
         )
 
     @patch("retry.time.sleep")
@@ -263,17 +268,17 @@ class TestDoLabelSuccess:
     def test_removes_label(self, mock_resolve, mock_modify, _sleep) -> None:
         mock_resolve.return_value = "Label_2"
         mock_modify.return_value = ModifyThreadResult(
-            thread_id="t1", added_labels=[], removed_labels=["Label_2"],
+            thread_id="a1b2c3d4e5f6a7b8", added_labels=[], removed_labels=["Label_2"],
         )
 
-        result = do_label(file_id="t1", label="Follow-up", remove=True)
+        result = do_label(file_id="a1b2c3d4e5f6a7b8", label="Follow-up", remove=True)
 
         assert isinstance(result, DoResult)
         assert result.cues["removed"] is True
         assert "removed" in result.cues["action"].lower()
 
         mock_modify.assert_called_once_with(
-            thread_id="t1", remove_label_ids=["Label_2"],
+            thread_id="a1b2c3d4e5f6a7b8", remove_label_ids=["Label_2"],
         )
 
     @patch("retry.time.sleep")
@@ -281,7 +286,7 @@ class TestDoLabelSuccess:
     def test_label_not_found(self, mock_resolve, _sleep) -> None:
         mock_resolve.side_effect = MiseError(ErrorKind.NOT_FOUND, "Label 'Bogus' not found")
 
-        result = do_label(file_id="t1", label="Bogus")
+        result = do_label(file_id="a1b2c3d4e5f6a7b8", label="Bogus")
 
         assert result["error"] is True
         assert result["kind"] == "not_found"
@@ -294,7 +299,7 @@ class TestDoLabelSuccess:
         mock_resolve.return_value = "Label_1"
         mock_modify.side_effect = MiseError(ErrorKind.PERMISSION_DENIED, "No access")
 
-        result = do_label(file_id="t1", label="Projects")
+        result = do_label(file_id="a1b2c3d4e5f6a7b8", label="Projects")
 
         assert result["error"] is True
         assert result["kind"] == "permission_denied"

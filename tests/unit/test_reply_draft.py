@@ -55,7 +55,7 @@ def _make_message(
 
 
 def _make_thread(
-    thread_id: str = "thread_abc",
+    thread_id: str = "abc123def456abc1",
     subject: str = "Original Subject",
     messages: list[EmailMessage] | None = None,
 ) -> GmailThreadData:
@@ -164,7 +164,7 @@ class TestCreateReplyDraft:
         }
 
         result = create_reply_draft(
-            thread_id="thread_abc",
+            thread_id="abc123def456abc1",
             to="alice@example.com",
             subject="Re: Test",
             body_text="Reply",
@@ -175,7 +175,7 @@ class TestCreateReplyDraft:
 
         assert isinstance(result, ReplyDraftResult)
         assert result.draft_id == "draft_reply"
-        assert result.thread_id == "thread_abc"
+        assert result.thread_id == "abc123def456abc1"
         assert "draft_reply" in result.web_link
 
         # Verify threadId was in the API call body
@@ -192,7 +192,7 @@ class TestCreateReplyDraft:
         }
 
         result = create_reply_draft(
-            thread_id="t1",
+            thread_id="a1b2c3d4e5f6a7b8",
             to="bob@example.com",
             subject="Re: Hello",
             body_text="Hi",
@@ -287,7 +287,7 @@ class TestDoReplyDraftValidation:
         assert "file_id" in result["message"]
 
     def test_missing_content(self) -> None:
-        result = do_reply_draft(file_id="thread_abc")
+        result = do_reply_draft(file_id="abc123def456abc1")
         assert result["error"] is True
         assert "content" in result["message"]
 
@@ -299,13 +299,13 @@ class TestDoReplyDraftSuccess:
     def test_returns_do_result(self, mock_fetch, mock_create, _sleep) -> None:
         mock_fetch.return_value = _make_thread()
         mock_create.return_value = ReplyDraftResult(
-            draft_id="d1", message_id="m1", thread_id="thread_abc",
+            draft_id="d1", message_id="m1", thread_id="abc123def456abc1",
             web_link="https://mail.google.com/mail/#drafts/d1",
             to="alice@example.com", subject="Re: Original Subject",
         )
 
         result = do_reply_draft(
-            file_id="thread_abc",
+            file_id="abc123def456abc1",
             content="Thanks!",
         )
 
@@ -313,7 +313,7 @@ class TestDoReplyDraftSuccess:
         assert result.operation == "reply_draft"
         assert result.file_id == "d1"
         assert "drafts" in result.web_link
-        assert result.cues["thread_id"] == "thread_abc"
+        assert result.cues["thread_id"] == "abc123def456abc1"
         assert result.cues["replying_to"] == "alice@example.com"
 
     @patch("retry.time.sleep")
@@ -322,12 +322,12 @@ class TestDoReplyDraftSuccess:
     def test_subject_gets_re_prefix(self, mock_fetch, mock_create, _sleep) -> None:
         mock_fetch.return_value = _make_thread(subject="Budget Review")
         mock_create.return_value = ReplyDraftResult(
-            draft_id="d1", message_id="m1", thread_id="t1",
+            draft_id="d1", message_id="m1", thread_id="a1b2c3d4e5f6a7b8",
             web_link="https://mail.google.com/mail/#drafts/d1",
             to="alice@example.com", subject="Re: Budget Review",
         )
 
-        do_reply_draft(file_id="t1", content="Noted.")
+        do_reply_draft(file_id="a1b2c3d4e5f6a7b8", content="Noted.")
 
         # Verify create_reply_draft was called with Re: prefix
         call_kwargs = mock_create.call_args[1]
@@ -343,12 +343,12 @@ class TestDoReplyDraftSuccess:
         )
         mock_fetch.return_value = _make_thread(messages=[msg])
         mock_create.return_value = ReplyDraftResult(
-            draft_id="d1", message_id="m1", thread_id="t1",
+            draft_id="d1", message_id="m1", thread_id="a1b2c3d4e5f6a7b8",
             web_link="https://mail.google.com/mail/#drafts/d1",
             to="alice@example.com", subject="Re: Original Subject",
         )
 
-        do_reply_draft(file_id="t1", content="Reply.")
+        do_reply_draft(file_id="a1b2c3d4e5f6a7b8", content="Reply.")
 
         call_kwargs = mock_create.call_args[1]
         assert call_kwargs["in_reply_to"] == "<xyz@example.com>"
@@ -365,13 +365,13 @@ class TestDoReplyDraftSuccess:
         )
         mock_fetch.return_value = _make_thread(messages=[msg])
         mock_create.return_value = ReplyDraftResult(
-            draft_id="d1", message_id="m1", thread_id="t1",
+            draft_id="d1", message_id="m1", thread_id="a1b2c3d4e5f6a7b8",
             web_link="https://mail.google.com/mail/#drafts/d1",
             to="alice@example.com", subject="Re: Original Subject",
             cc="bob@example.com, carol@example.com",
         )
 
-        result = do_reply_draft(file_id="t1", content="Reply.", reply_all=True)
+        result = do_reply_draft(file_id="a1b2c3d4e5f6a7b8", content="Reply.", reply_all=True)
 
         call_kwargs = mock_create.call_args[1]
         assert call_kwargs["to"] == "alice@example.com"
@@ -391,14 +391,14 @@ class TestDoReplyDraftSuccess:
         )
         mock_fetch.return_value = _make_thread(messages=[msg])
         mock_create.return_value = ReplyDraftResult(
-            draft_id="d1", message_id="m1", thread_id="t1",
+            draft_id="d1", message_id="m1", thread_id="a1b2c3d4e5f6a7b8",
             web_link="https://mail.google.com/mail/#drafts/d1",
             to="alice@example.com", subject="Re: Original Subject",
             cc="explicit@example.com",
         )
 
         do_reply_draft(
-            file_id="t1", content="Reply.",
+            file_id="a1b2c3d4e5f6a7b8", content="Reply.",
             reply_all=True, cc="explicit@example.com",
         )
 
@@ -409,10 +409,10 @@ class TestDoReplyDraftSuccess:
     @patch("tools.reply_draft.fetch_thread")
     def test_empty_thread_returns_error(self, mock_fetch, _sleep) -> None:
         mock_fetch.return_value = GmailThreadData(
-            thread_id="t1", subject="Test", messages=[],
+            thread_id="a1b2c3d4e5f6a7b8", subject="Test", messages=[],
         )
 
-        result = do_reply_draft(file_id="t1", content="Reply.")
+        result = do_reply_draft(file_id="a1b2c3d4e5f6a7b8", content="Reply.")
 
         assert result["error"] is True
         assert "no messages" in result["message"]
@@ -423,7 +423,7 @@ class TestDoReplyDraftSuccess:
         from models import MiseError, ErrorKind
         mock_fetch.side_effect = MiseError(ErrorKind.NOT_FOUND, "Thread not found")
 
-        result = do_reply_draft(file_id="t1", content="Reply.")
+        result = do_reply_draft(file_id="a1b2c3d4e5f6a7b8", content="Reply.")
 
         assert result["error"] is True
         assert result["kind"] == "not_found"
@@ -446,12 +446,12 @@ class TestDoReplyDraftSuccess:
         )
         mock_fetch.return_value = _make_thread(messages=[first, second])
         mock_create.return_value = ReplyDraftResult(
-            draft_id="d1", message_id="m1", thread_id="t1",
+            draft_id="d1", message_id="m1", thread_id="a1b2c3d4e5f6a7b8",
             web_link="https://mail.google.com/mail/#drafts/d1",
             to="bob@example.com", subject="Re: Original Subject",
         )
 
-        result = do_reply_draft(file_id="t1", content="Reply.")
+        result = do_reply_draft(file_id="a1b2c3d4e5f6a7b8", content="Reply.")
 
         call_kwargs = mock_create.call_args[1]
         # Should reply to bob (last message), not alice (first)
@@ -473,7 +473,7 @@ class TestDoReplyDraftWithInclude:
         }
         mock_fetch.return_value = _make_thread()
         mock_create.return_value = ReplyDraftResult(
-            draft_id="d1", message_id="m1", thread_id="t1",
+            draft_id="d1", message_id="m1", thread_id="a1b2c3d4e5f6a7b8",
             web_link="https://mail.google.com/mail/#drafts/d1",
             to="alice@example.com", subject="Re: Original Subject",
             included_links=[IncludedLink(
@@ -484,7 +484,7 @@ class TestDoReplyDraftWithInclude:
         )
 
         result = do_reply_draft(
-            file_id="t1", content="See report.", include=["xyz"],
+            file_id="a1b2c3d4e5f6a7b8", content="See report.", include=["xyz"],
         )
 
         assert isinstance(result, DoResult)

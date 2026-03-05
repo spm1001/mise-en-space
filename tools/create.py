@@ -21,6 +21,7 @@ from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 from workspace import enrich_manifest
 from tools.common import resolve_source as _resolve_source
+from validation import validate_drive_id, sanitize_title
 
 
 def _create_error(kind: str, message: str) -> dict[str, Any]:
@@ -160,6 +161,15 @@ def do_create(
         resolved_source = _resolve_source(source, base_path)
     except ValueError as e:
         return {"error": True, "kind": "invalid_input", "message": str(e)}
+
+    if folder_id:
+        try:
+            validate_drive_id(folder_id, "folder_id")
+        except ValueError as e:
+            return {"error": True, "kind": "invalid_input", "message": str(e)}
+
+    if title:
+        title = sanitize_title(title)
 
     if not content and not source:
         return {"error": True, "kind": "invalid_input",

@@ -10,6 +10,7 @@ from typing import Any
 from adapters.services import get_drive_service
 from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
+from validation import validate_drive_id
 
 
 def do_move(
@@ -37,6 +38,11 @@ def do_move(
             missing.append("destination_folder_id")
         return {"error": True, "kind": "invalid_input",
                 "message": f"move requires {' and '.join(missing)}"}
+    try:
+        validate_drive_id(file_id, "file_id")
+        validate_drive_id(destination_folder_id, "destination_folder_id")
+    except ValueError as e:
+        return {"error": True, "kind": "invalid_input", "message": str(e)}
     try:
         return _move_file(file_id, destination_folder_id)
     except MiseError as e:
