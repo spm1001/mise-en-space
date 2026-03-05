@@ -148,11 +148,45 @@ print(creds.token)
 These are the gaps for a follow-up session:
 
 1. ~~**MCP server mode**~~ — Tested, verdict: not suitable (see above)
-2. **Discovery Document structure** — What exactly is in a Discovery doc? Could we parse it in Python to validate mise inputs?
+2. ~~**Discovery Document structure**~~ — Explored, verdict: not useful for validation (see below)
 3. **Pagination behaviour** — `--page-all` streams NDJSON. How does it handle rate limits? Is it usable for large result sets?
 4. **Model Armor** — What does sanitised output look like? How does the `--sanitize` flag work in practice?
 5. **Workflow helpers in depth** — `+meeting-prep`, `+weekly-digest`, `+email-to-task`. We only ran `+standup-report`.
 6. **The `generate-skills` source code** — How does it map Discovery → skill structure? Could we adapt the approach for mise-specific skill generation?
+
+## Discovery Document Validation — Explored 2026-03-05 (evening)
+
+**Question:** Could we parse Google Discovery Documents to auto-derive input validation for mise `do()`, replacing hand-maintained `validation.py`?
+
+**What Discovery Documents contain (Drive v3, 247KB):**
+- 14 resources, 64 properties on File schema
+- Parameter types (`string`, `boolean`, `integer` with `format`)
+- `required: true` on path params (`fileId`)
+- Request body schemas via `$ref`
+- Human-readable descriptions
+- Sparse enums — only `corpus` on `files.list`; Permission `role`/`type` values described in prose, not machine-readable enums
+
+**What Discovery Documents DON'T contain:**
+- No ID format patterns (fileId is just `string` — no regex, no length)
+- No URL parsing (app-level routing, not API concern)
+- No security-relevant validation (injection, control chars)
+- Most enum values described in prose, not `enum` arrays
+
+**What mise's validation.py actually does:**
+All security-focused: Drive file ID format (`[A-Za-z0-9_-]+`), URL→ID extraction, Gmail web→API ID conversion, Drive query injection prevention, Gmail query sanitization. None of this is in Discovery docs.
+
+**What gws validate.rs does (569 lines):**
+100% hand-written security hardening. Path traversal prevention, control character rejection, URL injection prevention (`?`, `#`, `%` in resource names), API identifier sanitization. **Zero use of Discovery Documents for validation.** The comment says it all: "especially important when the CLI is invoked by an LLM agent rather than a human operator."
+
+**Verdict: Not worth building.** The overlap between what Discovery provides (API parameter descriptions) and what we validate (security boundaries, ID formats, URL conversion) is essentially zero. gws confirms this — they don't do it either.
+
+**What IS worth adapting from gws validate.rs:**
+- LLM-safety validation mindset — our `do()` params should reject control characters and path traversal in user-supplied content (title, description, content fields)
+- `validate_resource_name` pattern — reject `..`, `?`, `#`, `%` in resource-name-like inputs
+
+**Where Discovery WOULD help (not validation):**
+- Documentation generation — parameter names, types, descriptions for mise's tool docs
+- Tool schema generation — if we ever built a generic API passthrough (we won't — curated extraction is the point)
 
 ## Source Code Pointers
 
