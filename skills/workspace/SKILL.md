@@ -173,12 +173,14 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 | `move` | Move file between folders | `file_id`, `destination_folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
 | `share` | Share file with people (confirm gate) | `file_id`, `to`, `confirm=True` |
-| `overwrite` | Replace full doc content | `file_id`, `content` OR `source` |
-| `prepend` | Insert at start of doc | `file_id`, `content` |
-| `append` | Insert at end of doc | `file_id`, `content` |
-| `replace_text` | Find-and-replace in doc | `file_id`, `find`, `content` |
+| `overwrite` | Replace full file content (Google Doc or plain file) | `file_id`, `content` OR `source` |
+| `prepend` | Insert at start of file | `file_id`, `content` |
+| `append` | Insert at end of file | `file_id`, `content` |
+| `replace_text` | Find-and-replace in file | `file_id`, `find`, `content` |
 
 ### Choosing the Right Edit Operation
+
+**All edit operations work on both Google Docs and plain files** (markdown, JSON, SVG, YAML, etc. stored in Drive). The tool auto-detects the file type and uses the right API — Docs API for Google Docs, Drive Files API for everything else. No extra flags needed.
 
 **Overwrite destroys everything** — images, tables, formatting, all gone. It's a full replacement from markdown. Use it when you're publishing a complete new version of a document.
 
@@ -192,6 +194,9 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 | Adding a header/disclaimer to a doc | `prepend` |
 | Updating a specific section or value | `replace_text` |
 | Doc has images, tables, or rich formatting | `prepend`/`append`/`replace_text` (never overwrite) |
+| Editing a markdown/JSON/SVG file in Drive | Any edit operation (auto-routes to Drive Files API) |
+
+**Binary files** (images, PDFs, etc.) reject text operations (`prepend`/`append`/`replace_text`) with a clear error. `overwrite` works on binary files (full byte replacement).
 
 ### Create and Move
 
@@ -243,7 +248,9 @@ do(operation="overwrite", file_id="1abc...", content="# Q4 Report\n\nRevised fin
 do(operation="overwrite", file_id="1abc...", source="mise/doc--q4-report--1abc/", base_path="...")
 ```
 
-Markdown headings (`#`, `##`, etc.) are converted to Google Docs heading styles. Response includes `cues.char_count` and `cues.heading_count`.
+For Google Docs: markdown headings (`#`, `##`, etc.) are converted to heading styles. Response includes `cues.char_count` and `cues.heading_count`.
+
+For plain files: content is uploaded as-is (no heading conversion). Response includes `cues.plain_file: true` and `cues.mime_type`.
 
 ### Surgical Edits
 

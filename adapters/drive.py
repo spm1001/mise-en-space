@@ -351,6 +351,71 @@ def is_google_workspace_file(mime_type: str) -> bool:
     return mime_type.startswith("application/vnd.google-apps.")
 
 
+# Mime types that are text-safe for download-modify-upload operations
+TEXT_MIME_TYPES = {
+    "text/markdown", "text/plain", "text/csv", "text/html", "text/xml",
+    "text/yaml", "text/css", "text/javascript", "text/tab-separated-values",
+    "application/json", "application/javascript", "application/xml",
+    "application/x-yaml", "application/toml", "application/xhtml+xml",
+    "image/svg+xml",
+}
+
+
+def is_text_mime(mime_type: str) -> bool:
+    """Check if MIME type is safe for text operations (download-modify-upload)."""
+    return mime_type.startswith("text/") or mime_type in TEXT_MIME_TYPES
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def download_file_content(file_id: str) -> bytes:
+    """
+    Download file content for editing (no size pre-check).
+
+    Lighter than download_file() — skips the size query since text files
+    being edited via do() are expected to be small. For safety, callers
+    should check size separately if concerned.
+
+    Args:
+        file_id: The file ID
+
+    Returns:
+        File content as bytes
+
+    Raises:
+        MiseError: On API failure
+    """
+    service = get_drive_service()
+    result = service.files().get_media(fileId=file_id).execute()
+    return cast(bytes, result)
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def upload_file_content(file_id: str, content: bytes, mime_type: str) -> dict[str, Any]:
+    """
+    Upload content to replace a file's content via Drive Files API.
+
+    Used for plain (non-Google-native) files. Preserves file ID, sharing,
+    location, and revision history.
+
+    Args:
+        file_id: The file ID
+        content: New file content as bytes
+        mime_type: MIME type to set on upload
+
+    Returns:
+        Drive API file metadata response
+
+    Raises:
+        MiseError: On API failure
+    """
+    from googleapiclient.http import MediaInMemoryUpload
+
+    service = get_drive_service()
+    media = MediaInMemoryUpload(content, mimetype=mime_type, resumable=False)
+    result = service.files().update(fileId=file_id, media_body=media).execute()
+    return cast(dict[str, Any], result)
+
+
 # Fields for folder listing — name, ID, and MIME type is all we need
 FOLDER_LIST_FIELDS = "nextPageToken,files(id,name,mimeType)"
 
@@ -389,7 +454,7 @@ def list_folder(folder_id: str) -> FolderListing:
     truncated = False
 
     while pages_fetched < FOLDER_LIST_MAX_PAGES:
-        kwargs: dict = dict(
+        kwargs: dict[str, Any] = dict(
             q=query,
             pageSize=FOLDER_LIST_PAGE_SIZE,
             fields=FOLDER_LIST_FIELDS,

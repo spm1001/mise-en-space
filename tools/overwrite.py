@@ -1,7 +1,9 @@
 """
-Overwrite operation — replace full content of a Google Doc from markdown.
+Overwrite operation — replace full content of a Google Doc or plain file.
 
-Uses Docs API batchUpdate: delete all content → insertText → apply heading styles.
+Google Docs: Docs API batchUpdate (delete → insertText → apply headings).
+Plain files: Drive Files API (upload new content directly).
+
 Preserves file ID, sharing, location, and revision history.
 """
 
@@ -9,10 +11,12 @@ import re
 from pathlib import Path
 from typing import Any
 
+from adapters.drive import GOOGLE_DOC_MIME
 from adapters.services import get_docs_service
 from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 from tools.common import resolve_source as _resolve_source
+from tools.plain_file import plain_overwrite
 from validation import validate_drive_id
 
 
@@ -35,15 +39,17 @@ def do_overwrite(
     content: str | None = None,
     source: str | None = None,
     base_path: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> DoResult | dict[str, Any]:
     """
-    Replace full content of a Google Doc with new markdown.
+    Replace full content of a Google Doc or plain file.
 
     Args:
-        file_id: Target document ID
-        content: Markdown content (mutually exclusive with source)
-        source: Path to deposit folder with content.md
+        file_id: Target file ID
+        content: Content string (mutually exclusive with source)
+        source: Path to deposit folder with content file
         base_path: Working directory for resolving relative source paths
+        metadata: Pre-fetched file metadata (from dispatch). If None, assumes Google Doc.
 
     Returns:
         DoResult on success, error dict on failure
@@ -56,7 +62,7 @@ def do_overwrite(
     except ValueError as e:
         return {"error": True, "kind": "invalid_input", "message": str(e)}
 
-    # Resolve source path
+    # Validate source path early (before API call)
     try:
         resolved_source = _resolve_source(source, base_path)
     except ValueError as e:
@@ -69,6 +75,18 @@ def do_overwrite(
             "message": "Provide 'content' or 'source', not both",
         }
 
+    if not content and not resolved_source:
+        return {
+            "error": True,
+            "kind": "invalid_input",
+            "message": "overwrite requires 'content' or 'source'",
+        }
+
+    # Route by file type: Google Docs → Docs API, plain files → Drive Files API
+    if metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
+        return plain_overwrite(file_id, content, source, base_path, metadata)
+
+    # Google Doc path — read content from source if needed
     if resolved_source:
         content_file = resolved_source / "content.md"
         if not content_file.exists():
@@ -79,15 +97,8 @@ def do_overwrite(
             }
         content = content_file.read_text(encoding="utf-8")
 
-    if not content:
-        return {
-            "error": True,
-            "kind": "invalid_input",
-            "message": "overwrite requires 'content' or 'source'",
-        }
-
     try:
-        return _overwrite_doc(file_id, content)
+        return _overwrite_doc(file_id, content)  # type: ignore[arg-type]
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
 

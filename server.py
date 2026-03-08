@@ -35,8 +35,9 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from adapters.conversion import cleanup_orphaned_temp_files
+from adapters.drive import get_file_metadata
 from tools import do_search, do_fetch, do_create, do_move, do_rename, do_share, do_overwrite, do_prepend, do_append, do_replace_text, do_draft, do_reply_draft, do_archive, do_star, do_label, OPERATIONS
-from models import DoResult
+from models import DoResult, MiseError
 from resources.tools import get_tool_registry
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,9 @@ _REQUIRED_PARAMS: dict[str, set[str]] = {
     "label": {"file_id", "label"},
 }
 
+# Content operations that need mime-type routing (metadata pre-fetched at dispatch)
+_CONTENT_OPS = {"overwrite", "prepend", "append", "replace_text"}
+
 # Dispatch table for do() operations.
 # Each handler receives the full params dict and handles its own validation.
 _DISPATCH: dict[str, Any] = {
@@ -93,11 +97,13 @@ _DISPATCH: dict[str, Any] = {
     "overwrite": lambda p: do_overwrite(
         file_id=p["file_id"], content=p["content"],
         source=p["source"], base_path=p["base_path"],
+        metadata=p.get("_metadata"),
     ),
-    "prepend": lambda p: do_prepend(file_id=p["file_id"], content=p["content"]),
-    "append": lambda p: do_append(file_id=p["file_id"], content=p["content"]),
+    "prepend": lambda p: do_prepend(file_id=p["file_id"], content=p["content"], metadata=p.get("_metadata")),
+    "append": lambda p: do_append(file_id=p["file_id"], content=p["content"], metadata=p.get("_metadata")),
     "replace_text": lambda p: do_replace_text(
         file_id=p["file_id"], find=p["find"], content=p["content"],
+        metadata=p.get("_metadata"),
     ),
     "draft": lambda p: do_draft(
         to=p["to"], subject=p["subject"], content=p["content"],
@@ -268,6 +274,14 @@ def do(
     if missing:
         return {"error": True, "kind": "INVALID_INPUT",
                 "message": f"'{operation}' requires: {', '.join(sorted(missing))}"}
+
+    # Pre-fetch metadata for content operations — one Drive API call shared
+    # by routing logic and handler, instead of each handler fetching its own.
+    if operation in _CONTENT_OPS and file_id:
+        try:
+            params["_metadata"] = get_file_metadata(file_id)
+        except MiseError as e:
+            return {"error": True, "kind": e.kind.value, "message": e.message}
 
     try:
         result = handler(params)

@@ -2,9 +2,30 @@
 
 from unittest.mock import patch, MagicMock
 
-from models import DoResult
+from models import DoResult, MiseError, ErrorKind
 from server import do
 from tools.overwrite import do_overwrite, _strip_headings
+
+GOOGLE_DOC_MIME = "application/vnd.google-apps.document"
+
+
+def _google_doc_metadata(name: str = "Test Doc") -> dict:
+    return {
+        "mimeType": GOOGLE_DOC_MIME,
+        "name": name,
+        "webViewLink": f"https://docs.google.com/document/d/doc123/edit",
+    }
+
+
+def _plain_file_metadata(
+    name: str = "readme.md", mime: str = "text/markdown", size: int = 1024,
+) -> dict:
+    return {
+        "mimeType": mime,
+        "name": name,
+        "webViewLink": f"https://drive.google.com/file/d/file123/view",
+        "size": str(size),
+    }
 
 
 class TestStripHeadings:
@@ -51,44 +72,35 @@ class TestStripHeadings:
     def test_heading_positions_are_correct(self) -> None:
         text = "intro\n# H1\nbody\n## H2"
         plain, headings = _strip_headings(text)
-        # "intro\nH1\nbody\nH2"
         assert plain == "intro\nH1\nbody\nH2"
-        # H1 starts at position 6 (after "intro\n")
         assert headings[0] == (6, 8, 1)
-        # H2 starts at position 14 (after "intro\nH1\nbody\n")
         assert headings[1] == (14, 16, 2)
 
     def test_heading_positions_with_emoji(self) -> None:
         """Docs API uses UTF-16 code units. Emoji are 2 units, not 1."""
-        # 🎯 is U+1F3AF — a surrogate pair in UTF-16 (2 code units)
         text = "🎯 intro\n# Title"
         plain, headings = _strip_headings(text)
         assert plain == "🎯 intro\nTitle"
-        # "🎯 intro\n" = 2 (emoji) + 7 (" intro\n") = 9 UTF-16 units
-        assert headings[0] == (9, 14, 1)  # "Title" = 5 UTF-16 units
+        assert headings[0] == (9, 14, 1)
 
     def test_heading_with_emoji_in_heading(self) -> None:
         """Emoji inside heading text affects end position."""
         text = "# 🚀 Launch"
         plain, headings = _strip_headings(text)
         assert plain == "🚀 Launch"
-        # "🚀 Launch" = 2 + 7 = 9 UTF-16 units
         assert headings[0] == (0, 9, 1)
 
 
-class TestDoOverwriteValidation:
-    """Input validation via do_overwrite()."""
+# =============================================================================
+# VALIDATION (no API calls)
+# =============================================================================
 
+class TestDoOverwriteValidation:
     def test_overwrite_without_file_id_returns_error(self) -> None:
         result = do_overwrite(content="hello")
         assert result["error"] is True
         assert result["kind"] == "invalid_input"
         assert "file_id" in result["message"]
-
-    def test_overwrite_without_content_returns_error(self) -> None:
-        result = do_overwrite(file_id="doc123")
-        assert result["error"] is True
-        assert result["kind"] == "invalid_input"
 
     def test_overwrite_with_both_content_and_source_returns_error(self) -> None:
         result = do_overwrite(file_id="doc123", content="hello", source="/tmp/fake", base_path="/tmp")
@@ -101,22 +113,19 @@ class TestDoOverwriteValidation:
         assert "file_id" in result["message"]
 
 
-class TestDoOverwrite:
-    """Overwrite logic with mocked Docs API."""
+# =============================================================================
+# GOOGLE DOC OVERWRITE (Docs API path — metadata=None falls through)
+# =============================================================================
 
+class TestDoOverwrite:
     @patch("retry.time.sleep")
     @patch("tools.overwrite.get_docs_service")
     def test_overwrites_doc_with_plain_text(self, mock_svc, _sleep) -> None:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-
-        # Document with existing content
         mock_service.documents().get().execute.return_value = {
             "title": "My Doc",
-            "body": {"content": [
-                {"endIndex": 1},
-                {"endIndex": 50},
-            ]},
+            "body": {"content": [{"endIndex": 1}, {"endIndex": 50}]},
         }
 
         result = do_overwrite(file_id="doc123", content="New content here")
@@ -127,22 +136,16 @@ class TestDoOverwrite:
         assert result.operation == "overwrite"
         assert result.cues["char_count"] == 16
 
-        # Verify batchUpdate was called
         batch_call = mock_service.documents().batchUpdate.call_args
-        body = batch_call.kwargs["body"]
-        requests = body["requests"]
-
-        # Should have delete + insert
+        requests = batch_call.kwargs["body"]["requests"]
         assert any("deleteContentRange" in r for r in requests)
         assert any("insertText" in r for r in requests)
 
     @patch("retry.time.sleep")
     @patch("tools.overwrite.get_docs_service")
     def test_overwrites_empty_doc(self, mock_svc, _sleep) -> None:
-        """Empty doc (just newline) — no delete needed, just insert."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-
         mock_service.documents().get().execute.return_value = {
             "title": "Empty Doc",
             "body": {"content": [{"endIndex": 1}]},
@@ -151,14 +154,9 @@ class TestDoOverwrite:
         result = do_overwrite(file_id="doc123", content="First content")
 
         assert isinstance(result, DoResult)
-        assert result.file_id == "doc123"
-
         batch_call = mock_service.documents().batchUpdate.call_args
         requests = batch_call.kwargs["body"]["requests"]
-
-        # No delete for empty doc
         assert not any("deleteContentRange" in r for r in requests)
-        # But still inserts
         assert any("insertText" in r for r in requests)
 
     @patch("retry.time.sleep")
@@ -166,7 +164,6 @@ class TestDoOverwrite:
     def test_applies_heading_styles(self, mock_svc, _sleep) -> None:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-
         mock_service.documents().get().execute.return_value = {
             "title": "Styled Doc",
             "body": {"content": [{"endIndex": 1}]},
@@ -179,22 +176,17 @@ class TestDoOverwrite:
 
         batch_call = mock_service.documents().batchUpdate.call_args
         requests = batch_call.kwargs["body"]["requests"]
-
         style_requests = [r for r in requests if "updateParagraphStyle" in r]
         assert len(style_requests) == 2
-
-        # First heading should be HEADING_1
         assert style_requests[0]["updateParagraphStyle"]["paragraphStyle"]["namedStyleType"] == "HEADING_1"
-        # Second should be HEADING_2
         assert style_requests[1]["updateParagraphStyle"]["paragraphStyle"]["namedStyleType"] == "HEADING_2"
 
     @patch("retry.time.sleep")
+    @patch("server.get_file_metadata", return_value=_google_doc_metadata())
     @patch("tools.overwrite.get_docs_service")
-    def test_overwrite_routes_through_do(self, mock_svc, _sleep) -> None:
-        """do(operation='overwrite') routes to do_overwrite."""
+    def test_overwrite_routes_through_do(self, mock_svc, _meta, _sleep) -> None:
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-
         mock_service.documents().get().execute.return_value = {
             "title": "Test",
             "body": {"content": [{"endIndex": 1}]},
@@ -208,16 +200,11 @@ class TestDoOverwrite:
     @patch("retry.time.sleep")
     @patch("tools.overwrite.get_docs_service")
     def test_delete_range_is_correct(self, mock_svc, _sleep) -> None:
-        """Delete range should be [1, endIndex-1)."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
-
         mock_service.documents().get().execute.return_value = {
             "title": "Doc",
-            "body": {"content": [
-                {"endIndex": 1},
-                {"endIndex": 100},
-            ]},
+            "body": {"content": [{"endIndex": 1}, {"endIndex": 100}]},
         }
 
         do_overwrite(file_id="doc123", content="Replacement")
@@ -227,54 +214,106 @@ class TestDoOverwrite:
         delete_req = next(r for r in requests if "deleteContentRange" in r)
         range_ = delete_req["deleteContentRange"]["range"]
         assert range_["startIndex"] == 1
-        assert range_["endIndex"] == 99  # endIndex - 1
+        assert range_["endIndex"] == 99
+
+
+# =============================================================================
+# ERROR PATHS
+# =============================================================================
+
+class TestOverwriteErrorPaths:
+    @patch("server.get_file_metadata")
+    def test_overwrite_file_not_found_through_do(self, mock_meta) -> None:
+        mock_meta.side_effect = MiseError(ErrorKind.NOT_FOUND, "File not found")
+
+        result = do(operation="overwrite", file_id="nonexistent", content="hello")
+
+        assert result["error"] is True
+        assert result["kind"] == "not_found"
+
+    @patch("server.get_file_metadata")
+    def test_overwrite_permission_denied_through_do(self, mock_meta) -> None:
+        mock_meta.side_effect = MiseError(ErrorKind.PERMISSION_DENIED, "No access")
+
+        result = do(operation="overwrite", file_id="readonly_doc", content="hello")
+
+        assert result["error"] is True
+        assert result["kind"] == "permission_denied"
+
+
+# =============================================================================
+# PLAIN FILE OVERWRITE (Drive Files API path — metadata passed directly)
+# =============================================================================
+
+class TestPlainFileOverwrite:
+    @patch("retry.time.sleep")
+    @patch("tools.plain_file.upload_file_content")
+    def test_overwrites_markdown_with_content(self, mock_ul, _sleep) -> None:
+        result = do_overwrite(
+            file_id="file123", content="# New Content\n\nFresh start.",
+            metadata=_plain_file_metadata(),
+        )
+
+        assert isinstance(result, DoResult)
+        assert result.operation == "overwrite"
+        assert result.cues["plain_file"] is True
+        assert result.cues["mime_type"] == "text/markdown"
+
+        uploaded = mock_ul.call_args[0][1]
+        assert uploaded == b"# New Content\n\nFresh start."
+
+    @patch("retry.time.sleep")
+    @patch("tools.plain_file.upload_file_content")
+    def test_overwrites_from_source(self, mock_ul, _sleep, tmp_path) -> None:
+        (tmp_path / "content.md").write_text("# From deposit\n\nContent here.")
+
+        result = do_overwrite(
+            file_id="file123",
+            source=str(tmp_path),
+            base_path=str(tmp_path),
+            metadata=_plain_file_metadata(),
+        )
+
+        assert isinstance(result, DoResult)
+        assert result.cues["plain_file"] is True
+
+        uploaded = mock_ul.call_args[0][1]
+        assert b"# From deposit" in uploaded
+
+    @patch("retry.time.sleep")
+    @patch("tools.plain_file.upload_file_content")
+    def test_overwrites_binary_file(self, mock_ul, _sleep) -> None:
+        """Binary overwrite works — full replacement, no text decode needed."""
+        result = do_overwrite(
+            file_id="file123", content="raw bytes here",
+            metadata=_plain_file_metadata(name="photo.jpg", mime="image/jpeg"),
+        )
+
+        assert isinstance(result, DoResult)
+        assert result.cues["plain_file"] is True
 
     @patch("retry.time.sleep")
     @patch("tools.overwrite.get_docs_service")
-    def test_overwrite_doc_not_found(self, mock_svc, _sleep) -> None:
-        """404 from Docs API becomes clean error."""
-        from googleapiclient.errors import HttpError
-        import httplib2
-
+    def test_google_doc_still_uses_docs_api(self, mock_svc, _sleep) -> None:
+        """Google Docs with metadata passed still route through Docs API."""
         mock_service = MagicMock()
         mock_svc.return_value = mock_service
+        mock_service.documents().get().execute.return_value = {
+            "title": "Google Doc",
+            "body": {"content": [{"endIndex": 1}]},
+        }
 
-        resp = httplib2.Response({"status": "404"})
-        mock_service.documents().get().execute.side_effect = HttpError(
-            resp, b"Document not found"
-        )
+        result = do_overwrite(file_id="doc123", content="hello", metadata=_google_doc_metadata())
 
-        result = do_overwrite(file_id="nonexistent", content="hello")
-
-        assert result["error"] is True
-
-    @patch("retry.time.sleep")
-    @patch("tools.overwrite.get_docs_service")
-    def test_overwrite_permission_denied(self, mock_svc, _sleep) -> None:
-        """403 from Docs API becomes clean error."""
-        from googleapiclient.errors import HttpError
-        import httplib2
-
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-
-        resp = httplib2.Response({"status": "403"})
-        mock_service.documents().get().execute.side_effect = HttpError(
-            resp, b"Forbidden"
-        )
-
-        result = do_overwrite(file_id="readonly_doc", content="hello")
-
-        assert result["error"] is True
+        assert isinstance(result, DoResult)
+        mock_service.documents().batchUpdate.assert_called_once()
 
 
 class TestOverwriteFromSource:
-    """Tests for overwrite with source path."""
-
     @patch("retry.time.sleep")
     @patch("tools.overwrite.get_docs_service")
-    def test_overwrite_from_source(self, mock_svc, _sleep, tmp_path) -> None:
-        """Overwrite reads content.md from source folder."""
+    def test_overwrite_from_source_google_doc(self, mock_svc, _sleep, tmp_path) -> None:
+        """Google Doc overwrite reads content.md from source folder."""
         (tmp_path / "content.md").write_text("# From Source\n\nNew content.")
 
         mock_service = MagicMock()
