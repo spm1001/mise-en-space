@@ -231,7 +231,7 @@ def do(
         operation: What to do. One of: 'create', 'move', 'rename', 'share', 'overwrite', 'prepend', 'append', 'replace_text', 'draft', 'reply_draft', 'archive', 'star', 'label'
         content: Text content. Usage varies by operation.
         title: Document title (required for create, falls back to manifest title when using source)
-        doc_type: 'doc' | 'sheet' | 'slides' (for create)
+        doc_type: 'doc' | 'sheet' | 'slides' | 'file' (for create). 'file' uploads as-is without Google conversion (MIME inferred from title extension).
         folder_id: Optional destination folder (for create)
         file_id: Target file or thread (required for move, rename, share, overwrite, prepend, append, replace_text, reply_draft, archive, star, label)
         destination_folder_id: Where to move the file (required for move)
@@ -522,7 +522,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 
 | Operation | Description | Required params |
 |-----------|-------------|-----------------|
-| `create` | Create Doc/Sheet from content or deposit | `content`+`title` OR `source` |
+| `create` | Create Doc/Sheet/plain file from content or deposit | `content`+`title` OR `source` |
 | `move` | Move file to different folder | `file_id`, `destination_folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
 | `share` | Share file with people by email | `file_id`, `to` |
@@ -555,7 +555,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `operation` | str | **required** | All |
 | `content` | str | None | create, overwrite, prepend, append, replace_text, draft (email body) |
 | `title` | str | None | create, rename |
-| `doc_type` | str | 'doc' | create ('doc', 'sheet', 'slides') |
+| `doc_type` | str | 'doc' | create ('doc', 'sheet', 'slides', 'file'). 'file' uploads as-is — MIME inferred from title extension (.md, .svg, .json, etc.) |
 | `folder_id` | str | None | create |
 | `file_id` | str | None | move, rename, share, overwrite, prepend, append, replace_text |
 | `destination_folder_id` | str | None | move |

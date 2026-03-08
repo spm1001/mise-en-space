@@ -152,6 +152,130 @@ class TestDoCreateDoc:
         assert result.title == "Fallback Title"
 
 
+class TestDoCreateFile:
+    """Test plain file creation (doc_type='file')."""
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_creates_plain_markdown_file(self, mock_svc, _sleep) -> None:
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "file_abc",
+            "webViewLink": "https://drive.google.com/file/d/file_abc/view",
+            "name": "notes.md",
+        }
+
+        result = do_create("# Hello", "notes.md", doc_type="file")
+
+        assert isinstance(result, DoResult)
+        assert result.file_id == "file_abc"
+        assert result.title == "notes.md"
+        assert result.operation == "create"
+        assert result.extras["type"] == "file"
+        assert result.cues["plain_file"] is True
+        assert result.cues["mime_type"] == "text/markdown"
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_creates_svg_file(self, mock_svc, _sleep) -> None:
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "svg_123",
+            "webViewLink": "https://drive.google.com/file/d/svg_123/view",
+            "name": "diagram.svg",
+        }
+
+        result = do_create("<svg></svg>", "diagram.svg", doc_type="file")
+
+        assert isinstance(result, DoResult)
+        assert result.cues["mime_type"] == "image/svg+xml"
+        assert result.cues["plain_file"] is True
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_creates_json_file(self, mock_svc, _sleep) -> None:
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "json_456",
+            "webViewLink": "https://drive.google.com/file/d/json_456/view",
+            "name": "config.json",
+        }
+
+        result = do_create('{"key": "value"}', "config.json", doc_type="file")
+
+        assert isinstance(result, DoResult)
+        assert result.cues["mime_type"] == "application/json"
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_no_extension_defaults_to_text_plain(self, mock_svc, _sleep) -> None:
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "txt_789",
+            "name": "readme",
+        }
+
+        result = do_create("plain text", "readme", doc_type="file")
+
+        assert isinstance(result, DoResult)
+        assert result.cues["mime_type"] == "text/plain"
+        # Falls back to constructed URL when webViewLink missing
+        assert "drive.google.com/file/d/txt_789" in result.web_link
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_drive_service")
+    def test_creates_file_with_folder(self, mock_svc, _sleep) -> None:
+        mock_service = MagicMock()
+        mock_svc.return_value = mock_service
+        mock_service.files().create().execute.return_value = {
+            "id": "file_in_folder",
+            "webViewLink": "https://drive.google.com/file/d/file_in_folder/view",
+            "name": "data.yaml",
+            "parents": ["folder_xyz"],
+        }
+        mock_service.files().get().execute.return_value = {"name": "My Folder"}
+
+        result = do_create("key: value", "data.yaml", doc_type="file", folder_id="folder_xyz")
+
+        assert isinstance(result, DoResult)
+        assert result.cues["folder"] == "My Folder"
+        assert result.cues["mime_type"] == "text/yaml"
+
+    def test_file_rejects_source_param(self, tmp_path: Path) -> None:
+        (tmp_path / "content.md").write_text("# Hello")
+        result = do_create(source=str(tmp_path), base_path=str(tmp_path.parent), doc_type="file", title="test.md")
+        assert result["error"] is True
+        assert "source" in result["message"]
+
+    def test_file_without_content_returns_error(self) -> None:
+        result = do_create(title="notes.md", doc_type="file")
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+
+
+class TestInferMimeType:
+    """MIME type inference from file extensions."""
+
+    def test_known_extensions(self) -> None:
+        from tools.create import _infer_mime_type
+        assert _infer_mime_type("file.md") == "text/markdown"
+        assert _infer_mime_type("file.svg") == "image/svg+xml"
+        assert _infer_mime_type("file.json") == "application/json"
+        assert _infer_mime_type("file.yaml") == "text/yaml"
+        assert _infer_mime_type("file.yml") == "text/yaml"
+        assert _infer_mime_type("file.csv") == "text/csv"
+        assert _infer_mime_type("file.toml") == "application/toml"
+
+    def test_unknown_extension_defaults_to_text_plain(self) -> None:
+        from tools.create import _infer_mime_type
+        assert _infer_mime_type("file.xyz123") == "text/plain"
+        assert _infer_mime_type("noext") == "text/plain"
+
+
 class TestCreateCues:
     """Post-action cues on create responses."""
 

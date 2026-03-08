@@ -169,7 +169,7 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 
 | Operation | What it does | Key params |
 |-----------|-------------|------------|
-| `create` | New Doc/Sheet/Slides | `content`+`title` OR `source` |
+| `create` | New Doc/Sheet/Slides/plain file | `content`+`title` OR `source` |
 | `move` | Move file between folders | `file_id`, `destination_folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
 | `share` | Share file with people (confirm gate) | `file_id`, `to`, `confirm=True` |
@@ -208,11 +208,16 @@ do(operation="create", content=content, title="Report", doc_type="doc", folder_i
 # Create sheet (see Sheet Creation below for details)
 do(operation="create", content="Name,Score\nAlice,95\nBob,87", title="Results", doc_type="sheet")
 
+# Create plain file (no Google conversion — stays as-is in Drive)
+do(operation="create", content="<svg>...</svg>", title="diagram.svg", doc_type="file")
+do(operation="create", content="# Notes\n\nContent here", title="notes.md", doc_type="file")
+do(operation="create", content='{"key": "value"}', title="config.json", doc_type="file")
+
 # Move
 do(operation="move", file_id="1abc...", destination_folder_id="1xyz...")
 ```
 
-**Create:** Without `folder_id`, the doc lands in Drive root. Response includes `cues.folder` showing where it landed.
+**Create:** Without `folder_id`, the doc lands in Drive root. Response includes `cues.folder` showing where it landed. Use `doc_type="file"` for plain files (markdown, SVG, JSON, YAML, etc.) — MIME type is inferred from the title extension. The file stays as-is in Drive, no conversion to Google format. Response includes `cues.plain_file` and `cues.mime_type`.
 
 **Move:** Enforces single parent — removes all existing parents, adds destination. Response includes `cues.destination_folder` (name) and `cues.previous_parents`.
 

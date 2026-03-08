@@ -1,18 +1,22 @@
 """
 Create tool implementation.
 
-Creates Google Workspace documents from content — either inline or from a
-deposit folder (the deposit-then-publish pattern).
+Creates Google Workspace documents or plain files from content — either inline
+or from a deposit folder (the deposit-then-publish pattern).
+
+doc_type='file' uploads content as-is (no Google conversion). MIME type is
+inferred from the title's file extension, or defaults to text/plain.
 """
 
 import csv
 import io
 import json
+import mimetypes
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from googleapiclient.http import MediaIoBaseUpload
+from googleapiclient.http import MediaIoBaseUpload, MediaInMemoryUpload
 
 from adapters.services import get_drive_service
 from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
@@ -187,10 +191,11 @@ def _do_create_internal(
 ) -> DoResult | dict[str, Any]:
     """Internal create logic. Returns DoResult on success, error dict on failure."""
     # Validate doc_type
-    if doc_type not in DOC_TYPE_TO_MIME:
+    valid_types = list(DOC_TYPE_TO_MIME.keys()) + ["file"]
+    if doc_type not in valid_types:
         return _create_error(
             "invalid_input",
-            f"Unsupported doc_type: {doc_type}. Must be one of: {list(DOC_TYPE_TO_MIME.keys())}",
+            f"Unsupported doc_type: {doc_type}. Must be one of: {valid_types}",
         )
 
     # Resolve content from source or inline
@@ -210,6 +215,11 @@ def _do_create_internal(
                 title = manifest.get("title")
 
     if source and not multi_tab_data:
+        if doc_type == "file":
+            return _create_error(
+                "invalid_input",
+                "doc_type='file' does not support source. Pass content inline.",
+            )
         try:
             source_content, manifest_title = _read_source(source, doc_type)
         except MiseError as e:
@@ -227,7 +237,9 @@ def _do_create_internal(
         )
 
     try:
-        if doc_type == "doc":
+        if doc_type == "file":
+            result = _create_file(content, title, folder_id)
+        elif doc_type == "doc":
             result = _create_doc(content, title, folder_id)
         elif doc_type == "sheet" and multi_tab_data:
             result = _create_multi_tab_sheet(multi_tab_data, title, folder_id)
@@ -236,7 +248,7 @@ def _do_create_internal(
         else:
             return _create_error(
                 "not_implemented",
-                f"Creating {doc_type} is not yet implemented. Currently supported: doc, sheet.",
+                f"Creating {doc_type} is not yet implemented. Currently supported: doc, sheet, file.",
             )
 
         # Enrich manifest if created from source
@@ -256,6 +268,95 @@ def _do_create_internal(
         return _create_error(e.kind.value, e.message)
     except Exception as e:
         return _create_error("unknown", f"Unexpected error creating {doc_type}: {e}")
+
+
+# Extensions that Python's mimetypes module doesn't know about
+_EXTRA_MIME_TYPES: dict[str, str] = {
+    ".md": "text/markdown",
+    ".markdown": "text/markdown",
+    ".yaml": "text/yaml",
+    ".yml": "text/yaml",
+    ".toml": "application/toml",
+}
+
+
+def _infer_mime_type(title: str) -> str:
+    """Infer MIME type from file extension in title. Defaults to text/plain."""
+    ext = Path(title).suffix.lower()
+    if ext in _EXTRA_MIME_TYPES:
+        return _EXTRA_MIME_TYPES[ext]
+    mime, _ = mimetypes.guess_type(title)
+    return mime or "text/plain"
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def _create_file(
+    content: str,
+    title: str,
+    folder_id: str | None = None,
+) -> DoResult:
+    """
+    Upload a plain file to Drive without Google conversion.
+
+    MIME type is inferred from the title's file extension (e.g. .md → text/markdown,
+    .svg → image/svg+xml, .json → application/json). Falls back to text/plain.
+
+    The file stays as-is in Drive — no conversion to Google Doc/Sheet/Slides.
+    """
+    service = get_drive_service()
+    mime_type = _infer_mime_type(title)
+
+    file_metadata: dict[str, Any] = {
+        "name": title,
+    }
+    if folder_id:
+        file_metadata["parents"] = [folder_id]
+
+    media = MediaInMemoryUpload(
+        content.encode("utf-8"),
+        mimetype=mime_type,
+        resumable=False,
+    )
+
+    result = (
+        service.files()
+        .create(
+            body=file_metadata,
+            media_body=media,
+            fields="id,webViewLink,name,parents",
+            supportsAllDrives=True,
+        )
+        .execute()
+    )
+
+    parents = result.get("parents", [])
+    folder_name = None
+    if parents:
+        try:
+            folder_meta = (
+                service.files()
+                .get(fileId=parents[0], fields="name", supportsAllDrives=True)
+                .execute()
+            )
+            folder_name = folder_meta.get("name")
+        except Exception:
+            pass
+
+    cues: dict[str, Any] = {
+        "folder": folder_name or ("My Drive" if not folder_id else folder_id),
+        "folder_id": parents[0] if parents else folder_id,
+        "plain_file": True,
+        "mime_type": mime_type,
+    }
+
+    return DoResult(
+        file_id=result["id"],
+        web_link=result.get("webViewLink", f"https://drive.google.com/file/d/{result['id']}/view"),
+        title=result.get("name", title),
+        operation="create",
+        cues=cues,
+        extras={"type": "file"},
+    )
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
