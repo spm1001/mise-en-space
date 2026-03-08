@@ -5,6 +5,10 @@ Google Docs: Docs API batchUpdate (delete → insertText → apply headings).
 Plain files: Drive Files API (upload new content directly).
 
 Preserves file ID, sharing, location, and revision history.
+
+Routing contract: metadata is pre-fetched at dispatch level (server.py) and
+passed via metadata= param. If metadata is None (direct call, not via do()),
+we fall through to the Google Doc path for backward compatibility.
 """
 
 import re

@@ -4,9 +4,12 @@ Surgical edit operations — prepend, append, replace_text on Google Docs and pl
 Google Docs: Docs API batchUpdate with insertText and replaceAllText.
 Plain files: Drive Files API (download → modify → re-upload).
 Preserves existing content at other positions.
-"""
 
-from typing import Any
+Routing contract: metadata is pre-fetched at dispatch level (server.py) and
+passed via metadata= param. If metadata is None (direct call, not via do()),
+we fall through to the Google Doc path for backward compatibility. This avoids
+an extra Drive API call per edit — the dispatch fetches once, handlers share it.
+"""
 
 from typing import Any
 
