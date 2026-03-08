@@ -12,8 +12,8 @@ _PACKAGE_ROOT = Path(__file__).parent
 # OAuth scopes for mise-en-space
 # Goal: More effective than a human with UI access, on every dimension
 SCOPES = [
-    # --- Core: Search + Fetch + Gmail Write ---
-    'https://www.googleapis.com/auth/drive.readonly',
+    # --- Core: Search + Fetch + Edit + Gmail Write ---
+    'https://www.googleapis.com/auth/drive',  # Full access: read, write, create (superset of drive.readonly + drive.file)
     'https://www.googleapis.com/auth/gmail.modify',  # Superset of readonly: drafts, send, labels, archive
     'https://www.googleapis.com/auth/contacts.readonly',
 
@@ -21,7 +21,6 @@ SCOPES = [
     'https://www.googleapis.com/auth/documents',
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/presentations',
-    'https://www.googleapis.com/auth/drive.file',  # Create files in Drive
 
     # --- Activity + Context (UI parity+) ---
     # Drive Activity: See who did what, when. Enables action item discovery

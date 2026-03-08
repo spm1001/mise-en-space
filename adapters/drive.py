@@ -385,7 +385,7 @@ def download_file_content(file_id: str) -> bytes:
         MiseError: On API failure
     """
     service = get_drive_service()
-    result = service.files().get_media(fileId=file_id).execute()
+    result = service.files().get_media(fileId=file_id, supportsAllDrives=True).execute()
     return cast(bytes, result)
 
 
@@ -412,7 +412,7 @@ def upload_file_content(file_id: str, content: bytes, mime_type: str) -> dict[st
 
     service = get_drive_service()
     media = MediaInMemoryUpload(content, mimetype=mime_type, resumable=False)
-    result = service.files().update(fileId=file_id, media_body=media).execute()
+    result = service.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
     return cast(dict[str, Any], result)
 
 
