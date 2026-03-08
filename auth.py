@@ -38,9 +38,18 @@ from oauth_config import (
 )
 
 
-def _is_interactive() -> bool:
-    """Check if we're running in an interactive terminal."""
-    return sys.stdin.isatty() and os.environ.get("DISPLAY", os.environ.get("WAYLAND_DISPLAY", ""))
+def _can_open_browser() -> bool:
+    """Check if we can open a browser for automatic OAuth flow.
+
+    The auto flow opens a browser and starts a localhost callback server —
+    no terminal input needed. The question is simply: can we open a browser?
+    - macOS: always yes (via `open` command)
+    - Linux with X11/Wayland: yes
+    - Linux without display (SSH, CI): no
+    """
+    if sys.platform == "darwin":
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
 def fetch_credentials_from_secret_manager(project: str, secret_name: str) -> str:
@@ -105,8 +114,8 @@ def main() -> None:
 
     # Default to manual mode if no display available
     manual = args.manual or bool(args.code)
-    if not manual and not _is_interactive():
-        print("No display detected — using manual mode.")
+    if not manual and not _can_open_browser():
+        print("No browser available — using manual mode.")
         manual = True
 
     try:

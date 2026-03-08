@@ -124,11 +124,12 @@ Integration tests require `-m integration` flag and real credentials.
 ## OAuth
 
 ```bash
-uv run python -m auth          # Opens browser, creates token.json locally
-uv run python -m auth --manual # SSH/remote mode
+uv run python -m auth          # Opens browser automatically on macOS/Linux desktop
+uv run python -m auth --manual # SSH/remote mode (paste redirect URL back)
+uv run python -m auth --code URL_OR_CODE  # Non-interactive (for Claude/scripts)
 ```
 
-Credentials from GCP Secret Manager (in-memory). Token auto-refreshes; `clear_service_cache` handles revoked refresh tokens.
+`credentials.json` (OAuth client config, not secret) ships with the repo. Token auto-refreshes; `clear_service_cache` handles revoked refresh tokens. Maintainer can also fetch credentials from GCP Secret Manager as fallback.
 
 ## How to Add a New Content Type
 
