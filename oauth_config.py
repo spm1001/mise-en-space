@@ -27,6 +27,10 @@ SCOPES = [
     # via comment events (workaround for followup:actionitems).
     'https://www.googleapis.com/auth/drive.activity.readonly',
 
+    # Tasks: Google Tasks — action items from Docs/Chat sync here.
+    # Needed for action item surfacing (mise-NiKuki, mise-kecigu).
+    'https://www.googleapis.com/auth/tasks.readonly',
+
     # Drive Labels: Organizational metadata (priority, status, etc.)
     # Enterprise feature but useful when available.
     'https://www.googleapis.com/auth/drive.labels.readonly',

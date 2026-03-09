@@ -32,6 +32,7 @@ htmlcov/
 .nox/
 
 # Secrets - NEVER commit
+credentials.json
 token.json
 *.env
 .env.*
