@@ -27,6 +27,3 @@ from .gmail import (
     _extract_attachment_content, _download_attachment_bytes,
     OFFICE_MIME_TYPES, MAX_EAGER_ATTACHMENTS,
 )
-
-# Web fetchers
-from .web import fetch_web, _fetch_web_pdf, _fetch_web_office

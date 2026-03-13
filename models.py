@@ -23,13 +23,11 @@ from typing import Any
 class ErrorKind(Enum):
     """Categories of errors for consistent handling."""
     AUTH_EXPIRED = "auth_expired"        # Token needs refresh
-    AUTH_REQUIRED = "auth_required"      # Web page requires authentication
     NOT_FOUND = "not_found"              # Resource doesn't exist
     PERMISSION_DENIED = "permission_denied"  # No access to resource
     RATE_LIMITED = "rate_limited"        # Hit API quota
     NETWORK_ERROR = "network_error"      # Connection failed
     TIMEOUT = "timeout"                  # Request timed out
-    CAPTCHA = "captcha"                  # CAPTCHA challenge detected
     INVALID_INPUT = "invalid_input"      # Bad parameters
     EXTRACTION_FAILED = "extraction_failed"  # Couldn't process content
     UNKNOWN = "unknown"                  # Unexpected error
@@ -325,44 +323,6 @@ class PresentationData:
 
     # Warnings aggregated from all slides
     warnings: list[str] = field(default_factory=list)
-
-
-# ============================================================================
-# WEB TYPES
-# ============================================================================
-
-@dataclass
-class WebData:
-    """
-    Assembled web page data for the web extractor.
-
-    Adapter fetches HTML (via HTTP or browser rendering), assembles this structure.
-    Extractor receives this, returns clean markdown.
-
-    For non-HTML responses (PDFs, etc.), raw_bytes carries the binary content
-    and html will be empty. The tool layer checks content_type to route
-    binary content to the appropriate extractor.
-    """
-    url: str
-    html: str
-    final_url: str  # After redirects
-    status_code: int
-    content_type: str
-    cookies_used: bool
-    render_method: str  # 'http' or 'browser'
-
-    # Warnings during fetch (redirects, fallbacks, etc.)
-    warnings: list[str] = field(default_factory=list)
-    # Raw bytes for non-HTML responses (PDFs, images, etc.)
-    # Only populated for small responses (below STREAMING_THRESHOLD_BYTES).
-    raw_bytes: bytes | None = None
-    # Temp file path for large binary responses (above STREAMING_THRESHOLD_BYTES).
-    # Caller is responsible for cleanup (unlink when done).
-    temp_path: Path | None = None
-    # Markdown from browser extraction (passe read).
-    # When set, the tool layer skips trafilatura and uses this directly.
-    # The html field still holds the original HTTP response for title extraction.
-    pre_extracted_content: str | None = None
 
 
 # ============================================================================

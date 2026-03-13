@@ -24,7 +24,7 @@ Looking around for others, I found plenty of inspiration, but also some snags:
 I wanted something that had the best of all these ideas:
 
 - **Sous-chef philosophy.** Fetch a doc and get the comments too. Fetch an email and get the attachments extracted. Don't make the chef ask for every ingredient separately.
-- **Clean extraction.** Web pages arrive as clean markdown without nav bars. PDFs use hybrid extraction ([markitdown](https://github.com/microsoft/markitdown) → Drive OCR fallback). Office files convert automatically.
+- **Clean extraction.** PDFs use hybrid extraction ([markitdown](https://github.com/microsoft/markitdown) → Drive OCR fallback). Office files convert automatically.
 - **Opinionated, LLM-first control surface** 3 tools not 50 - search, fetch, create. ~3k tokens of tool definitions and everything routes through the same three verbs.
 - **One call, rich results.** Gmail search returns subjects, senders, snippets, and attachment names — not a bag of IDs requiring N+1 follow-ups.
 - **Filesystem-deposits.** Content goes to disk as markdown/CSV, not into the context window. Claude reads (and greps) what it needs.
@@ -47,7 +47,6 @@ Same 3 verbs, for agents without MCP support:
 mise search "quarterly reports"
 mise search "from:alice budget" --sources gmail
 mise fetch 1abc123def456
-mise fetch "https://simonwillison.net/..."
 mise create "Title" --content "# Markdown content"
 ```
 
@@ -61,7 +60,6 @@ mise create "Title" --content "# Markdown content"
 | Gmail threads | Markdown with signature stripping via [talon](https://github.com/mailgun/talon), attachment extraction |
 | PDFs | Markdown ([markitdown](https://github.com/microsoft/markitdown) → Drive OCR fallback) |
 | Office files (DOCX/XLSX/PPTX) | Markdown or CSV via Drive conversion |
-| Web URLs | Clean article extraction as markdown using [trafilatura](https://github.com/adbar/trafilatura), JS rendering fallback |
 | Video/Audio | AI summary + metadata (requires claude-suite) |
 | Images | Deposited as-is; SVG rendered to PNG |
 
@@ -172,7 +170,6 @@ MCP server startup is ~1.3s (import + first auth). After that, the server stays 
 |-----------|---------|-------|-------|
 | **Search (single source)** | ~1s | 0.2–1.3s | Drive and Gmail similar |
 | **Search (Drive + Gmail)** | ~0.8s | 0.6–1.1s | Parallel — faster than either alone |
-| **Fetch: Web page** | ~0.1s | 0.0–0.2s | HTTP direct, fastest path |
 | **Fetch: Google Doc** | ~2s | 1.7–3.1s | Single API call |
 | **Fetch: Gmail thread** | ~2.4s | 1.8–3.0s | Thread + message batch |
 | **Fetch: PDF** | ~2.5s | 2.1–3.0s | markitdown; complex PDFs fall back to Drive OCR (5–15s) |

@@ -65,7 +65,6 @@ Every extractor has dedicated unit tests plus cross-cutting tests:
 | `extractors/slides.py` | `test_slides` (33) | `test_real_fixtures`, `test_negative_paths` |
 | `extractors/gmail.py` | `test_gmail_extractor` (25) | `test_warning_behaviors`, `test_negative_paths` |
 | `extractors/comments.py` | `test_comments` (13) | — |
-| `extractors/web.py` | `test_web` (70) | — |
 
 ### Cross-cutting test files
 
@@ -85,7 +84,6 @@ Every extractor has dedicated unit tests plus cross-cutting tests:
 | `adapters/pdf.py` | `test_pdf` (16) — markitdown/Drive fallback | `test_pdf_adapter` |
 | `adapters/office.py` | `test_office` (10) — MIME mapping, conversion | `test_office_adapter` |
 | `adapters/image.py` | `test_image_fetch` (20) — MIME, SVG, deposit | — |
-| `adapters/web.py` | `test_web` (70) — auth, fallback, binary | — |
 | `adapters/charts.py` | `test_charts_adapter` (16) — metadata, PNG | — |
 | `adapters/cdp.py` | `test_cdp` (7) — availability, cookies | — |
 | `adapters/genai.py` | `test_genai` (16) — SAPISIDHASH, summaries | — |

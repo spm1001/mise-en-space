@@ -52,7 +52,6 @@ Examples:
     mise search "from:alice budget" --sources gmail
     mise fetch 1abc123def456
     mise fetch "https://docs.google.com/document/d/1abc.../edit"
-    mise fetch "https://simonwillison.net/2024/Dec/19/one-shot-python-tools/"
     mise create "Meeting Notes" --content "# Meeting Notes\\n\\n- Item 1"
     echo "# Notes" | mise create "Notes"
 """,
@@ -80,7 +79,7 @@ Examples:
     fetch_p = subparsers.add_parser("fetch", help="Fetch content to mise/")
     fetch_p.add_argument(
         "file_id",
-        help="Drive file ID, Gmail thread ID, or URL (web, Drive, Gmail)",
+        help="Drive file ID, Gmail thread ID, or Google URL (Drive, Gmail)",
     )
     fetch_p.set_defaults(func=cmd_fetch)
 

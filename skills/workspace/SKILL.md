@@ -1,11 +1,11 @@
 ---
 name: mise
-description: Orchestrates content fetching via mcp__mise__ tools. MANDATORY before using search/fetch/do — load FIRST when you see 'fetch this URL', 'get this blog post', 'extract content from', 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace', 'move this file', 'create a doc'. Prevents keyword-soup searches, missed comments, and orphaned context using file→email→meaning loop pattern, Gmail operators, comment checking, and result filtering the tools alone don't know. (user)
+description: Orchestrates content fetching via mcp__mise__ tools. MANDATORY before using search/fetch/do — load FIRST when you see 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace', 'move this file', 'create a doc'. Prevents keyword-soup searches, missed comments, and orphaned context using file→email→meaning loop pattern, Gmail operators, comment checking, and result filtering the tools alone don't know. (user)
 ---
 
 # mise
 
-Content fetching for web URLs, Google Drive, and Gmail — via the mise-en-space MCP.
+Content fetching for Google Drive and Gmail — via the mise-en-space MCP.
 
 **Iron Law: Files are artifacts. Emails are meaning.**
 
@@ -31,7 +31,7 @@ fetch("1abc...", base_path="/Users/modha/Repos/my-project")
 | `fetch` | Extract content to disk | Deposit folder: content.md, comments.md, manifest.json |
 | `do` | Act on Workspace (create, move, rename, share, overwrite, edit, email, Gmail ops) | File ID + web URL + cues |
 
-`fetch` auto-detects input: Drive file ID, Drive URL, Gmail thread ID, or web URL.
+`fetch` auto-detects input: Drive file ID, Drive URL, or Gmail thread ID.
 
 ## After Every Fetch
 
@@ -68,7 +68,6 @@ See `references/deposit-structure.md` for folder layout and attachment patterns.
 ```python
 fetch("1abc...", base_path="...")                          # Drive file
 fetch("https://docs.google.com/...", base_path="...")      # Drive URL
-fetch("https://example.com/article", base_path="...")      # Web URL
 fetch("18f3a4b...", base_path="...")                       # Gmail thread
 fetch("thread_id", attachment="budget.xlsx", base_path="...")  # Single attachment
 ```
@@ -334,19 +333,6 @@ do(operation="create", doc_type="sheet", source="mise/sheet--budget--abc123/", b
 | Manually pad columns with spaces | CSV handles alignment; Sheets renders it |
 | Bare commas in values (`£65,000`) | Quote: `"£65,000"` — or CSV breaks |
 
-## Web Content
-
-`fetch` handles any `http://` or `https://` URL:
-
-- **HTML** → clean markdown via trafilatura (removes boilerplate, preserves code blocks)
-- **Raw files** (JSON, Python, TOML) → pass-through with code fences
-- **JS-rendered pages** → browser fallback (requires `webctl start`)
-- **PDFs at URLs** → text extraction
-
-Cleaner than `curl` (raw HTML) or `WebFetch` (lossy summary). Deposits to `mise/web--{title}--{hash}/content.md`.
-
-**Choosing between mise and passe for web content:** For a single known URL, `mise fetch` is cleaner (no goto+wait dance, better markdown output). For discovering page structure or crawling a multi-page site, use passe `snapshot` to find the nav tree then `read` each page.
-
 ## Gmail Attachments
 
 PDFs and images are extracted eagerly. **Office files (DOCX/XLSX/PPTX) are skipped** during thread fetch (5-10s each). Extract on demand:
@@ -393,15 +379,15 @@ See `references/deposit-structure.md` for the full attachment layout.
 ## When to Use
 
 - Research tasks involving multiple Drive/Gmail sources
-- Fetching web content (cleaner than curl/WebFetch)
 - Finding context around a document (who sent it, what was discussed)
 - Creating or editing Google Docs/Sheets/Slides
 - Any task needing cross-source exploration
 
 ## When NOT to Use
 
-- Task doesn't involve content fetching (no web, Drive, or Gmail)
+- Task doesn't involve content fetching (no Drive or Gmail)
 - Pure filesystem operations
+- Web content fetching (use passe instead)
 
 ## Success Criteria
 

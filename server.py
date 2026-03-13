@@ -180,14 +180,11 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None) -> d
     Auto-detects input type and routes appropriately.
 
     Args:
-        file_id: Web URL, Drive file ID, or Gmail thread ID
+        file_id: Drive file ID or Gmail thread ID
         base_path: Directory for deposits (pass your cwd so files land next to your project, not the MCP server's directory)
         attachment: Specific attachment filename to extract from a Gmail thread.
                     Use this to extract Office files (DOCX/XLSX/PPTX) that are
                     skipped during normal thread fetch. Also works for PDFs and images.
-
-    Fetch web content with cleaner extraction than curl or WebFetch:
-        fetch("https://simonwillison.net/...")  → clean markdown, no boilerplate
 
     Returns:
         path: Filesystem path to fetched content folder
@@ -325,7 +322,7 @@ without being asked.
 
 ## Content Types
 
-Supported: **Web URLs**, Google Docs, Sheets, Slides, Gmail threads, PDFs, Office files, video/audio
+Supported: Google Docs, Sheets, Slides, Gmail threads, PDFs, Office files, video/audio
 
 ## Resources
 
@@ -434,13 +431,12 @@ Fetch content to filesystem. Writes to `mise/` in current directory.
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `file_id` | str | Drive file ID, Gmail thread ID, or full URL |
+| `file_id` | str | Drive file ID or Gmail thread ID |
 
 ## Supported Content Types
 
 | Type | Output Format | Notes |
 |------|---------------|-------|
-| Web URLs | markdown | Clean article extraction, removes nav/ads/boilerplate (some protected sites may block) |
 | Google Docs | markdown + comments.md | Multi-tab support, inline images, open comments |
 | Google Sheets | CSV + comments.md | All sheets, with headers, open comments |
 | Google Slides | markdown + thumbnails + comments.md | Selective thumbnails, open comments |
@@ -484,7 +480,6 @@ This supports gigabyte-scale Office files (common at ITV).
 ## Auto-detection
 
 The tool auto-detects input type:
-- Web URLs (http/https not matching Google services below)
 - Drive URLs (docs.google.com, sheets.google.com, slides.google.com, drive.google.com)
 - Gmail URLs (mail.google.com)
 - Gmail API IDs (16-character hex)
@@ -493,12 +488,6 @@ The tool auto-detects input type:
 ## Examples
 
 ```python
-# Fetch web content (cleaner than curl/WebFetch)
-fetch("https://simonwillison.net/2024/Dec/19/one-shot-python-tools/")
-
-# GitHub raw files, APIs
-fetch("https://raw.githubusercontent.com/fastapi/fastapi/master/pyproject.toml")
-
 # Fetch by Google URL
 fetch("https://docs.google.com/document/d/1abc.../edit")
 

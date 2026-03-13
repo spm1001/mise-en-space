@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-**mise-en-space** — Content fetching MCP (web URLs, Google Drive, Gmail) with mise-en-place philosophy: everything prepped, in its place, ready for Claude to cook with.
+**mise-en-space** — Google Workspace MCP (Drive, Gmail) with mise-en-place philosophy: everything prepped, in its place, ready for Claude to cook with.
 
 ## Architecture
 
@@ -49,7 +49,6 @@ docs/           Design documents and references
 | `office.py` | Office file conversion (DOCX/XLSX/PPTX via Drive) |
 | `image.py` | Image files (raster + SVG→PNG rendering) |
 | `genai.py` | Video summaries via internal GenAI API (requires chrome-debug) |
-| `web.py` | Web content fetching (HTTP + passe browser fallback) |
 
 ## MCP Tool Surface (3 verbs)
 
@@ -61,7 +60,7 @@ docs/           Design documents and references
 
 **Key behaviors:**
 - `search` returns metadata only — Claude triages before fetching
-- `fetch` auto-detects ID type (Drive file ID vs Gmail thread ID vs URL)
+- `fetch` auto-detects ID type (Drive file ID vs Gmail thread ID)
 - `fetch` accepts optional `attachment` param for extracting specific Gmail attachments
 - `do` routes via `operation` param — `do(operation="create", ...)`
 - **Comments included automatically** — open comments deposited as `comments.md`

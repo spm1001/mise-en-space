@@ -16,7 +16,7 @@ from unittest.mock import patch, MagicMock
 from tools.fetch import _build_cues, _build_email_context_metadata
 from models import (
     FetchResult, FetchError, SearchResult, EmailContext,
-    GmailThreadData, EmailMessage, EmailAttachment, WebData,
+    GmailThreadData, EmailMessage, EmailAttachment,
 )
 
 
@@ -593,7 +593,7 @@ class TestFetchDocCues:
 
 
 # Need to import fetch functions used in integration tests
-from tools.fetch import fetch_doc, fetch_sheet, fetch_slides, fetch_web
+from tools.fetch import fetch_doc, fetch_sheet, fetch_slides
 
 
 # ============================================================================
@@ -698,75 +698,3 @@ class TestFetchSlidesCues:
         assert cues["open_comment_count"] == 0
 
 
-# ============================================================================
-# Integration: cues built during fetch_web
-# ============================================================================
-
-
-class TestFetchWebCues:
-    """Verify cues are populated correctly during web fetch."""
-
-    @patch("tools.fetch.web.fetch_web_content")
-    @patch("tools.fetch.web.extract_web_content", return_value="# Extracted Article")
-    @patch("tools.fetch.web.extract_title", return_value="Article Title")
-    @patch("tools.fetch.web.write_content")
-    @patch("tools.fetch.web.write_manifest")
-    def test_web_cues_basic(
-        self, mock_manifest, mock_write, mock_title, mock_extract, mock_fetch,
-        tmp_path: Path,
-    ) -> None:
-        """Web fetch cues have no comments or email context."""
-        web_data = WebData(
-            url="https://example.com/article",
-            html="<html><body>Hello</body></html>",
-            final_url="https://example.com/article",
-            status_code=200,
-            content_type="text/html",
-            cookies_used=False,
-            render_method="http",
-        )
-        mock_fetch.return_value = web_data
-
-        content_file = tmp_path / "content.md"
-        content_file.write_text("# Extracted Article")
-        mock_write.return_value = content_file
-
-        with patch("tools.fetch.web.get_deposit_folder", return_value=tmp_path):
-            result = fetch_web("https://example.com/article")
-
-        cues = result.cues
-        assert cues["email_context"] is None
-        assert cues["open_comment_count"] == 0
-        assert "content.md" in cues["files"]
-        assert cues["content_length"] > 0
-        # Web fetches shouldn't have Gmail fields
-        assert "participants" not in cues
-
-    @patch("tools.fetch.web.fetch_web_content")
-    @patch("tools.fetch.web.extract_web_content", return_value="# Article")
-    @patch("tools.fetch.web.extract_title", return_value="Title")
-    @patch("tools.fetch.web.write_content")
-    @patch("tools.fetch.web.write_manifest")
-    def test_web_cues_with_warnings(
-        self, mock_manifest, mock_write, mock_title, mock_extract, mock_fetch,
-        tmp_path: Path,
-    ) -> None:
-        """Warnings from web adapter appear in cues."""
-        web_data = WebData(
-            url="https://example.com",
-            html="<html><body>Hello</body></html>",
-            final_url="https://example.com/redirected",
-            status_code=200,
-            content_type="text/html",
-            cookies_used=False,
-            render_method="http",
-            warnings=["Redirected to different URL"],
-        )
-        mock_fetch.return_value = web_data
-        mock_write.return_value = tmp_path / "content.md"
-        (tmp_path / "content.md").write_text("# Article")
-
-        with patch("tools.fetch.web.get_deposit_folder", return_value=tmp_path):
-            result = fetch_web("https://example.com")
-
-        assert "Redirected to different URL" in result.cues["warnings"]
