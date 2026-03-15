@@ -1,10 +1,12 @@
 """Tests for do() dispatch infrastructure."""
 
+import tempfile
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from models import DoResult
+from models import DoResult, FetchResult, FetchError, SearchResult
 import server
-from server import _DISPATCH, _REQUIRED_PARAMS, _REMOTE_ALLOWED_OPS, do
+from server import _DISPATCH, _REQUIRED_PARAMS, _REMOTE_ALLOWED_OPS, _REMOTE_CONTENT_MAX_BYTES, do, fetch, search
 from tools import OPERATIONS
 
 
@@ -250,3 +252,182 @@ class TestDoResultToDictRoundTrip:
         d = result.to_dict()
         assert d["type"] == "doc"
         assert d["operation"] == "create"
+
+
+class TestFetchResultInlineContent:
+    """FetchResult carries inline content for remote mode."""
+
+    def test_to_dict_omits_content_when_none(self) -> None:
+        result = FetchResult(
+            path="mise/doc--test--abc/", content_file="mise/doc--test--abc/content.md",
+            format="markdown", type="doc", metadata={"title": "Test"},
+        )
+        d = result.to_dict()
+        assert "content" not in d
+        assert "comments" not in d
+
+    def test_to_dict_includes_content_when_set(self) -> None:
+        result = FetchResult(
+            path="mise/doc--test--abc/", content_file="mise/doc--test--abc/content.md",
+            format="markdown", type="doc", metadata={"title": "Test"},
+            content="# Hello\n\nWorld", comments="## Comments\n\n- Fix typo",
+        )
+        d = result.to_dict()
+        assert d["content"] == "# Hello\n\nWorld"
+        assert d["comments"] == "## Comments\n\n- Fix typo"
+
+
+class TestRemoteFetch:
+    """Remote fetch reads content back from deposit and returns inline."""
+
+    def _make_fetch_result(self, base_path: Path, content: str, comments: str | None = None) -> FetchResult:
+        """Create a deposit folder with content and return a FetchResult pointing to it."""
+        folder = base_path / "mise" / "doc--test--abc123"
+        folder.mkdir(parents=True, exist_ok=True)
+        content_path = folder / "content.md"
+        content_path.write_text(content)
+        if comments:
+            (folder / "comments.md").write_text(comments)
+        return FetchResult(
+            path=str(folder), content_file=str(content_path),
+            format="markdown", type="doc", metadata={"title": "Test"},
+            cues={"files": ["content.md"], "warnings": [], "content_length": len(content)},
+        )
+
+    def test_remote_fetch_includes_inline_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            expected_content = "# Test Document\n\nHello world."
+            result = self._make_fetch_result(Path(tmp), expected_content)
+
+            with patch.object(server, "_REMOTE_MODE", True), \
+                 patch("server.do_fetch", return_value=result):
+                d = fetch(file_id="abc123", base_path=tmp)
+
+        assert d["content"] == expected_content
+        assert "comments" not in d
+
+    def test_remote_fetch_includes_comments(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self._make_fetch_result(
+                Path(tmp), "# Doc", comments="## Open Comments\n\n- Fix this",
+            )
+
+            with patch.object(server, "_REMOTE_MODE", True), \
+                 patch("server.do_fetch", return_value=result):
+                d = fetch(file_id="abc123", base_path=tmp)
+
+        assert d["content"] == "# Doc"
+        assert d["comments"] == "## Open Comments\n\n- Fix this"
+
+    def test_remote_fetch_truncates_oversized_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            big_content = "x" * (_REMOTE_CONTENT_MAX_BYTES + 5000)
+            result = self._make_fetch_result(Path(tmp), big_content)
+
+            with patch.object(server, "_REMOTE_MODE", True), \
+                 patch("server.do_fetch", return_value=result):
+                d = fetch(file_id="abc123", base_path=tmp)
+
+        assert len(d["content"]) == _REMOTE_CONTENT_MAX_BYTES
+        assert any("truncated" in w.lower() for w in d["cues"]["warnings"])
+
+    def test_remote_fetch_uses_temp_dir_when_no_base_path(self) -> None:
+        """When base_path is empty, remote fetch creates a temp dir and cleans up."""
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self._make_fetch_result(Path(tmp), "# Content")
+
+            with patch.object(server, "_REMOTE_MODE", True), \
+                 patch("server.do_fetch", return_value=result) as mock_fetch:
+                d = fetch(file_id="abc123")
+
+            # do_fetch was called (base_path will be the temp dir)
+            assert mock_fetch.called
+            assert d["content"] == "# Content"
+
+    def test_remote_fetch_passes_through_errors(self) -> None:
+        error = FetchError(kind="not_found", message="File not found")
+
+        with patch.object(server, "_REMOTE_MODE", True), \
+             patch("server.do_fetch", return_value=error):
+            d = fetch(file_id="abc123", base_path="/tmp")
+
+        assert d["error"] is True
+        assert d["kind"] == "not_found"
+
+    def test_stdio_fetch_does_not_inline(self) -> None:
+        """Stdio mode returns normal result without inline content."""
+        result = FetchResult(
+            path="mise/doc--test--abc/", content_file="mise/doc--test--abc/content.md",
+            format="markdown", type="doc", metadata={"title": "Test"}, cues={},
+        )
+
+        with patch.object(server, "_REMOTE_MODE", False), \
+             patch("server.do_fetch", return_value=result):
+            d = fetch(file_id="abc123", base_path="/tmp/project")
+
+        assert "content" not in d
+
+    def test_remote_fetch_skips_binary_content(self) -> None:
+        """Binary formats (images) get metadata but no inline content."""
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "mise" / "image--photo--abc123"
+            folder.mkdir(parents=True)
+            img_path = folder / "content.png"
+            img_path.write_bytes(b"\x89PNG fake image data")
+
+            result = FetchResult(
+                path=str(folder), content_file=str(img_path),
+                format="image", type="image", metadata={"title": "Photo"},
+                cues={"files": ["content.png"], "warnings": [], "content_length": 20},
+            )
+
+            with patch.object(server, "_REMOTE_MODE", True), \
+                 patch("server.do_fetch", return_value=result):
+                d = fetch(file_id="abc123", base_path=tmp)
+
+        assert "content" not in d
+        assert any("binary" in w.lower() for w in d["cues"]["warnings"])
+
+
+class TestRemoteSearch:
+    """Remote search returns full results inline without filesystem deposit."""
+
+    def test_remote_search_returns_full_results(self) -> None:
+        search_result = SearchResult(
+            query="Q4 planning",
+            sources=["drive"],
+            drive_results=[
+                {"name": "Q4 Report", "id": "abc123", "mimeType": "application/vnd.google-apps.document"},
+                {"name": "Q4 Budget", "id": "def456", "mimeType": "application/vnd.google-apps.spreadsheet"},
+            ],
+        )
+        # Simulate do_search setting the path (as it normally does)
+        search_result.path = "/tmp/mise/search--q4-planning--2026.json"
+
+        with patch.object(server, "_REMOTE_MODE", True), \
+             patch("server.do_search", return_value=search_result):
+            d = search(query="Q4 planning", base_path="/tmp")
+
+        # Remote mode strips path — full results returned inline
+        assert "path" not in d
+        assert d["query"] == "Q4 planning"
+        assert len(d["drive_results"]) == 2
+
+    def test_remote_search_works_without_base_path(self) -> None:
+        search_result = SearchResult(
+            query="test", sources=["drive"], drive_results=[],
+        )
+        search_result.path = "/tmp/mise/search--test.json"
+
+        with patch.object(server, "_REMOTE_MODE", True), \
+             patch("server.do_search", return_value=search_result):
+            d = search(query="test")
+
+        assert d["query"] == "test"
+
+    def test_stdio_search_requires_base_path(self) -> None:
+        with patch.object(server, "_REMOTE_MODE", False):
+            d = search(query="test")
+
+        assert d["error"] is True
+        assert "base_path" in d["message"]

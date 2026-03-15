@@ -26,8 +26,10 @@ import argparse
 import asyncio
 import logging
 import os
+import shutil
 import signal
 import sys
+import tempfile
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -40,7 +42,7 @@ from starlette.responses import JSONResponse
 from adapters.conversion import cleanup_orphaned_temp_files
 from adapters.drive import get_file_metadata
 from tools import do_search, do_fetch, do_create, do_move, do_rename, do_share, do_overwrite, do_prepend, do_append, do_replace_text, do_draft, do_reply_draft, do_archive, do_star, do_label, OPERATIONS
-from models import DoResult, MiseError
+from models import DoResult, FetchResult, MiseError
 from resources.tools import get_tool_registry
 
 logger = logging.getLogger(__name__)
@@ -184,10 +186,43 @@ def search(
         calendar_count: Number of Calendar results
         cues: Scope notes and warnings (present when folder_id is set)
     """
+    if _REMOTE_MODE:
+        return _search_remote(query, sources, max_results, base_path, folder_id)
+
     if not base_path:
         return {"error": True, "kind": "invalid_input",
                 "message": "base_path is required — pass your working directory so deposits land in your project, not the MCP server's directory"}
     return do_search(query, sources, max_results, base_path=Path(base_path), folder_id=folder_id).to_dict()
+
+
+def _search_remote(
+    query: str, sources: list[str] | None, max_results: int,
+    base_path: str, folder_id: str | None,
+) -> dict[str, Any]:
+    """
+    Remote search: deposit to temp dir, return full results inline.
+
+    SearchResult.to_dict() already returns full results when path is None
+    (legacy/inline mode). We use a temp dir for the deposit, then return
+    full_results() directly without setting path.
+    """
+    temp_dir = tempfile.mkdtemp(prefix="mise-remote-search-")
+    try:
+        effective_base = Path(base_path) if base_path else Path(temp_dir)
+        result = do_search(query, sources, max_results, base_path=effective_base, folder_id=folder_id)
+        # Strip the path — remote clients can't read it. This triggers
+        # SearchResult.to_dict() to return full results inline.
+        result.path = None
+        return result.to_dict()
+    finally:
+        if not base_path:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+# Inline content truncation threshold (bytes). Content larger than this
+# is truncated with a warning in cues. Prevents blowing up context windows
+# when fetching large spreadsheets or long documents remotely.
+_REMOTE_CONTENT_MAX_BYTES = 100_000
 
 
 @mcp.tool()
@@ -214,11 +249,68 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None) -> d
         format: Output format (markdown, csv)
         type: Content type (doc, sheet, slides, gmail)
         metadata: File metadata
+        content: (remote mode only) Inline content body
+        comments: (remote mode only) Inline comments markdown
     """
+    if _REMOTE_MODE:
+        return _fetch_remote(file_id, base_path, attachment)
+
     if not base_path:
         return {"error": True, "kind": "invalid_input",
                 "message": "base_path is required — pass your working directory so deposits land in your project, not the MCP server's directory"}
     return do_fetch(file_id, base_path=Path(base_path), attachment=attachment).to_dict()
+
+
+def _fetch_remote(file_id: str, base_path: str, attachment: str | None) -> dict[str, Any]:
+    """
+    Remote fetch: deposit to temp dir, read content back inline, clean up.
+
+    Fetchers work unchanged — they write to a temp dir instead of the caller's
+    cwd. We read the deposited content back and include it in the response.
+    """
+    temp_dir = tempfile.mkdtemp(prefix="mise-remote-")
+    try:
+        effective_base = Path(base_path) if base_path else Path(temp_dir)
+        result = do_fetch(file_id, base_path=effective_base, attachment=attachment)
+
+        if not isinstance(result, FetchResult):
+            return result.to_dict()
+
+        # Binary formats (images) can't be inlined as text.
+        # Return metadata and cues but no content body.
+        if result.format not in ("markdown", "csv", "json", "text"):
+            result.cues.setdefault("warnings", []).append(
+                f"Binary content ({result.format}) cannot be returned inline in remote mode"
+            )
+            return result.to_dict()
+
+        # Read content back from the deposited file
+        content_path = Path(result.content_file)
+        if content_path.exists():
+            raw_content = content_path.read_text(encoding="utf-8", errors="replace")
+            raw_bytes = len(raw_content.encode("utf-8"))
+
+            if raw_bytes > _REMOTE_CONTENT_MAX_BYTES:
+                # Truncate and warn
+                result.content = raw_content[:_REMOTE_CONTENT_MAX_BYTES]
+                result.cues.setdefault("warnings", []).append(
+                    f"Content truncated: {raw_bytes:,} bytes exceeds "
+                    f"{_REMOTE_CONTENT_MAX_BYTES:,} byte remote limit "
+                    f"({raw_bytes - _REMOTE_CONTENT_MAX_BYTES:,} bytes omitted)"
+                )
+            else:
+                result.content = raw_content
+
+        # Read comments if present
+        comments_path = content_path.parent / "comments.md"
+        if comments_path.exists():
+            result.comments = comments_path.read_text(encoding="utf-8", errors="replace")
+
+        return result.to_dict()
+    finally:
+        # Clean up temp dir (only if we created it, not if caller provided base_path)
+        if not base_path:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 _DO_DESCRIPTION_FULL = """\

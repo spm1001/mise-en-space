@@ -415,6 +415,10 @@ class FetchResult:
     type: str                    # 'doc', 'sheet', 'slides', 'gmail'
     metadata: dict[str, Any]     # Type-specific metadata
     cues: dict[str, Any] = field(default_factory=dict)  # Decision-tree signals
+    # Inline content — populated in remote mode so clients without filesystem access
+    # can consume content directly from the MCP response.
+    content: str | None = None
+    comments: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -427,6 +431,11 @@ class FetchResult:
         # Always include cues — explicit-null principle: empty cues means
         # "we checked, nothing to signal" not "cues not implemented"
         result["cues"] = self.cues
+        # Inline content for remote clients
+        if self.content is not None:
+            result["content"] = self.content
+        if self.comments is not None:
+            result["comments"] = self.comments
         return result
 
 
