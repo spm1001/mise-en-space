@@ -102,6 +102,13 @@ class MiseHttpClient:
             kwargs["content"] = content
 
         response = await self._client.request(method, url, **kwargs)
+
+        # Retry once on 401 — see MiseSyncClient.request for rationale
+        if response.status_code == 401:
+            self._credentials.refresh(GoogleAuthRequest())
+            kwargs["headers"]["Authorization"] = f"Bearer {self._credentials.token}"
+            response = await self._client.request(method, url, **kwargs)
+
         response.raise_for_status()
         return response
 
@@ -257,6 +264,15 @@ class MiseSyncClient:
             kwargs["content"] = content
 
         response = self._client.request(method, url, **kwargs)
+
+        # Retry once on 401 — token may report valid but be expired server-side
+        # (google-auth's creds.valid only checks local expiry field, which can
+        # be None for some token formats). AuthorizedHttp did this automatically.
+        if response.status_code == 401:
+            self._credentials.refresh(GoogleAuthRequest())
+            kwargs["headers"]["Authorization"] = f"Bearer {self._credentials.token}"
+            response = self._client.request(method, url, **kwargs)
+
         response.raise_for_status()
         return response
 

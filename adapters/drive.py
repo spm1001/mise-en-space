@@ -12,7 +12,7 @@ import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import httpx
 import orjson
