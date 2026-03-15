@@ -9,7 +9,7 @@ extractors/     Pure functions, no MCP awareness (testable without APIs)
 adapters/       Thin Google API wrappers (easily mocked)
 tools/          MCP tool definitions (thin wiring layer)
 workspace/      File deposit management (mise/ in cwd)
-server.py       FastMCP entry point
+server.py       FastMCP entry point (stdio default, --remote for StreamableHTTP)
 docs/           Design documents and references
 ```
 
@@ -65,7 +65,26 @@ docs/           Design documents and references
 - `do` routes via `operation` param — `do(operation="create", ...)`
 - **Comments included automatically** — open comments deposited as `comments.md`
 - **Cues in every response** — `cues` block surfaces files, comment count, warnings, email context
-- `base_path` is required on all tools — MCP servers run as separate processes, `Path.cwd()` is theirs not Claude's
+- `base_path` is required on all tools in stdio mode — MCP servers run as separate processes, `Path.cwd()` is theirs not Claude's. In remote mode, `base_path` is optional (temp dir used automatically).
+
+## Remote Mode
+
+`server.py --remote` (or `MISE_REMOTE=1`) runs as a StreamableHTTP server on `/mcp` for Claude.ai custom connectors. Key differences from stdio:
+
+| Aspect | stdio (default) | remote (`--remote`) |
+|--------|----------------|---------------------|
+| Transport | stdin/stdout | StreamableHTTP on `/mcp` |
+| `do()` operations | All 13 | 6 safe ops: create, draft, reply_draft, archive, star, label |
+| Content delivery | Filesystem deposits | Inline in JSON-RPC response (`content` + `comments` fields) |
+| `base_path` | Required | Optional (temp dir) |
+| Tool description | Full | Restricted (only safe ops + relevant params) |
+| Health endpoint | N/A | `/health` returns `{"status": "ok"}` |
+
+**Architecture:** `_REMOTE_MODE` is determined at module load time (before `@mcp.tool()` decorators run) so tool descriptions adapt. This is intentional — argparse validates in `__main__` but the value must be available earlier for the conditional `description=` parameter on `@mcp.tool()`. Don't move this to argparse without understanding why it's early.
+
+**Operation gating:** `_REMOTE_ALLOWED_OPS` in server.py. Rejected ops get a generic "not available in remote mode" error listing only allowed ops — restricted op names are not leaked.
+
+**Binary content:** Image fetches in remote mode return metadata and cues but no inline content (binary can't be text-encoded). A cue warning explains this.
 
 ## Error Handling
 
@@ -107,14 +126,17 @@ mise/
 | **get_deposit_folder wipes on re-fetch** | Every call to `get_deposit_folder` deletes existing files in that folder before returning it. This prevents stale files from previous fetches. Do NOT call `get_deposit_folder` twice for the same folder mid-operation (e.g. inside a retry loop) — the second call will wipe files the first call's writes produced. |
 | **MCP server must restart after code changes** | The MCP server loads code at session start. Edits to `extractors/`, `adapters/`, `tools/`, `workspace/` are not live until the next Claude Code session. Smoke-test new features in a fresh session. |
 | **Share requires confirm gate** | `do(operation="share")` without `confirm=True` returns a preview — the API won't execute. Call once to preview, show user, call again with `confirm=True`. Non-Google emails (iCloud, Outlook) automatically fall back to notification email (Google requires it); check `cues.notified` to see which recipients were notified. |
+| **`_REMOTE_MODE` is early** | Set at module load, not in `__main__`. Required because `@mcp.tool(description=...)` fires at decoration time. Don't "clean up" by moving to argparse — breaks conditional tool descriptions. |
 
 ## Development
 
 ```bash
-uv sync                     # Install dependencies
-uv run python server.py     # Run MCP server
-uv run pytest               # Run tests
-uv run pytest tests/unit    # Unit tests only (fast, mocked)
+uv sync                           # Install dependencies
+uv run python server.py           # Run MCP server (stdio)
+uv run python server.py --remote  # Run MCP server (StreamableHTTP on :8000/mcp)
+uv run python server.py --help    # CLI help
+uv run pytest                     # Run tests
+uv run pytest tests/unit          # Unit tests only (fast, mocked)
 uv run mypy models.py extractors/ adapters/ validation.py workspace/
 ```
 

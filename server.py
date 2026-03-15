@@ -219,10 +219,6 @@ def _search_remote(
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-# Inline content truncation threshold (bytes). Content larger than this
-# is truncated with a warning in cues. Prevents blowing up context windows
-# when fetching large spreadsheets or long documents remotely.
-_REMOTE_CONTENT_MAX_BYTES = 100_000
 
 
 @mcp.tool()
@@ -287,19 +283,7 @@ def _fetch_remote(file_id: str, base_path: str, attachment: str | None) -> dict[
         # Read content back from the deposited file
         content_path = Path(result.content_file)
         if content_path.exists():
-            raw_content = content_path.read_text(encoding="utf-8", errors="replace")
-            raw_bytes = len(raw_content.encode("utf-8"))
-
-            if raw_bytes > _REMOTE_CONTENT_MAX_BYTES:
-                # Truncate and warn
-                result.content = raw_content[:_REMOTE_CONTENT_MAX_BYTES]
-                result.cues.setdefault("warnings", []).append(
-                    f"Content truncated: {raw_bytes:,} bytes exceeds "
-                    f"{_REMOTE_CONTENT_MAX_BYTES:,} byte remote limit "
-                    f"({raw_bytes - _REMOTE_CONTENT_MAX_BYTES:,} bytes omitted)"
-                )
-            else:
-                result.content = raw_content
+            result.content = content_path.read_text(encoding="utf-8", errors="replace")
 
         # Read comments if present
         comments_path = content_path.parent / "comments.md"

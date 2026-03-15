@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 
 from models import DoResult, FetchResult, FetchError, SearchResult
 import server
-from server import _DISPATCH, _REQUIRED_PARAMS, _REMOTE_ALLOWED_OPS, _REMOTE_CONTENT_MAX_BYTES, do, fetch, search
+from server import _DISPATCH, _REQUIRED_PARAMS, _REMOTE_ALLOWED_OPS, do, fetch, search
 from tools import OPERATIONS
 
 
@@ -318,18 +318,6 @@ class TestRemoteFetch:
 
         assert d["content"] == "# Doc"
         assert d["comments"] == "## Open Comments\n\n- Fix this"
-
-    def test_remote_fetch_truncates_oversized_content(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            big_content = "x" * (_REMOTE_CONTENT_MAX_BYTES + 5000)
-            result = self._make_fetch_result(Path(tmp), big_content)
-
-            with patch.object(server, "_REMOTE_MODE", True), \
-                 patch("server.do_fetch", return_value=result):
-                d = fetch(file_id="abc123", base_path=tmp)
-
-        assert len(d["content"]) == _REMOTE_CONTENT_MAX_BYTES
-        assert any("truncated" in w.lower() for w in d["cues"]["warnings"])
 
     def test_remote_fetch_uses_temp_dir_when_no_base_path(self) -> None:
         """When base_path is empty, remote fetch creates a temp dir and cleans up."""
