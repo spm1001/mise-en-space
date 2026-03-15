@@ -6,6 +6,8 @@ or from a deposit folder (the deposit-then-publish pattern).
 
 doc_type='file' uploads content as-is (no Google conversion). MIME type is
 inferred from the title's file extension, or defaults to text/plain.
+
+Uses httpx via MiseSyncClient (Phase 1 migration).
 """
 
 import csv
@@ -16,9 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from googleapiclient.http import MediaIoBaseUpload, MediaInMemoryUpload
-
-from adapters.services import get_drive_service
+from adapters.http_client import get_sync_client
 from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
 from adapters.sheets import add_sheet, update_sheet_values, rename_sheet
 from models import DoResult, MiseError, ErrorKind
@@ -26,6 +26,11 @@ from retry import with_retry
 from workspace import enrich_manifest
 from tools.common import resolve_source as _resolve_source
 from validation import validate_drive_id, sanitize_title
+
+
+# Drive API v3 base URLs
+_DRIVE_API = "https://www.googleapis.com/drive/v3/files"
+_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3/files"
 
 
 def _create_error(kind: str, message: str) -> dict[str, Any]:
@@ -46,11 +51,10 @@ def _resolve_folder_cues(
     folder_name = None
     if parents:
         try:
-            folder_meta = (
-                get_drive_service()
-                .files()
-                .get(fileId=parents[0], fields="name", supportsAllDrives=True)
-                .execute()
+            client = get_sync_client()
+            folder_meta = client.get_json(
+                f"{_DRIVE_API}/{parents[0]}",
+                params={"fields": "name", "supportsAllDrives": "true"},
             )
             folder_name = folder_meta.get("name")
         except Exception:
@@ -332,30 +336,16 @@ def _create_file(
 
     The file stays as-is in Drive — no conversion to Google Doc/Sheet/Slides.
     """
-    service = get_drive_service()
+    client = get_sync_client()
     mime_type = _infer_mime_type(title)
 
-    file_metadata: dict[str, Any] = {
-        "name": title,
-    }
+    file_metadata: dict[str, Any] = {"name": title}
     if folder_id:
         file_metadata["parents"] = [folder_id]
 
-    media = MediaInMemoryUpload(
-        content.encode("utf-8"),
-        mimetype=mime_type,
-        resumable=False,
-    )
-
-    result = (
-        service.files()
-        .create(
-            body=file_metadata,
-            media_body=media,
-            fields="id,webViewLink,name,parents",
-            supportsAllDrives=True,
-        )
-        .execute()
+    result = client.upload_multipart(
+        _UPLOAD_API, file_metadata, content.encode("utf-8"), mime_type,
+        params={"uploadType": "multipart", "fields": "id,webViewLink,name,parents", "supportsAllDrives": "true"},
     )
 
     cues = _resolve_folder_cues(result, folder_id)
@@ -384,36 +374,18 @@ def _create_doc(
     Drive automatically converts text/markdown to Google Doc format.
     This was discovered via about.get(fields='importFormats') - not in static docs!
     """
-    service = get_drive_service()
+    client = get_sync_client()
 
-    # File metadata
     file_metadata: dict[str, Any] = {
         "name": title,
         "mimeType": GOOGLE_DOC_MIME,
     }
-
-    # Add parent folder if specified
     if folder_id:
         file_metadata["parents"] = [folder_id]
 
-    # Create media with markdown content
-    # Drive's import converts text/markdown -> Google Doc
-    media = MediaIoBaseUpload(
-        io.BytesIO(content.encode("utf-8")),
-        mimetype="text/markdown",
-        resumable=True,
-    )
-
-    # Create the file
-    result = (
-        service.files()
-        .create(
-            body=file_metadata,
-            media_body=media,
-            fields="id,webViewLink,name,parents",
-            supportsAllDrives=True,
-        )
-        .execute()
+    result = client.upload_multipart(
+        _UPLOAD_API, file_metadata, content.encode("utf-8"), "text/markdown",
+        params={"uploadType": "multipart", "fields": "id,webViewLink,name,parents", "supportsAllDrives": "true"},
     )
 
     cues = _resolve_folder_cues(result, folder_id)
@@ -440,31 +412,18 @@ def _create_sheet(
     Drive converts text/csv to Google Sheet automatically.
     Same pattern as _create_doc with text/markdown.
     """
-    service = get_drive_service()
+    client = get_sync_client()
 
     file_metadata: dict[str, Any] = {
         "name": title,
         "mimeType": GOOGLE_SHEET_MIME,
     }
-
     if folder_id:
         file_metadata["parents"] = [folder_id]
 
-    media = MediaIoBaseUpload(
-        io.BytesIO(content.encode("utf-8")),
-        mimetype="text/csv",
-        resumable=True,
-    )
-
-    result = (
-        service.files()
-        .create(
-            body=file_metadata,
-            media_body=media,
-            fields="id,webViewLink,name,parents",
-            supportsAllDrives=True,
-        )
-        .execute()
+    result = client.upload_multipart(
+        _UPLOAD_API, file_metadata, content.encode("utf-8"), "text/csv",
+        params={"uploadType": "multipart", "fields": "id,webViewLink,name,parents", "supportsAllDrives": "true"},
     )
 
     cues = _resolve_folder_cues(result, folder_id)

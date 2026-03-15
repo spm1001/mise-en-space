@@ -166,19 +166,24 @@ class TestRetryWiringEndToEnd:
 
         assert exc_info.value.kind == ErrorKind.PERMISSION_DENIED
 
-    @patch('adapters.gmail.get_gmail_service')
-    def test_gmail_retries_on_rate_limit(self, mock_get_service) -> None:
+    @patch('adapters.gmail.get_sync_client')
+    def test_gmail_retries_on_rate_limit(self, mock_get_client) -> None:
         """Gmail adapter retries on 429 rate limit."""
         from adapters.gmail import search_threads
+        import httpx
 
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        error_429 = Exception("Rate limited")
-        error_429.resp = Mock(status=429)
+        # Build httpx-style 429 error
+        mock_response = Mock()
+        mock_response.status_code = 429
+        error_429 = httpx.HTTPStatusError(
+            "Rate limited", request=Mock(), response=mock_response,
+        )
 
         # First two calls: rate limited. Third: success.
-        mock_service.users().threads().list().execute.side_effect = [
+        mock_client.get_json.side_effect = [
             error_429,
             error_429,
             {"threads": [], "resultSizeEstimate": 0},
@@ -188,7 +193,7 @@ class TestRetryWiringEndToEnd:
             result = search_threads("test query", max_results=5)
 
         assert isinstance(result, list)
-        assert mock_service.users().threads().list().execute.call_count == 3
+        assert mock_client.get_json.call_count == 3
 
     @patch('adapters.drive.get_sync_client')
     def test_exhausted_retries_raise_mise_error(self, mock_get_client) -> None:

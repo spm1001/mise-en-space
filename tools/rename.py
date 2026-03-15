@@ -2,14 +2,20 @@
 Rename operation — rename a Drive file in-place.
 
 Uses Drive API files().update() with a name body field.
+
+Uses httpx via MiseSyncClient (Phase 1 migration).
 """
 
 from typing import Any
 
-from adapters.services import get_drive_service
+from adapters.http_client import get_sync_client
 from models import DoResult, MiseError
 from retry import with_retry
 from validation import validate_drive_id, sanitize_title
+
+
+# Drive API v3 base URL
+_DRIVE_API = "https://www.googleapis.com/drive/v3/files"
 
 
 def do_rename(
@@ -50,18 +56,13 @@ def do_rename(
 
 @with_retry(max_attempts=3, delay_ms=1000)
 def _rename_file(file_id: str, title: str) -> DoResult:
-    """Rename via files().update() with name body field."""
-    service = get_drive_service()
+    """Rename via files update with name body field."""
+    client = get_sync_client()
 
-    updated = (
-        service.files()
-        .update(
-            fileId=file_id,
-            body={"name": title},
-            fields="id,name,webViewLink",
-            supportsAllDrives=True,
-        )
-        .execute()
+    updated = client.patch_json(
+        f"{_DRIVE_API}/{file_id}",
+        json_body={"name": title},
+        params={"fields": "id,name,webViewLink", "supportsAllDrives": "true"},
     )
 
     return DoResult(

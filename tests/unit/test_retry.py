@@ -183,9 +183,9 @@ class TestConvertToMiseError:
         result = _convert_to_mise_error(ValueError("Important message"))
         assert "Important message" in result.message
 
-    @patch("retry.clear_service_cache")
-    def test_401_clears_service_cache(self, mock_clear: MagicMock) -> None:
-        """HTTP 401 should clear cached services."""
+    @patch("retry.clear_sync_client")
+    def test_401_clears_sync_client(self, mock_clear: MagicMock) -> None:
+        """HTTP 401 should clear cached httpx client."""
         exc = Exception("Unauthorized")
         exc.resp = Mock(status=401)
         _convert_to_mise_error(exc)

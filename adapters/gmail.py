@@ -4,6 +4,9 @@ Gmail adapter — Gmail API wrapper.
 Fetches threads and messages, parses into typed models.
 Creates drafts and reply drafts for the do() verb.
 Modifies threads (archive, label, star) for the do() verb.
+
+Uses httpx via MiseSyncClient (Phase 1 migration). Will switch to
+MiseHttpClient (async) when the tools/server layer goes async.
 """
 
 import base64
@@ -20,13 +23,16 @@ from typing import Any
 
 from models import GmailThreadData, GmailSearchResult, EmailMessage, EmailAttachment, ForwardedMessage
 from retry import with_retry
-from adapters.services import get_gmail_service
+from adapters.http_client import get_sync_client
 from extractors.gmail import parse_message_payload, parse_attachments_from_payload, parse_forwarded_messages
 from html_convert import clean_html_for_conversion, convert_html_to_markdown
 from filters import is_trivial_attachment, filter_attachments
 
 logger = logging.getLogger(__name__)
 
+
+# Gmail API v1 base URL
+_GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me"
 
 # Fields to request for threads — only what we need
 THREAD_FIELDS = (
@@ -179,7 +185,7 @@ def fetch_thread(thread_id: str) -> GmailThreadData:
     """
     Fetch complete thread data.
 
-    Uses threads().get(format='full') to get all messages in one call.
+    Uses threads.get with format=full to get all messages in one call.
     Full payload includes headers, body, and attachment metadata.
 
     Args:
@@ -191,14 +197,11 @@ def fetch_thread(thread_id: str) -> GmailThreadData:
     Raises:
         MiseError: On API failure (converted by @with_retry)
     """
-    service = get_gmail_service()
+    client = get_sync_client()
 
-    # Fetch thread with full message data
-    thread = (
-        service.users()
-        .threads()
-        .get(userId="me", id=thread_id, format="full", fields=THREAD_FIELDS)
-        .execute()
+    thread = client.get_json(
+        f"{_GMAIL_API}/threads/{thread_id}",
+        params={"format": "full", "fields": THREAD_FIELDS},
     )
 
     # Parse messages
@@ -228,13 +231,11 @@ def fetch_message(message_id: str) -> EmailMessage:
     Raises:
         MiseError: On API failure
     """
-    service = get_gmail_service()
+    client = get_sync_client()
 
-    msg = (
-        service.users()
-        .messages()
-        .get(userId="me", id=message_id, format="full")
-        .execute()
+    msg = client.get_json(
+        f"{_GMAIL_API}/messages/{message_id}",
+        params={"format": "full"},
     )
 
     return _build_message(msg)
@@ -248,8 +249,11 @@ def search_threads(
     """
     Search for threads matching query.
 
-    Uses threads().list() to find threads, then batch-fetches metadata
-    for subject, from, date extraction. Returns triage-ready results.
+    Uses threads.list to find threads, then fetches metadata for each
+    individually for subject, from, date extraction. Returns triage-ready results.
+
+    Phase 1 uses sequential GETs instead of the old batch API. In Phase 2
+    (async), these become asyncio.gather() — actually faster than batch.
 
     Args:
         query: Gmail search query (e.g., "from:example@gmail.com budget")
@@ -261,38 +265,44 @@ def search_threads(
     Raises:
         MiseError: On API failure
     """
-    service = get_gmail_service()
+    client = get_sync_client()
 
     # Step 1: Get thread IDs and snippets
-    list_response = (
-        service.users()
-        .threads()
-        .list(userId="me", q=query, maxResults=min(max_results, 100))
-        .execute()
+    list_response = client.get_json(
+        f"{_GMAIL_API}/threads",
+        params={"q": query, "maxResults": min(max_results, 100)},
     )
 
     threads = list_response.get("threads", [])
     if not threads:
         return []
 
-    # Preserve snippets from list response — batch fetch with format="metadata" doesn't include them
+    # Preserve snippets from list response — individual fetch with fields mask doesn't include them
     snippets_by_id = {t["id"]: t.get("snippet", "") for t in threads}
 
-    # Step 2: Batch-fetch thread metadata for subject/from/date
-    # Gmail batch API works (unlike Slides/Sheets/Docs)
-    # Capture original thread order — batch callbacks arrive in server order, not relevance order
-    thread_order = [t["id"] for t in threads[:max_results]]
-    results_by_id: dict[str, GmailSearchResult] = {}
-    batch = service.new_batch_http_request()
+    # Step 2: Fetch thread metadata individually
+    # Fields mask gives us payload parts tree (for attachment filenames)
+    # without message body data. Same fields as the old batch request.
+    search_fields = (
+        "id,messages(id,internalDate,"
+        "payload(headers,mimeType,parts(filename,mimeType,body(attachmentId,size))))"
+    )
 
-    def handle_thread_response(request_id: str, response: dict[str, Any], exception: Exception | None) -> None:
-        if exception:
+    results: list[GmailSearchResult] = []
+    for thread in threads[:max_results]:
+        thread_id = thread["id"]
+        try:
+            response = client.get_json(
+                f"{_GMAIL_API}/threads/{thread_id}",
+                params={"format": "full", "fields": search_fields},
+            )
+        except Exception:
             # Skip failed threads, don't fail entire search
-            return
+            continue
 
         messages = response.get("messages", [])
         if not messages:
-            return
+            continue
 
         # First message has subject and sender
         first_msg = messages[0]
@@ -310,40 +320,23 @@ def search_threads(
                 if att.get("filename"):
                     attachment_names.append(att["filename"])
 
-        thread_id = response.get("id", "")
-        if not thread_id:
-            logger.warning("Batch callback received response with empty thread_id — skipping")
-            return
-        results_by_id[thread_id] = GmailSearchResult(
-            thread_id=thread_id,
+        resp_thread_id = response.get("id", "")
+        if not resp_thread_id:
+            logger.warning("Thread response with empty thread_id — skipping")
+            continue
+
+        results.append(GmailSearchResult(
+            thread_id=resp_thread_id,
             subject=headers.get("Subject", ""),
-            snippet=snippets_by_id.get(thread_id, ""),
+            snippet=snippets_by_id.get(resp_thread_id, ""),
             date=_parse_date(headers.get("Date"), first_msg.get("internalDate")),
             from_address=headers.get("From"),
             message_count=len(messages),
             has_attachments=len(attachment_names) > 0,
             attachment_names=attachment_names,
-        )
+        ))
 
-    # Add batch requests — format="full" with fields mask gives us the payload
-    # parts tree (for attachment filenames) without message body data.
-    # Measured: 5x faster and 5x smaller than unmasked format="full".
-    search_fields = (
-        "id,messages(id,internalDate,"
-        "payload(headers,mimeType,parts(filename,mimeType,body(attachmentId,size))))"
-    )
-    for thread in threads[:max_results]:
-        batch.add(
-            service.users()
-            .threads()
-            .get(userId="me", id=thread["id"], format="full", fields=search_fields),
-            callback=handle_thread_response,
-        )
-
-    batch.execute()
-
-    # Reorder to match original relevance ranking from threads().list()
-    return [results_by_id[tid] for tid in thread_order if tid in results_by_id]
+    return results
 
 
 # =============================================================================
@@ -390,15 +383,11 @@ def download_attachment(
     Raises:
         MiseError: On API failure
     """
-    service = get_gmail_service()
+    client = get_sync_client()
 
     # Download attachment data
-    response = (
-        service.users()
-        .messages()
-        .attachments()
-        .get(userId="me", messageId=message_id, id=attachment_id)
-        .execute()
+    response = client.get_json(
+        f"{_GMAIL_API}/messages/{message_id}/attachments/{attachment_id}",
     )
 
     # Decode base64url data
@@ -516,15 +505,13 @@ def create_draft(
     Raises:
         MiseError: On API failure
     """
-    service = get_gmail_service()
+    client = get_sync_client()
 
     raw = _build_draft_message(to, subject, body_text, body_html, cc=cc)
 
-    draft = (
-        service.users()
-        .drafts()
-        .create(userId="me", body={"message": {"raw": raw}})
-        .execute()
+    draft = client.post_json(
+        f"{_GMAIL_API}/drafts",
+        json_body={"message": {"raw": raw}},
     )
 
     draft_id = draft["id"]
@@ -621,7 +608,7 @@ def create_reply_draft(
     Raises:
         MiseError: On API failure
     """
-    service = get_gmail_service()
+    client = get_sync_client()
 
     raw = _build_draft_message(
         to, subject, body_text, body_html,
@@ -629,13 +616,9 @@ def create_reply_draft(
     )
 
     # threadId associates the draft with the existing conversation
-    draft = (
-        service.users()
-        .drafts()
-        .create(userId="me", body={
-            "message": {"raw": raw, "threadId": thread_id},
-        })
-        .execute()
+    draft = client.post_json(
+        f"{_GMAIL_API}/drafts",
+        json_body={"message": {"raw": raw, "threadId": thread_id}},
     )
 
     draft_id = draft["id"]
@@ -690,7 +673,7 @@ def resolve_label_name(name: str) -> str:
     Resolve a human-readable label name to a Gmail label ID.
 
     System labels (INBOX, STARRED, etc.) are returned as-is.
-    User labels are looked up via labels().list() — case-insensitive match.
+    User labels are looked up via labels.list — case-insensitive match.
 
     Args:
         name: Label name (e.g., "Projects/Active", "INBOX")
@@ -709,8 +692,8 @@ def resolve_label_name(name: str) -> str:
         return SYSTEM_LABELS[upper]
 
     # Fetch user labels and match by name
-    service = get_gmail_service()
-    response = service.users().labels().list(userId="me").execute()
+    client = get_sync_client()
+    response = client.get_json(f"{_GMAIL_API}/labels")
     labels = response.get("labels", [])
 
     # Case-insensitive match on name
@@ -748,7 +731,7 @@ def modify_thread(
     Raises:
         MiseError: On API failure
     """
-    service = get_gmail_service()
+    client = get_sync_client()
 
     body: dict[str, Any] = {}
     if add_label_ids:
@@ -756,9 +739,10 @@ def modify_thread(
     if remove_label_ids:
         body["removeLabelIds"] = remove_label_ids
 
-    service.users().threads().modify(
-        userId="me", id=thread_id, body=body,
-    ).execute()
+    client.post_json(
+        f"{_GMAIL_API}/threads/{thread_id}/modify",
+        json_body=body,
+    )
 
     return ModifyThreadResult(
         thread_id=thread_id,

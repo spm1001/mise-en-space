@@ -11,18 +11,23 @@ files without explicit user approval.
 Non-Google accounts (iCloud, Outlook, etc.) require a notification
 email — the API rejects silent sharing. We handle this automatically:
 try silent first, fall back to notification if Google requires it.
+
+Uses httpx via MiseSyncClient (Phase 1 migration).
 """
 
 from typing import Any
 
-from googleapiclient.errors import HttpError
+import httpx
 
-from adapters.services import get_drive_service
+from adapters.http_client import get_sync_client
 from models import DoResult, MiseError
 from retry import with_retry
 from validation import validate_drive_id
 
 VALID_ROLES = frozenset({"reader", "writer", "commenter"})
+
+# Drive API v3 base URL
+_DRIVE_API = "https://www.googleapis.com/drive/v3/files"
 
 
 def do_share(
@@ -82,14 +87,13 @@ def do_share(
 def _share_file(
     file_id: str, emails: list[str], role: str, confirm: bool,
 ) -> DoResult | dict[str, Any]:
-    """Preview or execute share via permissions().create()."""
-    service = get_drive_service()
+    """Preview or execute share via permissions create."""
+    client = get_sync_client()
 
     # Always fetch file metadata — needed for both preview and execute
-    file_meta = (
-        service.files()
-        .get(fileId=file_id, fields="id,name,webViewLink", supportsAllDrives=True)
-        .execute()
+    file_meta = client.get_json(
+        f"{_DRIVE_API}/{file_id}",
+        params={"fields": "id,name,webViewLink", "supportsAllDrives": "true"},
     )
 
     file_name = file_meta.get("name", file_id)
@@ -116,7 +120,7 @@ def _share_file(
     shared_with = []
     notified = []
     for email in emails:
-        _create_permission(service, file_id, email, role, notified)
+        _create_permission(client, file_id, email, role, notified)
         shared_with.append(email)
 
     cues: dict[str, Any] = {
@@ -141,22 +145,24 @@ def _share_file(
 
 
 def _create_permission(
-    service: Any, file_id: str, email: str, role: str, notified: list[str],
+    client: Any, file_id: str, email: str, role: str, notified: list[str],
 ) -> None:
     """Create a single permission, falling back to notification for non-Google accounts."""
     body = {"type": "user", "role": role, "emailAddress": email}
     try:
-        service.permissions().create(
-            fileId=file_id, body=body,
-            sendNotificationEmail=False, supportsAllDrives=True,
-        ).execute()
-    except HttpError as e:
-        if e.resp.status == 400 and "invalidSharingRequest" in str(e):
+        client.post_json(
+            f"{_DRIVE_API}/{file_id}/permissions",
+            json_body=body,
+            params={"sendNotificationEmail": "false", "supportsAllDrives": "true"},
+        )
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 400 and "invalidSharingRequest" in str(e):
             # Non-Google account — requires notification email
-            service.permissions().create(
-                fileId=file_id, body=body,
-                sendNotificationEmail=True, supportsAllDrives=True,
-            ).execute()
+            client.post_json(
+                f"{_DRIVE_API}/{file_id}/permissions",
+                json_body=body,
+                params={"sendNotificationEmail": "true", "supportsAllDrives": "true"},
+            )
             notified.append(email)
         else:
             raise

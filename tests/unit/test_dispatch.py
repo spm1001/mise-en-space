@@ -4,6 +4,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+import orjson
+
 from models import DoResult, FetchResult, FetchError, SearchResult
 import server
 from server import _DISPATCH, _REQUIRED_PARAMS, _REMOTE_ALLOWED_OPS, do, fetch, search
@@ -52,17 +54,17 @@ class TestAllOperationsReturnDoResult:
     """Every operation returns DoResult on success (not raw dict)."""
 
     @patch("retry.time.sleep")
-    @patch("tools.move.get_drive_service")
-    def test_move_returns_do_result(self, mock_svc, _sleep) -> None:
+    @patch("tools.move.get_sync_client")
+    def test_move_returns_do_result(self, mock_get_client, _sleep) -> None:
         from tools.move import do_move
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.side_effect = [
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = [
             {"mimeType": "application/vnd.google-apps.folder", "name": "Dest"},
             {"id": "f1", "name": "Test", "parents": ["old"], "webViewLink": ""},
         ]
-        mock_service.files().update().execute.return_value = {
+        mock_client.patch_json.return_value = {
             "id": "f1", "name": "Test", "parents": ["new"], "webViewLink": "",
         }
 
@@ -71,13 +73,13 @@ class TestAllOperationsReturnDoResult:
         assert result.operation == "move"
 
     @patch("retry.time.sleep")
-    @patch("tools.rename.get_drive_service")
-    def test_rename_returns_do_result(self, mock_svc, _sleep) -> None:
+    @patch("tools.rename.get_sync_client")
+    def test_rename_returns_do_result(self, mock_get_client, _sleep) -> None:
         from tools.rename import do_rename
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().update().execute.return_value = {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.patch_json.return_value = {
             "id": "f1", "name": "New Name", "webViewLink": "",
         }
 
@@ -86,13 +88,13 @@ class TestAllOperationsReturnDoResult:
         assert result.operation == "rename"
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_share_returns_do_result(self, mock_svc, _sleep) -> None:
+    @patch("tools.share.get_sync_client")
+    def test_share_returns_do_result(self, mock_get_client, _sleep) -> None:
         from tools.share import do_share
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.return_value = {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "id": "f1", "name": "Doc", "webViewLink": "",
         }
 
@@ -101,13 +103,13 @@ class TestAllOperationsReturnDoResult:
         assert result.operation == "share"
 
     @patch("retry.time.sleep")
-    @patch("tools.edit.get_docs_service")
-    def test_prepend_returns_do_result(self, mock_svc, _sleep) -> None:
+    @patch("tools.edit.get_sync_client")
+    def test_prepend_returns_do_result(self, mock_get_client, _sleep) -> None:
         from tools.edit import do_prepend
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.documents().get().execute.return_value = {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "title": "Doc", "body": {"content": [{"endIndex": 50}]},
         }
 
@@ -116,13 +118,13 @@ class TestAllOperationsReturnDoResult:
         assert result.operation == "prepend"
 
     @patch("retry.time.sleep")
-    @patch("tools.edit.get_docs_service")
-    def test_append_returns_do_result(self, mock_svc, _sleep) -> None:
+    @patch("tools.edit.get_sync_client")
+    def test_append_returns_do_result(self, mock_get_client, _sleep) -> None:
         from tools.edit import do_append
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.documents().get().execute.return_value = {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "title": "Doc", "body": {"content": [{"endIndex": 50}]},
         }
 
@@ -131,16 +133,16 @@ class TestAllOperationsReturnDoResult:
         assert result.operation == "append"
 
     @patch("retry.time.sleep")
-    @patch("tools.edit.get_docs_service")
-    def test_replace_text_returns_do_result(self, mock_svc, _sleep) -> None:
+    @patch("tools.edit.get_sync_client")
+    def test_replace_text_returns_do_result(self, mock_get_client, _sleep) -> None:
         from tools.edit import do_replace_text
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.documents().get().execute.return_value = {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "title": "Doc", "body": {"content": [{"endIndex": 50}]},
         }
-        mock_service.documents().batchUpdate().execute.return_value = {
+        mock_client.post_json.return_value = {
             "replies": [{"replaceAllText": {"occurrencesChanged": 1}}],
         }
 
@@ -160,17 +162,19 @@ class TestAllOperationsReturnDoResult:
         assert result.operation == "overwrite"
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_create_returns_do_result(self, mock_svc, _sleep) -> None:
+    @patch("tools.create.get_sync_client")
+    def test_create_returns_do_result(self, mock_get_client, _sleep) -> None:
         from tools.create import do_create
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "doc1",
-            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
-            "name": "Test",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.request.return_value = MagicMock(
+            content=orjson.dumps({
+                "id": "doc1",
+                "webViewLink": "https://docs.google.com/document/d/doc1/edit",
+                "name": "Test",
+            })
+        )
 
         result = do_create("# Test", "Test")
         assert isinstance(result, DoResult)

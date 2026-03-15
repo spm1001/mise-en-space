@@ -3,6 +3,9 @@ Drive conversion adapter — upload, convert, export, cleanup.
 
 Shared infrastructure for PDF and Office file extraction.
 Both use Drive's implicit conversion: upload with target mimeType → auto-converts.
+
+Uses httpx via MiseSyncClient (Phase 1 migration). Will switch to
+MiseHttpClient (async) when the tools/server layer goes async.
 """
 
 from contextlib import contextmanager
@@ -11,14 +14,17 @@ from pathlib import Path
 from typing import Any, Generator, Literal
 import logging
 
-from googleapiclient.http import MediaFileUpload, MediaInMemoryUpload
-
-from adapters.services import get_drive_service
+from adapters.http_client import get_sync_client
 from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
 from retry import with_retry
 
 
 logger = logging.getLogger(__name__)
+
+
+# Drive API v3 base URLs
+_DRIVE_API = "https://www.googleapis.com/drive/v3/files"
+_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3/files"
 
 
 @dataclass
@@ -81,7 +87,7 @@ def convert_via_drive(
     Raises:
         ValueError: If no source provided or conflicting sources
     """
-    service = get_drive_service()
+    client = get_sync_client()
     warnings: list[str] = []
 
     target_mime = CONVERSION_TARGETS[target_type]
@@ -91,54 +97,42 @@ def convert_via_drive(
     # 1. Get file into Drive as Google format
     if source_file_id:
         # File already in Drive — copy with conversion (no upload needed)
-        copied = (
-            service.files()
-            .copy(
-                fileId=source_file_id,
-                body={"name": temp_name, "mimeType": target_mime},
-                fields="id",
-            )
-            .execute()
+        copied = client.post_json(
+            f"{_DRIVE_API}/{source_file_id}/copy",
+            json_body={"name": temp_name, "mimeType": target_mime},
+            params={"fields": "id"},
         )
         temp_id = copied["id"]
     else:
-        # Upload with conversion (streaming from disk or in-memory)
+        # Upload with conversion (from disk or in-memory)
         if file_bytes is None and file_path is None:
             raise ValueError("Must provide file_bytes, file_path, or source_file_id")
         if file_bytes is not None and file_path is not None:
             raise ValueError("Cannot provide both file_bytes and file_path")
 
         if file_path is not None:
-            media = MediaFileUpload(str(file_path), mimetype=source_mime, resumable=True)
+            upload_bytes = file_path.read_bytes()
         else:
-            media = MediaInMemoryUpload(file_bytes, mimetype=source_mime)
+            upload_bytes = file_bytes
 
-        uploaded = (
-            service.files()
-            .create(
-                body={"name": temp_name, "mimeType": target_mime},
-                media_body=media,
-                fields="id",
-            )
-            .execute()
+        metadata = {"name": temp_name, "mimeType": target_mime}
+        uploaded = client.upload_multipart(
+            _UPLOAD_API, metadata, upload_bytes, source_mime,
+            params={"uploadType": "multipart", "fields": "id"},
         )
         temp_id = uploaded["id"]
 
     try:
         # 2. Export to target format
-        content = (
-            service.files()
-            .export(fileId=temp_id, mimeType=export_mime)
-            .execute()
+        content_bytes = client.get_bytes(
+            f"{_DRIVE_API}/{temp_id}/export",
+            params={"mimeType": export_mime},
         )
-
-        # Decode if bytes
-        if isinstance(content, bytes):
-            content = content.decode("utf-8")
+        content = content_bytes.decode("utf-8")
 
     finally:
         # 3. Always attempt to delete temp file
-        deleted = _delete_temp_file(service, temp_id, temp_name)
+        deleted = _delete_temp_file(client, temp_id, temp_name)
         if not deleted:
             warnings.append(f"Failed to delete temp file: {temp_name} (ID: {temp_id})")
 
@@ -172,19 +166,15 @@ def upload_and_convert(
     Returns:
         Temp file ID in Drive (as Google Workspace format)
     """
-    service = get_drive_service()
+    client = get_sync_client()
     target_mime = CONVERSION_TARGETS[target_type]
     temp_name = f"{temp_name_prefix}{file_id_hint}" if file_id_hint else temp_name_prefix
 
     if source_file_id:
-        copied = (
-            service.files()
-            .copy(
-                fileId=source_file_id,
-                body={"name": temp_name, "mimeType": target_mime},
-                fields="id",
-            )
-            .execute()
+        copied = client.post_json(
+            f"{_DRIVE_API}/{source_file_id}/copy",
+            json_body={"name": temp_name, "mimeType": target_mime},
+            params={"fields": "id"},
         )
         return copied["id"]
     else:
@@ -194,18 +184,14 @@ def upload_and_convert(
             raise ValueError("Cannot provide both file_bytes and file_path")
 
         if file_path is not None:
-            media = MediaFileUpload(str(file_path), mimetype=source_mime, resumable=True)
+            upload_bytes = file_path.read_bytes()
         else:
-            media = MediaInMemoryUpload(file_bytes, mimetype=source_mime)
+            upload_bytes = file_bytes
 
-        uploaded = (
-            service.files()
-            .create(
-                body={"name": temp_name, "mimeType": target_mime},
-                media_body=media,
-                fields="id",
-            )
-            .execute()
+        metadata = {"name": temp_name, "mimeType": target_mime}
+        uploaded = client.upload_multipart(
+            _UPLOAD_API, metadata, upload_bytes, source_mime,
+            params={"uploadType": "multipart", "fields": "id"},
         )
         return uploaded["id"]
 
@@ -217,8 +203,8 @@ def delete_temp_file(file_id: str, file_name: str = "") -> bool:
     Public wrapper around _delete_temp_file for use by callers of
     upload_and_convert().
     """
-    service = get_drive_service()
-    return _delete_temp_file(service, file_id, file_name)
+    client = get_sync_client()
+    return _delete_temp_file(client, file_id, file_name)
 
 
 @contextmanager
@@ -258,7 +244,7 @@ def drive_temp_file(
             logger.warning(f"Orphaned temp file: {temp_name} (ID: {temp_id})")
 
 
-def _delete_temp_file(service: Any, file_id: str, file_name: str) -> bool:
+def _delete_temp_file(client: Any, file_id: str, file_name: str) -> bool:
     """
     Delete temporary file from Drive. Best-effort, logs failures.
 
@@ -266,7 +252,7 @@ def _delete_temp_file(service: Any, file_id: str, file_name: str) -> bool:
         True if deleted, False if failed
     """
     try:
-        service.files().delete(fileId=file_id).execute()
+        client.delete(f"{_DRIVE_API}/{file_id}")
         return True
     except Exception as e:
         logger.warning(f"Failed to delete temp file {file_name} ({file_id}): {e}")
@@ -279,17 +265,16 @@ def cleanup_orphaned_temp_files() -> int:
     Best-effort cleanup — logs failures, doesn't raise.
     Returns count of files successfully deleted.
     """
-    service = get_drive_service()
+    client = get_sync_client()
     deleted = 0
     try:
-        result = (
-            service.files()
-            .list(
-                q="name contains '_mise_temp_' and trashed = false",
-                fields="files(id, name, createdTime)",
-                pageSize=50,
-            )
-            .execute()
+        result = client.get_json(
+            _DRIVE_API,
+            params={
+                "q": "name contains '_mise_temp_' and trashed = false",
+                "fields": "files(id, name, createdTime)",
+                "pageSize": 50,
+            },
         )
         files = result.get("files", [])
         if not files:
@@ -297,7 +282,7 @@ def cleanup_orphaned_temp_files() -> int:
 
         logger.info(f"Found {len(files)} orphaned _mise_temp_* files in Drive")
         for f in files:
-            if _delete_temp_file(service, f["id"], f["name"]):
+            if _delete_temp_file(client, f["id"], f["name"]):
                 deleted += 1
 
         if deleted:

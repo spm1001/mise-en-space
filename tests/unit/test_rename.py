@@ -48,11 +48,11 @@ class TestDoRenameSuccess:
     """Successful rename calls."""
 
     @patch("retry.time.sleep")
-    @patch("tools.rename.get_drive_service")
-    def test_renames_file(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().update().execute.return_value = {
+    @patch("tools.rename.get_sync_client")
+    def test_renames_file(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.patch_json.return_value = {
             "id": "f1",
             "name": "Final Report",
             "webViewLink": "https://docs.google.com/document/d/f1/edit",
@@ -67,37 +67,36 @@ class TestDoRenameSuccess:
         assert result.cues["action"] == "Renamed to 'Final Report'"
 
     @patch("retry.time.sleep")
-    @patch("tools.rename.get_drive_service")
-    def test_passes_correct_api_params(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().update().execute.return_value = {
+    @patch("tools.rename.get_sync_client")
+    def test_passes_correct_api_params(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.patch_json.return_value = {
             "id": "f1", "name": "New", "webViewLink": "",
         }
 
         do_rename("f1", "New")
 
-        # Find the call with keyword args (skip the setup call from return_value wiring)
-        calls = mock_service.files().update.call_args_list
-        real_calls = [c for c in calls if c != ((), {})]
-        assert len(real_calls) == 1
-        assert real_calls[0] == ((), {
-            "fileId": "f1",
-            "body": {"name": "New"},
-            "fields": "id,name,webViewLink",
-            "supportsAllDrives": True,
-        })
+        mock_client.patch_json.assert_called_once()
+        call_args = mock_client.patch_json.call_args
+        # First positional arg is the URL
+        assert "/files/f1" in call_args[0][0]
+        # json_body contains the name
+        assert call_args[1]["json_body"] == {"name": "New"}
+        # params contain fields and supportsAllDrives
+        assert call_args[1]["params"]["fields"] == "id,name,webViewLink"
+        assert call_args[1]["params"]["supportsAllDrives"] == "true"
 
 
 class TestDoRenameErrors:
     """Error handling for rename."""
 
     @patch("retry.time.sleep")
-    @patch("tools.rename.get_drive_service")
-    def test_mise_error_returns_error_dict(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().update().execute.side_effect = MiseError(
+    @patch("tools.rename.get_sync_client")
+    def test_mise_error_returns_error_dict(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.patch_json.side_effect = MiseError(
             ErrorKind.NOT_FOUND, "File not found"
         )
 

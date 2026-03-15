@@ -4,11 +4,10 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-import requests  # type: ignore[import-untyped]
+import httpx
 
 from models import ChartData
 from adapters.charts import get_charts_from_spreadsheet, render_charts_as_pngs
-from tests.helpers import mock_api_chain
 
 
 class TestGetChartsFromSpreadsheet:
@@ -185,25 +184,28 @@ class TestRenderChartsAsPngs:
         assert charts == []
         assert render_time == 0
 
-    def test_happy_path_renders_charts(
-        self, mock_slides_service: MagicMock, mock_drive_service: MagicMock
-    ) -> None:
+    @patch("adapters.charts.get_sync_client")
+    def test_happy_path_renders_charts(self, mock_get_client) -> None:
         """Test successful chart rendering flow."""
         charts = [
             ChartData(chart_id=1, title="Chart 1", sheet_name="Data"),
             ChartData(chart_id=2, title="Chart 2", sheet_name="Data"),
         ]
 
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
         # Mock time.time to make objectIds predictable
         mock_time = MagicMock()
         mock_time.time.return_value = 12345
         mock_time.perf_counter.side_effect = [0.0, 1.0]  # For render timing
 
-        mock_api_chain(mock_slides_service, "presentations.create.execute", {
-            "presentationId": "temp-pres-id"
-        })
-        mock_api_chain(mock_slides_service, "presentations.batchUpdate.execute", {})
-        mock_api_chain(mock_slides_service, "presentations.get.execute", {
+        # Sequential calls: create, batchUpdate, get
+        mock_client.post_json.side_effect = [
+            {"presentationId": "temp-pres-id"},  # create
+            {},  # batchUpdate
+        ]
+        mock_client.get_json.return_value = {
             "slides": [
                 {
                     "pageElements": [{
@@ -218,18 +220,16 @@ class TestRenderChartsAsPngs:
                     }]
                 },
             ]
-        })
+        }
 
-        with patch("adapters.charts.get_slides_service", return_value=mock_slides_service), \
-             patch("adapters.charts.get_drive_service", return_value=mock_drive_service), \
-             patch("adapters.charts.requests.get") as mock_get, \
+        with patch("adapters.charts.httpx.get") as mock_httpx_get, \
              patch("adapters.charts.time", mock_time):
 
             # Mock PNG downloads (must be > 100 bytes to pass the size check)
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.content = b"\x89PNG\r\n\x1a\n" + b"x" * 200  # > 100 bytes
-            mock_get.return_value = mock_response
+            mock_httpx_get.return_value = mock_response
 
             result_charts, render_time = render_charts_as_pngs("spreadsheet-id", charts)
 
@@ -239,28 +239,30 @@ class TestRenderChartsAsPngs:
         assert render_time == 1000  # 1.0 - 0.0 seconds = 1000ms
 
         # Verify presentation was deleted
-        mock_drive_service.files.return_value.delete.assert_called_once_with(fileId="temp-pres-id")
+        mock_client.delete.assert_called_once()
+        assert "temp-pres-id" in mock_client.delete.call_args[0][0]
 
-    def test_missing_content_url_graceful(
-        self, mock_slides_service: MagicMock, mock_drive_service: MagicMock
-    ) -> None:
+    @patch("adapters.charts.get_sync_client")
+    def test_missing_content_url_graceful(self, mock_get_client) -> None:
         """Test that missing contentUrl doesn't crash, chart just has no PNG."""
         charts = [
             ChartData(chart_id=1, title="Good Chart", sheet_name="Data"),
             ChartData(chart_id=2, title="Missing URL", sheet_name="Data"),
         ]
 
-        # Mock time.time to make objectIds predictable
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
         mock_time = MagicMock()
         mock_time.time.return_value = 12345
         mock_time.perf_counter.side_effect = [0.0, 1.0]
 
-        mock_api_chain(mock_slides_service, "presentations.create.execute", {
-            "presentationId": "temp-pres-id"
-        })
-        mock_api_chain(mock_slides_service, "presentations.batchUpdate.execute", {})
+        mock_client.post_json.side_effect = [
+            {"presentationId": "temp-pres-id"},
+            {},
+        ]
         # First chart has contentUrl, second doesn't
-        mock_api_chain(mock_slides_service, "presentations.get.execute", {
+        mock_client.get_json.return_value = {
             "slides": [
                 {
                     "pageElements": [{
@@ -275,18 +277,15 @@ class TestRenderChartsAsPngs:
                     }]
                 },
             ]
-        })
+        }
 
-        with patch("adapters.charts.get_slides_service", return_value=mock_slides_service), \
-             patch("adapters.charts.get_drive_service", return_value=mock_drive_service), \
-             patch("adapters.charts.requests.get") as mock_get, \
+        with patch("adapters.charts.httpx.get") as mock_httpx_get, \
              patch("adapters.charts.time", mock_time):
 
-            # Mock PNG downloads (must be > 100 bytes)
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.content = b"\x89PNG\r\n\x1a\n" + b"x" * 200
-            mock_get.return_value = mock_response
+            mock_httpx_get.return_value = mock_response
 
             result_charts, _ = render_charts_as_pngs("spreadsheet-id", charts)
 
@@ -294,104 +293,101 @@ class TestRenderChartsAsPngs:
         assert result_charts[0].png_bytes is not None
         assert result_charts[1].png_bytes is None
 
-    def test_png_fetch_failure_graceful(
-        self, mock_slides_service: MagicMock, mock_drive_service: MagicMock
-    ) -> None:
+    @patch("adapters.charts.get_sync_client")
+    def test_png_fetch_failure_graceful(self, mock_get_client) -> None:
         """Test that PNG download failure doesn't crash."""
         charts = [ChartData(chart_id=1, title="Chart", sheet_name="Data")]
 
-        mock_api_chain(mock_slides_service, "presentations.create.execute", {
-            "presentationId": "temp-pres-id"
-        })
-        mock_api_chain(mock_slides_service, "presentations.batchUpdate.execute", {})
-        mock_api_chain(mock_slides_service, "presentations.get.execute", {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_client.post_json.side_effect = [
+            {"presentationId": "temp-pres-id"},
+            {},
+        ]
+        mock_client.get_json.return_value = {
             "slides": [{
                 "pageElements": [{
                     "objectId": "chart_0_12345",
                     "sheetsChart": {"contentUrl": "http://example.com/chart.png"}
                 }]
             }]
-        })
+        }
 
-        with patch("adapters.charts.get_slides_service", return_value=mock_slides_service), \
-             patch("adapters.charts.get_drive_service", return_value=mock_drive_service), \
-             patch("adapters.charts.requests.get") as mock_get, \
+        with patch("adapters.charts.httpx.get") as mock_httpx_get, \
              patch("adapters.charts.time.time", return_value=12345):
 
             # Simulate network error
-            mock_get.side_effect = requests.RequestException("Connection failed")
+            mock_httpx_get.side_effect = httpx.HTTPError("Connection failed")
 
             result_charts, _ = render_charts_as_pngs("spreadsheet-id", charts)
 
         # Chart has no PNG but didn't crash
         assert result_charts[0].png_bytes is None
 
-    def test_png_too_small_rejected(
-        self, mock_slides_service: MagicMock, mock_drive_service: MagicMock
-    ) -> None:
+    @patch("adapters.charts.get_sync_client")
+    def test_png_too_small_rejected(self, mock_get_client) -> None:
         """Test that tiny responses (likely errors) are rejected."""
         charts = [ChartData(chart_id=1, title="Chart", sheet_name="Data")]
 
-        mock_api_chain(mock_slides_service, "presentations.create.execute", {
-            "presentationId": "temp-pres-id"
-        })
-        mock_api_chain(mock_slides_service, "presentations.batchUpdate.execute", {})
-        mock_api_chain(mock_slides_service, "presentations.get.execute", {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_client.post_json.side_effect = [
+            {"presentationId": "temp-pres-id"},
+            {},
+        ]
+        mock_client.get_json.return_value = {
             "slides": [{
                 "pageElements": [{
                     "objectId": "chart_0_12345",
                     "sheetsChart": {"contentUrl": "http://example.com/chart.png"}
                 }]
             }]
-        })
+        }
 
-        with patch("adapters.charts.get_slides_service", return_value=mock_slides_service), \
-             patch("adapters.charts.get_drive_service", return_value=mock_drive_service), \
-             patch("adapters.charts.requests.get") as mock_get, \
+        with patch("adapters.charts.httpx.get") as mock_httpx_get, \
              patch("adapters.charts.time.time", return_value=12345):
 
             # Return tiny response (< 100 bytes threshold)
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.content = b"error"  # Only 5 bytes
-            mock_get.return_value = mock_response
+            mock_httpx_get.return_value = mock_response
 
             result_charts, _ = render_charts_as_pngs("spreadsheet-id", charts)
 
         assert result_charts[0].png_bytes is None
 
-    def test_presentation_cleanup_on_error(
-        self, mock_slides_service: MagicMock, mock_drive_service: MagicMock
-    ) -> None:
+    @patch("adapters.charts.get_sync_client")
+    def test_presentation_cleanup_on_error(self, mock_get_client) -> None:
         """Test that temporary presentation is deleted even when error occurs."""
         charts = [ChartData(chart_id=1, title="Chart", sheet_name="Data")]
 
-        mock_api_chain(mock_slides_service, "presentations.create.execute", {
-            "presentationId": "temp-pres-id"
-        })
-        # batchUpdate fails
-        mock_api_chain(mock_slides_service, "presentations.batchUpdate.execute",
-                       side_effect=Exception("API error"))
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        with patch("adapters.charts.get_slides_service", return_value=mock_slides_service), \
-             patch("adapters.charts.get_drive_service", return_value=mock_drive_service):
+        mock_client.post_json.side_effect = [
+            {"presentationId": "temp-pres-id"},
+            Exception("API error"),  # batchUpdate fails
+        ]
 
-            with pytest.raises(Exception, match="API error"):
-                render_charts_as_pngs("spreadsheet-id", charts)
+        with pytest.raises(Exception, match="API error"):
+            render_charts_as_pngs("spreadsheet-id", charts)
 
         # Verify cleanup still happened
-        mock_drive_service.files().delete.assert_called_once_with(fileId="temp-pres-id")
+        mock_client.delete.assert_called_once()
+        assert "temp-pres-id" in mock_client.delete.call_args[0][0]
 
-    def test_presentation_creation_failure(
-        self, mock_slides_service: MagicMock, mock_drive_service: MagicMock
-    ) -> None:
+    @patch("adapters.charts.get_sync_client")
+    def test_presentation_creation_failure(self, mock_get_client) -> None:
         """Test error when presentation creation returns no ID."""
         charts = [ChartData(chart_id=1, title="Chart", sheet_name="Data")]
 
-        mock_api_chain(mock_slides_service, "presentations.create.execute", {})  # No presentationId
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        with patch("adapters.charts.get_slides_service", return_value=mock_slides_service), \
-             patch("adapters.charts.get_drive_service", return_value=mock_drive_service):
+        mock_client.post_json.return_value = {}  # No presentationId
 
-            with pytest.raises(RuntimeError, match="Failed to create presentation"):
-                render_charts_as_pngs("spreadsheet-id", charts)
+        with pytest.raises(RuntimeError, match="Failed to create presentation"):
+            render_charts_as_pngs("spreadsheet-id", charts)

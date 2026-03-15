@@ -406,16 +406,15 @@ class TestConvertViaDriveValidation:
                 target_type="doc",
             )
 
-    @patch("adapters.conversion.get_drive_service")
-    def test_source_file_id_uses_copy_not_upload(self, mock_service_fn):
-        """source_file_id uses files().copy() instead of files().create()."""
+    @patch("adapters.conversion.get_sync_client")
+    def test_source_file_id_uses_copy_not_upload(self, mock_get_client):
+        """source_file_id uses copy endpoint instead of upload."""
         from adapters.conversion import convert_via_drive
 
-        mock_service = MagicMock()
-        mock_service_fn.return_value = mock_service
-        mock_service.files().copy().execute.return_value = {"id": "temp_copy_id"}
-        mock_service.files().export().execute.return_value = b"converted content"
-        mock_service.files().delete().execute.return_value = None
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {"id": "temp_copy_id"}
+        mock_client.get_bytes.return_value = b"converted content"
 
         result = convert_via_drive(
             source_file_id="existing_drive_file",
@@ -423,10 +422,10 @@ class TestConvertViaDriveValidation:
             export_format="markdown",
         )
 
-        # copy() called, create() not called
-        mock_service.files().copy.assert_called()
-        copy_kwargs = mock_service.files().copy.call_args
-        assert copy_kwargs.kwargs["fileId"] == "existing_drive_file"
+        # post_json called with copy URL, not upload
+        copy_call = mock_client.post_json.call_args
+        assert "/copy" in copy_call[0][0]
+        assert "existing_drive_file" in copy_call[0][0]
         assert result.content == "converted content"
 
 

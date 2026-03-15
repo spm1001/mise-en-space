@@ -154,11 +154,11 @@ class TestCreateReplyDraft:
     """create_reply_draft calls Gmail API with threadId."""
 
     @patch("retry.time.sleep")
-    @patch("adapters.gmail.get_gmail_service")
-    def test_passes_thread_id_to_api(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.users().drafts().create().execute.return_value = {
+    @patch("adapters.gmail.get_sync_client")
+    def test_passes_thread_id_to_api(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "id": "draft_reply",
             "message": {"id": "msg_reply"},
         }
@@ -179,15 +179,15 @@ class TestCreateReplyDraft:
         assert "draft_reply" in result.web_link
 
         # Verify threadId was in the API call body
-        create_call = mock_service.users().drafts().create
-        create_call.assert_called()
+        call_kwargs = mock_client.post_json.call_args[1]
+        assert call_kwargs["json_body"]["message"]["threadId"] == "abc123def456abc1"
 
     @patch("retry.time.sleep")
-    @patch("adapters.gmail.get_gmail_service")
-    def test_returns_correct_result_shape(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.users().drafts().create().execute.return_value = {
+    @patch("adapters.gmail.get_sync_client")
+    def test_returns_correct_result_shape(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "id": "d1", "message": {"id": "m1"},
         }
 

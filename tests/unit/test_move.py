@@ -1,6 +1,8 @@
 """Tests for move operation."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, Mock
+
+import httpx
 
 from models import DoResult
 from server import do
@@ -47,12 +49,12 @@ class TestDoMove:
     """Move logic with mocked Drive API."""
 
     @patch("retry.time.sleep")
-    @patch("tools.move.get_drive_service")
-    def test_moves_file(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+    @patch("tools.move.get_sync_client")
+    def test_moves_file(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_service.files().get().execute.side_effect = [
+        mock_client.get_json.side_effect = [
             # Destination folder validation
             {"mimeType": "application/vnd.google-apps.folder", "name": "Archive"},
             # Current file parents
@@ -63,7 +65,7 @@ class TestDoMove:
                 "webViewLink": "https://drive.google.com/file/d/file1/view",
             },
         ]
-        mock_service.files().update().execute.return_value = {
+        mock_client.patch_json.return_value = {
             "id": "file1",
             "name": "Report.pdf",
             "parents": ["new_folder"],
@@ -80,13 +82,13 @@ class TestDoMove:
         assert result.cues["previous_parents"] == ["old_folder"]
 
     @patch("retry.time.sleep")
-    @patch("tools.move.get_drive_service")
-    def test_moves_file_with_multiple_parents(self, mock_svc, _sleep) -> None:
+    @patch("tools.move.get_sync_client")
+    def test_moves_file_with_multiple_parents(self, mock_get_client, _sleep) -> None:
         """Removes all existing parents (single-parent enforcement)."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_service.files().get().execute.side_effect = [
+        mock_client.get_json.side_effect = [
             {"mimeType": "application/vnd.google-apps.folder", "name": "Target"},
             {
                 "id": "file1",
@@ -95,7 +97,7 @@ class TestDoMove:
                 "webViewLink": "https://drive.google.com/file/d/file1/view",
             },
         ]
-        mock_service.files().update().execute.return_value = {
+        mock_client.patch_json.return_value = {
             "id": "file1",
             "name": "Report.pdf",
             "parents": ["target_folder"],
@@ -107,22 +109,21 @@ class TestDoMove:
         assert isinstance(result, DoResult)
         assert result.cues["previous_parents"] == ["folder_a", "folder_b"]
         # Verify removeParents included both old parents
-        update_call = mock_service.files().update.call_args
-        assert "folder_a,folder_b" == update_call.kwargs.get("removeParents", "")
+        patch_call = mock_client.patch_json.call_args
+        params = patch_call[1].get("params", patch_call[0][1] if len(patch_call[0]) > 1 else {})
+        assert params["removeParents"] == "folder_a,folder_b"
 
     @patch("retry.time.sleep")
-    @patch("tools.move.get_drive_service")
-    def test_move_file_not_found(self, mock_svc, _sleep) -> None:
+    @patch("tools.move.get_sync_client")
+    def test_move_file_not_found(self, mock_get_client, _sleep) -> None:
         """Drive API 404 becomes a clean error."""
-        from googleapiclient.errors import HttpError
-        import httplib2
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-
-        resp = httplib2.Response({"status": "404"})
-        mock_service.files().get().execute.side_effect = HttpError(
-            resp, b"File not found"
+        mock_response = Mock()
+        mock_response.status_code = 404
+        mock_client.get_json.side_effect = httpx.HTTPStatusError(
+            "File not found", request=Mock(), response=mock_response
         )
 
         result = do_move("nonexistent", "folder1")
@@ -130,17 +131,17 @@ class TestDoMove:
         assert result["error"] is True
 
     @patch("retry.time.sleep")
-    @patch("tools.move.get_drive_service")
-    def test_move_routes_through_do(self, mock_svc, _sleep) -> None:
+    @patch("tools.move.get_sync_client")
+    def test_move_routes_through_do(self, mock_get_client, _sleep) -> None:
         """do(operation='move') routes to do_move and returns dict."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_service.files().get().execute.side_effect = [
+        mock_client.get_json.side_effect = [
             {"mimeType": "application/vnd.google-apps.folder", "name": "Dest"},
             {"id": "f1", "name": "Test", "parents": ["old"], "webViewLink": ""},
         ]
-        mock_service.files().update().execute.return_value = {
+        mock_client.patch_json.return_value = {
             "id": "f1", "name": "Test", "parents": ["new"], "webViewLink": "",
         }
 
@@ -150,13 +151,13 @@ class TestDoMove:
         assert result["operation"] == "move"
 
     @patch("retry.time.sleep")
-    @patch("tools.move.get_drive_service")
-    def test_move_rejects_non_folder_destination(self, mock_svc, _sleep) -> None:
+    @patch("tools.move.get_sync_client")
+    def test_move_rejects_non_folder_destination(self, mock_get_client, _sleep) -> None:
         """Passing a file ID as destination returns a clear error."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_service.files().get().execute.return_value = {
+        mock_client.get_json.return_value = {
             "mimeType": "application/vnd.google-apps.document",
             "name": "Some Doc",
         }
@@ -169,13 +170,13 @@ class TestDoMove:
         assert "Some Doc" in result["message"]
 
     @patch("retry.time.sleep")
-    @patch("tools.move.get_drive_service")
-    def test_move_rejects_spreadsheet_destination(self, mock_svc, _sleep) -> None:
+    @patch("tools.move.get_sync_client")
+    def test_move_rejects_spreadsheet_destination(self, mock_get_client, _sleep) -> None:
         """Any non-folder MIME type is rejected."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_service.files().get().execute.return_value = {
+        mock_client.get_json.return_value = {
             "mimeType": "application/vnd.google-apps.spreadsheet",
             "name": "Budget",
         }

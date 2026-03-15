@@ -373,6 +373,47 @@ class MiseSyncClient:
         """DELETE request (no response body expected)."""
         self.request("DELETE", url, params=params)
 
+    def upload_multipart(
+        self,
+        url: str,
+        metadata: dict[str, Any],
+        content: bytes,
+        content_type: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Upload file using multipart/related encoding (Drive API).
+
+        Encodes JSON metadata + file content as multipart/related body.
+        Replaces googleapiclient's MediaFileUpload/MediaInMemoryUpload.
+
+        Args:
+            url: Upload endpoint (e.g. Drive upload API)
+            metadata: JSON metadata (name, mimeType, parents, etc.)
+            content: Raw file bytes
+            content_type: MIME type of the file content
+            params: Optional query parameters (uploadType, fields, etc.)
+        """
+        boundary = "mise_upload_boundary"
+        body = (
+            f"--{boundary}\r\n"
+            f"Content-Type: application/json; charset=UTF-8\r\n\r\n"
+        ).encode()
+        body += orjson.dumps(metadata) + b"\r\n"
+        body += (
+            f"--{boundary}\r\n"
+            f"Content-Type: {content_type}\r\n\r\n"
+        ).encode()
+        body += content + f"\r\n--{boundary}--".encode()
+
+        response = self.request(
+            "POST", url,
+            content=body,
+            content_type=f"multipart/related; boundary={boundary}",
+            params=params,
+        )
+        return orjson.loads(response.content)
+
     def stream_to_file(
         self,
         url: str,

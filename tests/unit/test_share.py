@@ -1,8 +1,8 @@
 """Tests for do_share operation."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, Mock
 
-from googleapiclient.errors import HttpError
+import httpx
 
 from models import DoResult, MiseError, ErrorKind
 from tools.share import do_share, VALID_ROLES
@@ -51,11 +51,11 @@ class TestDoSharePreview:
     """Preview mode (confirm=False, the default)."""
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_returns_preview_by_default(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.return_value = {
+    @patch("tools.share.get_sync_client")
+    def test_returns_preview_by_default(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "id": "f1", "name": "Report", "webViewLink": "https://docs.google.com/d/f1",
         }
 
@@ -72,27 +72,26 @@ class TestDoSharePreview:
         assert result["role"] == "reader"
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_preview_does_not_create_permissions(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.return_value = {
+    @patch("tools.share.get_sync_client")
+    def test_preview_does_not_create_permissions(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "id": "f1", "name": "Doc", "webViewLink": "",
         }
 
         do_share("f1", "alice@example.com")
 
-        # permissions().create() should NOT have been called with real args
-        calls = mock_service.permissions().create.call_args_list
-        real_calls = [c for c in calls if c != ((), {})]
-        assert len(real_calls) == 0
+        # post_json should NOT have been called (no permissions created)
+        # Only get_json for file metadata
+        mock_client.post_json.assert_not_called()
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_preview_shows_explicit_role(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.return_value = {
+    @patch("tools.share.get_sync_client")
+    def test_preview_shows_explicit_role(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "id": "f1", "name": "Doc", "webViewLink": "",
         }
 
@@ -103,11 +102,11 @@ class TestDoSharePreview:
         assert "writer" in result["message"]
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_preview_with_multiple_emails(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.return_value = {
+    @patch("tools.share.get_sync_client")
+    def test_preview_with_multiple_emails(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "id": "f1", "name": "Doc", "webViewLink": "",
         }
 
@@ -117,11 +116,11 @@ class TestDoSharePreview:
         assert result["shared_with"] == ["alice@example.com", "bob@example.com"]
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_preview_includes_confirm_cue(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.return_value = {
+    @patch("tools.share.get_sync_client")
+    def test_preview_includes_confirm_cue(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "id": "f1", "name": "Doc", "webViewLink": "",
         }
 
@@ -135,11 +134,11 @@ class TestDoShareConfirmed:
     """Confirmed execution (confirm=True)."""
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_shares_file_with_confirm(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.return_value = {
+    @patch("tools.share.get_sync_client")
+    def test_shares_file_with_confirm(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "id": "f1",
             "name": "Report",
             "webViewLink": "https://docs.google.com/document/d/f1/edit",
@@ -155,11 +154,11 @@ class TestDoShareConfirmed:
         assert result.cues["shared_with"] == ["alice@example.com"]
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_confirmed_with_explicit_role(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.return_value = {
+    @patch("tools.share.get_sync_client")
+    def test_confirmed_with_explicit_role(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "id": "f1", "name": "Doc", "webViewLink": "",
         }
 
@@ -169,11 +168,11 @@ class TestDoShareConfirmed:
         assert result.cues["role"] == "writer"
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_confirmed_with_multiple_emails(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.return_value = {
+    @patch("tools.share.get_sync_client")
+    def test_confirmed_with_multiple_emails(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "id": "f1", "name": "Doc", "webViewLink": "",
         }
 
@@ -181,40 +180,38 @@ class TestDoShareConfirmed:
 
         assert isinstance(result, DoResult)
         assert result.cues["shared_with"] == ["alice@example.com", "bob@example.com"]
-        # Two permissions().create() calls
-        assert mock_service.permissions().create.call_count >= 2
+        # Two post_json calls for permissions
+        assert mock_client.post_json.call_count >= 2
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_confirmed_creates_permission_with_correct_params(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.return_value = {
+    @patch("tools.share.get_sync_client")
+    def test_confirmed_creates_permission_with_correct_params(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "id": "f1", "name": "Doc", "webViewLink": "",
         }
 
         do_share("f1", "alice@example.com", role="commenter", confirm=True)
 
-        calls = mock_service.permissions().create.call_args_list
-        real_calls = [c for c in calls if c != ((), {})]
-        assert len(real_calls) == 1
-        assert real_calls[0] == ((), {
-            "fileId": "f1",
-            "body": {
-                "type": "user",
-                "role": "commenter",
-                "emailAddress": "alice@example.com",
-            },
-            "sendNotificationEmail": False,
-            "supportsAllDrives": True,
-        })
+        # Verify post_json was called with correct permission body
+        mock_client.post_json.assert_called_once()
+        call_args = mock_client.post_json.call_args
+        assert "/permissions" in call_args[0][0]
+        assert call_args[1]["json_body"] == {
+            "type": "user",
+            "role": "commenter",
+            "emailAddress": "alice@example.com",
+        }
+        assert call_args[1]["params"]["sendNotificationEmail"] == "false"
+        assert call_args[1]["params"]["supportsAllDrives"] == "true"
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_none_role_defaults_to_reader(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.return_value = {
+    @patch("tools.share.get_sync_client")
+    def test_none_role_defaults_to_reader(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "id": "f1", "name": "Doc", "webViewLink": "",
         }
 
@@ -226,11 +223,11 @@ class TestDoShareErrors:
     """Error handling for share."""
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_mise_error_returns_error_dict(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.side_effect = MiseError(
+    @patch("tools.share.get_sync_client")
+    def test_mise_error_returns_error_dict(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = MiseError(
             ErrorKind.NOT_FOUND, "File not found"
         )
 
@@ -241,11 +238,11 @@ class TestDoShareErrors:
         assert "File not found" in result["message"]
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_mise_error_on_preview_also_returns_error(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.side_effect = MiseError(
+    @patch("tools.share.get_sync_client")
+    def test_mise_error_on_preview_also_returns_error(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = MiseError(
             ErrorKind.NOT_FOUND, "File not found"
         )
 
@@ -259,31 +256,31 @@ class TestDoShareNotificationFallback:
     """Non-Google accounts require notification email fallback."""
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_falls_back_to_notification(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.return_value = {
+    @patch("tools.share.get_sync_client")
+    def test_falls_back_to_notification(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "id": "f1", "name": "Doc", "webViewLink": "",
         }
 
-        # First permissions().create() raises invalidSharingRequest,
+        # First post_json raises HTTPStatusError (invalidSharingRequest),
         # second (with notification) succeeds
-        resp = MagicMock()
-        resp.status = 400
-        error = HttpError(resp, b'invalidSharingRequest')
-        calls_made = []
+        mock_response = Mock()
+        mock_response.status_code = 400
+        error = httpx.HTTPStatusError(
+            "invalidSharingRequest", request=Mock(), response=mock_response
+        )
+        call_count = [0]
 
-        def create_side_effect(**kwargs):
-            calls_made.append(kwargs)
-            mock_execute = MagicMock()
-            if kwargs.get("sendNotificationEmail") is False:
-                mock_execute.execute.side_effect = error
-            else:
-                mock_execute.execute.return_value = {"id": "perm1"}
-            return mock_execute
+        def post_json_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            params = kwargs.get("params", {})
+            if params.get("sendNotificationEmail") == "false":
+                raise error
+            return {"id": "perm1"}
 
-        mock_service.permissions().create.side_effect = create_side_effect
+        mock_client.post_json.side_effect = post_json_side_effect
 
         result = do_share("f1", "alice@icloud.com", confirm=True)
 
@@ -293,35 +290,32 @@ class TestDoShareNotificationFallback:
         assert "notification_note" in result.cues
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_non_sharing_error_still_raises(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.return_value = {
+    @patch("tools.share.get_sync_client")
+    def test_non_sharing_error_still_raises(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "id": "f1", "name": "Doc", "webViewLink": "",
         }
 
         # 403 error (not invalidSharingRequest) should propagate
-        resp = MagicMock()
-        resp.status = 403
-
-        def create_side_effect(**kwargs):
-            mock_execute = MagicMock()
-            mock_execute.execute.side_effect = HttpError(resp, b'forbidden')
-            return mock_execute
-
-        mock_service.permissions().create.side_effect = create_side_effect
+        mock_response = Mock()
+        mock_response.status_code = 403
+        error = httpx.HTTPStatusError(
+            "forbidden", request=Mock(), response=mock_response
+        )
+        mock_client.post_json.side_effect = error
 
         # Should propagate — caught by retry then raised as error
         result = do_share("f1", "alice@example.com", confirm=True)
         assert result["error"] is True
 
     @patch("retry.time.sleep")
-    @patch("tools.share.get_drive_service")
-    def test_no_notification_cue_for_google_accounts(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().get().execute.return_value = {
+    @patch("tools.share.get_sync_client")
+    def test_no_notification_cue_for_google_accounts(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "id": "f1", "name": "Doc", "webViewLink": "",
         }
 

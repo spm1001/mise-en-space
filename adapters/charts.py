@@ -18,16 +18,24 @@ Use LINKED mode (not NOT_LINKED_IMAGE) - counterintuitively faster.
 Benchmarked Jan 2026: LINKED is ~10-15% faster than NOT_LINKED_IMAGE.
 Theory: NOT_LINKED_IMAGE does extra work to "freeze" the chart as a static
 image, while LINKED just renders and links. The contentUrl works either way.
+
+Uses httpx via MiseSyncClient (Phase 1 migration). Will switch to
+MiseHttpClient (async) when the tools/server layer goes async.
 """
 
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
-import requests  # type: ignore[import-untyped]
+import httpx
 
 from models import ChartData
-from adapters.services import get_slides_service, get_drive_service
+from adapters.http_client import get_sync_client
+
+
+# Google Slides API v1 and Drive API v3 base URLs
+_SLIDES_API = "https://slides.googleapis.com/v1/presentations"
+_DRIVE_API = "https://www.googleapis.com/drive/v3/files"
 
 
 def get_charts_from_spreadsheet(spreadsheet_response: dict[str, Any]) -> list[ChartData]:
@@ -100,16 +108,16 @@ def render_charts_as_pngs(
 
     render_start = time.perf_counter()
 
-    slides_service = get_slides_service()
-    drive_service = get_drive_service()
+    client = get_sync_client()
 
     presentation_id = None
 
     try:
         # Step 1: Create temporary presentation
-        pres = slides_service.presentations().create(
-            body={"title": f"mise-chart-render-{int(time.time())}"}
-        ).execute()
+        pres = client.post_json(
+            _SLIDES_API,
+            json_body={"title": f"mise-chart-render-{int(time.time())}"},
+        )
         presentation_id = pres.get("presentationId")
 
         if not presentation_id:
@@ -157,15 +165,13 @@ def render_charts_as_pngs(
             })
 
         # Execute all slide+chart creations in one call
-        slides_service.presentations().batchUpdate(
-            presentationId=presentation_id,
-            body={"requests": requests_batch}
-        ).execute()
+        client.post_json(
+            f"{_SLIDES_API}/{presentation_id}:batchUpdate",
+            json_body={"requests": requests_batch},
+        )
 
         # Step 3: Fetch presentation to get all contentUrls
-        pres_data = slides_service.presentations().get(
-            presentationId=presentation_id
-        ).execute()
+        pres_data = client.get_json(f"{_SLIDES_API}/{presentation_id}")
 
         # Map object IDs to contentUrls
         obj_id_to_url: dict[str, str] = {}
@@ -178,16 +184,17 @@ def render_charts_as_pngs(
                         obj_id_to_url[obj_id] = url
 
         # Step 4: Fetch PNGs in parallel
+        # contentUrls are pre-signed — no auth needed, use plain httpx
         def fetch_png(chart_obj_id: str) -> tuple[str, bytes | None]:
             """Fetch a single PNG, return (obj_id, bytes or None)."""
             url = obj_id_to_url.get(chart_obj_id)
             if not url:
                 return chart_obj_id, None
             try:
-                response = requests.get(url, timeout=30)
+                response = httpx.get(url, timeout=30)
                 if response.status_code == 200 and len(response.content) > 100:
                     return chart_obj_id, response.content
-            except requests.RequestException:
+            except httpx.HTTPError:
                 pass
             return chart_obj_id, None
 
@@ -212,6 +219,6 @@ def render_charts_as_pngs(
         # Always clean up the presentation
         if presentation_id:
             try:
-                drive_service.files().delete(fileId=presentation_id).execute()
+                client.delete(f"{_DRIVE_API}/{presentation_id}")
             except Exception:
                 pass  # Best effort cleanup

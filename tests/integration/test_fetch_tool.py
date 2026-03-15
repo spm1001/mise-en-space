@@ -43,7 +43,7 @@ def test_fetch_doc(integration_ids: dict[str, str], cleanup_mise_fetch) -> None:
     if not doc_id:
         pytest.skip("test_doc_id not in integration_ids.json")
 
-    result = fetch(doc_id)
+    result = fetch(doc_id, base_path=str(Path.cwd()))
 
     assert "error" not in result, f"Fetch failed: {result}"
     assert result["type"] == "doc"
@@ -68,7 +68,7 @@ def test_fetch_sheet(integration_ids: dict[str, str], cleanup_mise_fetch) -> Non
     if not sheet_id:
         pytest.skip("test_sheet_id not in integration_ids.json")
 
-    result = fetch(sheet_id)
+    result = fetch(sheet_id, base_path=str(Path.cwd()))
 
     assert "error" not in result, f"Fetch failed: {result}"
     assert result["type"] == "sheet"
@@ -87,7 +87,7 @@ def test_fetch_slides(integration_ids: dict[str, str], cleanup_mise_fetch) -> No
     if not presentation_id:
         pytest.skip("test_presentation_id not in integration_ids.json")
 
-    result = fetch(presentation_id)
+    result = fetch(presentation_id, base_path=str(Path.cwd()))
 
     assert "error" not in result, f"Fetch failed: {result}"
     assert result["type"] == "slides"
@@ -107,7 +107,7 @@ def test_fetch_gmail(integration_ids: dict[str, str], cleanup_mise_fetch) -> Non
     if not thread_id:
         pytest.skip("test_thread_id not in integration_ids.json")
 
-    result = fetch(thread_id)
+    result = fetch(thread_id, base_path=str(Path.cwd()))
 
     assert "error" not in result, f"Fetch failed: {result}"
     assert result["type"] == "gmail"
@@ -129,7 +129,7 @@ def test_fetch_drive_url(integration_ids: dict[str, str], cleanup_mise_fetch) ->
 
     # Construct a URL
     url = f"https://docs.google.com/document/d/{doc_id}/edit"
-    result = fetch(url)
+    result = fetch(url, base_path=str(Path.cwd()))
 
     assert "error" not in result, f"Fetch failed: {result}"
     assert result["type"] == "doc"
@@ -138,7 +138,7 @@ def test_fetch_drive_url(integration_ids: dict[str, str], cleanup_mise_fetch) ->
 @pytest.mark.integration
 def test_fetch_invalid_id(cleanup_mise_fetch) -> None:
     """Test that invalid ID returns error, not exception."""
-    result = fetch("invalid-id-that-does-not-exist-12345")
+    result = fetch("invalid-id-that-does-not-exist-12345", base_path=str(Path.cwd()))
 
     assert "error" in result
     assert result["error"] is True
@@ -153,7 +153,7 @@ def test_fetch_manifest_structure(integration_ids: dict[str, str], cleanup_mise_
     if not doc_id:
         pytest.skip("test_doc_id not in integration_ids.json")
 
-    result = fetch(doc_id)
+    result = fetch(doc_id, base_path=str(Path.cwd()))
     assert "error" not in result
 
     folder = Path(result["path"])
@@ -175,7 +175,7 @@ def test_fetch_pdf(integration_ids: dict[str, str], cleanup_mise_fetch) -> None:
     if not pdf_id:
         pytest.skip("test_pdf_id not in integration_ids.json")
 
-    result = fetch(pdf_id)
+    result = fetch(pdf_id, base_path=str(Path.cwd()))
 
     assert "error" not in result, f"Fetch failed: {result}"
     assert result["type"] == "pdf"
@@ -200,7 +200,7 @@ def test_fetch_pdf_extraction_method(integration_ids: dict[str, str], cleanup_mi
     if not pdf_id:
         pytest.skip("test_pdf_id not in integration_ids.json")
 
-    result = fetch(pdf_id)
+    result = fetch(pdf_id, base_path=str(Path.cwd()))
 
     assert "error" not in result, f"Fetch failed: {result}"
 
@@ -221,7 +221,7 @@ def test_fetch_docx(integration_ids: dict[str, str], cleanup_mise_fetch) -> None
     if not docx_id:
         pytest.skip("test_docx_id not in integration_ids.json")
 
-    result = fetch(docx_id)
+    result = fetch(docx_id, base_path=str(Path.cwd()))
 
     assert "error" not in result, f"Fetch failed: {result}"
     assert result["type"] == "docx"
@@ -246,7 +246,7 @@ def test_fetch_xlsx(integration_ids: dict[str, str], cleanup_mise_fetch) -> None
     if not xlsx_id:
         pytest.skip("test_xlsx_id not in integration_ids.json")
 
-    result = fetch(xlsx_id)
+    result = fetch(xlsx_id, base_path=str(Path.cwd()))
 
     assert "error" not in result, f"Fetch failed: {result}"
     assert result["type"] == "xlsx"
@@ -277,7 +277,7 @@ def test_fetch_gmail_with_pdf_attachment(integration_ids: dict[str, str], cleanu
     if not thread_id:
         pytest.skip("test_thread_with_pdf_id not in integration_ids.json")
 
-    result = fetch(thread_id)
+    result = fetch(thread_id, base_path=str(Path.cwd()))
 
     assert "error" not in result, f"Fetch failed: {result}"
     assert result["type"] == "gmail"
@@ -312,7 +312,7 @@ def test_fetch_gmail_attachment_param_office(integration_ids: dict[str, str], cl
     if not thread_id or not office_filename:
         pytest.skip("test_thread_with_office_id/filename not in integration_ids.json")
 
-    result = fetch(thread_id, attachment=office_filename)
+    result = fetch(thread_id, base_path=str(Path.cwd()), attachment=office_filename)
 
     assert "error" not in result, f"Fetch failed: {result}"
     assert result["type"] == "xlsx"
@@ -334,7 +334,7 @@ def test_fetch_gmail_attachment_param_pdf(integration_ids: dict[str, str], clean
     if not thread_id or not pdf_filename:
         pytest.skip("test_thread_with_pdf_id/filename not in integration_ids.json")
 
-    result = fetch(thread_id, attachment=pdf_filename)
+    result = fetch(thread_id, base_path=str(Path.cwd()), attachment=pdf_filename)
 
     assert "error" not in result, f"Fetch failed: {result}"
     assert result["type"] == "pdf"
@@ -359,7 +359,7 @@ def test_fetch_gmail_attachment_param_not_found(integration_ids: dict[str, str],
     if not thread_id:
         pytest.skip("test_thread_with_pdf_id not in integration_ids.json")
 
-    result = fetch(thread_id, attachment="nonexistent-file.pdf")
+    result = fetch(thread_id, base_path=str(Path.cwd()), attachment="nonexistent-file.pdf")
 
     assert result.get("error") is True
     assert "not_found" in result.get("kind", "")
@@ -373,7 +373,7 @@ def test_fetch_gmail_skipped_office_hint(integration_ids: dict[str, str], cleanu
     if not thread_id:
         pytest.skip("test_thread_with_office_id not in integration_ids.json")
 
-    result = fetch(thread_id)
+    result = fetch(thread_id, base_path=str(Path.cwd()))
 
     assert "error" not in result, f"Fetch failed: {result}"
     metadata = result.get("metadata", {})
@@ -382,34 +382,23 @@ def test_fetch_gmail_skipped_office_hint(integration_ids: dict[str, str], cleanu
     assert "attachment=" in metadata["skipped_office_hint"]
 
 
-@pytest.mark.integration
-def test_fetch_comments(integration_ids: dict[str, str]) -> None:
-    """Test fetching comments from a file via tool layer."""
-    from server import fetch_comments
+# --- Comments Tests ---
+# Comments are auto-deposited as comments.md during fetch (no separate fetch_comments API)
 
+
+@pytest.mark.integration
+def test_fetch_doc_with_comments(integration_ids: dict[str, str], cleanup_mise_fetch) -> None:
+    """Test that fetching a doc with open comments deposits comments.md."""
     doc_id = integration_ids.get("test_doc_with_comments_id")
     if not doc_id:
         pytest.skip("test_doc_with_comments_id not in integration_ids.json")
 
-    result = fetch_comments(doc_id)
+    result = fetch(doc_id, base_path=str(Path.cwd()))
 
     assert "error" not in result, f"Fetch failed: {result}"
-    # Verify structure, not content
-    assert isinstance(result.get("content"), str)
-    assert result.get("comment_count", 0) >= 0
 
-
-@pytest.mark.integration
-def test_fetch_comments_no_comments(integration_ids: dict[str, str]) -> None:
-    """Test fetching comments from a file with no comments."""
-    from server import fetch_comments
-
-    # Use an existing test doc that might not have comments
-    doc_id = integration_ids.get("test_sheet_id")  # Sheets typically have no comments
-    if not doc_id:
-        pytest.skip("test_sheet_id not in integration_ids.json")
-
-    result = fetch_comments(doc_id)
-
-    # Should succeed even if no comments
-    assert "error" not in result or result.get("comment_count") == 0
+    folder = Path(result["path"])
+    comments_file = folder / "comments.md"
+    if comments_file.exists():
+        comments = comments_file.read_text()
+        assert len(comments) > 0, "comments.md exists but is empty"

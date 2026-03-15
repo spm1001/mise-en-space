@@ -100,11 +100,11 @@ class TestCreateDraft:
     """create_draft calls Gmail API correctly."""
 
     @patch("retry.time.sleep")
-    @patch("adapters.gmail.get_gmail_service")
-    def test_creates_draft_and_returns_result(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.users().drafts().create().execute.return_value = {
+    @patch("adapters.gmail.get_sync_client")
+    def test_creates_draft_and_returns_result(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "id": "draft_abc",
             "message": {"id": "msg_123"},
         }
@@ -124,11 +124,11 @@ class TestCreateDraft:
         assert result.subject == "Test"
 
     @patch("retry.time.sleep")
-    @patch("adapters.gmail.get_gmail_service")
-    def test_passes_raw_message_to_api(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.users().drafts().create().execute.return_value = {
+    @patch("adapters.gmail.get_sync_client")
+    def test_passes_raw_message_to_api(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "id": "d1", "message": {"id": "m1"},
         }
 
@@ -140,10 +140,10 @@ class TestCreateDraft:
         )
 
         # Verify the API was called with a body containing raw message
-        call_kwargs = mock_service.users().drafts().create.call_args
-        body = call_kwargs[1]["body"] if "body" in (call_kwargs[1] or {}) else call_kwargs[0][0] if call_kwargs[0] else None
-        # The create() call should have userId="me" and body with message.raw
-        mock_service.users().drafts().create.assert_called()
+        mock_client.post_json.assert_called_once()
+        call_kwargs = mock_client.post_json.call_args[1]
+        assert "message" in call_kwargs["json_body"]
+        assert "raw" in call_kwargs["json_body"]["message"]
 
 
 # =============================================================================

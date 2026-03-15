@@ -30,14 +30,14 @@ def _plain_file_metadata(
     }
 
 
-def _mock_docs_service(end_index: int = 50, title: str = "Test Doc"):
-    """Create a mock Docs service with standard document response."""
-    mock_service = MagicMock()
-    mock_service.documents().get().execute.return_value = {
+def _mock_sync_client(end_index: int = 50, title: str = "Test Doc"):
+    """Create a mock httpx sync client with standard document response."""
+    mock_client = MagicMock()
+    mock_client.get_json.return_value = {
         "title": title,
         "body": {"content": [{"endIndex": 1}, {"endIndex": end_index}]},
     }
-    return mock_service
+    return mock_client
 
 
 # =============================================================================
@@ -107,10 +107,10 @@ class TestDoReplaceTextValidation:
 
 class TestDoPrepend:
     @patch("retry.time.sleep")
-    @patch("tools.edit.get_docs_service")
-    def test_prepends_text(self, mock_svc, _sleep) -> None:
-        mock_service = _mock_docs_service()
-        mock_svc.return_value = mock_service
+    @patch("tools.edit.get_sync_client")
+    def test_prepends_text(self, mock_get_client, _sleep) -> None:
+        mock_client = _mock_sync_client()
+        mock_get_client.return_value = mock_client
 
         result = do_prepend("doc123", "Executive Summary\n\n")
 
@@ -119,18 +119,20 @@ class TestDoPrepend:
         assert result.operation == "prepend"
         assert result.cues["inserted_chars"] == 19
 
-        # Verify insertText at index 1
-        batch_call = mock_service.documents().batchUpdate.call_args
-        requests = batch_call.kwargs["body"]["requests"]
+        # Verify post_json was called with insertText at index 1
+        post_calls = mock_client.post_json.call_args_list
+        assert len(post_calls) == 1
+        call_kwargs = post_calls[0][1]
+        requests = call_kwargs["json_body"]["requests"]
         insert_req = requests[0]["insertText"]
         assert insert_req["location"]["index"] == 1
         assert insert_req["text"] == "Executive Summary\n\n"
 
     @patch("retry.time.sleep")
     @patch("server.get_file_metadata", return_value=_google_doc_metadata())
-    @patch("tools.edit.get_docs_service")
-    def test_prepend_routes_through_do(self, mock_svc, _meta, _sleep) -> None:
-        mock_svc.return_value = _mock_docs_service()
+    @patch("tools.edit.get_sync_client")
+    def test_prepend_routes_through_do(self, mock_get_client, _meta, _sleep) -> None:
+        mock_get_client.return_value = _mock_sync_client()
 
         result = do(operation="prepend", file_id="doc1", content="Hello\n")
 
@@ -140,10 +142,10 @@ class TestDoPrepend:
 
 class TestDoAppend:
     @patch("retry.time.sleep")
-    @patch("tools.edit.get_docs_service")
-    def test_appends_text(self, mock_svc, _sleep) -> None:
-        mock_service = _mock_docs_service(end_index=100)
-        mock_svc.return_value = mock_service
+    @patch("tools.edit.get_sync_client")
+    def test_appends_text(self, mock_get_client, _sleep) -> None:
+        mock_client = _mock_sync_client(end_index=100)
+        mock_get_client.return_value = mock_client
 
         result = do_append("doc123", "\n\n--- Notes ---")
 
@@ -151,30 +153,33 @@ class TestDoAppend:
         assert result.operation == "append"
         assert result.cues["inserted_chars"] == 15
 
-        # Verify insertText at endIndex - 1
-        batch_call = mock_service.documents().batchUpdate.call_args
-        requests = batch_call.kwargs["body"]["requests"]
+        # Verify post_json was called with insertText at endIndex - 1
+        post_calls = mock_client.post_json.call_args_list
+        assert len(post_calls) == 1
+        call_kwargs = post_calls[0][1]
+        requests = call_kwargs["json_body"]["requests"]
         insert_req = requests[0]["insertText"]
         assert insert_req["location"]["index"] == 99  # endIndex - 1
 
     @patch("retry.time.sleep")
-    @patch("tools.edit.get_docs_service")
-    def test_append_to_empty_doc(self, mock_svc, _sleep) -> None:
-        mock_service = _mock_docs_service(end_index=1)
-        mock_svc.return_value = mock_service
+    @patch("tools.edit.get_sync_client")
+    def test_append_to_empty_doc(self, mock_get_client, _sleep) -> None:
+        mock_client = _mock_sync_client(end_index=1)
+        mock_get_client.return_value = mock_client
 
         result = do_append("doc123", "First content")
 
-        batch_call = mock_service.documents().batchUpdate.call_args
-        requests = batch_call.kwargs["body"]["requests"]
+        post_calls = mock_client.post_json.call_args_list
+        call_kwargs = post_calls[0][1]
+        requests = call_kwargs["json_body"]["requests"]
         # Empty doc: max(1-1, 1) = 1
         assert requests[0]["insertText"]["location"]["index"] == 1
 
     @patch("retry.time.sleep")
     @patch("server.get_file_metadata", return_value=_google_doc_metadata())
-    @patch("tools.edit.get_docs_service")
-    def test_append_routes_through_do(self, mock_svc, _meta, _sleep) -> None:
-        mock_svc.return_value = _mock_docs_service()
+    @patch("tools.edit.get_sync_client")
+    def test_append_routes_through_do(self, mock_get_client, _meta, _sleep) -> None:
+        mock_get_client.return_value = _mock_sync_client()
 
         result = do(operation="append", file_id="doc1", content="Tail\n")
 
@@ -183,12 +188,12 @@ class TestDoAppend:
 
 class TestDoReplaceText:
     @patch("retry.time.sleep")
-    @patch("tools.edit.get_docs_service")
-    def test_replaces_text(self, mock_svc, _sleep) -> None:
-        mock_service = _mock_docs_service()
-        mock_svc.return_value = mock_service
+    @patch("tools.edit.get_sync_client")
+    def test_replaces_text(self, mock_get_client, _sleep) -> None:
+        mock_client = _mock_sync_client()
+        mock_get_client.return_value = mock_client
 
-        mock_service.documents().batchUpdate().execute.return_value = {
+        mock_client.post_json.return_value = {
             "replies": [{"replaceAllText": {"occurrencesChanged": 3}}],
         }
 
@@ -201,13 +206,13 @@ class TestDoReplaceText:
         assert result.cues["occurrences_changed"] == 3
 
     @patch("retry.time.sleep")
-    @patch("tools.edit.get_docs_service")
-    def test_replace_with_empty_string_deletes(self, mock_svc, _sleep) -> None:
+    @patch("tools.edit.get_sync_client")
+    def test_replace_with_empty_string_deletes(self, mock_get_client, _sleep) -> None:
         """Empty replace string effectively deletes all matches."""
-        mock_service = _mock_docs_service()
-        mock_svc.return_value = mock_service
+        mock_client = _mock_sync_client()
+        mock_get_client.return_value = mock_client
 
-        mock_service.documents().batchUpdate().execute.return_value = {
+        mock_client.post_json.return_value = {
             "replies": [{"replaceAllText": {"occurrencesChanged": 2}}],
         }
 
@@ -219,11 +224,11 @@ class TestDoReplaceText:
 
     @patch("retry.time.sleep")
     @patch("server.get_file_metadata", return_value=_google_doc_metadata())
-    @patch("tools.edit.get_docs_service")
-    def test_replace_routes_through_do(self, mock_svc, _meta, _sleep) -> None:
-        mock_service = _mock_docs_service()
-        mock_svc.return_value = mock_service
-        mock_service.documents().batchUpdate().execute.return_value = {
+    @patch("tools.edit.get_sync_client")
+    def test_replace_routes_through_do(self, mock_get_client, _meta, _sleep) -> None:
+        mock_client = _mock_sync_client()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "replies": [{"replaceAllText": {"occurrencesChanged": 1}}],
         }
 
@@ -232,11 +237,11 @@ class TestDoReplaceText:
         assert result["operation"] == "replace_text"
 
     @patch("retry.time.sleep")
-    @patch("tools.edit.get_docs_service")
-    def test_replace_zero_occurrences(self, mock_svc, _sleep) -> None:
-        mock_service = _mock_docs_service()
-        mock_svc.return_value = mock_service
-        mock_service.documents().batchUpdate().execute.return_value = {
+    @patch("tools.edit.get_sync_client")
+    def test_replace_zero_occurrences(self, mock_get_client, _sleep) -> None:
+        mock_client = _mock_sync_client()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "replies": [{"replaceAllText": {"occurrencesChanged": 0}}],
         }
 

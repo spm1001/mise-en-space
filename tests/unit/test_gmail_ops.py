@@ -42,11 +42,11 @@ class TestResolveLabelName:
         assert resolve_label_name("Starred") == "STARRED"
 
     @patch("retry.time.sleep")
-    @patch("adapters.gmail.get_gmail_service")
-    def test_user_label_resolved(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.users().labels().list().execute.return_value = {
+    @patch("adapters.gmail.get_sync_client")
+    def test_user_label_resolved(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "labels": [
                 {"id": "Label_1", "name": "Projects/Active", "type": "user"},
                 {"id": "Label_2", "name": "Follow-up", "type": "user"},
@@ -57,11 +57,11 @@ class TestResolveLabelName:
         assert result == "Label_1"
 
     @patch("retry.time.sleep")
-    @patch("adapters.gmail.get_gmail_service")
-    def test_user_label_case_insensitive(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.users().labels().list().execute.return_value = {
+    @patch("adapters.gmail.get_sync_client")
+    def test_user_label_case_insensitive(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "labels": [
                 {"id": "Label_1", "name": "Projects/Active", "type": "user"},
             ],
@@ -71,11 +71,11 @@ class TestResolveLabelName:
         assert result == "Label_1"
 
     @patch("retry.time.sleep")
-    @patch("adapters.gmail.get_gmail_service")
-    def test_not_found_raises(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.users().labels().list().execute.return_value = {
+    @patch("adapters.gmail.get_sync_client")
+    def test_not_found_raises(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "labels": [
                 {"id": "Label_1", "name": "Existing", "type": "user"},
             ],
@@ -92,11 +92,11 @@ class TestModifyThread:
     """modify_thread calls the Gmail API correctly."""
 
     @patch("retry.time.sleep")
-    @patch("adapters.gmail.get_gmail_service")
-    def test_add_labels(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.users().threads().modify().execute.return_value = {}
+    @patch("adapters.gmail.get_sync_client")
+    def test_add_labels(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {}
 
         result = modify_thread("thread_1", add_label_ids=["STARRED"])
 
@@ -106,11 +106,11 @@ class TestModifyThread:
         assert result.removed_labels == []
 
     @patch("retry.time.sleep")
-    @patch("adapters.gmail.get_gmail_service")
-    def test_remove_labels(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.users().threads().modify().execute.return_value = {}
+    @patch("adapters.gmail.get_sync_client")
+    def test_remove_labels(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {}
 
         result = modify_thread("thread_1", remove_label_ids=["INBOX"])
 
@@ -118,11 +118,11 @@ class TestModifyThread:
         assert result.added_labels == []
 
     @patch("retry.time.sleep")
-    @patch("adapters.gmail.get_gmail_service")
-    def test_add_and_remove(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.users().threads().modify().execute.return_value = {}
+    @patch("adapters.gmail.get_sync_client")
+    def test_add_and_remove(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {}
 
         result = modify_thread(
             "thread_1",

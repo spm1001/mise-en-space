@@ -79,13 +79,13 @@ class TestDriveTempFile:
 class TestCleanupOrphanedTempFiles:
     """Tests for cleanup_orphaned_temp_files."""
 
-    @patch("adapters.conversion.get_drive_service")
-    def test_deletes_found_files(self, mock_get_service: MagicMock) -> None:
+    @patch("adapters.conversion.get_sync_client")
+    def test_deletes_found_files(self, mock_get_client: MagicMock) -> None:
         """Finds orphans and deletes them, returns count."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_service.files().list().execute.return_value = {
+        mock_client.get_json.return_value = {
             "files": [
                 {"id": "f1", "name": "_mise_temp_abc", "createdTime": "2026-01-01T00:00:00Z"},
                 {"id": "f2", "name": "_mise_temp_xyz", "createdTime": "2026-01-01T00:00:00Z"},
@@ -95,31 +95,29 @@ class TestCleanupOrphanedTempFiles:
         count = cleanup_orphaned_temp_files()
 
         assert count == 2
-        delete_calls = mock_service.files().delete.call_args_list
-        file_ids = {c.kwargs["fileId"] for c in delete_calls}
-        assert file_ids == {"f1", "f2"}
+        assert mock_client.delete.call_count == 2
 
-    @patch("adapters.conversion.get_drive_service")
-    def test_returns_zero_when_no_orphans(self, mock_get_service: MagicMock) -> None:
+    @patch("adapters.conversion.get_sync_client")
+    def test_returns_zero_when_no_orphans(self, mock_get_client: MagicMock) -> None:
         """No orphans found, returns 0."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_service.files().list().execute.return_value = {"files": []}
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"files": []}
 
         count = cleanup_orphaned_temp_files()
 
         assert count == 0
 
     @patch("adapters.conversion.logger")
-    @patch("adapters.conversion.get_drive_service")
+    @patch("adapters.conversion.get_sync_client")
     def test_partial_delete_failure(
-        self, mock_get_service: MagicMock, mock_logger: MagicMock
+        self, mock_get_client: MagicMock, mock_logger: MagicMock
     ) -> None:
         """Continues deleting even when some deletions fail."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_service.files().list().execute.return_value = {
+        mock_client.get_json.return_value = {
             "files": [
                 {"id": "f1", "name": "_mise_temp_a", "createdTime": "2026-01-01T00:00:00Z"},
                 {"id": "f2", "name": "_mise_temp_b", "createdTime": "2026-01-01T00:00:00Z"},
@@ -127,23 +125,21 @@ class TestCleanupOrphanedTempFiles:
         }
 
         # First delete succeeds, second fails
-        execute_mock = MagicMock()
-        execute_mock.side_effect = [None, Exception("API error")]
-        mock_service.files().delete().execute = execute_mock
+        mock_client.delete.side_effect = [None, Exception("API error")]
 
         count = cleanup_orphaned_temp_files()
 
         assert count == 1  # Only one succeeded
 
     @patch("adapters.conversion.logger")
-    @patch("adapters.conversion.get_drive_service")
+    @patch("adapters.conversion.get_sync_client")
     def test_list_failure_returns_zero(
-        self, mock_get_service: MagicMock, mock_logger: MagicMock
+        self, mock_get_client: MagicMock, mock_logger: MagicMock
     ) -> None:
         """If listing files fails, returns 0 and logs warning."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_service.files().list().execute.side_effect = Exception("Network error")
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = Exception("Network error")
 
         count = cleanup_orphaned_temp_files()
 

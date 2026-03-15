@@ -9,24 +9,29 @@ Routing contract: metadata is pre-fetched at dispatch level (server.py) and
 passed via metadata= param. If metadata is None (direct call, not via do()),
 we fall through to the Google Doc path for backward compatibility. This avoids
 an extra Drive API call per edit — the dispatch fetches once, handlers share it.
+
+Uses httpx via MiseSyncClient (Phase 1 migration).
 """
 
 from typing import Any
 
 from adapters.drive import GOOGLE_DOC_MIME
-from adapters.services import get_docs_service
+from adapters.http_client import get_sync_client
 from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 from tools.plain_file import plain_prepend, plain_append, plain_replace_text
 from validation import validate_drive_id
 
 
-def _get_doc_meta(service: Any, file_id: str) -> dict[str, Any]:
+# Google Docs API v1 base URL
+_DOCS_API = "https://docs.googleapis.com/v1/documents"
+
+
+def _get_doc_meta(client: Any, file_id: str) -> dict[str, Any]:
     """Fetch document title and end index."""
-    doc = (
-        service.documents()
-        .get(documentId=file_id, fields="title,body(content(endIndex))")
-        .execute()
+    doc = client.get_json(
+        f"{_DOCS_API}/{file_id}",
+        params={"fields": "title,body(content(endIndex))"},
     )
     body_content = doc.get("body", {}).get("content", [])
     end_index = body_content[-1].get("endIndex", 1) if body_content else 1
@@ -112,13 +117,13 @@ def do_replace_text(
 @with_retry(max_attempts=3, delay_ms=1000)
 def _prepend(file_id: str, text: str) -> DoResult:
     """Insert at index 1 (start of body)."""
-    service = get_docs_service()
-    meta = _get_doc_meta(service, file_id)
+    client = get_sync_client()
+    meta = _get_doc_meta(client, file_id)
 
-    service.documents().batchUpdate(
-        documentId=file_id,
-        body={"requests": [{"insertText": {"location": {"index": 1}, "text": text}}]},
-    ).execute()
+    client.post_json(
+        f"{_DOCS_API}/{file_id}:batchUpdate",
+        json_body={"requests": [{"insertText": {"location": {"index": 1}, "text": text}}]},
+    )
 
     return DoResult(
         file_id=file_id,
@@ -132,16 +137,16 @@ def _prepend(file_id: str, text: str) -> DoResult:
 @with_retry(max_attempts=3, delay_ms=1000)
 def _append(file_id: str, text: str) -> DoResult:
     """Insert at end of document body."""
-    service = get_docs_service()
-    meta = _get_doc_meta(service, file_id)
+    client = get_sync_client()
+    meta = _get_doc_meta(client, file_id)
 
     # Insert before the final newline (endIndex - 1)
     insert_index = max(meta["end_index"] - 1, 1)
 
-    service.documents().batchUpdate(
-        documentId=file_id,
-        body={"requests": [{"insertText": {"location": {"index": insert_index}, "text": text}}]},
-    ).execute()
+    client.post_json(
+        f"{_DOCS_API}/{file_id}:batchUpdate",
+        json_body={"requests": [{"insertText": {"location": {"index": insert_index}, "text": text}}]},
+    )
 
     return DoResult(
         file_id=file_id,
@@ -155,18 +160,18 @@ def _append(file_id: str, text: str) -> DoResult:
 @with_retry(max_attempts=3, delay_ms=1000)
 def _replace_text(file_id: str, find: str, replace: str) -> DoResult:
     """Replace all occurrences via replaceAllText."""
-    service = get_docs_service()
-    meta = _get_doc_meta(service, file_id)
+    client = get_sync_client()
+    meta = _get_doc_meta(client, file_id)
 
-    result = service.documents().batchUpdate(
-        documentId=file_id,
-        body={"requests": [{
+    result = client.post_json(
+        f"{_DOCS_API}/{file_id}:batchUpdate",
+        json_body={"requests": [{
             "replaceAllText": {
                 "containsText": {"text": find, "matchCase": True},
                 "replaceText": replace,
             },
         }]},
-    ).execute()
+    )
 
     # Extract replacement count from response
     replies = result.get("replies", [{}])

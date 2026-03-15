@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+import orjson
 import pytest
 
 from models import DoResult
@@ -12,6 +13,20 @@ from tools.create import (
     do_create, _do_create_internal, _read_source, _read_multi_tab_source,
     _csv_text_to_values, DOC_TYPE_TO_MIME,
 )
+
+
+def _make_upload_response(**overrides) -> dict:
+    """Create a mock return value for client.upload_multipart().
+
+    upload_multipart returns a parsed dict (it does orjson.loads internally).
+    """
+    defaults = {
+        "id": "doc1",
+        "webViewLink": "https://docs.google.com/document/d/doc1/edit",
+        "name": "Test",
+    }
+    defaults.update(overrides)
+    return defaults
 
 
 class TestDoToolRouting:
@@ -36,15 +51,11 @@ class TestDoToolRouting:
         assert "title" in result["message"]
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_create_routes_to_do_create(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "doc1",
-            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
-            "name": "Test",
-        }
+    @patch("tools.create.get_sync_client")
+    def test_create_routes_to_do_create(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response()
 
         result = do(operation="create", content="# Test", title="Test")
 
@@ -100,15 +111,15 @@ class TestDoCreateDoc:
     """Test doc creation with mocked Drive API."""
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_creates_doc(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "new_doc_id",
-            "webViewLink": "https://docs.google.com/document/d/new_doc_id/edit",
-            "name": "My Document",
-        }
+    @patch("tools.create.get_sync_client")
+    def test_creates_doc(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="new_doc_id",
+            webViewLink="https://docs.google.com/document/d/new_doc_id/edit",
+            name="My Document",
+        )
 
         result = do_create("# Hello", "My Document")
 
@@ -120,28 +131,29 @@ class TestDoCreateDoc:
         assert result.extras["type"] == "doc"
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_creates_doc_with_folder(self, mock_svc, _sleep) -> None:
+    @patch("tools.create.get_sync_client")
+    def test_creates_doc_with_folder(self, mock_get_client, _sleep) -> None:
         """folder_id passed as parent."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "doc1",
-            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
-            "name": "In Folder",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="doc1",
+            webViewLink="https://docs.google.com/document/d/doc1/edit",
+            name="In Folder",
+        )
 
         result = do_create("content", "In Folder", folder_id="folder123")
 
         assert isinstance(result, DoResult)
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_missing_name_uses_title(self, mock_svc, _sleep) -> None:
+    @patch("tools.create.get_sync_client")
+    def test_missing_name_uses_title(self, mock_get_client, _sleep) -> None:
         """If API doesn't return name, falls back to provided title."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        # Response without "name" key — title falls back to the provided title
+        mock_client.upload_multipart.return_value = {
             "id": "doc1",
             "webViewLink": "https://docs.google.com/document/d/doc1/edit",
         }
@@ -156,15 +168,15 @@ class TestDoCreateFile:
     """Test plain file creation (doc_type='file')."""
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_creates_plain_markdown_file(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "file_abc",
-            "webViewLink": "https://drive.google.com/file/d/file_abc/view",
-            "name": "notes.md",
-        }
+    @patch("tools.create.get_sync_client")
+    def test_creates_plain_markdown_file(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="file_abc",
+            webViewLink="https://drive.google.com/file/d/file_abc/view",
+            name="notes.md",
+        )
 
         result = do_create("# Hello", "notes.md", doc_type="file")
 
@@ -177,15 +189,15 @@ class TestDoCreateFile:
         assert result.cues["mime_type"] == "text/markdown"
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_creates_svg_file(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "svg_123",
-            "webViewLink": "https://drive.google.com/file/d/svg_123/view",
-            "name": "diagram.svg",
-        }
+    @patch("tools.create.get_sync_client")
+    def test_creates_svg_file(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="svg_123",
+            webViewLink="https://drive.google.com/file/d/svg_123/view",
+            name="diagram.svg",
+        )
 
         result = do_create("<svg></svg>", "diagram.svg", doc_type="file")
 
@@ -194,15 +206,15 @@ class TestDoCreateFile:
         assert result.cues["plain_file"] is True
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_creates_json_file(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "json_456",
-            "webViewLink": "https://drive.google.com/file/d/json_456/view",
-            "name": "config.json",
-        }
+    @patch("tools.create.get_sync_client")
+    def test_creates_json_file(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="json_456",
+            webViewLink="https://drive.google.com/file/d/json_456/view",
+            name="config.json",
+        )
 
         result = do_create('{"key": "value"}', "config.json", doc_type="file")
 
@@ -210,14 +222,12 @@ class TestDoCreateFile:
         assert result.cues["mime_type"] == "application/json"
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_no_extension_defaults_to_text_plain(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "txt_789",
-            "name": "readme",
-        }
+    @patch("tools.create.get_sync_client")
+    def test_no_extension_defaults_to_text_plain(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        resp_data = {"id": "txt_789", "name": "readme"}
+        mock_client.upload_multipart.return_value = resp_data
 
         result = do_create("plain text", "readme", doc_type="file")
 
@@ -227,17 +237,18 @@ class TestDoCreateFile:
         assert "drive.google.com/file/d/txt_789" in result.web_link
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_creates_file_with_folder(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "file_in_folder",
-            "webViewLink": "https://drive.google.com/file/d/file_in_folder/view",
-            "name": "data.yaml",
-            "parents": ["folder_xyz"],
-        }
-        mock_service.files().get().execute.return_value = {"name": "My Folder"}
+    @patch("tools.create.get_sync_client")
+    def test_creates_file_with_folder(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="file_in_folder",
+            webViewLink="https://drive.google.com/file/d/file_in_folder/view",
+            name="data.yaml",
+            parents=["folder_xyz"],
+        )
+        # _resolve_folder_cues calls get_sync_client() again and then get_json
+        mock_client.get_json.return_value = {"name": "My Folder"}
 
         result = do_create("key: value", "data.yaml", doc_type="file", folder_id="folder_xyz")
 
@@ -280,17 +291,17 @@ class TestCreateCues:
     """Post-action cues on create responses."""
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_cues_include_folder_name(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "doc1",
-            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
-            "name": "Test",
-            "parents": ["folder123"],
-        }
-        mock_service.files().get().execute.return_value = {"name": "Project Files"}
+    @patch("tools.create.get_sync_client")
+    def test_cues_include_folder_name(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="doc1",
+            webViewLink="https://docs.google.com/document/d/doc1/edit",
+            name="Test",
+            parents=["folder123"],
+        )
+        mock_client.get_json.return_value = {"name": "Project Files"}
 
         result = do_create("# Test", "Test", folder_id="folder123")
 
@@ -299,16 +310,16 @@ class TestCreateCues:
         assert result.cues["folder_id"] == "folder123"
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_cues_degrade_without_parents(self, mock_svc, _sleep) -> None:
+    @patch("tools.create.get_sync_client")
+    def test_cues_degrade_without_parents(self, mock_get_client, _sleep) -> None:
         """No parents in response → cues still present with fallback."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "doc1",
-            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
-            "name": "Test",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="doc1",
+            webViewLink="https://docs.google.com/document/d/doc1/edit",
+            name="Test",
+        )
 
         result = do_create("# Test", "Test")
 
@@ -316,18 +327,18 @@ class TestCreateCues:
         assert result.cues["folder"] == "My Drive"
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_cues_in_to_dict(self, mock_svc, _sleep) -> None:
+    @patch("tools.create.get_sync_client")
+    def test_cues_in_to_dict(self, mock_get_client, _sleep) -> None:
         """Cues appear in serialized output."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "doc1",
-            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
-            "name": "Test",
-            "parents": ["f1"],
-        }
-        mock_service.files().get().execute.return_value = {"name": "Archive"}
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="doc1",
+            webViewLink="https://docs.google.com/document/d/doc1/edit",
+            name="Test",
+            parents=["f1"],
+        )
+        mock_client.get_json.return_value = {"name": "Archive"}
 
         result = do_create("# Test", "Test")
         d = result.to_dict()
@@ -340,11 +351,11 @@ class TestDoCreateErrorHandling:
     """Unexpected exceptions return error dicts, not crashes."""
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_unexpected_exception_returns_error(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.side_effect = Exception("boom")
+    @patch("tools.create.get_sync_client")
+    def test_unexpected_exception_returns_error(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.side_effect = Exception("boom")
 
         result = do_create("# Test", "Test")
 
@@ -353,11 +364,11 @@ class TestDoCreateErrorHandling:
         assert "boom" in result["message"]
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_sheet_unexpected_exception_returns_error(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.side_effect = RuntimeError("quota exceeded")
+    @patch("tools.create.get_sync_client")
+    def test_sheet_unexpected_exception_returns_error(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.side_effect = RuntimeError("quota exceeded")
 
         result = do_create("a,b\n1,2", "Test", doc_type="sheet")
 
@@ -369,15 +380,15 @@ class TestDoCreateSheet:
     """Test sheet creation with mocked Drive API."""
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_creates_sheet_from_csv(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "sheet1",
-            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
-            "name": "Q4 Analysis",
-        }
+    @patch("tools.create.get_sync_client")
+    def test_creates_sheet_from_csv(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="sheet1",
+            webViewLink="https://docs.google.com/spreadsheets/d/sheet1/edit",
+            name="Q4 Analysis",
+        )
 
         csv_content = "Name,Amount\nAlice,100\nBob,200"
         result = do_create(csv_content, "Q4 Analysis", doc_type="sheet")
@@ -388,35 +399,37 @@ class TestDoCreateSheet:
         assert result.title == "Q4 Analysis"
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_sheet_uses_csv_mimetype(self, mock_svc, _sleep) -> None:
+    @patch("tools.create.get_sync_client")
+    def test_sheet_uses_csv_mimetype(self, mock_get_client, _sleep) -> None:
         """Verify Drive upload uses text/csv, not text/markdown."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "sheet1",
-            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
-            "name": "Test",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="sheet1",
+            webViewLink="https://docs.google.com/spreadsheets/d/sheet1/edit",
+            name="Test",
+        )
 
         do_create("a,b\n1,2", "Test", doc_type="sheet")
 
-        # Inspect the media_body passed to files().create()
-        _, kwargs = mock_service.files().create.call_args
-        assert kwargs["media_body"].mimetype() == "text/csv"
+        # Verify the multipart upload used text/csv content type
+        call_args = mock_client.upload_multipart.call_args
+        # upload_multipart(url, metadata, content, content_type, ...)
+        content_type_arg = call_args[0][3]  # 4th positional arg
+        assert content_type_arg == "text/csv"
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_sheet_with_folder(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "sheet1",
-            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
-            "name": "In Folder",
-            "parents": ["folder789"],
-        }
-        mock_service.files().get().execute.return_value = {"name": "Reports"}
+    @patch("tools.create.get_sync_client")
+    def test_sheet_with_folder(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="sheet1",
+            webViewLink="https://docs.google.com/spreadsheets/d/sheet1/edit",
+            name="In Folder",
+            parents=["folder789"],
+        )
+        mock_client.get_json.return_value = {"name": "Reports"}
 
         result = do_create("a,b\n1,2", "In Folder", doc_type="sheet", folder_id="folder789")
 
@@ -424,16 +437,16 @@ class TestDoCreateSheet:
         assert result.cues["folder"] == "Reports"
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_sheet_routes_through_do(self, mock_svc, _sleep) -> None:
+    @patch("tools.create.get_sync_client")
+    def test_sheet_routes_through_do(self, mock_get_client, _sleep) -> None:
         """do(operation=create, doc_type=sheet) reaches _create_sheet."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "sheet1",
-            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
-            "name": "Budget",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="sheet1",
+            webViewLink="https://docs.google.com/spreadsheets/d/sheet1/edit",
+            name="Budget",
+        )
 
         result = do(operation="create", content="a,b\n1,2", title="Budget", doc_type="sheet")
 
@@ -505,18 +518,18 @@ class TestSourceParam:
     """Tests for do_create() with source parameter."""
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_creates_doc_from_source(self, mock_svc, _sleep, tmp_path: Path) -> None:
+    @patch("tools.create.get_sync_client")
+    def test_creates_doc_from_source(self, mock_get_client, _sleep, tmp_path: Path) -> None:
         """source reads content.md and creates a doc."""
         (tmp_path / "content.md").write_text("# From Deposit")
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "doc1",
-            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
-            "name": "From Deposit",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="doc1",
+            webViewLink="https://docs.google.com/document/d/doc1/edit",
+            name="From Deposit",
+        )
 
         result = do_create(title="From Deposit", source=str(tmp_path), base_path=str(tmp_path))
 
@@ -524,18 +537,18 @@ class TestSourceParam:
         assert result.file_id == "doc1"
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_creates_sheet_from_source(self, mock_svc, _sleep, tmp_path: Path) -> None:
+    @patch("tools.create.get_sync_client")
+    def test_creates_sheet_from_source(self, mock_get_client, _sleep, tmp_path: Path) -> None:
         """source reads content.csv and creates a sheet."""
         (tmp_path / "content.csv").write_text("Name,Amount\nAlice,100")
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "sheet1",
-            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
-            "name": "Data",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="sheet1",
+            webViewLink="https://docs.google.com/spreadsheets/d/sheet1/edit",
+            name="Data",
+        )
 
         result = do_create(title="Data", doc_type="sheet", source=str(tmp_path), base_path=str(tmp_path))
 
@@ -544,21 +557,21 @@ class TestSourceParam:
         assert result.extras["type"] == "sheet"
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_title_falls_back_to_manifest(self, mock_svc, _sleep, tmp_path: Path) -> None:
+    @patch("tools.create.get_sync_client")
+    def test_title_falls_back_to_manifest(self, mock_get_client, _sleep, tmp_path: Path) -> None:
         """Title from manifest used when not passed explicitly."""
         (tmp_path / "content.md").write_text("# Report")
         (tmp_path / "manifest.json").write_text(json.dumps({
             "type": "doc", "title": "Manifest Title", "id": "d1",
         }))
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "doc1",
-            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
-            "name": "Manifest Title",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="doc1",
+            webViewLink="https://docs.google.com/document/d/doc1/edit",
+            name="Manifest Title",
+        )
 
         result = do_create(source=str(tmp_path), base_path=str(tmp_path))  # No title param
 
@@ -606,21 +619,21 @@ class TestManifestEnrichment:
     """Tests for post-creation manifest enrichment."""
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_manifest_enriched_after_creation(self, mock_svc, _sleep, tmp_path: Path) -> None:
+    @patch("tools.create.get_sync_client")
+    def test_manifest_enriched_after_creation(self, mock_get_client, _sleep, tmp_path: Path) -> None:
         """Manifest gets status, file_id, web_link, created_at after create."""
         (tmp_path / "content.md").write_text("# Report")
         (tmp_path / "manifest.json").write_text(json.dumps({
             "type": "doc", "title": "Report", "id": "draft-001",
         }))
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "doc1",
-            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
-            "name": "Report",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="doc1",
+            webViewLink="https://docs.google.com/document/d/doc1/edit",
+            name="Report",
+        )
 
         do_create(title="Report", source=str(tmp_path), base_path=str(tmp_path))
 
@@ -635,18 +648,18 @@ class TestManifestEnrichment:
         assert manifest["title"] == "Report"
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_no_manifest_no_crash(self, mock_svc, _sleep, tmp_path: Path) -> None:
+    @patch("tools.create.get_sync_client")
+    def test_no_manifest_no_crash(self, mock_get_client, _sleep, tmp_path: Path) -> None:
         """Source folder without manifest.json doesn't crash on enrichment."""
         (tmp_path / "content.md").write_text("# Test")
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "doc1",
-            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
-            "name": "Test",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="doc1",
+            webViewLink="https://docs.google.com/document/d/doc1/edit",
+            name="Test",
+        )
 
         result = do_create(title="Test", source=str(tmp_path), base_path=str(tmp_path))
 
@@ -655,16 +668,16 @@ class TestManifestEnrichment:
         assert not (tmp_path / "manifest.json").exists()
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_inline_content_does_not_enrich(self, mock_svc, _sleep) -> None:
+    @patch("tools.create.get_sync_client")
+    def test_inline_content_does_not_enrich(self, mock_get_client, _sleep) -> None:
         """Inline content (no source) doesn't attempt manifest enrichment."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "doc1",
-            "webViewLink": "https://docs.google.com/document/d/doc1/edit",
-            "name": "Test",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="doc1",
+            webViewLink="https://docs.google.com/document/d/doc1/edit",
+            name="Test",
+        )
 
         result = do_create(content="# Test", title="Test")
 
@@ -676,21 +689,21 @@ class TestSourceThroughDoRouting:
     """Tests that source param flows from do() MCP wrapper to do_create()."""
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_source_routes_through_do(self, mock_svc, _sleep, tmp_path: Path) -> None:
+    @patch("tools.create.get_sync_client")
+    def test_source_routes_through_do(self, mock_get_client, _sleep, tmp_path: Path) -> None:
         """do(operation=create, source=...) reaches do_create with resolved path."""
         (tmp_path / "content.csv").write_text("a,b\n1,2")
         (tmp_path / "manifest.json").write_text(json.dumps({
             "type": "sheet", "title": "Test Sheet", "id": "draft",
         }))
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "sheet1",
-            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
-            "name": "Test Sheet",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="sheet1",
+            webViewLink="https://docs.google.com/spreadsheets/d/sheet1/edit",
+            name="Test Sheet",
+        )
 
         result = do(
             operation="create",
@@ -793,20 +806,20 @@ class TestMultiTabSheetCreation:
     @patch("tools.create.rename_sheet")
     @patch("tools.create.add_sheet", return_value=1)
     @patch("tools.create.update_sheet_values", return_value=4)
-    @patch("tools.create.get_drive_service")
+    @patch("tools.create.get_sync_client")
     def test_multi_tab_creates_sheet_with_tabs(
-        self, mock_svc, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
+        self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
     ) -> None:
         """Multi-tab deposit creates spreadsheet with multiple tabs."""
         deposit = self._make_multi_tab_deposit(tmp_path)
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "sheet1",
-            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
-            "name": "Budget",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="sheet1",
+            webViewLink="https://docs.google.com/spreadsheets/d/sheet1/edit",
+            name="Budget",
+        )
 
         result = do_create(title="Budget", doc_type="sheet", source=str(deposit), base_path=str(deposit))
 
@@ -830,20 +843,20 @@ class TestMultiTabSheetCreation:
     @patch("tools.create.rename_sheet")
     @patch("tools.create.add_sheet", return_value=1)
     @patch("tools.create.update_sheet_values", return_value=4)
-    @patch("tools.create.get_drive_service")
+    @patch("tools.create.get_sync_client")
     def test_multi_tab_cues_include_tab_info(
-        self, mock_svc, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
+        self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
     ) -> None:
         """Result cues include tab_count and tab_names."""
         deposit = self._make_multi_tab_deposit(tmp_path)
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "sheet1",
-            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
-            "name": "Budget",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="sheet1",
+            webViewLink="https://docs.google.com/spreadsheets/d/sheet1/edit",
+            name="Budget",
+        )
 
         result = do_create(title="Budget", doc_type="sheet", source=str(deposit), base_path=str(deposit))
 
@@ -852,21 +865,21 @@ class TestMultiTabSheetCreation:
         assert result.cues["tab_names"] == ["Revenue", "Costs"]
 
     @patch("retry.time.sleep")
-    @patch("tools.create.get_drive_service")
-    def test_single_tab_deposit_uses_csv_upload(self, mock_svc, _sleep, tmp_path: Path) -> None:
+    @patch("tools.create.get_sync_client")
+    def test_single_tab_deposit_uses_csv_upload(self, mock_get_client, _sleep, tmp_path: Path) -> None:
         """Single-tab deposit (no tabs in manifest) uses fast CSV upload path."""
         (tmp_path / "content.csv").write_text("a,b\n1,2\n")
         (tmp_path / "manifest.json").write_text(json.dumps({
             "type": "sheet", "title": "Simple",
         }))
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "sheet1",
-            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
-            "name": "Simple",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="sheet1",
+            webViewLink="https://docs.google.com/spreadsheets/d/sheet1/edit",
+            name="Simple",
+        )
 
         result = do_create(doc_type="sheet", source=str(tmp_path), base_path=str(tmp_path))
 
@@ -878,20 +891,20 @@ class TestMultiTabSheetCreation:
     @patch("tools.create.rename_sheet")
     @patch("tools.create.add_sheet", return_value=1)
     @patch("tools.create.update_sheet_values", return_value=4)
-    @patch("tools.create.get_drive_service")
+    @patch("tools.create.get_sync_client")
     def test_multi_tab_manifest_enriched(
-        self, mock_svc, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
+        self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
     ) -> None:
         """Manifest enriched with creation receipt after multi-tab create."""
         deposit = self._make_multi_tab_deposit(tmp_path)
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "sheet1",
-            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
-            "name": "Budget",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="sheet1",
+            webViewLink="https://docs.google.com/spreadsheets/d/sheet1/edit",
+            name="Budget",
+        )
 
         do_create(title="Budget", doc_type="sheet", source=str(deposit), base_path=str(deposit))
 
@@ -903,9 +916,9 @@ class TestMultiTabSheetCreation:
     @patch("tools.create.rename_sheet")
     @patch("tools.create.add_sheet", return_value=1)
     @patch("tools.create.update_sheet_values", return_value=0)
-    @patch("tools.create.get_drive_service")
+    @patch("tools.create.get_sync_client")
     def test_multi_tab_with_formula_cells(
-        self, mock_svc, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
+        self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
     ) -> None:
         """Formulae in CSV cells are passed through for USER_ENTERED."""
         (tmp_path / "content.csv").write_text("combined")
@@ -920,13 +933,13 @@ class TestMultiTabSheetCreation:
             ],
         }))
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.files().create().execute.return_value = {
-            "id": "sheet1",
-            "webViewLink": "https://docs.google.com/spreadsheets/d/sheet1/edit",
-            "name": "With Formulae",
-        }
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="sheet1",
+            webViewLink="https://docs.google.com/spreadsheets/d/sheet1/edit",
+            name="With Formulae",
+        )
 
         result = do_create(title="With Formulae", doc_type="sheet", source=str(tmp_path), base_path=str(tmp_path))
 
