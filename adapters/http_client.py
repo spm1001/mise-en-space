@@ -144,6 +144,24 @@ class MiseHttpClient:
         response = await self.request("PATCH", url, json_body=json_body, params=params)
         return orjson.loads(response.content)
 
+    async def patch_bytes(
+        self,
+        url: str,
+        content: bytes,
+        content_type: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """PATCH raw bytes (file upload/update) and parse JSON response.
+
+        For Drive uploads where the request body is the file content
+        (not JSON) but the response is JSON metadata.
+        """
+        response = await self.request(
+            "PATCH", url, content=content, content_type=content_type, params=params,
+        )
+        return orjson.loads(response.content)
+
     async def put_bytes(
         self,
         url: str,
@@ -306,6 +324,20 @@ class MiseSyncClient:
     ) -> dict[str, Any]:
         """PATCH with JSON body and parse response via orjson."""
         response = self.request("PATCH", url, json_body=json_body, params=params)
+        return orjson.loads(response.content)
+
+    def patch_bytes(
+        self,
+        url: str,
+        content: bytes,
+        content_type: str,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """PATCH raw bytes (file upload/update) and parse JSON response."""
+        response = self.request(
+            "PATCH", url, content=content, content_type=content_type, params=params,
+        )
         return orjson.loads(response.content)
 
     def put_bytes(

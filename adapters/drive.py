@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import orjson
 import re
 
 from models import (
@@ -403,14 +402,12 @@ def upload_file_content(file_id: str, content: bytes, mime_type: str) -> dict[st
         MiseError: On API failure
     """
     client = get_sync_client()
-    response = client.request(
-        "PATCH",
+    return client.patch_bytes(
         f"{_UPLOAD_API}/{file_id}",
         content=content,
         content_type=mime_type,
         params={"uploadType": "media", "supportsAllDrives": "true"},
     )
-    return orjson.loads(response.content)
 
 
 # Fields for folder listing — name, ID, and MIME type is all we need
