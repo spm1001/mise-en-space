@@ -22,6 +22,7 @@ Architecture:
 - server.py: Thin MCP wrappers (this file)
 """
 
+import argparse
 import asyncio
 import logging
 import os
@@ -33,6 +34,8 @@ from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from adapters.conversion import cleanup_orphaned_temp_files
 from adapters.drive import get_file_metadata
@@ -41,6 +44,12 @@ from models import DoResult, MiseError
 from resources.tools import get_tool_registry
 
 logger = logging.getLogger(__name__)
+
+
+# Determined early (before decorators run) so tool descriptions can adapt.
+# Uses sys.argv + env var because @mcp.tool() fires at import time, before
+# argparse runs in __main__. The argparse block in __main__ validates properly.
+_REMOTE_MODE = "--remote" in sys.argv or os.environ.get("MISE_REMOTE") == "1"
 
 
 @asynccontextmanager
@@ -76,6 +85,10 @@ _REQUIRED_PARAMS: dict[str, set[str]] = {
 
 # Content operations that need mime-type routing (metadata pre-fetched at dispatch)
 _CONTENT_OPS = {"overwrite", "prepend", "append", "replace_text"}
+
+# Operations allowed in remote mode — everything else is rejected.
+# Criteria: reversible, non-destructive, doesn't expose files to others.
+_REMOTE_ALLOWED_OPS = {"create", "draft", "reply_draft", "archive", "star", "label"}
 
 # Dispatch table for do() operations.
 # Each handler receives the full params dict and handles its own validation.
@@ -123,6 +136,15 @@ _DISPATCH: dict[str, Any] = {
 
 # Initialize MCP server
 mcp = FastMCP("Google Workspace v2", lifespan=lifespan)
+
+
+# ============================================================================
+# HEALTH — Kube liveness/readiness probe (no auth required)
+# ============================================================================
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request: Request) -> JSONResponse:
+    return JSONResponse({"status": "ok"})
 
 
 # ============================================================================
@@ -199,7 +221,58 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None) -> d
     return do_fetch(file_id, base_path=Path(base_path), attachment=attachment).to_dict()
 
 
-@mcp.tool()
+_DO_DESCRIPTION_FULL = """\
+Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail.
+
+Args:
+    operation: What to do. One of: 'create', 'move', 'rename', 'share', 'overwrite', 'prepend', 'append', 'replace_text', 'draft', 'reply_draft', 'archive', 'star', 'label'
+    content: Text content. Usage varies by operation.
+    title: Document title (required for create, falls back to manifest title when using source)
+    doc_type: 'doc' | 'sheet' | 'slides' | 'file' (for create). 'file' uploads as-is without Google conversion (MIME inferred from title extension).
+    folder_id: Optional destination folder (for create)
+    file_id: Target file or thread (required for move, rename, share, overwrite, prepend, append, replace_text, reply_draft, archive, star, label)
+    destination_folder_id: Where to move the file (required for move)
+    source: Path to deposit folder containing content to publish (for create/overwrite). Reads content.md (doc) or content.csv (sheet) from the folder. Manifest is enriched with creation receipt after success.
+    base_path: Directory for resolving relative source paths (pass your cwd)
+    find: Text to find (required for replace_text)
+    to: Recipient email address(es), comma-separated (for draft, share)
+    subject: Email subject (for draft; separate from title which is for create)
+    cc: CC address(es), comma-separated (for draft, reply_draft). Overrides inferred Cc for reply_draft.
+    include: List of Drive file IDs to include as links in the email body (for draft, reply_draft)
+    reply_all: If True, infer Cc from all recipients on the last message (for reply_draft)
+    role: Permission role for share — 'reader' (default), 'writer', or 'commenter'
+    confirm: Required True to execute share (safety gate — first call previews, second executes)
+    label: Label name to add/remove (for label operation; resolved to ID automatically)
+    remove: If True, remove the label instead of adding it (for label operation)
+
+Returns:
+    file_id: File ID, draft ID, or thread ID
+    web_link: URL to view/edit"""
+
+_DO_DESCRIPTION_REMOTE = """\
+Act on Google Workspace (remote mode — safe operations only).
+
+Args:
+    operation: What to do. One of: 'create', 'draft', 'reply_draft', 'archive', 'star', 'label'
+    content: Text content (required for create, draft, reply_draft)
+    title: Document title (for create)
+    doc_type: 'doc' | 'sheet' | 'slides' (for create)
+    folder_id: Optional destination folder (for create)
+    file_id: Target thread ID (for reply_draft, archive, star, label)
+    to: Recipient email address(es), comma-separated (for draft)
+    subject: Email subject (for draft)
+    cc: CC address(es), comma-separated (for draft, reply_draft)
+    include: List of Drive file IDs to include as links in the email body (for draft, reply_draft)
+    reply_all: If True, infer Cc from all recipients on the last message (for reply_draft)
+    label: Label name to add/remove (for label operation; resolved to ID automatically)
+    remove: If True, remove the label instead of adding it (for label operation)
+
+Returns:
+    file_id: File ID, draft ID, or thread ID
+    web_link: URL to view/edit"""
+
+
+@mcp.tool(description=_DO_DESCRIPTION_REMOTE if _REMOTE_MODE else _DO_DESCRIPTION_FULL)
 def do(
     operation: str,
     content: str | None = None,
@@ -221,36 +294,13 @@ def do(
     label: str | None = None,
     remove: bool = False,
 ) -> dict[str, Any]:
-    """
-    Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail.
+    """Act on Google Workspace."""
+    # In remote mode, reject operations outside the safe subset.
+    # Error message lists only allowed ops — don't leak restricted op names.
+    if _REMOTE_MODE and operation not in _REMOTE_ALLOWED_OPS:
+        return {"error": True, "kind": "invalid_input",
+                "message": f"Operation not available in remote mode. Supported: {sorted(_REMOTE_ALLOWED_OPS)}"}
 
-    Args:
-        operation: What to do. One of: 'create', 'move', 'rename', 'share', 'overwrite', 'prepend', 'append', 'replace_text', 'draft', 'reply_draft', 'archive', 'star', 'label'
-        content: Text content. Usage varies by operation.
-        title: Document title (required for create, falls back to manifest title when using source)
-        doc_type: 'doc' | 'sheet' | 'slides' | 'file' (for create). 'file' uploads as-is without Google conversion (MIME inferred from title extension).
-        folder_id: Optional destination folder (for create)
-        file_id: Target file or thread (required for move, rename, share, overwrite, prepend, append, replace_text, reply_draft, archive, star, label)
-        destination_folder_id: Where to move the file (required for move)
-        source: Path to deposit folder containing content to publish (for create/overwrite).
-                Reads content.md (doc) or content.csv (sheet) from the folder.
-                Manifest is enriched with creation receipt after success.
-        base_path: Directory for resolving relative source paths (pass your cwd)
-        find: Text to find (required for replace_text)
-        to: Recipient email address(es), comma-separated (for draft, share)
-        subject: Email subject (for draft; separate from title which is for create)
-        cc: CC address(es), comma-separated (for draft, reply_draft). Overrides inferred Cc for reply_draft.
-        include: List of Drive file IDs to include as links in the email body (for draft, reply_draft)
-        reply_all: If True, infer Cc from all recipients on the last message (for reply_draft)
-        role: Permission role for share — 'reader' (default), 'writer', or 'commenter'
-        confirm: Required True to execute share (safety gate — first call previews, second executes)
-        label: Label name to add/remove (for label operation; resolved to ID automatically)
-        remove: If True, remove the label instead of adding it (for label operation)
-
-    Returns:
-        file_id: File ID, draft ID, or thread ID
-        web_link: URL to view/edit
-    """
     handler = _DISPATCH.get(operation)
     if not handler:
         return {"error": True, "kind": "invalid_input",
@@ -885,7 +935,25 @@ def _shutdown_handler(signum: int, frame: object) -> None:
     os._exit(0)
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="mise-en-space MCP server for Google Workspace",
+    )
+    parser.add_argument(
+        "--remote", action="store_true",
+        help="Run in remote mode: StreamableHTTP transport, safe operations only. "
+             "Also settable via MISE_REMOTE=1 env var.",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+    args = _parse_args()
     signal.signal(signal.SIGTERM, _shutdown_handler)
     signal.signal(signal.SIGINT, _shutdown_handler)
-    mcp.run()
+    if _REMOTE_MODE:
+        logger.info("Starting in remote mode (StreamableHTTP on /mcp)")
+        logger.info(f"Allowed do() operations: {sorted(_REMOTE_ALLOWED_OPS)}")
+        mcp.run(transport="streamable-http")
+    else:
+        mcp.run()

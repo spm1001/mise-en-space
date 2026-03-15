@@ -3,7 +3,8 @@
 from unittest.mock import patch, MagicMock
 
 from models import DoResult
-from server import _DISPATCH, _REQUIRED_PARAMS, do
+import server
+from server import _DISPATCH, _REQUIRED_PARAMS, _REMOTE_ALLOWED_OPS, do
 from tools import OPERATIONS
 
 
@@ -176,6 +177,55 @@ class TestAllOperationsReturnDoResult:
         result = do_create("# Test", "Test")
         assert isinstance(result, DoResult)
         assert result.operation == "create"
+
+
+class TestRemoteModeFiltering:
+    """Remote mode restricts do() to safe operations only."""
+
+    def test_remote_allowed_ops_is_subset_of_operations(self) -> None:
+        """Every remote-allowed op must exist in the full OPERATIONS set."""
+        assert _REMOTE_ALLOWED_OPS <= OPERATIONS
+
+    def test_remote_blocks_restricted_ops(self) -> None:
+        """Restricted operations return clear error in remote mode."""
+        restricted = OPERATIONS - _REMOTE_ALLOWED_OPS
+        assert len(restricted) > 0, "Test is meaningless if nothing is restricted"
+
+        with patch.object(server, "_REMOTE_MODE", True):
+            for op in restricted:
+                result = do(operation=op)
+                assert result["error"] is True, f"{op} should be blocked"
+                assert "remote mode" in result["message"].lower(), f"{op} error unclear"
+
+    def test_remote_error_does_not_leak_restricted_ops(self) -> None:
+        """Error message lists only allowed ops, not the full set."""
+        with patch.object(server, "_REMOTE_MODE", True):
+            result = do(operation="overwrite")
+            # Should list allowed ops
+            for op in _REMOTE_ALLOWED_OPS:
+                assert op in result["message"]
+            # Should NOT list restricted ops
+            for op in (OPERATIONS - _REMOTE_ALLOWED_OPS):
+                assert op not in result["message"]
+
+    def test_remote_allows_safe_ops(self) -> None:
+        """Allowed ops pass through the remote gate (may still fail on params)."""
+        with patch.object(server, "_REMOTE_MODE", True):
+            for op in _REMOTE_ALLOWED_OPS:
+                result = do(operation=op)
+                # Should NOT get the "remote mode" error — may get param errors instead
+                if result.get("error"):
+                    assert "remote mode" not in result["message"].lower(), (
+                        f"{op} was blocked by remote gate but shouldn't be"
+                    )
+
+    def test_stdio_mode_allows_all_ops(self) -> None:
+        """In stdio mode, all ops pass through the remote gate."""
+        with patch.object(server, "_REMOTE_MODE", False):
+            result = do(operation="overwrite")
+            # Should NOT get remote mode error (may get param error)
+            if result.get("error"):
+                assert "remote mode" not in result["message"].lower()
 
 
 class TestDoResultToDictRoundTrip:
