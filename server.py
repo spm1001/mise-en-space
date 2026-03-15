@@ -206,16 +206,20 @@ def _search_remote(
     (legacy/inline mode). We use a temp dir for the deposit, then return
     full_results() directly without setting path.
     """
-    temp_dir = tempfile.mkdtemp(prefix="mise-remote-search-")
+    if base_path:
+        effective_base = Path(base_path)
+        temp_dir = None
+    else:
+        temp_dir = tempfile.mkdtemp(prefix="mise-remote-search-")
+        effective_base = Path(temp_dir)
     try:
-        effective_base = Path(base_path) if base_path else Path(temp_dir)
         result = do_search(query, sources, max_results, base_path=effective_base, folder_id=folder_id)
         # Strip the path — remote clients can't read it. This triggers
         # SearchResult.to_dict() to return full results inline.
         result.path = None
         return result.to_dict()
     finally:
-        if not base_path:
+        if temp_dir:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
@@ -264,9 +268,13 @@ def _fetch_remote(file_id: str, base_path: str, attachment: str | None) -> dict[
     Fetchers work unchanged — they write to a temp dir instead of the caller's
     cwd. We read the deposited content back and include it in the response.
     """
-    temp_dir = tempfile.mkdtemp(prefix="mise-remote-")
+    if base_path:
+        effective_base = Path(base_path)
+        temp_dir = None
+    else:
+        temp_dir = tempfile.mkdtemp(prefix="mise-remote-")
+        effective_base = Path(temp_dir)
     try:
-        effective_base = Path(base_path) if base_path else Path(temp_dir)
         result = do_fetch(file_id, base_path=effective_base, attachment=attachment)
 
         if not isinstance(result, FetchResult):
@@ -292,8 +300,7 @@ def _fetch_remote(file_id: str, base_path: str, attachment: str | None) -> dict[
 
         return result.to_dict()
     finally:
-        # Clean up temp dir (only if we created it, not if caller provided base_path)
-        if not base_path:
+        if temp_dir:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 

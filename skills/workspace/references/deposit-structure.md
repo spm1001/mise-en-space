@@ -12,7 +12,6 @@ Content fetched by mise lands in `mise/` in your working directory (when `base_p
 | sheet | `sheet--budget-2026--xyz789abc/` |
 | slides | `slides--ami-deck-2026--1OepZjuwi/` |
 | gmail | `gmail--re-project-update--thread456/` |
-| web | `web--python-one-shot-tools--3364f7aa/` |
 | pdf, xlsx, docx | `pdf--quarterly-report--abc123/` |
 
 ## Standard Deposit
@@ -30,7 +29,7 @@ Self-describing metadata. Key fields:
 
 | Field | Purpose |
 |-------|---------|
-| `type` | doc, sheet, slides, gmail, web, pdf, etc. |
+| `type` | doc, sheet, slides, gmail, pdf, etc. |
 | `title` | Original document title |
 | `id` | Full source ID |
 | `fetched_at` | ISO timestamp |

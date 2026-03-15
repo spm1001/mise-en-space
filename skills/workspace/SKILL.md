@@ -387,7 +387,7 @@ See `references/deposit-structure.md` for the full attachment layout.
 
 - Task doesn't involve content fetching (no Drive or Gmail)
 - Pure filesystem operations
-- Web content fetching (use passe instead)
+
 
 ## Success Criteria
 
