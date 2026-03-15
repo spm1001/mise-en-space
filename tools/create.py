@@ -33,6 +33,35 @@ def _create_error(kind: str, message: str) -> dict[str, Any]:
     return {"error": True, "kind": kind, "message": message}
 
 
+def _resolve_folder_cues(
+    result: dict[str, Any], folder_id: str | None = None
+) -> dict[str, Any]:
+    """
+    Build folder cues from a Drive files().create() response.
+
+    Resolves the parent folder name via an extra API call (non-critical —
+    degrades to folder_id or 'My Drive' on failure).
+    """
+    parents = result.get("parents", [])
+    folder_name = None
+    if parents:
+        try:
+            folder_meta = (
+                get_drive_service()
+                .files()
+                .get(fileId=parents[0], fields="name", supportsAllDrives=True)
+                .execute()
+            )
+            folder_name = folder_meta.get("name")
+        except Exception:
+            pass  # Non-critical — cue degrades gracefully
+
+    return {
+        "folder": folder_name or ("My Drive" if not folder_id else folder_id),
+        "folder_id": parents[0] if parents else folder_id,
+    }
+
+
 # Supported doc types and their target MIME types
 DOC_TYPE_TO_MIME = {
     "doc": GOOGLE_DOC_MIME,
@@ -329,25 +358,9 @@ def _create_file(
         .execute()
     )
 
-    parents = result.get("parents", [])
-    folder_name = None
-    if parents:
-        try:
-            folder_meta = (
-                service.files()
-                .get(fileId=parents[0], fields="name", supportsAllDrives=True)
-                .execute()
-            )
-            folder_name = folder_meta.get("name")
-        except Exception:
-            pass
-
-    cues: dict[str, Any] = {
-        "folder": folder_name or ("My Drive" if not folder_id else folder_id),
-        "folder_id": parents[0] if parents else folder_id,
-        "plain_file": True,
-        "mime_type": mime_type,
-    }
+    cues = _resolve_folder_cues(result, folder_id)
+    cues["plain_file"] = True
+    cues["mime_type"] = mime_type
 
     return DoResult(
         file_id=result["id"],
@@ -403,24 +416,7 @@ def _create_doc(
         .execute()
     )
 
-    # Build cues: resolve parent folder name
-    parents = result.get("parents", [])
-    folder_name = None
-    if parents:
-        try:
-            folder_meta = (
-                service.files()
-                .get(fileId=parents[0], fields="name", supportsAllDrives=True)
-                .execute()
-            )
-            folder_name = folder_meta.get("name")
-        except Exception:
-            pass  # Non-critical — cue degrades gracefully
-
-    cues: dict[str, Any] = {
-        "folder": folder_name or ("My Drive" if not folder_id else folder_id),
-        "folder_id": parents[0] if parents else folder_id,
-    }
+    cues = _resolve_folder_cues(result, folder_id)
 
     return DoResult(
         file_id=result["id"],
@@ -471,24 +467,7 @@ def _create_sheet(
         .execute()
     )
 
-    # Build cues: resolve parent folder name
-    parents = result.get("parents", [])
-    folder_name = None
-    if parents:
-        try:
-            folder_meta = (
-                service.files()
-                .get(fileId=parents[0], fields="name", supportsAllDrives=True)
-                .execute()
-            )
-            folder_name = folder_meta.get("name")
-        except Exception:
-            pass
-
-    cues: dict[str, Any] = {
-        "folder": folder_name or ("My Drive" if not folder_id else folder_id),
-        "folder_id": parents[0] if parents else folder_id,
-    }
+    cues = _resolve_folder_cues(result, folder_id)
 
     return DoResult(
         file_id=result["id"],
