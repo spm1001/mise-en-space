@@ -342,14 +342,14 @@ def mock_gmail_service() -> MagicMock:
 @pytest.fixture
 def patch_drive_service(mock_drive_service: MagicMock) -> Generator[MagicMock, None, None]:
     """
-    Fixture that patches get_drive_service and yields the mock.
+    Fixture that patches get_sync_client for the drive adapter and yields the mock.
 
     Example:
         def test_something(patch_drive_service):
-            patch_drive_service.files().get().execute.return_value = {"id": "123"}
-            result = fetch_file_metadata("123")  # Uses mocked service
+            patch_drive_service.get_json.return_value = {"id": "123"}
+            result = fetch_file_metadata("123")  # Uses mocked client
     """
-    with patch("adapters.drive.get_drive_service", return_value=mock_drive_service):
+    with patch("adapters.drive.get_sync_client", return_value=mock_drive_service):
         yield mock_drive_service
 
 

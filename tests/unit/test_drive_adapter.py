@@ -5,11 +5,8 @@ Tests for drive adapter — pure helpers and mocked API functions.
 from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock, Mock
 
-import httplib2
+import httpx
 import pytest
-from googleapiclient.errors import HttpError
-
-from tests.helpers import mock_api_chain, seal_service
 
 from models import (
     EmailContext,
@@ -35,6 +32,15 @@ from adapters.drive import (
     _get_email_attachments_folder_id,
     COMMENT_UNSUPPORTED_MIMES,
 )
+
+
+def _make_http_status_error(status: int) -> httpx.HTTPStatusError:
+    """Create an httpx HTTPStatusError with given status code."""
+    return httpx.HTTPStatusError(
+        f"HTTP {status}",
+        request=httpx.Request("GET", "https://x"),
+        response=httpx.Response(status),
+    )
 
 
 class TestParseEmailContext:
@@ -120,19 +126,18 @@ class TestParseDatetime:
 
 
 # ============================================================================
-# ADAPTER FUNCTIONS (mocked service)
+# ADAPTER FUNCTIONS (mocked client)
 # ============================================================================
 
 class TestExportFile:
-    """Test export_file with mocked Drive API (sealed)."""
+    """Test export_file with mocked HTTP client."""
 
-    @patch('adapters.drive.get_drive_service')
-    def test_exports_bytes(self, mock_get_service) -> None:
+    @patch('adapters.drive.get_sync_client')
+    def test_exports_bytes(self, mock_get_client) -> None:
         """export_file returns bytes from API."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_api_chain(mock_service, "files.export.execute", b"# Exported Markdown")
-        seal_service(mock_service)
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_bytes.return_value = b"# Exported Markdown"
 
         with patch('retry.time.sleep'):
             result = export_file("doc123", "text/markdown")
@@ -141,33 +146,33 @@ class TestExportFile:
 
 
 class TestDownloadFile:
-    """Test download_file with mocked Drive API."""
+    """Test download_file with mocked HTTP client."""
 
-    @patch('adapters.drive.get_drive_service')
-    def test_small_file_in_memory(self, mock_get_service) -> None:
+    @patch('adapters.drive.get_sync_client')
+    def test_small_file_in_memory(self, mock_get_client) -> None:
         """Small file loaded into memory."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
         # Size check returns small file
-        mock_api_chain(mock_service, "files.get.execute", {"size": "1024"})
+        mock_client.get_json.return_value = {"size": "1024"}
         # Download returns content
-        mock_api_chain(mock_service, "files.get_media.execute", b"file content")
+        mock_client.get_bytes.return_value = b"file content"
 
         with patch('retry.time.sleep'):
             result = download_file("file123")
 
         assert result == b"file content"
 
-    @patch('adapters.drive.get_drive_service')
-    def test_large_file_raises(self, mock_get_service) -> None:
+    @patch('adapters.drive.get_sync_client')
+    def test_large_file_raises(self, mock_get_client) -> None:
         """File over threshold raises MiseError."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
         # Size check returns huge file
         huge_size = 100 * 1024 * 1024  # 100MB
-        mock_api_chain(mock_service, "files.get.execute", {"size": str(huge_size)})
+        mock_client.get_json.return_value = {"size": str(huge_size)}
 
         with patch('retry.time.sleep'):
             with pytest.raises(MiseError) as exc_info:
@@ -178,37 +183,37 @@ class TestDownloadFile:
 
 
 class TestGetFileSize:
-    """Test get_file_size with mocked Drive API."""
+    """Test get_file_size with mocked HTTP client."""
 
-    @patch('adapters.drive.get_drive_service')
-    def test_returns_size(self, mock_get_service) -> None:
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_api_chain(mock_service, "files.get.execute", {"size": "12345"})
+    @patch('adapters.drive.get_sync_client')
+    def test_returns_size(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"size": "12345"}
 
         result = get_file_size("file123")
         assert result == 12345
 
-    @patch('adapters.drive.get_drive_service')
-    def test_missing_size_returns_zero(self, mock_get_service) -> None:
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_api_chain(mock_service, "files.get.execute", {})
+    @patch('adapters.drive.get_sync_client')
+    def test_missing_size_returns_zero(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {}
 
         result = get_file_size("folder123")
         assert result == 0
 
 
 class TestSearchFiles:
-    """Test search_files with mocked Drive API."""
+    """Test search_files with mocked HTTP client."""
 
-    @patch('adapters.drive.get_drive_service')
-    def test_returns_search_results(self, mock_get_service) -> None:
+    @patch('adapters.drive.get_sync_client')
+    def test_returns_search_results(self, mock_get_client) -> None:
         """Search results parsed into DriveSearchResult objects."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "files.list.execute", {
+        mock_client.get_json.return_value = {
             "files": [
                 {
                     "id": "doc1",
@@ -225,7 +230,7 @@ class TestSearchFiles:
                     "owners": [{"displayName": "Bob"}],
                 },
             ],
-        })
+        }
 
         with patch('retry.time.sleep'):
             results = search_files("fullText contains 'budget'")
@@ -240,25 +245,25 @@ class TestSearchFiles:
         assert results[1].file_id == "sheet1"
         assert results[1].modified_time is None  # No modifiedTime
 
-    @patch('adapters.drive.get_drive_service')
-    def test_empty_search(self, mock_get_service) -> None:
+    @patch('adapters.drive.get_sync_client')
+    def test_empty_search(self, mock_get_client) -> None:
         """Empty search returns empty list."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_api_chain(mock_service, "files.list.execute", {"files": []})
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"files": []}
 
         with patch('retry.time.sleep'):
             results = search_files("nonexistent")
 
         assert results == []
 
-    @patch('adapters.drive.get_drive_service')
-    def test_exfil_file_includes_email_context(self, mock_get_service) -> None:
+    @patch('adapters.drive.get_sync_client')
+    def test_exfil_file_includes_email_context(self, mock_get_client) -> None:
         """File with exfil description includes email context."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "files.list.execute", {
+        mock_client.get_json.return_value = {
             "files": [{
                 "id": "pdf1",
                 "name": "report.pdf",
@@ -269,7 +274,7 @@ class TestSearchFiles:
                     "Message ID: 18f4a5b6c7d8e9f0"
                 ),
             }],
-        })
+        }
 
         with patch('retry.time.sleep'):
             results = search_files("report")
@@ -279,29 +284,23 @@ class TestSearchFiles:
         assert results[0].email_context.message_id == "18f4a5b6c7d8e9f0"
         assert results[0].email_context.from_address == "sender@example.com"
 
-    @patch('adapters.drive.get_drive_service')
-    def test_max_results_capped_at_100(self, mock_get_service) -> None:
+    @patch('adapters.drive.get_sync_client')
+    def test_max_results_capped_at_100(self, mock_get_client) -> None:
         """API pageSize capped at 100 even if max_results is higher."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_api_chain(mock_service, "files.list.execute", {"files": []})
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"files": []}
 
         with patch('retry.time.sleep'):
             search_files("test", max_results=200)
 
-        call_kwargs = mock_service.files().list.call_args[1]
-        assert call_kwargs["pageSize"] == 100
+        call_kwargs = mock_client.get_json.call_args.kwargs["params"]
+        assert call_kwargs["pageSize"] == str(100)
 
 
 # ============================================================================
-# FETCH FILE COMMENTS (mocked service + get_file_metadata)
+# FETCH FILE COMMENTS (mocked client + get_file_metadata)
 # ============================================================================
-
-
-def _make_http_error(status: int, body: bytes = b"error") -> HttpError:
-    """Create a googleapiclient HttpError with given status code."""
-    resp = httplib2.Response({"status": status})
-    return HttpError(resp, body)
 
 
 def _api_comment(
@@ -363,17 +362,17 @@ _DOC_METADATA = {
 
 
 class TestFetchFileComments:
-    """Test fetch_file_comments with mocked Drive API."""
+    """Test fetch_file_comments with mocked HTTP client."""
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
-    def test_basic_comment_parsing(self, mock_svc, mock_meta, _sleep) -> None:
+    @patch("adapters.drive.get_sync_client")
+    def test_basic_comment_parsing(self, mock_get_client, mock_meta, _sleep) -> None:
         """Single comment with all fields populated."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "comments.list.execute", {
+        mock_client.get_json.return_value = {
             "comments": [
                 _api_comment(
                     id="c1",
@@ -384,7 +383,7 @@ class TestFetchFileComments:
                     mentioned_emails=["bob@example.com"],
                 ),
             ],
-        })
+        }
 
         result = fetch_file_comments("doc123")
 
@@ -406,13 +405,13 @@ class TestFetchFileComments:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
-    def test_comment_with_replies(self, mock_svc, mock_meta, _sleep) -> None:
+    @patch("adapters.drive.get_sync_client")
+    def test_comment_with_replies(self, mock_get_client, mock_meta, _sleep) -> None:
         """Comment with threaded replies parses reply author/content."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "comments.list.execute", {
+        mock_client.get_json.return_value = {
             "comments": [
                 _api_comment(
                     id="c1",
@@ -429,7 +428,7 @@ class TestFetchFileComments:
                     ],
                 ),
             ],
-        })
+        }
 
         result = fetch_file_comments("doc123")
 
@@ -443,15 +442,15 @@ class TestFetchFileComments:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_missing_author_name_generates_warning(
-        self, mock_svc, mock_meta, _sleep
+        self, mock_get_client, mock_meta, _sleep
     ) -> None:
         """Comment with no author displayName gets 'Unknown' + warning."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "comments.list.execute", {
+        mock_client.get_json.return_value = {
             "comments": [
                 {
                     "id": "c1",
@@ -463,7 +462,7 @@ class TestFetchFileComments:
                     "replies": [],
                 },
             ],
-        })
+        }
 
         result = fetch_file_comments("doc123")
 
@@ -472,15 +471,15 @@ class TestFetchFileComments:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_missing_reply_author_generates_warning(
-        self, mock_svc, mock_meta, _sleep
+        self, mock_get_client, mock_meta, _sleep
     ) -> None:
         """Reply with no author displayName gets 'Unknown' + warning."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "comments.list.execute", {
+        mock_client.get_json.return_value = {
             "comments": [
                 _api_comment(
                     replies=[
@@ -494,7 +493,7 @@ class TestFetchFileComments:
                     ],
                 ),
             ],
-        })
+        }
 
         result = fetch_file_comments("doc123")
 
@@ -504,20 +503,20 @@ class TestFetchFileComments:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_resolved_comments_included_by_default(
-        self, mock_svc, mock_meta, _sleep
+        self, mock_get_client, mock_meta, _sleep
     ) -> None:
         """Both resolved and unresolved returned when include_resolved=True (default)."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "comments.list.execute", {
+        mock_client.get_json.return_value = {
             "comments": [
                 _api_comment(id="c1", resolved=False),
                 _api_comment(id="c2", resolved=True),
             ],
-        })
+        }
 
         result = fetch_file_comments("doc123")
 
@@ -527,21 +526,21 @@ class TestFetchFileComments:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_include_resolved_false_filters(
-        self, mock_svc, mock_meta, _sleep
+        self, mock_get_client, mock_meta, _sleep
     ) -> None:
         """Resolved comments filtered when include_resolved=False."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "comments.list.execute", {
+        mock_client.get_json.return_value = {
             "comments": [
                 _api_comment(id="c1", resolved=False, content="Open"),
                 _api_comment(id="c2", resolved=True, content="Done"),
                 _api_comment(id="c3", resolved=False, content="Also open"),
             ],
-        })
+        }
 
         result = fetch_file_comments("doc123", include_resolved=False)
 
@@ -551,13 +550,13 @@ class TestFetchFileComments:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
-    def test_empty_comments(self, mock_svc, mock_meta, _sleep) -> None:
+    @patch("adapters.drive.get_sync_client")
+    def test_empty_comments(self, mock_get_client, mock_meta, _sleep) -> None:
         """File with no comments returns empty list."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "comments.list.execute", {"comments": []})
+        mock_client.get_json.return_value = {"comments": []}
 
         result = fetch_file_comments("doc123")
 
@@ -567,15 +566,15 @@ class TestFetchFileComments:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_no_quoted_text_defaults_empty(
-        self, mock_svc, mock_meta, _sleep
+        self, mock_get_client, mock_meta, _sleep
     ) -> None:
         """Comment without quotedFileContent gets empty quoted_text."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "comments.list.execute", {
+        mock_client.get_json.return_value = {
             "comments": [
                 {
                     "id": "c1",
@@ -587,7 +586,7 @@ class TestFetchFileComments:
                     "replies": [],
                 },
             ],
-        })
+        }
 
         result = fetch_file_comments("doc123")
 
@@ -597,11 +596,14 @@ class TestFetchFileComments:
 
     @pytest.mark.parametrize("mime_type", list(COMMENT_UNSUPPORTED_MIMES))
     @patch("retry.time.sleep")
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_unsupported_mime_raises_before_api_call(
-        self, mock_svc, _sleep, mime_type
+        self, mock_get_client, _sleep, mime_type
     ) -> None:
         """Known unsupported MIME types raise early without hitting comments API."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
         with patch(
             "adapters.drive.get_file_metadata",
             return_value={"name": "Test", "mimeType": mime_type},
@@ -611,21 +613,22 @@ class TestFetchFileComments:
 
         assert exc_info.value.kind == ErrorKind.INVALID_INPUT
         assert "not supported" in exc_info.value.message.lower()
-        # Verify comments API was never called
-        mock_svc.return_value.comments.assert_not_called()
+        # Verify comments API was never called (get_json only called for metadata via get_file_metadata,
+        # which is patched, so mock_client.get_json should not have been called)
+        mock_client.get_json.assert_not_called()
 
-    # -- HttpError branches --
+    # -- HTTPStatusError branches --
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_http_404_raises_invalid_input(
-        self, mock_svc, mock_meta, _sleep
+        self, mock_get_client, mock_meta, _sleep
     ) -> None:
         """404 from comments API → INVALID_INPUT (unsupported file type)."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "comments.list.execute", side_effect=_make_http_error(404))
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = _make_http_status_error(404)
 
         with pytest.raises(MiseError) as exc_info:
             fetch_file_comments("file123")
@@ -635,14 +638,14 @@ class TestFetchFileComments:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_http_403_raises_permission_denied(
-        self, mock_svc, mock_meta, _sleep
+        self, mock_get_client, mock_meta, _sleep
     ) -> None:
         """403 → PERMISSION_DENIED."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "comments.list.execute", side_effect=_make_http_error(403))
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = _make_http_status_error(403)
 
         with pytest.raises(MiseError) as exc_info:
             fetch_file_comments("file123")
@@ -651,14 +654,14 @@ class TestFetchFileComments:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_http_429_raises_rate_limited(
-        self, mock_svc, mock_meta, _sleep
+        self, mock_get_client, mock_meta, _sleep
     ) -> None:
         """429 → RATE_LIMITED with retryable=True."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "comments.list.execute", side_effect=_make_http_error(429))
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = _make_http_status_error(429)
 
         with pytest.raises(MiseError) as exc_info:
             fetch_file_comments("file123")
@@ -668,14 +671,14 @@ class TestFetchFileComments:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_http_500_raises_network_error_retryable(
-        self, mock_svc, mock_meta, _sleep
+        self, mock_get_client, mock_meta, _sleep
     ) -> None:
         """5xx → NETWORK_ERROR with retryable=True."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "comments.list.execute", side_effect=_make_http_error(503))
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = _make_http_status_error(503)
 
         with pytest.raises(MiseError) as exc_info:
             fetch_file_comments("file123")
@@ -685,14 +688,14 @@ class TestFetchFileComments:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_other_http_error_raises_network_error(
-        self, mock_svc, mock_meta, _sleep
+        self, mock_get_client, mock_meta, _sleep
     ) -> None:
         """Unexpected HTTP status (e.g. 400) → NETWORK_ERROR, not retryable."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "comments.list.execute", side_effect=_make_http_error(400))
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = _make_http_status_error(400)
 
         with pytest.raises(MiseError) as exc_info:
             fetch_file_comments("file123")
@@ -704,16 +707,16 @@ class TestFetchFileComments:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_pagination_fetches_multiple_pages(
-        self, mock_svc, mock_meta, _sleep
+        self, mock_get_client, mock_meta, _sleep
     ) -> None:
         """Follows nextPageToken across multiple pages."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
         # First page returns token, second page is final
-        mock_api_chain(mock_service, "comments.list.execute", side_effect=[
+        mock_client.get_json.side_effect = [
             {
                 "comments": [_api_comment(id="c1")],
                 "nextPageToken": "page2_token",
@@ -721,7 +724,7 @@ class TestFetchFileComments:
             {
                 "comments": [_api_comment(id="c2")],
             },
-        ])
+        ]
 
         result = fetch_file_comments("doc123")
 
@@ -730,63 +733,63 @@ class TestFetchFileComments:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_pagination_stops_at_max_results(
-        self, mock_svc, mock_meta, _sleep
+        self, mock_get_client, mock_meta, _sleep
     ) -> None:
         """Stops fetching when max_results reached even if more pages exist."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
         # First page fills max_results — shouldn't request page 2
-        mock_api_chain(mock_service, "comments.list.execute", {
+        mock_client.get_json.return_value = {
             "comments": [_api_comment(id=f"c{i}") for i in range(3)],
             "nextPageToken": "more_exist",
-        })
+        }
 
         result = fetch_file_comments("doc123", max_results=3)
 
         assert result.comment_count == 3
         # Only one call to the API (no second page request)
-        assert mock_service.comments().list().execute.call_count == 1
+        assert mock_client.get_json.call_count == 1
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_max_results_caps_page_size(
-        self, mock_svc, mock_meta, _sleep
+        self, mock_get_client, mock_meta, _sleep
     ) -> None:
         """pageSize sent to API is min(remaining, 100)."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "comments.list.execute", {"comments": []})
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"comments": []}
 
         fetch_file_comments("doc123", max_results=25)
 
-        call_kwargs = mock_service.comments().list.call_args[1]
-        assert call_kwargs["pageSize"] == 25
+        call_kwargs = mock_client.get_json.call_args.kwargs["params"]
+        assert call_kwargs["pageSize"] == str(25)
 
     # -- Default field values --
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_missing_fields_use_defaults(
-        self, mock_svc, mock_meta, _sleep
+        self, mock_get_client, mock_meta, _sleep
     ) -> None:
         """Sparse comment data uses empty-string/False defaults."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
         # Minimal comment — only author displayName present
-        mock_api_chain(mock_service, "comments.list.execute", {
+        mock_client.get_json.return_value = {
             "comments": [
                 {
                     "author": {"displayName": "Alice"},
                     "replies": [],
                 },
             ],
-        })
+        }
 
         result = fetch_file_comments("doc123")
 
@@ -802,23 +805,23 @@ class TestFetchFileComments:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive.get_file_metadata", return_value=_DOC_METADATA)
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_include_deleted_passed_to_api(
-        self, mock_svc, mock_meta, _sleep
+        self, mock_get_client, mock_meta, _sleep
     ) -> None:
         """include_deleted flag forwarded to API call."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "comments.list.execute", {"comments": []})
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"comments": []}
 
         fetch_file_comments("doc123", include_deleted=True)
 
-        call_kwargs = mock_service.comments().list.call_args[1]
-        assert call_kwargs["includeDeleted"] is True
+        call_kwargs = mock_client.get_json.call_args.kwargs["params"]
+        assert call_kwargs["includeDeleted"] == "true"
 
 
 # ============================================================================
-# GET FILE METADATA (mocked service)
+# GET FILE METADATA (mocked client)
 # ============================================================================
 
 
@@ -851,18 +854,18 @@ class TestIsGoogleWorkspaceFile:
 
 
 class TestGetFileMetadata:
-    """Test get_file_metadata with mocked Drive API."""
+    """Test get_file_metadata with mocked HTTP client."""
 
     @patch("retry.time.sleep")
-    @patch("adapters.drive.get_drive_service")
-    def test_returns_metadata_dict(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "files.get.execute", {
+    @patch("adapters.drive.get_sync_client")
+    def test_returns_metadata_dict(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "id": "doc123",
             "name": "Test",
             "mimeType": "application/vnd.google-apps.document",
-        })
+        }
 
         result = get_file_metadata("doc123")
 
@@ -871,7 +874,7 @@ class TestGetFileMetadata:
 
 
 # ============================================================================
-# DOWNLOAD FILE TO TEMP (mocked service + MediaIoBaseDownload)
+# DOWNLOAD FILE TO TEMP (mocked client + stream_to_file)
 # ============================================================================
 
 
@@ -879,20 +882,14 @@ class TestDownloadFileToTemp:
     """Test streaming download to temp file."""
 
     @patch("retry.time.sleep")
-    @patch("adapters.drive.MediaIoBaseDownload")
-    @patch("adapters.drive.get_drive_service")
-    def test_writes_to_temp_file(self, mock_svc, mock_download_cls, _sleep) -> None:
+    @patch("adapters.drive.get_sync_client")
+    def test_writes_to_temp_file(self, mock_get_client, _sleep) -> None:
         """Downloads content to a temp file and returns its path."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        # Simulate two chunks then done
-        mock_downloader = MagicMock()
-        mock_downloader.next_chunk.side_effect = [
-            (None, False),
-            (None, True),
-        ]
-        mock_download_cls.return_value = mock_downloader
+        # stream_to_file writes to the file object — mock does nothing (file stays empty but exists)
+        mock_client.stream_to_file.return_value = None
 
         path = download_file_to_temp("file123", suffix=".pdf")
 
@@ -903,16 +900,13 @@ class TestDownloadFileToTemp:
             path.unlink(missing_ok=True)
 
     @patch("retry.time.sleep")
-    @patch("adapters.drive.MediaIoBaseDownload")
-    @patch("adapters.drive.get_drive_service")
-    def test_cleans_up_on_error(self, mock_svc, mock_download_cls, _sleep) -> None:
+    @patch("adapters.drive.get_sync_client")
+    def test_cleans_up_on_error(self, mock_get_client, _sleep) -> None:
         """Temp file cleaned up if download fails."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_downloader = MagicMock()
-        mock_downloader.next_chunk.side_effect = RuntimeError("network fail")
-        mock_download_cls.return_value = mock_downloader
+        mock_client.stream_to_file.side_effect = RuntimeError("network fail")
 
         with pytest.raises(MiseError):
             download_file_to_temp("file123")
@@ -939,36 +933,36 @@ class TestGetEmailAttachmentsFolderId:
         assert result == "env_folder_id"
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("adapters.drive.get_drive_service")
-    def test_auto_discovers_folder(self, mock_svc) -> None:
+    @patch("adapters.drive.get_sync_client")
+    def test_auto_discovers_folder(self, mock_get_client) -> None:
         """Finds folder by name when env var not set."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "files.list.execute", {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "files": [{"id": "discovered_id"}]
-        })
+        }
 
         result = _get_email_attachments_folder_id()
 
         assert result == "discovered_id"
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("adapters.drive.get_drive_service")
-    def test_returns_none_when_not_found(self, mock_svc) -> None:
+    @patch("adapters.drive.get_sync_client")
+    def test_returns_none_when_not_found(self, mock_get_client) -> None:
         """Returns None when no folder found and no env var."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "files.list.execute", {"files": []})
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"files": []}
 
         result = _get_email_attachments_folder_id()
 
         assert result is None
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("adapters.drive.get_drive_service")
-    def test_returns_none_on_api_error(self, mock_svc) -> None:
+    @patch("adapters.drive.get_sync_client")
+    def test_returns_none_on_api_error(self, mock_get_client) -> None:
         """Silently returns None on API failure."""
-        mock_svc.side_effect = RuntimeError("no auth")
+        mock_get_client.side_effect = RuntimeError("no auth")
 
         result = _get_email_attachments_folder_id()
 
@@ -976,12 +970,12 @@ class TestGetEmailAttachmentsFolderId:
 
 
 # ============================================================================
-# LOOKUP EXFILTRATED (mocked service + folder lookup)
+# LOOKUP EXFILTRATED (mocked client + folder lookup)
 # ============================================================================
 
 
 class TestLookupExfiltrated:
-    """Test lookup_exfiltrated with mocked Drive API."""
+    """Test lookup_exfiltrated with mocked HTTP client."""
 
     def setup_method(self) -> None:
         import adapters.drive as _drive_mod
@@ -990,13 +984,13 @@ class TestLookupExfiltrated:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive._get_email_attachments_folder_id", return_value="folder123")
-    @patch("adapters.drive.get_drive_service")
-    def test_groups_files_by_message_id(self, mock_svc, mock_folder, _sleep) -> None:
+    @patch("adapters.drive.get_sync_client")
+    def test_groups_files_by_message_id(self, mock_get_client, mock_folder, _sleep) -> None:
         """Files matched to their message IDs from description."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "files.list.execute", {
+        mock_client.get_json.return_value = {
             "files": [
                 {
                     "id": "drive_file_1",
@@ -1011,7 +1005,7 @@ class TestLookupExfiltrated:
                     "description": "Message ID: msg_bbb",
                 },
             ],
-        })
+        }
 
         result = lookup_exfiltrated(["msg_aaa", "msg_bbb"])
 
@@ -1023,15 +1017,15 @@ class TestLookupExfiltrated:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive._get_email_attachments_folder_id", return_value="folder123")
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_ignores_unmatched_message_ids(
-        self, mock_svc, mock_folder, _sleep
+        self, mock_get_client, mock_folder, _sleep
     ) -> None:
         """Files with message IDs not in the request list are ignored."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "files.list.execute", {
+        mock_client.get_json.return_value = {
             "files": [
                 {
                     "id": "f1",
@@ -1040,7 +1034,7 @@ class TestLookupExfiltrated:
                     "description": "Message ID: msg_zzz",
                 },
             ],
-        })
+        }
 
         result = lookup_exfiltrated(["msg_aaa"])
 
@@ -1059,12 +1053,12 @@ class TestLookupExfiltrated:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive._get_email_attachments_folder_id", return_value="folder123")
-    @patch("adapters.drive.get_drive_service")
-    def test_api_error_returns_empty(self, mock_svc, mock_folder, _sleep) -> None:
+    @patch("adapters.drive.get_sync_client")
+    def test_api_error_returns_empty(self, mock_get_client, mock_folder, _sleep) -> None:
         """API failure silently returns empty dict (pre-exfil is optional)."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "files.list.execute", side_effect=RuntimeError("API down"))
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = RuntimeError("API down")
 
         result = lookup_exfiltrated(["msg_aaa"])
 
@@ -1072,48 +1066,48 @@ class TestLookupExfiltrated:
 
     @patch("retry.time.sleep")
     @patch("adapters.drive._get_email_attachments_folder_id", return_value="folder123")
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_single_message_id_uses_simple_query(
-        self, mock_svc, mock_folder, _sleep
+        self, mock_get_client, mock_folder, _sleep
     ) -> None:
         """Single message ID doesn't use OR query (optimization)."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "files.list.execute", {"files": []})
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"files": []}
 
         lookup_exfiltrated(["msg_aaa"])
 
-        call_kwargs = mock_service.files().list.call_args[1]
+        call_kwargs = mock_client.get_json.call_args.kwargs["params"]
         assert "or" not in call_kwargs["q"].lower()
         assert "msg_aaa" in call_kwargs["q"]
 
     @patch("retry.time.sleep")
     @patch("adapters.drive._get_email_attachments_folder_id", return_value="folder123")
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_multiple_message_ids_use_or_query(
-        self, mock_svc, mock_folder, _sleep
+        self, mock_get_client, mock_folder, _sleep
     ) -> None:
         """Multiple message IDs batch with OR query."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "files.list.execute", {"files": []})
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"files": []}
 
         lookup_exfiltrated(["msg_aaa", "msg_bbb"])
 
-        call_kwargs = mock_service.files().list.call_args[1]
+        call_kwargs = mock_client.get_json.call_args.kwargs["params"]
         assert " or " in call_kwargs["q"].lower()
 
     @patch("retry.time.sleep")
     @patch("adapters.drive._get_email_attachments_folder_id", return_value="folder123")
-    @patch("adapters.drive.get_drive_service")
+    @patch("adapters.drive.get_sync_client")
     def test_multiple_files_per_message(
-        self, mock_svc, mock_folder, _sleep
+        self, mock_get_client, mock_folder, _sleep
     ) -> None:
         """Multiple attachments from same email grouped under one message ID."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "files.list.execute", {
+        mock_client.get_json.return_value = {
             "files": [
                 {
                     "id": "f1",
@@ -1128,7 +1122,7 @@ class TestLookupExfiltrated:
                     "description": "Message ID: msg_aaa",
                 },
             ],
-        })
+        }
 
         result = lookup_exfiltrated(["msg_aaa"])
 
@@ -1152,6 +1146,7 @@ class TestSealCatchesRenamedMethods:
 
     def test_renamed_method_fails(self) -> None:
         """Seal catches files.export → files.export_media rename."""
+        from tests.helpers import mock_api_chain, seal_service
         service = MagicMock()
         mock_api_chain(service, "files.export.execute", b"markdown")
         seal_service(service)
@@ -1165,6 +1160,7 @@ class TestSealCatchesRenamedMethods:
 
     def test_typo_in_resource_fails(self) -> None:
         """Seal catches typo in resource name (files vs filez)."""
+        from tests.helpers import mock_api_chain, seal_service
         service = MagicMock()
         mock_api_chain(service, "files.get.execute", {"id": "f1"})
         seal_service(service)
@@ -1174,6 +1170,7 @@ class TestSealCatchesRenamedMethods:
 
     def test_multiple_chains_all_work(self) -> None:
         """Seal preserves all set-up chains on the same service."""
+        from tests.helpers import mock_api_chain, seal_service
         service = MagicMock()
         mock_api_chain(service, "files.get.execute", {"id": "f1"})
         mock_api_chain(service, "files.list.execute", {"files": []})
@@ -1200,39 +1197,37 @@ class TestSearchFilesScoped:
 
     def test_folder_id_appended_to_query(self) -> None:
         """When folder_id provided, 'AND {id} in parents' appended to query."""
-        mock_service = MagicMock()
-        mock_service.files.return_value.list.return_value.execute.return_value = {"files": []}
+        mock_client = MagicMock()
+        mock_client.get_json.return_value = {"files": []}
 
-        with patch("adapters.drive.get_drive_service", return_value=mock_service):
+        with patch("adapters.drive.get_sync_client", return_value=mock_client):
             search_files("fullText contains 'GA4' and trashed = false", folder_id="folder123")
 
-        call_kwargs = mock_service.files.return_value.list.call_args.kwargs
+        call_kwargs = mock_client.get_json.call_args.kwargs["params"]
         assert "folder123" in call_kwargs["q"]
         assert "in parents" in call_kwargs["q"]
 
     def test_unscoped_query_unchanged(self) -> None:
         """folder_id=None produces the same query as omitting it."""
-        mock_service = MagicMock()
-        mock_service.files.return_value.list.return_value.execute.return_value = {"files": []}
+        mock_client = MagicMock()
+        mock_client.get_json.return_value = {"files": []}
 
         base_query = "fullText contains 'GA4' and trashed = false"
 
-        with patch("adapters.drive.get_drive_service", return_value=mock_service):
+        with patch("adapters.drive.get_sync_client", return_value=mock_client):
             search_files(base_query, folder_id=None)
 
-        call_kwargs = mock_service.files.return_value.list.call_args.kwargs
+        call_kwargs = mock_client.get_json.call_args.kwargs["params"]
         assert call_kwargs["q"] == base_query
 
     def test_both_shared_drive_flags_present(self) -> None:
         """Both supportsAllDrives and includeItemsFromAllDrives are True."""
-        mock_service = MagicMock()
-        mock_service.files.return_value.list.return_value.execute.return_value = {"files": []}
+        mock_client = MagicMock()
+        mock_client.get_json.return_value = {"files": []}
 
-        with patch("adapters.drive.get_drive_service", return_value=mock_service):
+        with patch("adapters.drive.get_sync_client", return_value=mock_client):
             search_files("fullText contains 'test' and trashed = false", folder_id="fid123")
 
-        call_kwargs = mock_service.files.return_value.list.call_args.kwargs
-        assert call_kwargs.get("supportsAllDrives") is True
-        assert call_kwargs.get("includeItemsFromAllDrives") is True
-
-
+        call_kwargs = mock_client.get_json.call_args.kwargs["params"]
+        assert call_kwargs.get("supportsAllDrives") == "true"
+        assert call_kwargs.get("includeItemsFromAllDrives") == "true"

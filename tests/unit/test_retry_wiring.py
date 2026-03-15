@@ -8,10 +8,20 @@ non-retryable errors fail fast with proper MiseError conversion).
 This complements test_retry.py which tests the decorator in isolation.
 """
 
+import httpx
 import pytest
 from unittest.mock import patch, Mock, MagicMock
 
 from models import MiseError, ErrorKind
+
+
+def _httpx_error(status: int) -> httpx.HTTPStatusError:
+    """Create an httpx.HTTPStatusError for testing."""
+    return httpx.HTTPStatusError(
+        f"HTTP {status}",
+        request=httpx.Request("GET", "https://www.googleapis.com/test"),
+        response=httpx.Response(status),
+    )
 
 
 # ============================================================================
@@ -105,20 +115,17 @@ class TestRetryWiringEndToEnd:
     proving the wiring works end-to-end.
     """
 
-    @patch('adapters.drive.get_drive_service')
-    def test_drive_retries_on_server_error(self, mock_get_service) -> None:
+    @patch('adapters.drive.get_sync_client')
+    def test_drive_retries_on_server_error(self, mock_get_client) -> None:
         """Drive adapter retries on 500, then succeeds."""
         from adapters.drive import get_file_metadata
 
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
         # First call: 500 error. Second call: success.
-        error_500 = Exception("Internal error")
-        error_500.resp = Mock(status=500)
-
-        mock_service.files().get().execute.side_effect = [
-            error_500,
+        mock_client.get_json.side_effect = [
+            _httpx_error(500),
             {"id": "abc", "name": "Test", "mimeType": "text/plain"},
         ]
 
@@ -126,37 +133,33 @@ class TestRetryWiringEndToEnd:
             result = get_file_metadata("abc")
 
         assert result["id"] == "abc"
-        assert mock_service.files().get().execute.call_count == 2
+        assert mock_client.get_json.call_count == 2
 
-    @patch('adapters.drive.get_drive_service')
-    def test_drive_fails_fast_on_not_found(self, mock_get_service) -> None:
+    @patch('adapters.drive.get_sync_client')
+    def test_drive_fails_fast_on_not_found(self, mock_get_client) -> None:
         """Drive adapter does NOT retry on 404."""
         from adapters.drive import get_file_metadata
 
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        error_404 = Exception("Not found")
-        error_404.resp = Mock(status=404)
-        mock_service.files().get().execute.side_effect = error_404
+        mock_client.get_json.side_effect = _httpx_error(404)
 
         with pytest.raises(MiseError) as exc_info:
             get_file_metadata("nonexistent")
 
         assert exc_info.value.kind == ErrorKind.NOT_FOUND
-        assert mock_service.files().get().execute.call_count == 1
+        assert mock_client.get_json.call_count == 1
 
-    @patch('adapters.drive.get_drive_service')
-    def test_drive_converts_403_to_permission_denied(self, mock_get_service) -> None:
+    @patch('adapters.drive.get_sync_client')
+    def test_drive_converts_403_to_permission_denied(self, mock_get_client) -> None:
         """Drive adapter converts 403 to PERMISSION_DENIED MiseError."""
         from adapters.drive import get_file_metadata
 
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        error_403 = Exception("Forbidden")
-        error_403.resp = Mock(status=403)
-        mock_service.files().get().execute.side_effect = error_403
+        mock_client.get_json.side_effect = _httpx_error(403)
 
         with pytest.raises(MiseError) as exc_info:
             get_file_metadata("restricted")
@@ -187,17 +190,15 @@ class TestRetryWiringEndToEnd:
         assert isinstance(result, list)
         assert mock_service.users().threads().list().execute.call_count == 3
 
-    @patch('adapters.drive.get_drive_service')
-    def test_exhausted_retries_raise_mise_error(self, mock_get_service) -> None:
+    @patch('adapters.drive.get_sync_client')
+    def test_exhausted_retries_raise_mise_error(self, mock_get_client) -> None:
         """After max attempts, raises MiseError with retryable flag."""
         from adapters.drive import get_file_metadata
 
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        error_503 = Exception("Service unavailable")
-        error_503.resp = Mock(status=503)
-        mock_service.files().get().execute.side_effect = error_503
+        mock_client.get_json.side_effect = _httpx_error(503)
 
         with patch('retry.time.sleep'):
             with pytest.raises(MiseError) as exc_info:
@@ -206,4 +207,4 @@ class TestRetryWiringEndToEnd:
         assert exc_info.value.kind == ErrorKind.NETWORK_ERROR
         assert exc_info.value.retryable
         # Default max_attempts=3
-        assert mock_service.files().get().execute.call_count == 3
+        assert mock_client.get_json.call_count == 3

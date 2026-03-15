@@ -325,6 +325,30 @@ class MiseSyncClient:
         """DELETE request (no response body expected)."""
         self.request("DELETE", url, params=params)
 
+    def stream_to_file(
+        self,
+        url: str,
+        file_obj: Any,
+        *,
+        params: dict[str, Any] | None = None,
+        chunk_size: int = 65536,
+    ) -> None:
+        """Stream a download directly to a file object.
+
+        Args:
+            url: URL to download
+            file_obj: File-like object to write to (must be opened in binary mode)
+            params: Optional query parameters
+            chunk_size: Download chunk size in bytes (default: 64KB)
+        """
+        req_headers = self._auth_headers()
+        with self._client.stream(
+            "GET", url, headers=req_headers, params=params,
+        ) as response:
+            response.raise_for_status()
+            for chunk in response.iter_bytes(chunk_size=chunk_size):
+                file_obj.write(chunk)
+
     def close(self) -> None:
         """Close the underlying connection pool."""
         self._client.close()

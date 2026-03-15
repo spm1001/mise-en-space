@@ -1,17 +1,20 @@
 """
 Drive adapter — Google Drive API wrapper.
 
-Provides file metadata, export, and search. Used by fetch tool for routing.
+Provides file metadata, export, download, upload, search, and comments.
+Used by fetch tool for routing.
+
+Uses httpx via MiseSyncClient (Phase 1 migration). Will switch to
+MiseHttpClient (async) when the tools/server layer goes async.
 """
 
-import io
+import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
-from googleapiclient.http import MediaIoBaseDownload
-
+import httpx
 import re
 
 from models import (
@@ -27,7 +30,12 @@ from models import (
     CommentReply,
 )
 from retry import with_retry
-from adapters.services import get_drive_service
+from adapters.http_client import get_sync_client
+
+
+# Google Drive API v3 base URLs
+_DRIVE_API = "https://www.googleapis.com/drive/v3/files"
+_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3/files"
 
 
 def parse_email_context(description: str | None) -> EmailContext | None:
@@ -71,7 +79,6 @@ def parse_email_context(description: str | None) -> EmailContext | None:
 # Google recommends streaming for >5MB (bandwidth), but that's aggressive.
 # For gigabyte PPTXs, any reasonable threshold triggers the safety net.
 # Can be overridden via environment variable if needed.
-import os
 STREAMING_THRESHOLD_BYTES = int(os.environ.get("MISE_STREAMING_THRESHOLD_MB", 50)) * 1024 * 1024
 
 
@@ -129,14 +136,11 @@ def get_file_metadata(file_id: str) -> dict[str, Any]:
     Raises:
         MiseError: On API failure
     """
-    service = get_drive_service()
-
-    result = (
-        service.files()
-        .get(fileId=file_id, fields=FILE_METADATA_FIELDS, supportsAllDrives=True)
-        .execute()
+    client = get_sync_client()
+    return client.get_json(
+        f"{_DRIVE_API}/{file_id}",
+        params={"fields": FILE_METADATA_FIELDS, "supportsAllDrives": "true"},
     )
-    return cast(dict[str, Any], result)
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
@@ -157,15 +161,11 @@ def export_file(file_id: str, mime_type: str) -> bytes:
     Raises:
         MiseError: On API failure
     """
-    service = get_drive_service()
-
-    # Export returns bytes directly
-    result = (
-        service.files()
-        .export(fileId=file_id, mimeType=mime_type)
-        .execute()
+    client = get_sync_client()
+    return client.get_bytes(
+        f"{_DRIVE_API}/{file_id}/export",
+        params={"mimeType": mime_type},
     )
-    return cast(bytes, result)
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
@@ -187,11 +187,10 @@ def download_file(file_id: str, max_memory_size: int = STREAMING_THRESHOLD_BYTES
         MiseError: If file too large for memory, or on API failure
     """
     # Check size first
-    service = get_drive_service()
-    metadata = (
-        service.files()
-        .get(fileId=file_id, fields="size", supportsAllDrives=True)
-        .execute()
+    client = get_sync_client()
+    metadata = client.get_json(
+        f"{_DRIVE_API}/{file_id}",
+        params={"fields": "size", "supportsAllDrives": "true"},
     )
 
     file_size = int(metadata.get("size", 0))
@@ -204,12 +203,10 @@ def download_file(file_id: str, max_memory_size: int = STREAMING_THRESHOLD_BYTES
         )
 
     # Small file: load into memory
-    result = (
-        service.files()
-        .get_media(fileId=file_id)
-        .execute()
+    return client.get_bytes(
+        f"{_DRIVE_API}/{file_id}",
+        params={"alt": "media"},
     )
-    return cast(bytes, result)
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
@@ -230,21 +227,18 @@ def download_file_to_temp(file_id: str, suffix: str = "") -> Path:
     Raises:
         MiseError: On API failure
     """
-    service = get_drive_service()
-
-    # Create request for streaming download
-    request = service.files().get_media(fileId=file_id)
+    client = get_sync_client()
 
     # Create temp file
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
     tmp_path = Path(tmp.name)
 
     try:
-        # Stream download in chunks
-        downloader = MediaIoBaseDownload(tmp, request)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
+        client.stream_to_file(
+            f"{_DRIVE_API}/{file_id}",
+            tmp,
+            params={"alt": "media"},
+        )
         tmp.close()
         return tmp_path
     except Exception:
@@ -264,11 +258,10 @@ def get_file_size(file_id: str) -> int:
     Returns:
         File size in bytes (0 if unknown)
     """
-    service = get_drive_service()
-    metadata = (
-        service.files()
-        .get(fileId=file_id, fields="size", supportsAllDrives=True)
-        .execute()
+    client = get_sync_client()
+    metadata = client.get_json(
+        f"{_DRIVE_API}/{file_id}",
+        params={"fields": "size", "supportsAllDrives": "true"},
     )
     return int(metadata.get("size", 0))
 
@@ -299,19 +292,17 @@ def search_files(
     if folder_id is not None:
         query = f"{query} AND '{folder_id}' in parents"
 
-    service = get_drive_service()
+    client = get_sync_client()
 
-    response = (
-        service.files()
-        .list(
-            q=query,
-            pageSize=min(max_results, 100),  # API max is 100
-            fields=SEARCH_RESULT_FIELDS,
-            supportsAllDrives=include_shared_drives,
-            includeItemsFromAllDrives=include_shared_drives,
-        )
-        .execute()
-    )
+    params: dict[str, Any] = {
+        "q": query,
+        "pageSize": str(min(max_results, 100)),  # API max is 100
+        "fields": SEARCH_RESULT_FIELDS,
+        "supportsAllDrives": str(include_shared_drives).lower(),
+        "includeItemsFromAllDrives": str(include_shared_drives).lower(),
+    }
+
+    response = client.get_json(f"{_DRIVE_API}", params=params)
 
     results: list[DriveSearchResult] = []
     for file in response.get("files", [])[:max_results]:
@@ -384,9 +375,11 @@ def download_file_content(file_id: str) -> bytes:
     Raises:
         MiseError: On API failure
     """
-    service = get_drive_service()
-    result = service.files().get_media(fileId=file_id, supportsAllDrives=True).execute()
-    return cast(bytes, result)
+    client = get_sync_client()
+    return client.get_bytes(
+        f"{_DRIVE_API}/{file_id}",
+        params={"alt": "media", "supportsAllDrives": "true"},
+    )
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
@@ -394,8 +387,8 @@ def upload_file_content(file_id: str, content: bytes, mime_type: str) -> dict[st
     """
     Upload content to replace a file's content via Drive Files API.
 
-    Used for plain (non-Google-native) files. Preserves file ID, sharing,
-    location, and revision history.
+    Used for plain (non-Google-native) files and Drive import (text/markdown).
+    Preserves file ID, sharing, location, and revision history.
 
     Args:
         file_id: The file ID
@@ -408,12 +401,16 @@ def upload_file_content(file_id: str, content: bytes, mime_type: str) -> dict[st
     Raises:
         MiseError: On API failure
     """
-    from googleapiclient.http import MediaInMemoryUpload
-
-    service = get_drive_service()
-    media = MediaInMemoryUpload(content, mimetype=mime_type, resumable=False)
-    result = service.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
-    return cast(dict[str, Any], result)
+    client = get_sync_client()
+    response = client.request(
+        "PATCH",
+        f"{_UPLOAD_API}/{file_id}",
+        content=content,
+        content_type=mime_type,
+        params={"uploadType": "media", "supportsAllDrives": "true"},
+    )
+    import orjson
+    return orjson.loads(response.content)
 
 
 # Fields for folder listing — name, ID, and MIME type is all we need
@@ -443,29 +440,29 @@ def list_folder(folder_id: str) -> FolderListing:
     Raises:
         MiseError: On API failure
     """
-    service = get_drive_service()
+    client = get_sync_client()
 
     query = f"'{folder_id}' in parents and trashed = false"
 
     subfolders: list[FolderItem] = []
     files: list[FolderFile] = []
-    page_token = None
+    page_token: str | None = None
     pages_fetched = 0
     truncated = False
 
     while pages_fetched < FOLDER_LIST_MAX_PAGES:
-        kwargs: dict[str, Any] = dict(
-            q=query,
-            pageSize=FOLDER_LIST_PAGE_SIZE,
-            fields=FOLDER_LIST_FIELDS,
-            orderBy="name",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-        )
+        params: dict[str, Any] = {
+            "q": query,
+            "pageSize": str(FOLDER_LIST_PAGE_SIZE),
+            "fields": FOLDER_LIST_FIELDS,
+            "orderBy": "name",
+            "supportsAllDrives": "true",
+            "includeItemsFromAllDrives": "true",
+        }
         if page_token:
-            kwargs["pageToken"] = page_token
+            params["pageToken"] = page_token
 
-        response = service.files().list(**kwargs).execute()
+        response = client.get_json(f"{_DRIVE_API}", params=params)
         pages_fetched += 1
 
         for item in response.get("files", []):
@@ -502,9 +499,6 @@ def list_folder(folder_id: str) -> FolderListing:
 # PRE-EXFIL LOOKUP
 # =============================================================================
 
-from functools import lru_cache
-
-
 _email_attachments_folder_id: str | None = None
 _email_attachments_folder_checked: bool = False
 
@@ -535,15 +529,14 @@ def _get_email_attachments_folder_id() -> str | None:
 
     # Auto-discover by name
     try:
-        service = get_drive_service()
-        response = (
-            service.files()
-            .list(
-                q="name = 'Email Attachments' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
-                pageSize=1,
-                fields="files(id)",
-            )
-            .execute()
+        client = get_sync_client()
+        response = client.get_json(
+            f"{_DRIVE_API}",
+            params={
+                "q": "name = 'Email Attachments' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                "pageSize": "1",
+                "fields": "files(id)",
+            },
         )
         files = response.get("files", [])
         if files:
@@ -592,7 +585,7 @@ def lookup_exfiltrated(message_ids: list[str]) -> dict[str, list[dict[str, Any]]
     if not folder_id:
         return {}
 
-    service = get_drive_service()
+    client = get_sync_client()
     result: dict[str, list[dict[str, Any]]] = {}
 
     # Query for all message IDs at once using fullText search
@@ -610,14 +603,13 @@ def lookup_exfiltrated(message_ids: list[str]) -> dict[str, list[dict[str, Any]]
         query = f"({id_clauses})"
 
     try:
-        response = (
-            service.files()
-            .list(
-                q=query,
-                fields="files(id,name,mimeType,description)",
-                pageSize=1000,  # Should be plenty for a batch
-            )
-            .execute()
+        response = client.get_json(
+            f"{_DRIVE_API}",
+            params={
+                "q": query,
+                "fields": "files(id,name,mimeType,description)",
+                "pageSize": "1000",  # Should be plenty for a batch
+            },
         )
 
         files = response.get("files", [])
@@ -702,9 +694,7 @@ def fetch_file_comments(
     Raises:
         MiseError: On API failure or unsupported file type
     """
-    from googleapiclient.errors import HttpError
-
-    service = get_drive_service()
+    client = get_sync_client()
 
     # Get file metadata first — also validates file exists
     metadata = get_file_metadata(file_id)
@@ -721,20 +711,21 @@ def fetch_file_comments(
 
     comments: list[CommentData] = []
     warnings: list[str] = []
-    page_token = None
+    page_token: str | None = None
 
     try:
         while True:
-            response = (
-                service.comments()
-                .list(
-                    fileId=file_id,
-                    fields=COMMENT_FIELDS,
-                    includeDeleted=include_deleted,
-                    pageSize=min(max_results - len(comments), 100),  # API max is 100
-                    pageToken=page_token,
-                )
-                .execute()
+            params: dict[str, Any] = {
+                "fields": COMMENT_FIELDS,
+                "includeDeleted": str(include_deleted).lower(),
+                "pageSize": str(min(max_results - len(comments), 100)),  # API max is 100
+            }
+            if page_token:
+                params["pageToken"] = page_token
+
+            response = client.get_json(
+                f"{_DRIVE_API}/{file_id}/comments",
+                params=params,
             )
 
             for comment in response.get("comments", []):
@@ -790,41 +781,42 @@ def fetch_file_comments(
             if not page_token or len(comments) >= max_results:
                 break
 
-    except HttpError as e:
+    except httpx.HTTPStatusError as e:
+        status = e.response.status_code
         # 404 from Comments API means file type doesn't support comments
         # (even though file exists — we already got metadata)
-        if e.resp.status == 404:
+        if status == 404:
             raise MiseError(
                 ErrorKind.INVALID_INPUT,
                 f"Comments not supported for this file type ({mime_type})",
                 details={"file_id": file_id, "name": file_name, "mimeType": mime_type},
             )
         # Convert other HTTP errors to MiseError for consistent handling
-        elif e.resp.status == 403:
+        elif status == 403:
             raise MiseError(
                 ErrorKind.PERMISSION_DENIED,
                 f"No access to comments on: {file_name}",
                 details={"file_id": file_id, "http_status": 403},
             )
-        elif e.resp.status == 429:
+        elif status == 429:
             raise MiseError(
                 ErrorKind.RATE_LIMITED,
                 "API quota exceeded for comments",
                 details={"file_id": file_id, "http_status": 429},
                 retryable=True,
             )
-        elif e.resp.status >= 500:
+        elif status >= 500:
             raise MiseError(
                 ErrorKind.NETWORK_ERROR,
-                f"Google API server error: {e.resp.status}",
-                details={"file_id": file_id, "http_status": e.resp.status},
+                f"Google API server error: {status}",
+                details={"file_id": file_id, "http_status": status},
                 retryable=True,
             )
         # Re-raise other HTTP errors wrapped in MiseError
         raise MiseError(
             ErrorKind.NETWORK_ERROR,
-            f"HTTP error fetching comments: {e.resp.status}",
-            details={"file_id": file_id, "http_status": e.resp.status},
+            f"HTTP error fetching comments: {status}",
+            details={"file_id": file_id, "http_status": status},
         )
 
     # Filter out resolved comments if requested

@@ -6,7 +6,6 @@ from unittest.mock import patch, MagicMock, call
 
 import pytest
 
-from tests.helpers import mock_api_chain, seal_service
 from adapters.drive import list_folder, GOOGLE_FOLDER_MIME
 from models import FolderItem, FolderFile, FolderListing
 
@@ -26,7 +25,7 @@ def _make_file_item(id: str, name: str, mime: str = "text/markdown") -> dict:
 class TestListFolder:
     def test_single_page_result(self) -> None:
         """Single-page folder — returns FolderListing, not truncated."""
-        mock_service = MagicMock()
+        mock_client = MagicMock()
         page1 = {
             "files": [
                 _make_folder_item("sf1", "docs"),
@@ -35,9 +34,9 @@ class TestListFolder:
             ]
             # no nextPageToken
         }
-        mock_api_chain(mock_service, "files.list.execute", page1)
+        mock_client.get_json.return_value = page1
 
-        with patch("adapters.drive.get_drive_service", return_value=mock_service):
+        with patch("adapters.drive.get_sync_client", return_value=mock_client):
             result = list_folder("folder-id-123")
 
         assert isinstance(result, FolderListing)
@@ -50,44 +49,44 @@ class TestListFolder:
 
     def test_supportsAllDrives_and_includeItems_always_set(self) -> None:
         """Both shared-drive flags must be True on every API call."""
-        mock_service = MagicMock()
-        mock_service.files.return_value.list.return_value.execute.return_value = {"files": []}
+        mock_client = MagicMock()
+        mock_client.get_json.return_value = {"files": []}
 
-        with patch("adapters.drive.get_drive_service", return_value=mock_service):
+        with patch("adapters.drive.get_sync_client", return_value=mock_client):
             list_folder("folder-id-123")
 
-        call_kwargs = mock_service.files.return_value.list.call_args.kwargs
-        assert call_kwargs.get("supportsAllDrives") is True
-        assert call_kwargs.get("includeItemsFromAllDrives") is True
+        call_kwargs = mock_client.get_json.call_args.kwargs["params"]
+        assert call_kwargs.get("supportsAllDrives") == "true"
+        assert call_kwargs.get("includeItemsFromAllDrives") == "true"
 
     def test_three_page_pagination(self) -> None:
         """Three pages fetched; after page 3 no nextPageToken → not truncated."""
-        mock_service = MagicMock()
+        mock_client = MagicMock()
         pages = [
             {"files": [_make_file_item(f"f{i}", f"file{i}.md") for i in range(100)], "nextPageToken": "tok1"},
             {"files": [_make_file_item(f"f{i}", f"file{i}.md") for i in range(100, 200)], "nextPageToken": "tok2"},
             {"files": [_make_file_item(f"f{i}", f"file{i}.md") for i in range(200, 250)]},
         ]
-        mock_service.files.return_value.list.return_value.execute.side_effect = pages
+        mock_client.get_json.side_effect = pages
 
-        with patch("adapters.drive.get_drive_service", return_value=mock_service):
+        with patch("adapters.drive.get_sync_client", return_value=mock_client):
             result = list_folder("folder-id-123")
 
         assert result.file_count == 250
         assert result.truncated is False
-        assert mock_service.files.return_value.list.call_count == 3
+        assert mock_client.get_json.call_count == 3
 
     def test_truncation_when_page_token_after_page3(self) -> None:
         """nextPageToken present after page 3 → truncated=True."""
-        mock_service = MagicMock()
+        mock_client = MagicMock()
         pages = [
             {"files": [_make_file_item(f"f{i}", f"file{i}.md") for i in range(100)], "nextPageToken": "tok1"},
             {"files": [_make_file_item(f"f{i}", f"file{i}.md") for i in range(100, 200)], "nextPageToken": "tok2"},
             {"files": [_make_file_item(f"f{i}", f"file{i}.md") for i in range(200, 300)], "nextPageToken": "tok3"},
         ]
-        mock_service.files.return_value.list.return_value.execute.side_effect = pages
+        mock_client.get_json.side_effect = pages
 
-        with patch("adapters.drive.get_drive_service", return_value=mock_service):
+        with patch("adapters.drive.get_sync_client", return_value=mock_client):
             result = list_folder("folder-id-123")
 
         assert result.file_count == 300
@@ -96,10 +95,10 @@ class TestListFolder:
 
     def test_empty_folder(self) -> None:
         """Empty folder — both counts zero, no error."""
-        mock_service = MagicMock()
-        mock_service.files.return_value.list.return_value.execute.return_value = {"files": []}
+        mock_client = MagicMock()
+        mock_client.get_json.return_value = {"files": []}
 
-        with patch("adapters.drive.get_drive_service", return_value=mock_service):
+        with patch("adapters.drive.get_sync_client", return_value=mock_client):
             result = list_folder("empty-folder-id")
 
         assert result.file_count == 0
@@ -111,8 +110,8 @@ class TestListFolder:
 
     def test_mixed_types_collected(self) -> None:
         """Types list contains distinct MIME types from files (not folders)."""
-        mock_service = MagicMock()
-        mock_service.files.return_value.list.return_value.execute.return_value = {
+        mock_client = MagicMock()
+        mock_client.get_json.return_value = {
             "files": [
                 _make_file_item("f1", "doc.pdf", "application/pdf"),
                 _make_file_item("f2", "sheet.csv", "text/csv"),
@@ -121,7 +120,7 @@ class TestListFolder:
             ]
         }
 
-        with patch("adapters.drive.get_drive_service", return_value=mock_service):
+        with patch("adapters.drive.get_sync_client", return_value=mock_client):
             result = list_folder("folder-id-123")
 
         assert result.types == sorted(["application/pdf", "text/csv", "text/markdown"])
@@ -130,17 +129,17 @@ class TestListFolder:
 
     def test_page_token_passed_on_subsequent_pages(self) -> None:
         """pageToken from page N passed to page N+1 call."""
-        mock_service = MagicMock()
+        mock_client = MagicMock()
         pages = [
             {"files": [_make_file_item("f1", "a.md")], "nextPageToken": "page2token"},
             {"files": [_make_file_item("f2", "b.md")]},
         ]
-        mock_service.files.return_value.list.return_value.execute.side_effect = pages
+        mock_client.get_json.side_effect = pages
 
-        with patch("adapters.drive.get_drive_service", return_value=mock_service):
+        with patch("adapters.drive.get_sync_client", return_value=mock_client):
             result = list_folder("folder-id-123")
 
-        calls = mock_service.files.return_value.list.call_args_list
+        calls = mock_client.get_json.call_args_list
         assert len(calls) == 2
-        assert calls[1].kwargs.get("pageToken") == "page2token"
+        assert calls[1].kwargs["params"].get("pageToken") == "page2token"
         assert result.file_count == 2
