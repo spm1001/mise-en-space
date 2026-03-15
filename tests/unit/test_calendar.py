@@ -4,8 +4,6 @@ Tests for Calendar API adapter and models.
 
 from unittest.mock import patch, MagicMock
 
-from tests.helpers import mock_api_chain
-
 from models import (
     CalendarAttachment,
     CalendarAttendee,
@@ -234,7 +232,7 @@ class TestParseEvent:
 
 
 # ============================================================================
-# list_events (mocked service)
+# list_events (mocked HTTP client)
 # ============================================================================
 
 
@@ -262,16 +260,16 @@ def _api_event(
 
 
 class TestListEvents:
-    """Test list_events with mocked Calendar API."""
+    """Test list_events with mocked HTTP client."""
 
     @patch("retry.time.sleep")
-    @patch("adapters.calendar.get_calendar_service")
-    def test_basic_list(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "events.list.execute", {
+    @patch("adapters.calendar.get_sync_client")
+    def test_basic_list(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "items": [_api_event()],
-        })
+        }
 
         result = list_events()
 
@@ -280,11 +278,11 @@ class TestListEvents:
         assert result.events[0].summary == "Test Event"
 
     @patch("retry.time.sleep")
-    @patch("adapters.calendar.get_calendar_service")
-    def test_empty_response(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "events.list.execute", {})
+    @patch("adapters.calendar.get_sync_client")
+    def test_empty_response(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {}
 
         result = list_events()
 
@@ -292,70 +290,71 @@ class TestListEvents:
         assert result.next_page_token is None
 
     @patch("retry.time.sleep")
-    @patch("adapters.calendar.get_calendar_service")
-    def test_pagination_token(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "events.list.execute", {
+    @patch("adapters.calendar.get_sync_client")
+    def test_pagination_token(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "items": [_api_event()],
             "nextPageToken": "page2",
-        })
+        }
 
         result = list_events()
 
         assert result.next_page_token == "page2"
 
     @patch("retry.time.sleep")
-    @patch("adapters.calendar.get_calendar_service")
-    def test_page_token_forwarded(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "events.list.execute", {"items": []})
+    @patch("adapters.calendar.get_sync_client")
+    def test_page_token_forwarded(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"items": []}
 
         list_events(page_token="tok123")
 
-        call_kwargs = mock_service.events().list.call_args[1]
-        assert call_kwargs["pageToken"] == "tok123"
+        call_kwargs = mock_client.get_json.call_args.kwargs
+        assert call_kwargs["params"]["pageToken"] == "tok123"
 
     @patch("retry.time.sleep")
-    @patch("adapters.calendar.get_calendar_service")
-    def test_max_results_capped(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "events.list.execute", {"items": []})
+    @patch("adapters.calendar.get_sync_client")
+    def test_max_results_capped(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"items": []}
 
         list_events(max_results=5000)
 
-        call_kwargs = mock_service.events().list.call_args[1]
-        assert call_kwargs["maxResults"] == 2500
+        call_kwargs = mock_client.get_json.call_args.kwargs
+        assert call_kwargs["params"]["maxResults"] == 2500
 
     @patch("retry.time.sleep")
-    @patch("adapters.calendar.get_calendar_service")
-    def test_single_events_and_order(self, mock_svc, _sleep) -> None:
-        """Verifies singleEvents=True and orderBy=startTime are set."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "events.list.execute", {"items": []})
+    @patch("adapters.calendar.get_sync_client")
+    def test_single_events_and_order(self, mock_get_client, _sleep) -> None:
+        """Verifies singleEvents=true and orderBy=startTime are set."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"items": []}
 
         list_events()
 
-        call_kwargs = mock_service.events().list.call_args[1]
-        assert call_kwargs["singleEvents"] is True
-        assert call_kwargs["orderBy"] == "startTime"
-        assert call_kwargs["calendarId"] == "primary"
+        call_kwargs = mock_client.get_json.call_args.kwargs
+        assert call_kwargs["params"]["singleEvents"] == "true"
+        assert call_kwargs["params"]["orderBy"] == "startTime"
+        # URL should target primary calendar
+        assert "primary/events" in mock_client.get_json.call_args.args[0]
 
     @patch("retry.time.sleep")
-    @patch("adapters.calendar.get_calendar_service")
-    def test_multiple_events(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "events.list.execute", {
+    @patch("adapters.calendar.get_sync_client")
+    def test_multiple_events(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "items": [
                 _api_event(event_id="e1", summary="Morning standup"),
                 _api_event(event_id="e2", summary="Lunch"),
                 _api_event(event_id="e3", summary="Review"),
             ],
-        })
+        }
 
         result = list_events()
 
@@ -365,19 +364,19 @@ class TestListEvents:
 
 
 # ============================================================================
-# find_events_for_file (mocked service)
+# find_events_for_file (mocked HTTP client)
 # ============================================================================
 
 
 class TestFindEventsForFile:
-    """Test find_events_for_file with mocked Calendar API."""
+    """Test find_events_for_file with mocked HTTP client."""
 
     @patch("retry.time.sleep")
-    @patch("adapters.calendar.get_calendar_service")
-    def test_finds_matching_event(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "events.list.execute", {
+    @patch("adapters.calendar.get_sync_client")
+    def test_finds_matching_event(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "items": [
                 _api_event(
                     event_id="e1",
@@ -386,7 +385,7 @@ class TestFindEventsForFile:
                 ),
                 _api_event(event_id="e2", summary="Unrelated"),
             ],
-        })
+        }
 
         result = find_events_for_file("target_file")
 
@@ -395,11 +394,11 @@ class TestFindEventsForFile:
         assert result.events[0].summary == "Review meeting"
 
     @patch("retry.time.sleep")
-    @patch("adapters.calendar.get_calendar_service")
-    def test_no_match(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "events.list.execute", {
+    @patch("adapters.calendar.get_sync_client")
+    def test_no_match(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "items": [
                 _api_event(event_id="e1", summary="No attachments"),
                 _api_event(
@@ -407,30 +406,30 @@ class TestFindEventsForFile:
                     attachments=[{"fileId": "other_file", "title": "Other"}],
                 ),
             ],
-        })
+        }
 
         result = find_events_for_file("target_file")
 
         assert result.events == []
 
     @patch("retry.time.sleep")
-    @patch("adapters.calendar.get_calendar_service")
-    def test_empty_calendar(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "events.list.execute", {"items": []})
+    @patch("adapters.calendar.get_sync_client")
+    def test_empty_calendar(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"items": []}
 
         result = find_events_for_file("target_file")
 
         assert result.events == []
 
     @patch("retry.time.sleep")
-    @patch("adapters.calendar.get_calendar_service")
-    def test_multiple_matches(self, mock_svc, _sleep) -> None:
+    @patch("adapters.calendar.get_sync_client")
+    def test_multiple_matches(self, mock_get_client, _sleep) -> None:
         """Same file attached to multiple meetings."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "events.list.execute", {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
             "items": [
                 _api_event(
                     event_id="e1",
@@ -446,7 +445,7 @@ class TestFindEventsForFile:
                     ],
                 ),
             ],
-        })
+        }
 
         result = find_events_for_file("doc1")
 

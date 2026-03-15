@@ -1,13 +1,21 @@
-"""Unit tests for slides adapter — mocked API calls."""
+"""Unit tests for slides adapter — mocked HTTP client."""
 
 import urllib.error
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
-from tests.mock_utils import make_http_error
-from tests.helpers import mock_api_chain
 from models import PresentationData, SlideData
+
+
+def _make_http_status_error(status: int) -> httpx.HTTPStatusError:
+    """Create an httpx.HTTPStatusError for testing."""
+    request = httpx.Request("GET", "https://slides.googleapis.com/test")
+    response = httpx.Response(status, request=request)
+    return httpx.HTTPStatusError(
+        f"HTTP {status}", request=request, response=response,
+    )
 
 
 class TestThumbnailFailureHandling:
@@ -41,34 +49,22 @@ class TestThumbnailFailureHandling:
             ],
         )
 
-    def _make_mock_service(self, side_effect=None, return_value=None):
-        """Create a mock Slides service for build_slides_service."""
-        svc = MagicMock()
-        chain = svc.presentations().pages().getThumbnail
-        if side_effect is not None:
-            chain.side_effect = side_effect
-        elif return_value is not None:
-            mock_api_chain(svc, "presentations.pages.getThumbnail.execute", return_value)
-        return svc
-
     def test_http_403_permission_denied(
         self, sample_presentation_data: PresentationData
     ) -> None:
         """Test that HTTP 403 errors produce clear warning message."""
         from adapters.slides import _fetch_thumbnails_selective
 
-        def get_thumbnail_side_effect(presentationId, pageObjectId, **kwargs):
-            mock_request = MagicMock()
-            if pageObjectId == "slide1":
-                raise make_http_error(403, "Permission denied")
-            else:
-                mock_request.execute.return_value = {"contentUrl": "http://example.com/thumb.png"}
-            return mock_request
+        mock_client = MagicMock()
 
-        mock_svc = MagicMock()
-        mock_svc.presentations().pages().getThumbnail.side_effect = get_thumbnail_side_effect
+        def get_json_side_effect(url, **kwargs):
+            if "slide1" in url:
+                raise _make_http_status_error(403)
+            return {"contentUrl": "http://example.com/thumb.png"}
 
-        with patch("adapters.slides.build_slides_service", return_value=mock_svc), \
+        mock_client.get_json.side_effect = get_json_side_effect
+
+        with patch("adapters.slides.get_sync_client", return_value=mock_client), \
              patch("adapters.slides.urllib.request.urlopen") as mock_urlopen:
             mock_response = MagicMock()
             mock_response.read.return_value = b"fake-png-data"
@@ -94,11 +90,10 @@ class TestThumbnailFailureHandling:
         """Test that HTTP 404 errors produce clear warning message."""
         from adapters.slides import _fetch_thumbnails_selective
 
-        mock_svc = MagicMock()
-        mock_api_chain(mock_svc, "presentations.pages.getThumbnail.execute",
-                       side_effect=make_http_error(404, "Not found"))
+        mock_client = MagicMock()
+        mock_client.get_json.side_effect = _make_http_status_error(404)
 
-        with patch("adapters.slides.build_slides_service", return_value=mock_svc):
+        with patch("adapters.slides.get_sync_client", return_value=mock_client):
             _fetch_thumbnails_selective("test-id", sample_presentation_data)
 
         slide1 = sample_presentation_data.slides[0]
@@ -111,12 +106,12 @@ class TestThumbnailFailureHandling:
         """Test that download timeouts produce clear warning message."""
         from adapters.slides import _fetch_thumbnails_selective
 
-        mock_svc = MagicMock()
-        mock_api_chain(mock_svc, "presentations.pages.getThumbnail.execute", {
+        mock_client = MagicMock()
+        mock_client.get_json.return_value = {
             "contentUrl": "http://example.com/thumb.png"
-        })
+        }
 
-        with patch("adapters.slides.build_slides_service", return_value=mock_svc), \
+        with patch("adapters.slides.get_sync_client", return_value=mock_client), \
              patch("adapters.slides.urllib.request.urlopen") as mock_urlopen:
             mock_urlopen.side_effect = TimeoutError()
             _fetch_thumbnails_selective("test-id", sample_presentation_data)
@@ -132,12 +127,12 @@ class TestThumbnailFailureHandling:
         """Test that download URL errors produce clear warning message."""
         from adapters.slides import _fetch_thumbnails_selective
 
-        mock_svc = MagicMock()
-        mock_api_chain(mock_svc, "presentations.pages.getThumbnail.execute", {
+        mock_client = MagicMock()
+        mock_client.get_json.return_value = {
             "contentUrl": "http://example.com/thumb.png"
-        })
+        }
 
-        with patch("adapters.slides.build_slides_service", return_value=mock_svc), \
+        with patch("adapters.slides.get_sync_client", return_value=mock_client), \
              patch("adapters.slides.urllib.request.urlopen") as mock_urlopen:
             mock_urlopen.side_effect = urllib.error.URLError("Connection refused")
             _fetch_thumbnails_selective("test-id", sample_presentation_data)
@@ -153,19 +148,12 @@ class TestThumbnailFailureHandling:
         """Test that slides with needs_thumbnail=False are not fetched."""
         from adapters.slides import _fetch_thumbnails_selective
 
-        call_count = 0
+        mock_client = MagicMock()
+        mock_client.get_json.return_value = {
+            "contentUrl": "http://example.com/thumb.png"
+        }
 
-        def count_calls(presentationId, pageObjectId, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            mock_request = MagicMock()
-            mock_request.execute.return_value = {"contentUrl": "http://example.com/thumb.png"}
-            return mock_request
-
-        mock_svc = MagicMock()
-        mock_svc.presentations().pages().getThumbnail = count_calls
-
-        with patch("adapters.slides.build_slides_service", return_value=mock_svc), \
+        with patch("adapters.slides.get_sync_client", return_value=mock_client), \
              patch("adapters.slides.urllib.request.urlopen") as mock_urlopen:
             mock_response = MagicMock()
             mock_response.read.return_value = b"fake-png-data"
@@ -176,7 +164,7 @@ class TestThumbnailFailureHandling:
             _fetch_thumbnails_selective("test-id", sample_presentation_data)
 
         # Only 2 slides need thumbnails, slide3 is text_only
-        assert call_count == 2
+        assert mock_client.get_json.call_count == 2
 
     def test_thumbnails_included_flag_set(
         self, sample_presentation_data: PresentationData
@@ -184,12 +172,12 @@ class TestThumbnailFailureHandling:
         """Test that thumbnails_included is set when at least one succeeds."""
         from adapters.slides import _fetch_thumbnails_selective
 
-        mock_svc = MagicMock()
-        mock_api_chain(mock_svc, "presentations.pages.getThumbnail.execute", {
+        mock_client = MagicMock()
+        mock_client.get_json.return_value = {
             "contentUrl": "http://example.com/thumb.png"
-        })
+        }
 
-        with patch("adapters.slides.build_slides_service", return_value=mock_svc), \
+        with patch("adapters.slides.get_sync_client", return_value=mock_client), \
              patch("adapters.slides.urllib.request.urlopen") as mock_urlopen:
             mock_response = MagicMock()
             mock_response.read.return_value = b"fake-png-data"
@@ -207,11 +195,10 @@ class TestThumbnailFailureHandling:
         """Test that thumbnails_included is False when all fetches fail."""
         from adapters.slides import _fetch_thumbnails_selective
 
-        mock_svc = MagicMock()
-        mock_api_chain(mock_svc, "presentations.pages.getThumbnail.execute",
-                       side_effect=make_http_error(500, "Server error"))
+        mock_client = MagicMock()
+        mock_client.get_json.side_effect = _make_http_status_error(500)
 
-        with patch("adapters.slides.build_slides_service", return_value=mock_svc):
+        with patch("adapters.slides.get_sync_client", return_value=mock_client):
             _fetch_thumbnails_selective("test-id", sample_presentation_data)
 
         assert sample_presentation_data.thumbnails_included is False

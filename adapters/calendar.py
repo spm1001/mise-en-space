@@ -4,12 +4,15 @@ Calendar adapter — Google Calendar API v3 wrapper.
 Provides event listing with meeting context: attendees, attachments
 (Drive file IDs), and Meet links. Primary use case: cross-referencing
 Drive files with meetings to explain *why* a document matters.
+
+Uses httpx via MiseSyncClient (Phase 1 migration). Will switch to
+MiseHttpClient (async) when the tools/server layer goes async.
 """
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from adapters.services import get_calendar_service
+from adapters.http_client import get_sync_client
 from models import (
     CalendarAttachment,
     CalendarAttendee,
@@ -17,6 +20,10 @@ from models import (
     CalendarSearchResult,
 )
 from retry import with_retry
+
+
+# Google Calendar API v3 base URL
+_CALENDAR_API = "https://www.googleapis.com/calendar/v3/calendars"
 
 
 def _parse_attendee(data: dict[str, Any]) -> CalendarAttendee:
@@ -110,23 +117,25 @@ def list_events(
     Returns:
         CalendarSearchResult with events sorted by start time.
     """
-    service = get_calendar_service()
+    client = get_sync_client()
     now = datetime.now(timezone.utc)
     time_min = (now - timedelta(days=days_back)).isoformat()
     time_max = (now + timedelta(days=days_forward)).isoformat()
 
-    kwargs: dict[str, Any] = {
-        "calendarId": "primary",
+    params: dict[str, Any] = {
         "timeMin": time_min,
         "timeMax": time_max,
-        "singleEvents": True,
+        "singleEvents": "true",  # Google API expects lowercase string
         "orderBy": "startTime",
         "maxResults": min(max_results, 2500),
     }
     if page_token:
-        kwargs["pageToken"] = page_token
+        params["pageToken"] = page_token
 
-    response = service.events().list(**kwargs).execute()
+    response = client.get_json(
+        f"{_CALENDAR_API}/primary/events",
+        params=params,
+    )
 
     events = [_parse_event(item) for item in response.get("items", [])]
     warnings: list[str] = []
@@ -158,20 +167,22 @@ def find_events_for_file(
     Returns:
         CalendarSearchResult with only events that attach this file.
     """
-    service = get_calendar_service()
+    client = get_sync_client()
     now = datetime.now(timezone.utc)
     time_min = (now - timedelta(days=days_back)).isoformat()
 
-    kwargs: dict[str, Any] = {
-        "calendarId": "primary",
+    params: dict[str, Any] = {
         "timeMin": time_min,
         "timeMax": now.isoformat(),
-        "singleEvents": True,
+        "singleEvents": "true",
         "orderBy": "startTime",
         "maxResults": min(max_results, 2500),
     }
 
-    response = service.events().list(**kwargs).execute()
+    response = client.get_json(
+        f"{_CALENDAR_API}/primary/events",
+        params=params,
+    )
 
     matching_events: list[CalendarEvent] = []
     warnings: list[str] = []

@@ -1,16 +1,15 @@
 """
-Tests for sheets adapter using mocked services.
+Tests for sheets adapter using mocked HTTP client.
 
-Mocks the Sheets API service, feeds it API-shaped responses,
+Mocks the sync HTTP client, feeds it API-shaped responses,
 and verifies the adapter parses into SpreadsheetData correctly.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 
 from models import SpreadsheetData
 from adapters.sheets import fetch_spreadsheet, _parse_cell_value, _parse_row
-from tests.helpers import mock_api_chain
 
 
 # ============================================================================
@@ -52,36 +51,44 @@ class TestParseRow:
 
 
 # ============================================================================
-# FETCH SPREADSHEET (mocked service)
+# FETCH SPREADSHEET (mocked HTTP client)
 # ============================================================================
 
 class TestFetchSpreadsheet:
-    """Test fetch_spreadsheet with mocked Sheets API."""
+    """Test fetch_spreadsheet with mocked sync HTTP client."""
 
     @patch('adapters.sheets.render_charts_as_pngs')
     @patch('adapters.sheets.get_charts_from_spreadsheet')
-    @patch('adapters.sheets.get_sheets_service')
-    def test_basic_spreadsheet(self, mock_get_service, mock_charts, mock_render) -> None:
+    @patch('adapters.sheets.get_sync_client')
+    def test_basic_spreadsheet(self, mock_get_client, mock_charts, mock_render) -> None:
         """Fetches metadata + values, assembles SpreadsheetData."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "spreadsheets.get.execute", {
-            "spreadsheetId": "sheet123",
-            "properties": {
-                "title": "Test Spreadsheet",
-                "locale": "en_GB",
-                "timeZone": "Europe/London",
+        # First call: metadata, second + third: batchGet (formatted + formula)
+        mock_client.get_json.side_effect = [
+            {
+                "spreadsheetId": "sheet123",
+                "properties": {
+                    "title": "Test Spreadsheet",
+                    "locale": "en_GB",
+                    "timeZone": "Europe/London",
+                },
+                "sheets": [
+                    {"properties": {"sheetId": 0, "title": "Sheet1", "sheetType": "GRID"}},
+                ],
             },
-            "sheets": [
-                {"properties": {"sheetId": 0, "title": "Sheet1", "sheetType": "GRID"}},
-            ],
-        })
-        mock_api_chain(mock_service, "spreadsheets.values.batchGet.execute", {
-            "valueRanges": [
-                {"values": [["Name", "Age"], ["Alice", "30"], ["Bob", "25"]]},
-            ],
-        })
+            {
+                "valueRanges": [
+                    {"values": [["Name", "Age"], ["Alice", "30"], ["Bob", "25"]]},
+                ],
+            },
+            {
+                "valueRanges": [
+                    {"values": [["Name", "Age"], ["Alice", "30"], ["Bob", "25"]]},
+                ],
+            },
+        ]
 
         mock_charts.return_value = []
 
@@ -98,27 +105,40 @@ class TestFetchSpreadsheet:
         assert result.sheets[0].values[0] == ["Name", "Age"]
         assert result.sheets[0].values[1] == ["Alice", "30"]
 
+        # Verify correct URLs
+        calls = mock_client.get_json.call_args_list
+        assert "sheet123" in calls[0].args[0]  # metadata
+        assert "values:batchGet" in calls[1].args[0]  # formatted values
+        assert "values:batchGet" in calls[2].args[0]  # formula values
+
     @patch('adapters.sheets.render_charts_as_pngs')
     @patch('adapters.sheets.get_charts_from_spreadsheet')
-    @patch('adapters.sheets.get_sheets_service')
-    def test_mixed_grid_and_object_sheets(self, mock_get_service, mock_charts, mock_render) -> None:
+    @patch('adapters.sheets.get_sync_client')
+    def test_mixed_grid_and_object_sheets(self, mock_get_client, mock_charts, mock_render) -> None:
         """OBJECT sheets (chart sheets) get empty values, GRID sheets get data."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "spreadsheets.get.execute", {
-            "spreadsheetId": "sheet123",
-            "properties": {"title": "Mixed"},
-            "sheets": [
-                {"properties": {"sheetId": 0, "title": "Data", "sheetType": "GRID"}},
-                {"properties": {"sheetId": 1, "title": "Chart1", "sheetType": "OBJECT"}},
-            ],
-        })
-        mock_api_chain(mock_service, "spreadsheets.values.batchGet.execute", {
-            "valueRanges": [
-                {"values": [["x", "y"]]},
-            ],
-        })
+        mock_client.get_json.side_effect = [
+            {
+                "spreadsheetId": "sheet123",
+                "properties": {"title": "Mixed"},
+                "sheets": [
+                    {"properties": {"sheetId": 0, "title": "Data", "sheetType": "GRID"}},
+                    {"properties": {"sheetId": 1, "title": "Chart1", "sheetType": "OBJECT"}},
+                ],
+            },
+            {
+                "valueRanges": [
+                    {"values": [["x", "y"]]},
+                ],
+            },
+            {
+                "valueRanges": [
+                    {"values": [["x", "y"]]},
+                ],
+            },
+        ]
 
         mock_charts.return_value = []
 
@@ -137,43 +157,44 @@ class TestFetchSpreadsheet:
 
     @patch('adapters.sheets.render_charts_as_pngs')
     @patch('adapters.sheets.get_charts_from_spreadsheet')
-    @patch('adapters.sheets.get_sheets_service')
-    def test_no_grid_sheets(self, mock_get_service, mock_charts, mock_render) -> None:
+    @patch('adapters.sheets.get_sync_client')
+    def test_no_grid_sheets(self, mock_get_client, mock_charts, mock_render) -> None:
         """Spreadsheet with only OBJECT sheets skips batchGet."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "spreadsheets.get.execute", {
+        # Only one call — metadata. No batchGet since no GRID sheets.
+        mock_client.get_json.return_value = {
             "spreadsheetId": "sheet123",
             "properties": {"title": "Charts Only"},
             "sheets": [
                 {"properties": {"sheetId": 0, "title": "Chart1", "sheetType": "OBJECT"}},
             ],
-        })
+        }
 
         mock_charts.return_value = []
 
         with patch('retry.time.sleep'):
             result = fetch_spreadsheet("sheet123")
 
-        # batchGet should NOT have been called
-        mock_service.spreadsheets().values().batchGet.assert_not_called()
+        # Only one get_json call (metadata), no batchGet
+        assert mock_client.get_json.call_count == 1
         assert len(result.sheets) == 1
         assert result.sheets[0].values == []
 
     @patch('adapters.sheets.render_charts_as_pngs')
     @patch('adapters.sheets.get_charts_from_spreadsheet')
-    @patch('adapters.sheets.get_sheets_service')
-    def test_charts_rendered_when_present(self, mock_get_service, mock_charts, mock_render) -> None:
+    @patch('adapters.sheets.get_sync_client')
+    def test_charts_rendered_when_present(self, mock_get_client, mock_charts, mock_render) -> None:
         """Charts trigger render_charts_as_pngs when render_charts=True."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "spreadsheets.get.execute", {
+        mock_client.get_json.return_value = {
             "spreadsheetId": "sheet123",
             "properties": {"title": "With Charts"},
             "sheets": [],
-        })
+        }
 
         from models import ChartData
         chart = ChartData(chart_id=1, title="Revenue", chart_type="BAR")
@@ -188,17 +209,17 @@ class TestFetchSpreadsheet:
 
     @patch('adapters.sheets.render_charts_as_pngs')
     @patch('adapters.sheets.get_charts_from_spreadsheet')
-    @patch('adapters.sheets.get_sheets_service')
-    def test_charts_skipped_when_disabled(self, mock_get_service, mock_charts, mock_render) -> None:
+    @patch('adapters.sheets.get_sync_client')
+    def test_charts_skipped_when_disabled(self, mock_get_client, mock_charts, mock_render) -> None:
         """Charts not rendered when render_charts=False."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
-        mock_api_chain(mock_service, "spreadsheets.get.execute", {
+        mock_client.get_json.return_value = {
             "spreadsheetId": "sheet123",
             "properties": {"title": "No Render"},
             "sheets": [],
-        })
+        }
 
         from models import ChartData
         mock_charts.return_value = [ChartData(chart_id=1, title="Chart", chart_type="PIE")]
@@ -207,3 +228,40 @@ class TestFetchSpreadsheet:
             result = fetch_spreadsheet("sheet123", render_charts=False)
 
         mock_render.assert_not_called()
+
+    @patch('adapters.sheets.render_charts_as_pngs')
+    @patch('adapters.sheets.get_charts_from_spreadsheet')
+    @patch('adapters.sheets.get_sync_client')
+    def test_formula_count(self, mock_get_client, mock_charts, mock_render) -> None:
+        """Formula cells are counted from the FORMULA-render batchGet."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_client.get_json.side_effect = [
+            {
+                "spreadsheetId": "sheet123",
+                "properties": {"title": "Formulas"},
+                "sheets": [
+                    {"properties": {"sheetId": 0, "title": "Sheet1", "sheetType": "GRID"}},
+                ],
+            },
+            # FORMATTED_VALUE response
+            {
+                "valueRanges": [
+                    {"values": [["Total", "100"]]},
+                ],
+            },
+            # FORMULA response — one formula cell
+            {
+                "valueRanges": [
+                    {"values": [["Total", "=SUM(A1:A10)"]]},
+                ],
+            },
+        ]
+
+        mock_charts.return_value = []
+
+        with patch('retry.time.sleep'):
+            result = fetch_spreadsheet("sheet123")
+
+        assert result.formula_count == 1

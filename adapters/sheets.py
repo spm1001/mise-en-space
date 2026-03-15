@@ -5,15 +5,23 @@ Fetches spreadsheet metadata, values, and charts. Assembles SpreadsheetData.
 
 Chart rendering uses Slides API (see adapters/charts.py) because Sheets API
 has no direct chart export endpoint.
+
+Uses httpx via MiseSyncClient (Phase 1 migration). Will switch to
+MiseHttpClient (async) when the tools/server layer goes async.
 """
 
 from typing import Any, Literal
 
+import orjson
+
 from models import SpreadsheetData, SheetTab, ChartData, CellValue
 from retry import with_retry
-from adapters.services import get_sheets_service
+from adapters.http_client import get_sync_client
 from adapters.charts import get_charts_from_spreadsheet, render_charts_as_pngs
 
+
+# Google Sheets API v4 base URL
+_SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
 
 # Fields to request from spreadsheets().get()
 # Include sheetType to filter OBJECT sheets, and charts for metadata
@@ -63,13 +71,12 @@ def fetch_spreadsheet(
     Raises:
         MiseError: On API failure (converted by @with_retry)
     """
-    service = get_sheets_service()
+    client = get_sync_client()
 
     # Get metadata including charts
-    metadata = (
-        service.spreadsheets()
-        .get(spreadsheetId=spreadsheet_id, fields=SPREADSHEET_METADATA_FIELDS)
-        .execute()
+    metadata = client.get_json(
+        f"{_SHEETS_API}/{spreadsheet_id}",
+        params={"fields": SPREADSHEET_METADATA_FIELDS},
     )
 
     properties = metadata.get("properties", {})
@@ -98,29 +105,24 @@ def fetch_spreadsheet(
     if grid_sheets:
         ranges = [f"'{name}'" for name, _ in grid_sheets]
 
-        batch_response = (
-            service.spreadsheets()
-            .values()
-            .batchGet(
-                spreadsheetId=spreadsheet_id,
-                ranges=ranges,
-                valueRenderOption="FORMATTED_VALUE",
-            )
-            .execute()
+        # batchGet uses repeated "ranges" query params — httpx needs list of tuples
+        batch_params: list[tuple[str, str]] = [("valueRenderOption", "FORMATTED_VALUE")]
+        batch_params.extend(("ranges", r) for r in ranges)
+
+        batch_response = client.get_json(
+            f"{_SHEETS_API}/{spreadsheet_id}/values:batchGet",
+            params=batch_params,
         )
 
         value_ranges = batch_response.get("valueRanges", [])
 
         # Second batchGet with FORMULA to count formula cells
-        formula_response = (
-            service.spreadsheets()
-            .values()
-            .batchGet(
-                spreadsheetId=spreadsheet_id,
-                ranges=ranges,
-                valueRenderOption="FORMULA",
-            )
-            .execute()
+        formula_params: list[tuple[str, str]] = [("valueRenderOption", "FORMULA")]
+        formula_params.extend(("ranges", r) for r in ranges)
+
+        formula_response = client.get_json(
+            f"{_SHEETS_API}/{spreadsheet_id}/values:batchGet",
+            params=formula_params,
         )
         formula_ranges = formula_response.get("valueRanges", [])
 
@@ -186,16 +188,15 @@ def add_sheet(spreadsheet_id: str, title: str) -> int:
     Returns:
         The new sheet's sheetId (integer)
     """
-    service = get_sheets_service()
+    client = get_sync_client()
     body = {
         "requests": [
             {"addSheet": {"properties": {"title": title}}}
         ]
     }
-    response = (
-        service.spreadsheets()
-        .batchUpdate(spreadsheetId=spreadsheet_id, body=body)
-        .execute()
+    response = client.post_json(
+        f"{_SHEETS_API}/{spreadsheet_id}:batchUpdate",
+        json_body=body,
     )
     return response["replies"][0]["addSheet"]["properties"]["sheetId"]
 
@@ -220,20 +221,16 @@ def update_sheet_values(
     Returns:
         Number of cells updated
     """
-    service = get_sheets_service()
+    client = get_sync_client()
     body = {"values": values}
-    response = (
-        service.spreadsheets()
-        .values()
-        .update(
-            spreadsheetId=spreadsheet_id,
-            range=range_,
-            valueInputOption=value_input_option,
-            body=body,
-        )
-        .execute()
+    # No put_json on client — use request() + orjson directly (same pattern as drive upload)
+    response = client.request(
+        "PUT",
+        f"{_SHEETS_API}/{spreadsheet_id}/values/{range_}",
+        params={"valueInputOption": value_input_option},
+        json_body=body,
     )
-    return response.get("updatedCells", 0)
+    return orjson.loads(response.content).get("updatedCells", 0)
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
@@ -246,7 +243,7 @@ def rename_sheet(spreadsheet_id: str, sheet_id: int, new_title: str) -> None:
         sheet_id: The sheetId to rename (0 for first sheet)
         new_title: New tab name
     """
-    service = get_sheets_service()
+    client = get_sync_client()
     body = {
         "requests": [
             {
@@ -257,6 +254,7 @@ def rename_sheet(spreadsheet_id: str, sheet_id: int, new_title: str) -> None:
             }
         ]
     }
-    service.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheet_id, body=body
-    ).execute()
+    client.post_json(
+        f"{_SHEETS_API}/{spreadsheet_id}:batchUpdate",
+        json_body=body,
+    )

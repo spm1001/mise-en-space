@@ -4,23 +4,28 @@ Slides adapter — Google Slides API wrapper.
 Fetches presentation structure and thumbnails.
 Uses extractor's parse_presentation() for response parsing.
 
-NOTE: HTTP batch requests are NOT supported for Workspace editor APIs (Slides,
-Sheets, Docs) — Google disabled this in 2022. However, concurrent individual
-getThumbnail requests DO work when each thread has its own service object
-(isolated httplib2 connections). Shared connections cause SSL corruption.
+Uses httpx via MiseSyncClient (Phase 1 migration). Will switch to
+MiseHttpClient (async) when the tools/server layer goes async.
+
+NOTE: httpx's connection pool is thread-safe, so concurrent thumbnail
+fetches share the singleton client — no need for per-thread isolation
+(unlike the old httplib2 pattern).
 """
 
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-from googleapiclient.errors import HttpError
+import httpx
 
 from models import PresentationData
 from retry import with_retry
-from adapters.services import get_slides_service, build_slides_service
+from adapters.http_client import get_sync_client
 from extractors.slides import parse_presentation
 
+
+# Google Slides API v1 base URL
+_SLIDES_API = "https://slides.googleapis.com/v1/presentations"
 
 # Fields to request — only what we need for extraction
 # notesPage is nested under slideProperties
@@ -60,13 +65,12 @@ def fetch_presentation(
     Raises:
         MiseError: On API failure (converted by @with_retry)
     """
-    service = get_slides_service()
+    client = get_sync_client()
 
     # Fetch presentation structure
-    response = (
-        service.presentations()
-        .get(presentationId=presentation_id, fields=PRESENTATION_FIELDS)
-        .execute()
+    response = client.get_json(
+        f"{_SLIDES_API}/{presentation_id}",
+        params={"fields": PRESENTATION_FIELDS},
     )
 
     # Parse into typed model
@@ -90,8 +94,9 @@ def _fetch_thumbnails_selective(
     - needs_thumbnail=False (stock photos, text-only)
     - slide_id is missing
 
-    getThumbnail API calls run concurrently using isolated service objects
-    (one per thread — shared httplib2 connections cause SSL corruption).
+    getThumbnail API calls run concurrently — httpx's connection pool is
+    thread-safe, so all threads share the singleton client (no per-thread
+    isolation needed unlike the old httplib2 pattern).
     Image downloads are also parallelized.
 
     Updates data.slides[i].thumbnail_bytes in place.
@@ -103,29 +108,21 @@ def _fetch_thumbnails_selective(
     if not target_slides:
         return
 
+    client = get_sync_client()
     slide_by_id = {s.slide_id: s for s in data.slides if s.slide_id}
 
-    # Step 1: Get thumbnail URLs — parallel with isolated services
-    # Each thread gets its own Slides service (own httplib2 connection)
-    # to avoid SSL corruption that occurs with shared connections.
+    # Step 1: Get thumbnail URLs — parallel, shared httpx client (thread-safe)
     def get_thumbnail_url(
         slide_id: str,
     ) -> tuple[str, str | None, str | None]:
         try:
-            svc = build_slides_service()
-            response = (
-                svc.presentations()
-                .pages()
-                .getThumbnail(
-                    presentationId=presentation_id,
-                    pageObjectId=slide_id,
-                    thumbnailProperties_thumbnailSize="MEDIUM",
-                )
-                .execute()
+            response = client.get_json(
+                f"{_SLIDES_API}/{presentation_id}/pages/{slide_id}/thumbnail",
+                params={"thumbnailProperties.thumbnailSize": "MEDIUM"},
             )
             return slide_id, response.get("contentUrl"), None
-        except HttpError as e:
-            status = e.resp.status if e.resp else "unknown"
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code
             if status == 403:
                 return slide_id, None, "Thumbnail unavailable: permission denied"
             elif status == 404:

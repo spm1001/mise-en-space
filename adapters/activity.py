@@ -3,11 +3,14 @@ Activity adapter — Google Drive Activity API v2 wrapper.
 
 Provides activity search and filtering for comment-related activities.
 Useful for finding action items (comments mentioning you) across files.
+
+Uses httpx via MiseSyncClient (Phase 1 migration). Will switch to
+MiseHttpClient (async) when the tools/server layer goes async.
 """
 
 from typing import Any
 
-from adapters.services import get_activity_service
+from adapters.http_client import get_sync_client
 from models import (
     ActivityActor,
     ActivityTarget,
@@ -15,6 +18,10 @@ from models import (
     ActivitySearchResult,
 )
 from retry import with_retry
+
+
+# Drive Activity API v2 base URL
+_ACTIVITY_API = "https://driveactivity.googleapis.com/v2/activity:query"
 
 
 def _parse_actor(actor_data: dict[str, Any]) -> ActivityActor:
@@ -174,7 +181,7 @@ def search_comment_activities(
     Returns:
         ActivitySearchResult with comment activities
     """
-    service = get_activity_service()
+    client = get_sync_client()
 
     body: dict[str, Any] = {
         "pageSize": min(page_size, 100),
@@ -183,7 +190,7 @@ def search_comment_activities(
     if page_token:
         body["pageToken"] = page_token
 
-    response = service.activity().query(body=body).execute()
+    response = client.post_json(_ACTIVITY_API, json_body=body)
 
     activities: list[CommentActivity] = []
     warnings: list[str] = []
@@ -247,7 +254,7 @@ def get_file_activities(
     Returns:
         ActivitySearchResult with file activities
     """
-    service = get_activity_service()
+    client = get_sync_client()
 
     body: dict[str, Any] = {
         "pageSize": min(page_size, 100),
@@ -260,7 +267,7 @@ def get_file_activities(
     elif filter_type == "edits":
         body["filter"] = "detail.action_detail_case:EDIT"
 
-    response = service.activity().query(body=body).execute()
+    response = client.post_json(_ACTIVITY_API, json_body=body)
 
     activities: list[CommentActivity] = []
     warnings: list[str] = []

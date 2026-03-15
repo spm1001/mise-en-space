@@ -5,8 +5,6 @@ Tests for Activity API adapter and models.
 import pytest
 from unittest.mock import patch, MagicMock
 
-from tests.helpers import mock_api_chain
-
 from models import (
     ActivityActor,
     ActivityTarget,
@@ -461,7 +459,7 @@ class TestParseCommentAction:
 
 
 # ============================================================================
-# search_comment_activities (mocked service)
+# search_comment_activities (mocked HTTP client)
 # ============================================================================
 
 
@@ -496,23 +494,22 @@ def _api_activity(
 
 
 class TestSearchCommentActivities:
-    """Test search_comment_activities with mocked Activity API."""
+    """Test search_comment_activities with mocked HTTP client."""
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_basic_search(self, mock_svc, _sleep) -> None:
+    @patch("adapters.activity.get_sync_client")
+    def test_basic_search(self, mock_get_client, _sleep) -> None:
         """Parses activity response into CommentActivity list."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-
-        mock_api_chain(mock_service, "activity.query.execute", {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "activities": [
                 _api_activity(
                     name="act/1",
                     timestamp="2026-01-20T10:00:00Z",
                 ),
             ],
-        })
+        }
 
         result = search_comment_activities()
 
@@ -527,11 +524,11 @@ class TestSearchCommentActivities:
         assert result.warnings == []
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_empty_response(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {})
+    @patch("adapters.activity.get_sync_client")
+    def test_empty_response(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {}
 
         result = search_comment_activities()
 
@@ -539,54 +536,51 @@ class TestSearchCommentActivities:
         assert result.next_page_token is None
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_pagination_token_returned(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {
+    @patch("adapters.activity.get_sync_client")
+    def test_pagination_token_returned(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "activities": [_api_activity()],
             "nextPageToken": "page2",
-        })
+        }
 
         result = search_comment_activities()
 
         assert result.next_page_token == "page2"
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_pagination_token_sent(self, mock_svc, _sleep) -> None:
+    @patch("adapters.activity.get_sync_client")
+    def test_pagination_token_sent(self, mock_get_client, _sleep) -> None:
         """page_token forwarded to API request body."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {"activities": []}
 
         search_comment_activities(page_token="tok123")
 
-        call_args = mock_service.activity().query.call_args
-        body = call_args[1]["body"] if "body" in call_args[1] else call_args[0][0]
+        body = mock_client.post_json.call_args.kwargs["json_body"]
         assert body.get("pageToken") == "tok123"
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_page_size_capped_at_100(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
+    @patch("adapters.activity.get_sync_client")
+    def test_page_size_capped_at_100(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {"activities": []}
 
         search_comment_activities(page_size=200)
 
-        call_args = mock_service.activity().query.call_args
-        body = call_args[1]["body"] if "body" in call_args[1] else call_args[0][0]
+        body = mock_client.post_json.call_args.kwargs["json_body"]
         assert body["pageSize"] == 100
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_missing_target_warns_and_skips(self, mock_svc, _sleep) -> None:
+    @patch("adapters.activity.get_sync_client")
+    def test_missing_target_warns_and_skips(self, mock_get_client, _sleep) -> None:
         """Activity without target generates warning and is skipped."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-
-        mock_api_chain(mock_service, "activity.query.execute", {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "activities": [
                 {
                     "name": "act/orphan",
@@ -596,7 +590,7 @@ class TestSearchCommentActivities:
                     "targets": [{}],  # Empty target → _parse_target returns None
                 },
             ],
-        })
+        }
 
         result = search_comment_activities()
 
@@ -604,58 +598,56 @@ class TestSearchCommentActivities:
         assert any("missing target" in w for w in result.warnings)
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_no_actors_uses_unknown(self, mock_svc, _sleep) -> None:
+    @patch("adapters.activity.get_sync_client")
+    def test_no_actors_uses_unknown(self, mock_get_client, _sleep) -> None:
         """Activity with empty actors list → Unknown actor."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
         activity = _api_activity()
         activity["actors"] = []
-        mock_api_chain(mock_service, "activity.query.execute", {
+        mock_client.post_json.return_value = {
             "activities": [activity],
-        })
+        }
 
         result = search_comment_activities()
 
         assert result.activities[0].actor.name == "Unknown"
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_comment_filter_in_request(self, mock_svc, _sleep) -> None:
+    @patch("adapters.activity.get_sync_client")
+    def test_comment_filter_in_request(self, mock_get_client, _sleep) -> None:
         """Request includes COMMENT filter."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {"activities": []}
 
         search_comment_activities()
 
-        call_args = mock_service.activity().query.call_args
-        body = call_args[1]["body"] if "body" in call_args[1] else call_args[0][0]
+        body = mock_client.post_json.call_args.kwargs["json_body"]
         assert "COMMENT" in body["filter"]
 
 
 # ============================================================================
-# get_file_activities (mocked service)
+# get_file_activities (mocked HTTP client)
 # ============================================================================
 
 
 class TestGetFileActivities:
-    """Test get_file_activities with mocked Activity API."""
+    """Test get_file_activities with mocked HTTP client."""
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_comment_activity(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-
-        mock_api_chain(mock_service, "activity.query.execute", {
+    @patch("adapters.activity.get_sync_client")
+    def test_comment_activity(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "activities": [
                 _api_activity(
                     action_detail={"comment": {"post": {"subtype": "ADDED"}}},
                 ),
             ],
-        })
+        }
 
         result = get_file_activities("doc123")
 
@@ -663,106 +655,105 @@ class TestGetFileActivities:
         assert result.activities[0].action_type == "comment"
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_edit_activity(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-
-        mock_api_chain(mock_service, "activity.query.execute", {
+    @patch("adapters.activity.get_sync_client")
+    def test_edit_activity(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "activities": [
                 _api_activity(action_detail={"edit": {}}),
             ],
-        })
+        }
 
         result = get_file_activities("doc123")
 
         assert result.activities[0].action_type == "edit"
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_create_activity(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {
+    @patch("adapters.activity.get_sync_client")
+    def test_create_activity(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "activities": [_api_activity(action_detail={"create": {}})],
-        })
+        }
 
         result = get_file_activities("doc123")
         assert result.activities[0].action_type == "create"
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_move_activity(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {
+    @patch("adapters.activity.get_sync_client")
+    def test_move_activity(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "activities": [_api_activity(action_detail={"move": {}})],
-        })
+        }
 
         result = get_file_activities("doc123")
         assert result.activities[0].action_type == "move"
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_rename_activity(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {
+    @patch("adapters.activity.get_sync_client")
+    def test_rename_activity(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "activities": [_api_activity(action_detail={"rename": {}})],
-        })
+        }
 
         result = get_file_activities("doc123")
         assert result.activities[0].action_type == "rename"
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_delete_activity(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {
+    @patch("adapters.activity.get_sync_client")
+    def test_delete_activity(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "activities": [_api_activity(action_detail={"delete": {}})],
-        })
+        }
 
         result = get_file_activities("doc123")
         assert result.activities[0].action_type == "delete"
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_restore_activity(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {
+    @patch("adapters.activity.get_sync_client")
+    def test_restore_activity(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "activities": [_api_activity(action_detail={"restore": {}})],
-        })
+        }
 
         result = get_file_activities("doc123")
         assert result.activities[0].action_type == "restore"
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_other_activity(self, mock_svc, _sleep) -> None:
+    @patch("adapters.activity.get_sync_client")
+    def test_other_activity(self, mock_get_client, _sleep) -> None:
         """Unknown action type → 'other'."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "activities": [_api_activity(action_detail={"permissionChange": {}})],
-        })
+        }
 
         result = get_file_activities("doc123")
         assert result.activities[0].action_type == "other"
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_missing_target_uses_file_id_fallback(self, mock_svc, _sleep) -> None:
+    @patch("adapters.activity.get_sync_client")
+    def test_missing_target_uses_file_id_fallback(self, mock_get_client, _sleep) -> None:
         """Missing target in file activities → fallback target with file_id."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
         activity = _api_activity()
         activity["targets"] = [{}]  # Empty → _parse_target returns None
-        mock_api_chain(mock_service, "activity.query.execute", {
+        mock_client.post_json.return_value = {
             "activities": [activity],
-        })
+        }
 
         result = get_file_activities("myfile")
 
@@ -771,88 +762,82 @@ class TestGetFileActivities:
         assert result.activities[0].target.file_name == ""
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_filter_type_comments(self, mock_svc, _sleep) -> None:
+    @patch("adapters.activity.get_sync_client")
+    def test_filter_type_comments(self, mock_get_client, _sleep) -> None:
         """filter_type='comments' adds COMMENT filter."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {"activities": []}
 
         get_file_activities("doc123", filter_type="comments")
 
-        call_args = mock_service.activity().query.call_args
-        body = call_args[1]["body"] if "body" in call_args[1] else call_args[0][0]
+        body = mock_client.post_json.call_args.kwargs["json_body"]
         assert "COMMENT" in body["filter"]
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_filter_type_edits(self, mock_svc, _sleep) -> None:
+    @patch("adapters.activity.get_sync_client")
+    def test_filter_type_edits(self, mock_get_client, _sleep) -> None:
         """filter_type='edits' adds EDIT filter."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {"activities": []}
 
         get_file_activities("doc123", filter_type="edits")
 
-        call_args = mock_service.activity().query.call_args
-        body = call_args[1]["body"] if "body" in call_args[1] else call_args[0][0]
+        body = mock_client.post_json.call_args.kwargs["json_body"]
         assert "EDIT" in body["filter"]
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_filter_type_none_no_filter(self, mock_svc, _sleep) -> None:
+    @patch("adapters.activity.get_sync_client")
+    def test_filter_type_none_no_filter(self, mock_get_client, _sleep) -> None:
         """filter_type=None → no filter in request body."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {"activities": []}
 
         get_file_activities("doc123", filter_type=None)
 
-        call_args = mock_service.activity().query.call_args
-        body = call_args[1]["body"] if "body" in call_args[1] else call_args[0][0]
+        body = mock_client.post_json.call_args.kwargs["json_body"]
         assert "filter" not in body
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_item_name_in_request(self, mock_svc, _sleep) -> None:
+    @patch("adapters.activity.get_sync_client")
+    def test_item_name_in_request(self, mock_get_client, _sleep) -> None:
         """File ID is formatted as items/{file_id} in request."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {"activities": []}
 
         get_file_activities("abc123")
 
-        call_args = mock_service.activity().query.call_args
-        body = call_args[1]["body"] if "body" in call_args[1] else call_args[0][0]
+        body = mock_client.post_json.call_args.kwargs["json_body"]
         assert body["itemName"] == "items/abc123"
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_page_size_capped(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_api_chain(mock_service, "activity.query.execute", {"activities": []})
+    @patch("adapters.activity.get_sync_client")
+    def test_page_size_capped(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {"activities": []}
 
         get_file_activities("doc123", page_size=500)
 
-        call_args = mock_service.activity().query.call_args
-        body = call_args[1]["body"] if "body" in call_args[1] else call_args[0][0]
+        body = mock_client.post_json.call_args.kwargs["json_body"]
         assert body["pageSize"] == 100
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_multiple_activities_mixed_types(self, mock_svc, _sleep) -> None:
+    @patch("adapters.activity.get_sync_client")
+    def test_multiple_activities_mixed_types(self, mock_get_client, _sleep) -> None:
         """Multiple activities with different action types parsed correctly."""
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-
-        mock_api_chain(mock_service, "activity.query.execute", {
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
             "activities": [
                 _api_activity(name="a1", action_detail={"comment": {"post": {"subtype": "ADDED"}}}),
                 _api_activity(name="a2", action_detail={"edit": {}}),
                 _api_activity(name="a3", action_detail={"comment": {"post": {"subtype": "RESOLVED"}}}),
             ],
-        })
+        }
 
         result = get_file_activities("doc123", filter_type=None)
 
@@ -861,16 +846,16 @@ class TestGetFileActivities:
         assert types == ["comment", "edit", "resolve"]
 
     @patch("retry.time.sleep")
-    @patch("adapters.activity.get_activity_service")
-    def test_no_actors_uses_unknown(self, mock_svc, _sleep) -> None:
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
+    @patch("adapters.activity.get_sync_client")
+    def test_no_actors_uses_unknown(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
 
         activity = _api_activity()
         activity["actors"] = []
-        mock_api_chain(mock_service, "activity.query.execute", {
+        mock_client.post_json.return_value = {
             "activities": [activity],
-        })
+        }
 
         result = get_file_activities("doc123")
         assert result.activities[0].actor.name == "Unknown"
