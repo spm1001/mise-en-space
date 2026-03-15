@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import httpx
+import orjson
 import re
 
 from models import (
@@ -409,7 +410,6 @@ def upload_file_content(file_id: str, content: bytes, mime_type: str) -> dict[st
         content_type=mime_type,
         params={"uploadType": "media", "supportsAllDrives": "true"},
     )
-    import orjson
     return orjson.loads(response.content)
 
 

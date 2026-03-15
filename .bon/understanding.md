@@ -32,10 +32,33 @@ Create renders markdown (bold, tables, lists) because it uses Drive's import eng
 
 **PDF rendering** is platform-adaptive: CoreGraphics on macOS (5.7ms/page), pdf2image/poppler on Linux (83ms/page). The remote host is Debian — `poppler-utils` is a hard requirement in the Dockerfile. Text extraction works without it; thumbnails don't.
 
+## httpx migration — in progress (Mar 2026)
+
+The httpx migration (mise-fokoli) is **two-phase by design** (see `docs/decisions.md`):
+
+**Phase 1 (in progress):** Replace `googleapiclient` with `httpx.Client` (sync) one adapter at a time. Adapters use `get_sync_client()` from `adapters/http_client.py`. Callers don't change. Tests mock `get_sync_client` returning a MagicMock with `.get_json()`, `.get_bytes()`, `.post_json()`, etc. The `retry.py` `_get_http_status()` was extended to extract status from `httpx.HTTPStatusError.response.status_code`.
+
+**Completed:** docs.py, drive.py (12 functions including streaming downloads and comments pagination). **Remaining:** sheets, slides, calendar, activity, gmail, then delete `services.py` and `googleapiclient` deps.
+
+**Phase 2 (future, single-shot):** When all adapters use httpx, convert the tools layer and server.py to `async def`. Switch `get_sync_client()` → `get_http_client()` (async), add `await`, delete `MiseSyncClient`. Then restructure for real concurrency — `asyncio.gather()` for metadata+comments, search sources, slides thumbnails.
+
+**Key things to know about the migration:**
+- `MiseSyncClient` and `MiseHttpClient` in `adapters/http_client.py` are intentional near-duplicates. Don't consolidate them — MiseSyncClient dies in Phase 2.
+- Google API URLs are hardcoded constants (e.g., `_DRIVE_API = "https://www.googleapis.com/drive/v3/files"`), not discovered at runtime. Unit tests mock the client so **wrong URLs won't be caught** — verify against Google REST docs or run integration tests.
+- `upload_file_content` uses `client.request()` + `orjson.loads()` manually because the upload uses a file MIME type but returns JSON. Slight wart.
+- `download_file_to_temp` replaced `MediaIoBaseDownload` (resumable) with plain HTTP streaming (`stream_to_file`). If interrupted, the retry decorator restarts from scratch rather than resuming.
+- Tools that import `get_drive_service` directly (create.py, move.py, rename.py, share.py) bypass the adapter layer — they need separate migration.
+- During the transition, two credential objects coexist (one in `adapters.services`, one in `adapters.http_client`). Each refreshes independently. Harmless but worth knowing.
+- No benchmarks were run during Phase 1. The brief said "benchmark each" but the profiling infrastructure (mise-cadadi) doesn't exist yet. orjson + connection pooling should be faster but we have no data.
+
+## Overwrite — resolved (Mar 2026)
+
+The overwrite markdown rendering gap (mise-numado) is fixed. `files().update()` with `text/markdown` media type triggers Drive's import engine — same conversion as `files().create()`. All markdown formatting (headings, bold, tables, lists) renders automatically. The old Docs API path (delete → insertText → apply heading styles, UTF-16 position tracking) was deleted entirely.
+
 ## Current state (Mar 2026)
 
-Web fetching code has been fully removed — mise is Workspace-only. The core MCP server is stable and in daily use via stdio. Remote mode transport and content delivery are done (StreamableHTTP, inline content, safe-op filter). The remaining remote path is: auth middleware (mise-tokiju) → token management (mise-winala) → httpx migration (mise-fokoli) → containerisation + deploy (mise-sefepo).
+Web fetching code has been fully removed — mise is Workspace-only. The core MCP server is stable and in daily use via stdio. Remote mode transport and content delivery are done (StreamableHTTP, inline content, safe-op filter). The remaining remote path is: auth middleware (mise-tokiju) → token management (mise-winala) → httpx migration (mise-fokoli, in progress) → containerisation + deploy (mise-sefepo).
 
-The httpx migration is the next substantial piece of work. It replaces `googleapiclient` (sync, httplib2, discovery docs at runtime) with `httpx.AsyncClient` (async-native, connection pooling, `orjson` for response parsing). Key risk: googleapiclient does things implicitly (pagination, error retry, discovery doc caching, media upload chunking) that will need reimplementation. Start with docs adapter (simplest), get the pattern right, then migrate others one at a time with benchmarks. The `lru_cache` service pattern is tightly coupled to googleapiclient `Resource` objects and will need rethinking.
+The httpx migration is in progress — docs and drive adapters done, six more to go. Pattern is established and mechanical. See section above for details.
 
-The backlog includes edge-case polish (image/PDF, GIF handling), a latency/observability initiative (profiling, telemetry), and several feature additions (Apps Script port, meeting prep, calendar write ops, image embedding in Docs). These are all Tier 3 — valuable but not blocking the remote deployment.
+The backlog includes edge-case polish (image/PDF, GIF handling), a latency/observability initiative (profiling, telemetry), and several feature additions (Apps Script port, meeting prep, calendar write ops, image embedding in Docs, aboyeur Gmail polling). These are all Tier 3 — valuable but not blocking the remote deployment.
