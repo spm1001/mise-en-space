@@ -90,6 +90,11 @@ _CONTENT_OPS = {"overwrite", "prepend", "append", "replace_text"}
 
 # Operations allowed in remote mode — everything else is rejected.
 # Criteria: reversible, non-destructive, doesn't expose files to others.
+# Audit (Mar 2026): create is the broadest — doc_type='file' can write arbitrary
+# content to any folder the token can access. Acceptable for single-user (your own
+# Drive); reconsider if ever multi-tenant. draft/reply_draft are safe (drafts, not
+# sent). archive/star/label are metadata-only. Excluded: move, rename, share (exposes
+# files), overwrite/prepend/append/replace_text (destructive content changes).
 _REMOTE_ALLOWED_OPS = {"create", "draft", "reply_draft", "archive", "star", "label"}
 
 # Dispatch table for do() operations.
