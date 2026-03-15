@@ -252,9 +252,9 @@ do(operation="overwrite", file_id="1abc...", content="# Q4 Report\n\nRevised fin
 do(operation="overwrite", file_id="1abc...", source="mise/doc--q4-report--1abc/", base_path="...")
 ```
 
-For Google Docs: markdown headings (`#`, `##`, etc.) are converted to heading styles. Response includes `cues.char_count` and `cues.heading_count`.
+For Google Docs: uses Drive's import engine — all markdown formatting (headings, bold, tables, lists) renders automatically. Response includes `cues.char_count`.
 
-For plain files: content is uploaded as-is (no heading conversion). Response includes `cues.plain_file: true` and `cues.mime_type`.
+For plain files: content is uploaded as-is. Response includes `cues.plain_file: true` and `cues.mime_type`.
 
 ### Surgical Edits
 

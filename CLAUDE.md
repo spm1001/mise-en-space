@@ -116,7 +116,7 @@ mise/
 
 | Gotcha | Detail |
 |--------|--------|
-| **UTF-16 indices in Docs API** | All position-based operations must use `_utf16_len()` not Python `len()`. Helper in `tools/overwrite.py`. Emoji = 2 UTF-16 code units. |
+| **Overwrite uses Drive import** | Google Doc overwrite uses `files().update()` with `text/markdown` media type — same import engine as create. All markdown formatting (headings, bold, tables) renders automatically. No Docs API involved. |
 | **Gmail web IDs ≠ API IDs** | `FMfcgz...` web IDs need conversion. Works for `thread-f:` but fails for `thread-a:` (self-sent ~2018+). See `validation.py`. |
 | **No search snippets** | Drive API v3 has no `contentSnippet` field. `fullText` search finds files but doesn't explain why they matched. |
 | **Pre-exfil detection** | User runs background extractor to Drive. Value is that Drive fullText indexes PDF *content*. Check "Email Attachments" folder. |

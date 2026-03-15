@@ -2,14 +2,20 @@
 Docs adapter — Google Docs API wrapper.
 
 Fetches document content, normalizes legacy/modern formats to DocData.
+
+Uses httpx via MiseSyncClient (Phase 1 migration). Will switch to
+MiseHttpClient (async) when the tools/server layer goes async.
 """
 
 from typing import Any
 
 from models import DocData, DocTab
 from retry import with_retry
-from adapters.services import get_docs_service
+from adapters.http_client import get_sync_client
 
+
+# Google Docs API base URL
+_DOCS_API = "https://docs.googleapis.com/v1/documents"
 
 # Fields to request — only what we need for extraction
 # includeTabsContent gives us all tabs + body content in one call
@@ -67,17 +73,15 @@ def fetch_document(document_id: str) -> DocData:
     Raises:
         MiseError: On API failure (converted by @with_retry)
     """
-    service = get_docs_service()
+    client = get_sync_client()
 
     # Fetch with modern multi-tab format
-    doc = (
-        service.documents()
-        .get(
-            documentId=document_id,
-            includeTabsContent=True,
-            fields=DOCUMENT_FIELDS,
-        )
-        .execute()
+    doc = client.get_json(
+        f"{_DOCS_API}/{document_id}",
+        params={
+            "includeTabsContent": "true",
+            "fields": DOCUMENT_FIELDS,
+        },
     )
 
     title = doc.get("title", "Untitled")

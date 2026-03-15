@@ -38,11 +38,18 @@ def _get_http_status(exception: Exception) -> int | None:
     """
     Extract HTTP status code from exception if available.
 
-    Works with googleapiclient.errors.HttpError and similar.
+    Works with googleapiclient.errors.HttpError, httpx.HTTPStatusError,
+    and requests-style exceptions.
     """
     # Check for resp.status attribute (googleapiclient.errors.HttpError)
     if hasattr(exception, "resp") and hasattr(exception.resp, "status"):
         status = exception.resp.status
+        if isinstance(status, int):
+            return status
+
+    # Check for response.status_code (httpx.HTTPStatusError)
+    if hasattr(exception, "response") and hasattr(exception.response, "status_code"):
+        status = exception.response.status_code
         if isinstance(status, int):
             return status
 

@@ -149,15 +149,11 @@ class TestAllOperationsReturnDoResult:
         assert result.operation == "replace_text"
 
     @patch("retry.time.sleep")
-    @patch("tools.overwrite.get_docs_service")
-    def test_overwrite_returns_do_result(self, mock_svc, _sleep) -> None:
+    @patch("tools.overwrite.upload_file_content")
+    def test_overwrite_returns_do_result(self, mock_upload, _sleep) -> None:
         from tools.overwrite import do_overwrite
 
-        mock_service = MagicMock()
-        mock_svc.return_value = mock_service
-        mock_service.documents().get().execute.return_value = {
-            "title": "Doc", "body": {"content": [{"endIndex": 1}]},
-        }
+        mock_upload.return_value = {"name": "Doc"}
 
         result = do_overwrite(file_id="doc1", content="hello")
         assert isinstance(result, DoResult)

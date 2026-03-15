@@ -12,6 +12,9 @@ dependencies = [
     "google-auth-httplib2>=0.2.0",
     # OAuth token management
     "jeton",
+    # Async HTTP + fast JSON (replacing googleapiclient progressively)
+    "httpx[http2]>=0.27.0",
+    "orjson>=3.10.0",
     # Extraction
     "markitdown[pdf]>=0.1.4",
     "regex>=2025.11.3",

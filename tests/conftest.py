@@ -369,8 +369,8 @@ def patch_sheets_service(mock_sheets_service: MagicMock) -> Generator[MagicMock,
 
 @pytest.fixture
 def patch_docs_service(mock_docs_service: MagicMock) -> Generator[MagicMock, None, None]:
-    """Fixture that patches get_docs_service and yields the mock."""
-    with patch("adapters.docs.get_docs_service", return_value=mock_docs_service):
+    """Fixture that patches the docs adapter's HTTP client and yields the mock."""
+    with patch("adapters.docs.get_sync_client", return_value=mock_docs_service):
         yield mock_docs_service
 
 

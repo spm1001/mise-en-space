@@ -1,16 +1,16 @@
 """
-Tests for docs adapter using mocked services and real fixtures.
+Tests for docs adapter using mocked HTTP client and real fixtures.
 
-Mocks the Docs API service, feeds real fixture data,
+Mocks the sync HTTP client, feeds real fixture data,
 and verifies the adapter parses into DocData correctly.
 """
 
 import pytest
+import orjson
 from unittest.mock import patch, MagicMock
 
 from models import DocData
 from adapters.docs import fetch_document, _build_tab, _build_legacy_tab
-from tests.helpers import mock_api_chain
 from tests.conftest import load_fixture
 
 
@@ -82,20 +82,20 @@ class TestBuildLegacyTab:
 
 
 # ============================================================================
-# FETCH DOCUMENT (mocked service, real fixture data)
+# FETCH DOCUMENT (mocked HTTP client, real fixture data)
 # ============================================================================
 
 class TestFetchDocument:
-    """Test fetch_document with mocked Docs API."""
+    """Test fetch_document with mocked sync HTTP client."""
 
-    @patch('adapters.docs.get_docs_service')
-    def test_modern_multi_tab(self, mock_get_service) -> None:
+    @patch('adapters.docs.get_sync_client')
+    def test_modern_multi_tab(self, mock_get_client) -> None:
         """Modern doc with tabs[] returns multi-tab DocData."""
         fixture = load_fixture("docs", "real_multi_tab")
 
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_api_chain(mock_service, "documents.get.execute", fixture)
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = fixture
 
         with patch('retry.time.sleep'):
             result = fetch_document("1iBsJHoqza53")
@@ -105,18 +105,22 @@ class TestFetchDocument:
         assert len(result.tabs) == len(fixture["tabs"])
         assert result.tabs[0].title == "Sue"
 
-    @patch('adapters.docs.get_docs_service')
-    def test_legacy_single_tab(self, mock_get_service) -> None:
-        """Legacy doc without tabs[] creates single-tab DocData."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
+        # Verify correct URL and params
+        call_args = mock_client.get_json.call_args
+        assert "1iBsJHoqza53" in call_args.args[0]
+        assert call_args.kwargs["params"]["includeTabsContent"] == "true"
 
-        # Legacy format: body at root level, no tabs[]
-        mock_api_chain(mock_service, "documents.get.execute", {
+    @patch('adapters.docs.get_sync_client')
+    def test_legacy_single_tab(self, mock_get_client) -> None:
+        """Legacy doc without tabs[] creates single-tab DocData."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_client.get_json.return_value = {
             "documentId": "legacy123",
             "title": "Legacy Document",
             "body": {"content": [{"paragraph": {"elements": [{"textRun": {"content": "Hello"}}]}}]},
-        })
+        }
 
         with patch('retry.time.sleep'):
             result = fetch_document("legacy123")
@@ -127,14 +131,12 @@ class TestFetchDocument:
         assert result.tabs[0].tab_id == "main"
         assert result.tabs[0].title == "Legacy Document"
 
-    @patch('adapters.docs.get_docs_service')
-    def test_untitled_document(self, mock_get_service) -> None:
+    @patch('adapters.docs.get_sync_client')
+    def test_untitled_document(self, mock_get_client) -> None:
         """Document without title gets 'Untitled' default."""
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_api_chain(mock_service, "documents.get.execute", {
-            "documentId": "notitle",
-        })
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"documentId": "notitle"}
 
         with patch('retry.time.sleep'):
             result = fetch_document("notitle")
