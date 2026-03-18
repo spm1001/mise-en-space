@@ -6,7 +6,12 @@
   "repository": "https://github.com/spm1001/mise-en-space",
   "license": "MIT",
   "keywords": ["google", "workspace", "drive", "gmail", "mcp"],
-  "mcpServers": "./.mcp.json",
+  "mcpServers": {
+    "mise": {
+      "command": "uv",
+      "args": ["run", "--project", "${CLAUDE_PLUGIN_ROOT}", "python3", "server.py"]
+    }
+  },
   "hooks": {
     "SessionStart": [
       {
