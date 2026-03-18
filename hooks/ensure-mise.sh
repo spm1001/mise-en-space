@@ -25,9 +25,16 @@ if [ ! -d "$PLUGIN_ROOT/.venv" ]; then
     fi
 fi
 
-# 3. Check for OAuth token
-if [ ! -f "$PLUGIN_ROOT/token.json" ]; then
-    ISSUES="${ISSUES}• No Google OAuth token. Run: cd \"$PLUGIN_ROOT\" && uv run python -m auth\n"
+# 3. Check for OAuth token (Keychain or file)
+HAS_TOKEN=false
+if command -v security &>/dev/null; then
+    security find-generic-password -s "mise-oauth-token" -w &>/dev/null && HAS_TOKEN=true
+fi
+if [ "$HAS_TOKEN" = false ] && [ -f "$PLUGIN_ROOT/token.json" ]; then
+    HAS_TOKEN=true
+fi
+if [ "$HAS_TOKEN" = false ]; then
+    ISSUES="${ISSUES}• No Google OAuth token (checked Keychain and token.json). Run: cd \"$PLUGIN_ROOT\" && uv run python -m auth\n"
 fi
 
 # If no issues, exit silently
