@@ -8,7 +8,8 @@ Two credential sources, tried in order:
 
 Usage:
     uv run python -m auth                    # Auto mode (opens browser)
-    uv run python -m auth --manual           # Manual mode (copy-paste URL)
+    uv run python -m auth --remote           # Print auth URL for remote/SSH
+    uv run python -m auth --code URL         # Exchange code from --remote flow
     uv run python -m auth --project OTHER    # Use different GCP project
 
 Prerequisites (external users):
@@ -26,7 +27,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from jeton import authenticate
+from jeton import authenticate, get_auth_url
 
 from oauth_config import (
     TOKEN_FILE,
@@ -79,14 +80,14 @@ def main() -> None:
         description="OAuth authentication for mise-en-space"
     )
     parser.add_argument(
-        '--manual',
+        '--remote',
         action='store_true',
-        help='Manual mode: copy-paste OAuth flow (for remote/SSH/Claude)'
+        help='Print auth URL and save PKCE state (for remote/SSH — complete with --code)'
     )
     parser.add_argument(
         '--code',
         type=str,
-        help='Authorization code or redirect URL (non-interactive)'
+        help='Exchange auth code or redirect URL from --remote flow'
     )
     parser.add_argument(
         '--project',
@@ -112,23 +113,49 @@ def main() -> None:
         tmp_path = tmp.name
         credentials_path = tmp_path
 
-    # Default to manual mode if no display available
-    manual = args.manual or bool(args.code)
-    if not manual and not _can_open_browser():
-        print("No browser available — using manual mode.")
-        manual = True
-
     try:
-        authenticate(
-            credentials_path=credentials_path,
-            token_path=TOKEN_FILE,
-            scopes=SCOPES,
-            manual_mode=manual,
-            code=args.code,
-            port=OAUTH_PORT,
-        )
-        print()
-        print(f"Authentication complete. {TOKEN_FILE} created.")
+        if args.remote:
+            # Phase 1: generate auth URL and save PKCE state
+            auth_url = get_auth_url(
+                credentials_path=credentials_path,
+                token_path=TOKEN_FILE,
+                scopes=SCOPES,
+                port=OAUTH_PORT,
+            )
+            print()
+            print("Open this URL in your browser:")
+            print()
+            print(auth_url)
+            print()
+            print("After granting permissions, you'll be redirected to localhost (it will fail).")
+            print("Copy the full redirect URL from the browser address bar, then run:")
+            print()
+            print(f"  uv run python -m auth --code '<redirect_url>'")
+            print()
+        elif args.code:
+            # Phase 2: exchange code using saved PKCE state
+            authenticate(
+                credentials_path=credentials_path,
+                token_path=TOKEN_FILE,
+                scopes=SCOPES,
+                code=args.code,
+                port=OAUTH_PORT,
+            )
+            print()
+            print(f"Authentication complete. {TOKEN_FILE} created.")
+        else:
+            # Auto mode — needs a browser
+            if not _can_open_browser():
+                print("No browser available — use --remote instead.")
+                sys.exit(1)
+            authenticate(
+                credentials_path=credentials_path,
+                token_path=TOKEN_FILE,
+                scopes=SCOPES,
+                port=OAUTH_PORT,
+            )
+            print()
+            print(f"Authentication complete. {TOKEN_FILE} created.")
     except KeyboardInterrupt:
         print("\n\nAuthentication cancelled")
         sys.exit(1)
