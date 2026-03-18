@@ -72,7 +72,7 @@ tools/          Business logic — routing, orchestration
 adapters/       Thin Google API wrappers (one per service)
 extractors/     Pure functions, no I/O (testable without APIs)
 workspace/      File deposit management
-skill/          Claude skill (symlinked to ~/.claude/skills/mise)
+skills/         Claude skill (auto-discovered by plugin system)
 ```
 
 **Layer rules:**
@@ -150,11 +150,7 @@ Add to `~/.claude.json`:
 
 ### 4. Link the skill (recommended)
 
-The `skill/` directory contains a Claude skill that teaches Claude *how* to use mise effectively — Gmail operators, the exploration loop, comment checking patterns.
-
-```bash
-# For Claude Code
-ln -s /path/to/mise-en-space/skill ~/.claude/skills/mise
+The `skills/` directory contains a Claude skill that teaches Claude *how* to use mise effectively — Gmail operators, the exploration loop, comment checking patterns. The plugin system auto-discovers skills from `skills/*/SKILL.md`.
 
 # For pi
 ln -s /path/to/mise-en-space/skill ~/.pi/agent/skills/mise
