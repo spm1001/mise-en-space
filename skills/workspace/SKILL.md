@@ -7,6 +7,10 @@ description: Orchestrates content fetching via mcp__mise__ tools. MANDATORY befo
 
 Content fetching for Google Drive and Gmail — via the mise-en-space MCP.
 
+## After Installing This Plugin
+
+**Run `/restart` (not `/reload-plugins`) to activate the setup hook.** The SessionStart hook auto-installs dependencies and checks for OAuth tokens — but it only fires after a full restart. Without it, you'll need to diagnose setup issues manually.
+
 **Iron Law: Files are artifacts. Emails are meaning.**
 
 A document tells you *what* was decided. The email thread tells you *why*, who pushed back, and what concerns remain.
