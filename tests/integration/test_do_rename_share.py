@@ -7,8 +7,10 @@ Run with: uv run pytest tests/integration/test_do_rename_share.py -v -m integrat
 import pytest
 
 from server import do
-from adapters.services import get_drive_service
+from adapters.http_client import get_sync_client
 from models import DoResult
+
+_DRIVE_API = "https://www.googleapis.com/drive/v3/files"
 
 
 @pytest.fixture
@@ -18,10 +20,10 @@ def cleanup_created_files():
     yield created_ids
 
     if created_ids:
-        service = get_drive_service()
+        client = get_sync_client()
         for file_id in created_ids:
             try:
-                service.files().delete(fileId=file_id).execute()
+                client.delete(f"{_DRIVE_API}/{file_id}")
             except Exception:
                 pass
 
@@ -50,8 +52,11 @@ def test_rename_basic(cleanup_created_files: list[str]) -> None:
     assert result["file_id"] == file_id
 
     # Verify via Drive API
-    service = get_drive_service()
-    meta = service.files().get(fileId=file_id, fields="name").execute()
+    client = get_sync_client()
+    meta = client.get_json(
+        f"{_DRIVE_API}/{file_id}",
+        params={"fields": "name"},
+    )
     assert meta["name"] == "mise-test-after-rename"
 
 
@@ -103,8 +108,11 @@ def test_share_preview(cleanup_created_files: list[str]) -> None:
     assert result["shared_with"] == ["sameer_modha@icloud.com"]
 
     # Verify no permissions were created (only owner should exist)
-    service = get_drive_service()
-    perms = service.permissions().list(fileId=file_id, fields="permissions(emailAddress,role)").execute()
+    client = get_sync_client()
+    perms = client.get_json(
+        f"{_DRIVE_API}/{file_id}/permissions",
+        params={"fields": "permissions(emailAddress,role)"},
+    )
     emails = [p.get("emailAddress", "") for p in perms.get("permissions", [])]
     assert "sameer_modha@icloud.com" not in emails
 
@@ -131,10 +139,11 @@ def test_share_confirmed_non_google_account(cleanup_created_files: list[str]) ->
     assert "notification_note" in result["cues"]
 
     # Verify permission exists
-    service = get_drive_service()
-    perms = service.permissions().list(
-        fileId=file_id, fields="permissions(emailAddress,role)",
-    ).execute()
+    client = get_sync_client()
+    perms = client.get_json(
+        f"{_DRIVE_API}/{file_id}/permissions",
+        params={"fields": "permissions(emailAddress,role)"},
+    )
     perm_map = {p.get("emailAddress"): p["role"] for p in perms.get("permissions", [])}
     assert "sameer_modha@icloud.com" in perm_map
     assert perm_map["sameer_modha@icloud.com"] == "reader"
@@ -154,10 +163,11 @@ def test_share_with_role_non_google(cleanup_created_files: list[str]) -> None:
     assert result["cues"]["role"] == "writer"
     assert "sameer_modha@icloud.com" in result["cues"]["notified"]
 
-    service = get_drive_service()
-    perms = service.permissions().list(
-        fileId=file_id, fields="permissions(emailAddress,role)",
-    ).execute()
+    client = get_sync_client()
+    perms = client.get_json(
+        f"{_DRIVE_API}/{file_id}/permissions",
+        params={"fields": "permissions(emailAddress,role)"},
+    )
     perm_map = {p.get("emailAddress"): p["role"] for p in perms.get("permissions", [])}
     assert perm_map.get("sameer_modha@icloud.com") == "writer"
 

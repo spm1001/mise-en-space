@@ -7,7 +7,9 @@ Run with: uv run pytest tests/integration/test_create_tool.py -v -m integration
 import pytest
 
 from server import do
-from adapters.services import get_drive_service
+from adapters.http_client import get_sync_client
+
+_DRIVE_API = "https://www.googleapis.com/drive/v3/files"
 
 
 @pytest.fixture
@@ -18,10 +20,10 @@ def cleanup_created_files():
 
     # Cleanup: delete all created files
     if created_ids:
-        service = get_drive_service()
+        client = get_sync_client()
         for file_id in created_ids:
             try:
-                service.files().delete(fileId=file_id).execute()
+                client.delete(f"{_DRIVE_API}/{file_id}")
             except Exception:
                 pass  # Best effort cleanup
 
@@ -57,8 +59,11 @@ This document should be automatically deleted after the test.
     cleanup_created_files.append(result["file_id"])
 
     # Verify the doc exists by fetching its metadata
-    service = get_drive_service()
-    file_meta = service.files().get(fileId=result["file_id"], fields="id,name,mimeType").execute()
+    client = get_sync_client()
+    file_meta = client.get_json(
+        f"{_DRIVE_API}/{result['file_id']}",
+        params={"fields": "id,name,mimeType"},
+    )
     assert file_meta["name"] == title
     assert file_meta["mimeType"] == "application/vnd.google-apps.document"
 
@@ -67,12 +72,15 @@ This document should be automatically deleted after the test.
 def test_create_doc_with_folder(cleanup_created_files: list[str]) -> None:
     """Test creating a doc in a specific folder."""
     # First, create a test folder
-    service = get_drive_service()
-    folder_meta = {
-        "name": "mise-en-space-test-folder",
-        "mimeType": "application/vnd.google-apps.folder",
-    }
-    folder = service.files().create(body=folder_meta, fields="id").execute()
+    client = get_sync_client()
+    folder = client.post_json(
+        _DRIVE_API,
+        json_body={
+            "name": "mise-en-space-test-folder",
+            "mimeType": "application/vnd.google-apps.folder",
+        },
+        params={"fields": "id"},
+    )
     folder_id = folder["id"]
     cleanup_created_files.append(folder_id)
 
@@ -86,21 +94,21 @@ def test_create_doc_with_folder(cleanup_created_files: list[str]) -> None:
     cleanup_created_files.append(result["file_id"])
 
     # Verify the doc is in the folder
-    file_meta = service.files().get(fileId=result["file_id"], fields="parents").execute()
+    file_meta = client.get_json(
+        f"{_DRIVE_API}/{result['file_id']}",
+        params={"fields": "parents"},
+    )
     assert folder_id in file_meta.get("parents", [])
 
 
 @pytest.mark.integration
-def test_create_doc_empty_content(cleanup_created_files: list[str]) -> None:
-    """Test that empty content still creates a doc."""
-    content = ""
-    title = "mise-en-space-empty-test"
+def test_create_doc_empty_content_rejected() -> None:
+    """Test that empty content is rejected (content or source required)."""
+    result = do(operation="create", content="", title="mise-en-space-empty-test")
 
-    result = do(operation="create", content=content, title=title)
-
-    assert "error" not in result, f"Create failed: {result}"
-    assert "file_id" in result
-    cleanup_created_files.append(result["file_id"])
+    assert "error" in result
+    assert result["error"] is True
+    assert result["kind"] == "invalid_input"
 
 
 @pytest.mark.integration
@@ -120,8 +128,11 @@ def test_create_sheet_basic(cleanup_created_files: list[str]) -> None:
     cleanup_created_files.append(result["file_id"])
 
     # Verify it's a spreadsheet
-    service = get_drive_service()
-    file_meta = service.files().get(fileId=result["file_id"], fields="id,name,mimeType").execute()
+    client = get_sync_client()
+    file_meta = client.get_json(
+        f"{_DRIVE_API}/{result['file_id']}",
+        params={"fields": "id,name,mimeType"},
+    )
     assert file_meta["name"] == title
     assert file_meta["mimeType"] == "application/vnd.google-apps.spreadsheet"
 
@@ -138,11 +149,10 @@ def test_create_sheet_currency_with_commas(cleanup_created_files: list[str]) -> 
     cleanup_created_files.append(result["file_id"])
 
     # Read back via Sheets API to verify values survived
-    from adapters.services import get_sheets_service
-    sheets = get_sheets_service()
-    data = sheets.spreadsheets().values().get(
-        spreadsheetId=result["file_id"], range="A1:B4"
-    ).execute()
+    client = get_sync_client()
+    data = client.get_json(
+        f"https://sheets.googleapis.com/v4/spreadsheets/{result['file_id']}/values/A1:B4",
+    )
     values = data.get("values", [])
     assert values[0] == ["Department", "Budget"]
     assert values[1][1] == "£65,000"  # Commas preserved inside quotes
@@ -160,11 +170,10 @@ def test_create_sheet_leading_zeros(cleanup_created_files: list[str]) -> None:
     cleanup_created_files.append(result["file_id"])
 
     # Read back — tick prefix tells Google to treat as text
-    from adapters.services import get_sheets_service
-    sheets = get_sheets_service()
-    data = sheets.spreadsheets().values().get(
-        spreadsheetId=result["file_id"], range="A1:B3"
-    ).execute()
+    client = get_sync_client()
+    data = client.get_json(
+        f"https://sheets.googleapis.com/v4/spreadsheets/{result['file_id']}/values/A1:B3",
+    )
     values = data.get("values", [])
     # Drive CSV import: tick prefix is a display hint, not stored data.
     # Sheets API returns the plain value with leading zeros preserved.
@@ -184,12 +193,11 @@ def test_create_sheet_with_formulae(cleanup_created_files: list[str]) -> None:
     cleanup_created_files.append(result["file_id"])
 
     # Read back with valueRenderOption=FORMULA to see if formulae survived
-    from adapters.services import get_sheets_service
-    sheets = get_sheets_service()
-    data = sheets.spreadsheets().values().get(
-        spreadsheetId=result["file_id"], range="C2:C3",
-        valueRenderOption="FORMULA",
-    ).execute()
+    client = get_sync_client()
+    data = client.get_json(
+        f"https://sheets.googleapis.com/v4/spreadsheets/{result['file_id']}/values/C2:C3",
+        params={"valueRenderOption": "FORMULA"},
+    )
     values = data.get("values", [])
     # Drive CSV import should keep formulae as formulae
     assert any("=" in str(v) for row in values for v in row), f"No formulae found in {values}"

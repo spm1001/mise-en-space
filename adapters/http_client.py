@@ -33,7 +33,7 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 from jeton import load_credentials
 from oauth_config import TOKEN_FILE, SCOPES
 
-# Match existing timeout in adapters/services.py
+# Default timeout for Google API calls
 API_TIMEOUT = 60
 
 

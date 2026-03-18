@@ -156,7 +156,7 @@ def _create_permission(
             params={"sendNotificationEmail": "false", "supportsAllDrives": "true"},
         )
     except httpx.HTTPStatusError as e:
-        if e.response.status_code == 400 and "invalidSharingRequest" in str(e):
+        if e.response.status_code == 400 and "invalidSharingRequest" in e.response.text:
             # Non-Google account — requires notification email
             client.post_json(
                 f"{_DRIVE_API}/{file_id}/permissions",

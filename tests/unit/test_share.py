@@ -264,12 +264,13 @@ class TestDoShareNotificationFallback:
             "id": "f1", "name": "Doc", "webViewLink": "",
         }
 
-        # First post_json raises HTTPStatusError (invalidSharingRequest),
+        # First post_json raises HTTPStatusError (invalidSharingRequest in body),
         # second (with notification) succeeds
         mock_response = Mock()
         mock_response.status_code = 400
+        mock_response.text = '{"error": {"errors": [{"reason": "invalidSharingRequest"}]}}'
         error = httpx.HTTPStatusError(
-            "invalidSharingRequest", request=Mock(), response=mock_response
+            "Bad Request", request=Mock(), response=mock_response
         )
         call_count = [0]
 

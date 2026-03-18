@@ -32,28 +32,25 @@ Create renders markdown (bold, tables, lists) because it uses Drive's import eng
 
 **PDF rendering** is platform-adaptive: CoreGraphics on macOS (5.7ms/page), pdf2image/poppler on Linux (83ms/page). The remote host is Debian — `poppler-utils` is a hard requirement in the Dockerfile. Text extraction works without it; thumbnails don't.
 
-## httpx migration — in progress (Mar 2026)
+## httpx migration — Phase 1 complete (Mar 2026)
 
 The httpx migration (mise-fokoli) is **two-phase by design** (see `docs/decisions.md`):
 
-**Phase 1 (in progress):** Replace `googleapiclient` with `httpx.Client` (sync) one adapter at a time. Adapters use `get_sync_client()` from `adapters/http_client.py`. Callers don't change. Tests mock `get_sync_client` returning a MagicMock with `.get_json()`, `.get_bytes()`, `.post_json()`, etc. The `retry.py` `_get_http_status()` was extended to extract status from `httpx.HTTPStatusError.response.status_code`.
+**Phase 1 (complete):** All adapters and tools migrated from `googleapiclient` to `httpx.Client` (sync). Adapters use `get_sync_client()` from `adapters/http_client.py`. Tests mock `get_sync_client` returning a MagicMock with `.get_json()`, `.get_bytes()`, `.post_json()`, etc. The `retry.py` `_get_http_status()` extracts status from `httpx.HTTPStatusError.response.status_code`.
 
-**Completed:** docs.py, drive.py, sheets.py, slides.py, calendar.py, activity.py, gmail.py (all 7 data adapters). **Remaining:** charts.py (orchestration: create temp presentation, embed charts, fetch PNGs, delete), conversion.py (orchestration: Drive upload→convert→export→delete), then clean up `retry.py`'s `clear_service_cache` import. After that, `services.py` can be deleted — but `googleapiclient` dep can't be fully removed until the 5 tools files (create, move, rename, share, edit) are also migrated (tracked under mise-tadigo).
+**Phase 2 (future, single-shot):** Convert tools layer and server.py to `async def`. Switch `get_sync_client()` → `get_http_client()` (async), add `await`, delete `MiseSyncClient`. Then restructure for real concurrency — `asyncio.gather()` for metadata+comments, search sources, slides thumbnails.
 
-**Phase 2 (future, single-shot):** When all adapters use httpx, convert the tools layer and server.py to `async def`. Switch `get_sync_client()` → `get_http_client()` (async), add `await`, delete `MiseSyncClient`. Then restructure for real concurrency — `asyncio.gather()` for metadata+comments, search sources, slides thumbnails.
+**Remaining cleanup:** `services.py` has zero production consumers — only integration test scaffolding still imports it. Can be deleted once test setup/teardown is migrated (~20 min). Write operation integration tests haven't been run post-migration (tracked as mise-vozapu).
 
-**Key things to know about the migration:**
+**Key things to know:**
 - `MiseSyncClient` and `MiseHttpClient` in `adapters/http_client.py` are intentional near-duplicates. Don't consolidate them — MiseSyncClient dies in Phase 2.
 - Google API URLs are hardcoded constants (e.g., `_DRIVE_API = "https://www.googleapis.com/drive/v3/files"`), not discovered at runtime. Unit tests mock the client so **wrong URLs won't be caught** — verify against Google REST docs or run integration tests.
 - `upload_file_content` uses `client.request()` + `orjson.loads()` manually because the upload uses a file MIME type but returns JSON. Slight wart.
 - `download_file_to_temp` replaced `MediaIoBaseDownload` (resumable) with plain HTTP streaming (`stream_to_file`). If interrupted, the retry decorator restarts from scratch rather than resuming.
-- Tools that import `get_drive_service` directly (create.py, move.py, rename.py, share.py, edit.py) bypass the adapter layer — they need separate migration (mise-tadigo).
-- During the transition, two credential objects coexist (one in `adapters.services`, one in `adapters.http_client`). Each refreshes independently. Harmless but worth knowing. Dies when services.py is deleted.
-- Gmail `search_threads` replaced Google's batch HTTP API (`new_batch_http_request()`) with sequential individual GETs. Slightly slower in Phase 1 (N round-trips vs 1 multipart request), but simpler code and in Phase 2 these become `asyncio.gather()` — actually faster than batch.
-- Charts adapter replaced bare `requests.get()` for PNG downloads with `httpx.get()` (no auth — contentUrls are pre-signed). `requests` is no longer imported by any adapter.
-- `MiseSyncClient.upload_multipart()` in `adapters/http_client.py` handles multipart/related encoding for Drive uploads — replaces `MediaFileUpload`/`MediaInMemoryUpload` from googleapiclient. Used by both `tools/create.py` and `adapters/conversion.py`. Boundary is hardcoded (`mise_upload_boundary`) which is fine for single-user.
-- All 5 tools files (create, move, rename, share, edit) migrated from `get_drive_service`/`get_docs_service` to `get_sync_client`. `services.py` has zero production consumers — only scripts, integration test scaffolding, and docs/research still import it.
-- No benchmarks were run during Phase 1. The brief said "benchmark each" but the profiling infrastructure (mise-cadadi) doesn't exist yet. orjson + connection pooling should be faster but we have no data.
+- Gmail `search_threads` replaced Google's batch HTTP API with sequential individual GETs. Slightly slower in Phase 1, but simpler code — in Phase 2 these become `asyncio.gather()`, actually faster than batch.
+- `MiseSyncClient.upload_multipart()` handles multipart/related encoding for Drive uploads. Used by both `tools/create.py` and `adapters/conversion.py`. Boundary is hardcoded (`mise_upload_boundary`) — fine for single-user.
+- google-auth's `Credentials.valid` only checks local `expiry` — if `expiry` is None, reports valid even when expired server-side. The httpx client retries once on 401 with forced `credentials.refresh()`. Unit tests can never catch this class of bug.
+- No benchmarks were run during Phase 1. The profiling infrastructure (mise-cadadi) doesn't exist yet.
 
 ## Overwrite — resolved (Mar 2026)
 
@@ -63,6 +60,6 @@ The overwrite markdown rendering gap (mise-numado) is fixed. `files().update()` 
 
 Web fetching code has been fully removed — mise is Workspace-only. The core MCP server is stable and in daily use via stdio. Remote mode transport and content delivery are done (StreamableHTTP, inline content, safe-op filter). The remaining remote path is: auth middleware (mise-tokiju) → token management (mise-winala) → httpx migration (mise-fokoli, in progress) → containerisation + deploy (mise-sefepo).
 
-The httpx migration is nearly complete — all 7 data adapters migrated, 2 orchestration adapters (charts, conversion) and 5 tools files remaining. Integration tests verified against real APIs for all migrated adapters. See section above for details.
+Phase 1 of the httpx migration is complete — all adapters and tools use httpx. `services.py` is dead code kept only for integration test scaffolding. Write operation integration tests are the key remaining verification (mise-vozapu). See section above for details.
 
 The backlog includes edge-case polish (image/PDF, GIF handling), a latency/observability initiative (profiling, telemetry), and several feature additions (Apps Script port, meeting prep, calendar write ops, image embedding in Docs, aboyeur Gmail polling). These are all Tier 3 — valuable but not blocking the remote deployment.

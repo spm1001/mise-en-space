@@ -27,18 +27,12 @@ from models import MiseError, ErrorKind
 class TestGetHttpStatus:
     """Tests for _get_http_status function."""
 
-    def test_googleapiclient_style_exception(self) -> None:
-        """Extract status from googleapiclient HttpError style."""
+    def test_httpx_style_exception(self) -> None:
+        """Extract status from httpx.HTTPStatusError."""
         exc = Exception("API Error")
-        exc.resp = Mock()
-        exc.resp.status = 404
+        exc.response = Mock()
+        exc.response.status_code = 404
         assert _get_http_status(exc) == 404
-
-    def test_requests_style_exception(self) -> None:
-        """Extract status from requests-style exception."""
-        exc = Exception("Request failed")
-        exc.status_code = 500
-        assert _get_http_status(exc) == 500
 
     def test_no_status_returns_none(self) -> None:
         """Plain exception without status returns None."""
@@ -48,18 +42,10 @@ class TestGetHttpStatus:
     def test_non_int_status_ignored(self) -> None:
         """Non-integer status is ignored."""
         exc = Exception("Error")
-        exc.resp = Mock()
-        exc.resp.status = "not_a_number"
+        exc.response = Mock()
+        exc.response.status_code = "not_a_number"
         assert _get_http_status(exc) is None
 
-    def test_prefers_resp_status_over_status_code(self) -> None:
-        """When both exist, resp.status is checked first."""
-        exc = Exception("Error")
-        exc.resp = Mock()
-        exc.resp.status = 403
-        exc.status_code = 500
-        # Should return 403 (resp.status checked first)
-        assert _get_http_status(exc) == 403
 
 
 class TestShouldRetry:
@@ -76,32 +62,32 @@ class TestShouldRetry:
     def test_rate_limited_is_retryable(self) -> None:
         """HTTP 429 should trigger retry."""
         exc = Exception("Rate limited")
-        exc.resp = Mock(status=429)
+        exc.response = Mock(status_code=429)
         assert _should_retry(exc)
 
     def test_server_errors_are_retryable(self) -> None:
         """HTTP 5xx should trigger retry."""
         for status in [500, 502, 503, 504]:
             exc = Exception(f"Server error {status}")
-            exc.resp = Mock(status=status)
+            exc.response = Mock(status_code=status)
             assert _should_retry(exc), f"HTTP {status} should be retryable"
 
     def test_not_found_is_not_retryable(self) -> None:
         """HTTP 404 should not trigger retry."""
         exc = Exception("Not found")
-        exc.resp = Mock(status=404)
+        exc.response = Mock(status_code=404)
         assert not _should_retry(exc)
 
     def test_permission_denied_is_not_retryable(self) -> None:
         """HTTP 403 should not trigger retry."""
         exc = Exception("Forbidden")
-        exc.resp = Mock(status=403)
+        exc.response = Mock(status_code=403)
         assert not _should_retry(exc)
 
     def test_auth_error_is_not_retryable(self) -> None:
         """HTTP 401 should not trigger retry."""
         exc = Exception("Unauthorized")
-        exc.resp = Mock(status=401)
+        exc.response = Mock(status_code=401)
         assert not _should_retry(exc)
 
     def test_generic_exception_is_not_retryable(self) -> None:
@@ -126,28 +112,28 @@ class TestConvertToMiseError:
     def test_401_becomes_auth_expired(self) -> None:
         """HTTP 401 converts to AUTH_EXPIRED."""
         exc = Exception("Unauthorized")
-        exc.resp = Mock(status=401)
+        exc.response = Mock(status_code=401)
         result = _convert_to_mise_error(exc)
         assert result.kind == ErrorKind.AUTH_EXPIRED
 
     def test_403_becomes_permission_denied(self) -> None:
         """HTTP 403 converts to PERMISSION_DENIED."""
         exc = Exception("Forbidden")
-        exc.resp = Mock(status=403)
+        exc.response = Mock(status_code=403)
         result = _convert_to_mise_error(exc)
         assert result.kind == ErrorKind.PERMISSION_DENIED
 
     def test_404_becomes_not_found(self) -> None:
         """HTTP 404 converts to NOT_FOUND."""
         exc = Exception("Not found")
-        exc.resp = Mock(status=404)
+        exc.response = Mock(status_code=404)
         result = _convert_to_mise_error(exc)
         assert result.kind == ErrorKind.NOT_FOUND
 
     def test_429_becomes_rate_limited(self) -> None:
         """HTTP 429 converts to RATE_LIMITED with retryable flag."""
         exc = Exception("Rate limited")
-        exc.resp = Mock(status=429)
+        exc.response = Mock(status_code=429)
         result = _convert_to_mise_error(exc)
         assert result.kind == ErrorKind.RATE_LIMITED
         assert result.retryable
@@ -155,8 +141,8 @@ class TestConvertToMiseError:
     def test_5xx_becomes_network_error(self) -> None:
         """HTTP 5xx converts to NETWORK_ERROR with retryable flag."""
         for status in [500, 502, 503, 504]:
-            exc = Exception(f"Server error")
-            exc.resp = Mock(status=status)
+            exc = Exception("Server error")
+            exc.response = Mock(status_code=status)
             result = _convert_to_mise_error(exc)
             assert result.kind == ErrorKind.NETWORK_ERROR
             assert result.retryable
@@ -187,7 +173,7 @@ class TestConvertToMiseError:
     def test_401_clears_sync_client(self, mock_clear: MagicMock) -> None:
         """HTTP 401 should clear cached httpx client."""
         exc = Exception("Unauthorized")
-        exc.resp = Mock(status=401)
+        exc.response = Mock(status_code=401)
         _convert_to_mise_error(exc)
         mock_clear.assert_called_once()
 
@@ -268,7 +254,7 @@ class TestWithRetrySync:
         def fail_not_found() -> str:
             attempts[0] += 1
             exc = Exception("Not found")
-            exc.resp = Mock(status=404)
+            exc.response = Mock(status_code=404)
             raise exc
 
         with pytest.raises(MiseError) as exc_info:
@@ -297,7 +283,7 @@ class TestWithRetrySync:
         @with_retry(max_attempts=3, delay_ms=1, convert_errors=False)
         def fail_immediately() -> str:
             exc = Exception("Not found")
-            exc.resp = Mock(status=404)
+            exc.response = Mock(status_code=404)
             raise exc
 
         with pytest.raises(Exception) as exc_info:
@@ -343,7 +329,7 @@ class TestWithRetryAsync:
         @with_retry(max_attempts=3, delay_ms=1)
         async def async_fail_forbidden() -> str:
             exc = Exception("Forbidden")
-            exc.resp = Mock(status=403)
+            exc.response = Mock(status_code=403)
             raise exc
 
         with pytest.raises(MiseError) as exc_info:
