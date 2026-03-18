@@ -11,6 +11,36 @@ Content fetching for Google Drive and Gmail — via the mise-en-space MCP.
 
 **After installing, exit and relaunch Claude Code** (`/exit` then `claude`) to activate the setup hook. `/reload-plugins` loads skills and MCP servers but doesn't fire SessionStart hooks. The hook auto-installs dependencies and checks for OAuth tokens.
 
+## OAuth Setup (if no token.json)
+
+If the MCP server can't connect, the user needs to authenticate with Google. **Do this for them, don't ask them to type commands.**
+
+Find the mise plugin directory:
+```bash
+MISE_DIR=$(find ~/.claude/plugins/cache -path "*/mise/*/server.py" -exec dirname {} \; 2>/dev/null | head -1)
+```
+
+### On a machine with a browser (Mac/desktop Linux):
+```bash
+cd "$MISE_DIR" && uv run python -m auth
+```
+This opens a browser automatically. The user consents, the callback lands on localhost, token.json is created. Then `/exit` and relaunch to reconnect the MCP server.
+
+### On a headless/remote machine (SSH, sandbox):
+Two-phase flow using `--remote` then `--code`:
+```bash
+# Phase 1: get the auth URL (saves PKCE state for later)
+cd "$MISE_DIR" && uv run python -m auth --remote
+```
+This prints the auth URL and saves PKCE state. Show the URL to the user — they open it in their browser, consent, get redirected to localhost (which fails — expected). They copy the full redirect URL or just the `code=` value and paste it back.
+
+```bash
+# Phase 2: exchange the code (uses saved PKCE verifier)
+cd "$MISE_DIR" && uv run python -m auth --code "PASTE_URL_OR_CODE_HERE"
+```
+
+After token.json is created, `/exit` and relaunch to reconnect the MCP server.
+
 **Iron Law: Files are artifacts. Emails are meaning.**
 
 A document tells you *what* was decided. The email thread tells you *why*, who pushed back, and what concerns remain.
