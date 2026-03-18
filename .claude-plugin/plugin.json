@@ -1,10 +1,23 @@
 {
   "name": "mise",
-  "version": "0.1.0",
-  "description": "Google Workspace MCP server — search Drive, fetch Gmail, act on documents. Requires: uv, Google OAuth setup",
+  "version": "0.2.0",
+  "description": "Google Workspace MCP server — search Drive, fetch Gmail, act on documents",
   "author": { "name": "Sameer Modha", "url": "https://github.com/spm1001" },
   "repository": "https://github.com/spm1001/mise-en-space",
   "license": "MIT",
   "keywords": ["google", "workspace", "drive", "gmail", "mcp"],
-  "mcpServers": "./.mcp.json"
+  "mcpServers": "./.mcp.json",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ensure-mise.sh"
+          }
+        ]
+      }
+    ]
+  }
 }
