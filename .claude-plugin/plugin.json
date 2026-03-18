@@ -9,7 +9,7 @@
   "mcpServers": {
     "mise": {
       "command": "uv",
-      "args": ["run", "--project", "${CLAUDE_PLUGIN_ROOT}", "python3", "server.py"]
+      "args": ["run", "--project", "${CLAUDE_PLUGIN_ROOT}", "python3", "${CLAUDE_PLUGIN_ROOT}/server.py"]
     }
   },
   "hooks": {
