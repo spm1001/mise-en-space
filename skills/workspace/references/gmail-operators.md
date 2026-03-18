@@ -33,7 +33,7 @@ filename:strawman-framework.docx
 
 ### Find recent emails from a person about a topic
 ```
-from:anthony.jones@thinkbox.tv after:2026/01/01 lantern
+from:alice.jones@example.com after:2026/01/01 lantern
 ```
 
 ### Find emails with attachments about a project
@@ -51,11 +51,11 @@ in:sent subject:data governance after:2026/01/01
 **Don't:** Just throw keywords at search
 ```
 # BAD: keyword soup
-search("Elizabeth Kiernan Lantern data privacy contracts agreements")
+search("Elizabeth Smith Project Alpha data privacy contracts agreements")
 ```
 
 **Do:** Use operators for precision
 ```
 # GOOD: targeted search
-search("from:elizabeth@privacylawunlocked.com after:2025/12/01", sources=["gmail"])
+search("from:elizabeth@example.com after:2025/12/01", sources=["gmail"])
 ```
