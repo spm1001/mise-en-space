@@ -9,7 +9,7 @@ Content fetching for Google Drive and Gmail — via the mise-en-space MCP.
 
 ## After Installing This Plugin
 
-**Run `/restart` (not `/reload-plugins`) to activate the setup hook.** The SessionStart hook auto-installs dependencies and checks for OAuth tokens — but it only fires after a full restart. Without it, you'll need to diagnose setup issues manually.
+**After installing, exit and relaunch Claude Code** (`/exit` then `claude`) to activate the setup hook. `/reload-plugins` loads skills and MCP servers but doesn't fire SessionStart hooks. The hook auto-installs dependencies and checks for OAuth tokens.
 
 **Iron Law: Files are artifacts. Emails are meaning.**
 
