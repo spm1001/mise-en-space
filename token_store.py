@@ -18,6 +18,10 @@ from pathlib import Path
 
 KEYCHAIN_SERVICE = "mise-oauth-token"
 
+# Legacy token location (package root). Used for migration from
+# versioned plugin cache dirs to stable data dir.
+_LEGACY_TOKEN_PATH = Path(__file__).parent / "token.json"
+
 
 def _has_keychain() -> bool:
     """Check if macOS Keychain is available."""
@@ -94,14 +98,31 @@ def delete_from_keychain() -> bool:
 def resolve_token_path(fallback_path: Path) -> Path:
     """Return a path to a token.json file, materializing from Keychain if needed.
 
-    If a Keychain entry exists, writes it to the fallback_path so that
-    jeton.load_credentials() can read it as a file. If no Keychain entry,
-    returns the fallback_path as-is (may or may not exist).
+    Search order:
+    1. macOS Keychain → materialize to fallback_path
+    2. fallback_path (typically plugin data dir or package root)
+    3. _PACKAGE_ROOT/token.json (legacy — versioned plugin cache)
+
+    If a token is found at a legacy location but not at fallback_path,
+    it is copied forward (migration from versioned cache to stable data dir).
     """
     token_json = get_from_keychain()
     if token_json:
+        fallback_path.parent.mkdir(parents=True, exist_ok=True)
         fallback_path.write_text(token_json)
         return fallback_path
+
+    if fallback_path.exists():
+        return fallback_path
+
+    # Check legacy location (package root) if fallback_path is elsewhere
+    legacy_path = _LEGACY_TOKEN_PATH
+    if legacy_path != fallback_path and legacy_path.exists():
+        # Migrate: copy to stable location so future versions find it
+        fallback_path.parent.mkdir(parents=True, exist_ok=True)
+        fallback_path.write_text(legacy_path.read_text())
+        return fallback_path
+
     return fallback_path
 
 
@@ -121,4 +142,8 @@ def has_token(fallback_path: Path) -> bool:
     """Check if a valid token exists anywhere."""
     if get_from_keychain():
         return True
-    return fallback_path.exists()
+    if fallback_path.exists():
+        return True
+    # Check legacy location (package root)
+    legacy_path = _LEGACY_TOKEN_PATH
+    return legacy_path != fallback_path and legacy_path.exists()

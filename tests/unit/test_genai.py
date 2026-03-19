@@ -229,3 +229,135 @@ class TestGetVideoSummary:
 
                 assert result is not None
                 assert result.error == "permission_denied"
+
+    def test_returns_none_when_no_api_key(self):
+        """Should return None when GENAI_API_KEY is empty."""
+        from adapters import genai
+        with patch.object(genai, "GENAI_API_KEY", ""):
+            result = genai.get_video_summary("file123")
+            assert result is None
+
+    def test_success_with_summary(self):
+        """Should return VideoSummary with extracted summary on success."""
+        from adapters import genai
+        import io
+
+        mock_cookies = {"SAPISID": "test", "SID": "sid", "HSID": "hsid"}
+        response_body = (
+            '[null,"This video shows a detailed walkthrough of the new '
+            'dashboard features including charts and data filtering options."'
+            ',null]'
+        )
+        mock_response = MagicMock()
+        mock_response.read.return_value = response_body.encode()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch.object(genai, "GENAI_API_KEY", "test-key"):
+            with patch.object(genai, "get_google_cookies", return_value=mock_cookies):
+                with patch("urllib.request.urlopen", return_value=mock_response):
+                    result = genai.get_video_summary("file123")
+
+        assert result is not None
+        assert result.has_content is True
+        assert result.error is None
+        assert "dashboard" in result.summary.lower()
+
+    def test_success_minimal_response(self):
+        """Should return has_content=False when response is too short."""
+        from adapters import genai
+
+        mock_cookies = {"SAPISID": "test", "SID": "sid"}
+        # Response under 100 chars — video may not have summary
+        mock_response = MagicMock()
+        mock_response.read.return_value = b'[null]'
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch.object(genai, "GENAI_API_KEY", "test-key"):
+            with patch.object(genai, "get_google_cookies", return_value=mock_cookies):
+                with patch("urllib.request.urlopen", return_value=mock_response):
+                    result = genai.get_video_summary("file123")
+
+        assert result is not None
+        assert result.has_content is False
+        assert result.summary == ""
+        assert result.error is None
+
+    def test_success_with_snippets_no_summary(self):
+        """Should return transcript snippets even without a summary pattern."""
+        from adapters import genai
+
+        mock_cookies = {"SAPISID": "test", "SID": "sid"}
+        # Long response with transcript-like content but no "This video" pattern
+        response_body = (
+            '"An important discussion about quarterly revenue targets and how the team '
+            'plans to approach the market in the coming fiscal year with renewed strategy."'
+            + ' ' * 50  # pad past 100 chars
+        )
+        mock_response = MagicMock()
+        mock_response.read.return_value = response_body.encode()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch.object(genai, "GENAI_API_KEY", "test-key"):
+            with patch.object(genai, "get_google_cookies", return_value=mock_cookies):
+                with patch("urllib.request.urlopen", return_value=mock_response):
+                    result = genai.get_video_summary("file123")
+
+        assert result is not None
+        assert result.error is None
+        # Should have snippets even without a "This video..." summary
+        assert result.has_content is True
+        assert len(result.transcript_snippets) >= 1
+
+    def test_returns_none_on_other_http_errors(self):
+        """Should return None on non-401/403 HTTP errors."""
+        from adapters import genai
+        import urllib.error
+
+        mock_cookies = {"SAPISID": "test", "SID": "sid"}
+        with patch.object(genai, "GENAI_API_KEY", "test-key"):
+            with patch.object(genai, "get_google_cookies", return_value=mock_cookies):
+                with patch("urllib.request.urlopen") as mock_urlopen:
+                    mock_urlopen.side_effect = urllib.error.HTTPError(
+                        url="", code=500, msg="Server Error", hdrs={}, fp=None
+                    )
+                    result = genai.get_video_summary("file123")
+
+        assert result is None
+
+    def test_returns_none_on_generic_exception(self):
+        """Should return None on unexpected exceptions."""
+        from adapters import genai
+
+        mock_cookies = {"SAPISID": "test", "SID": "sid"}
+        with patch.object(genai, "GENAI_API_KEY", "test-key"):
+            with patch.object(genai, "get_google_cookies", return_value=mock_cookies):
+                with patch("urllib.request.urlopen") as mock_urlopen:
+                    mock_urlopen.side_effect = ConnectionError("network down")
+                    result = genai.get_video_summary("file123")
+
+        assert result is None
+
+    def test_auth_header_includes_all_three_variants(self):
+        """Should build auth header with SAPISIDHASH, SAPISID1PHASH, SAPISID3PHASH."""
+        from adapters import genai
+
+        mock_cookies = {"SAPISID": "test_sapisid", "SID": "sid"}
+        mock_response = MagicMock()
+        mock_response.read.return_value = b'[null]'
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch.object(genai, "GENAI_API_KEY", "test-key"):
+            with patch.object(genai, "get_google_cookies", return_value=mock_cookies):
+                with patch("urllib.request.urlopen", return_value=mock_response) as mock_urlopen:
+                    genai.get_video_summary("file123")
+
+        # Verify the request was built with all three auth header variants
+        req = mock_urlopen.call_args[0][0]
+        auth = req.get_header("Authorization")
+        assert "SAPISIDHASH" in auth
+        assert "SAPISID1PHASH" in auth
+        assert "SAPISID3PHASH" in auth

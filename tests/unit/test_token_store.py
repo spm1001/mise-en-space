@@ -159,9 +159,10 @@ class TestResolveTokenPath:
         assert token_file.exists()
         assert json.loads(token_file.read_text())["access_token"] == "ya29.test"
 
+    @patch("token_store._LEGACY_TOKEN_PATH", Path("/nonexistent/token.json"))
     @patch("token_store.get_from_keychain", return_value=None)
     def test_no_keychain_returns_fallback_path(self, _kc, tmp_path):
-        """No Keychain entry → return fallback_path as-is (may not exist)."""
+        """No Keychain entry, no legacy → return fallback_path as-is (may not exist)."""
         token_file = tmp_path / "token.json"
         result = resolve_token_path(token_file)
         assert result == token_file
@@ -175,6 +176,63 @@ class TestResolveTokenPath:
         result = resolve_token_path(token_file)
         assert result == token_file
         assert token_file.exists()
+
+    @patch("token_store.get_from_keychain", return_value=None)
+    def test_legacy_migration_copies_to_fallback(self, _kc, tmp_path):
+        """Token at legacy path is copied to fallback (migration)."""
+        legacy = tmp_path / "legacy" / "token.json"
+        legacy.parent.mkdir()
+        legacy.write_text(SAMPLE_TOKEN)
+
+        stable = tmp_path / "data" / "token.json"
+
+        with patch("token_store._LEGACY_TOKEN_PATH", legacy):
+            result = resolve_token_path(stable)
+
+        assert result == stable
+        assert stable.exists()
+        assert json.loads(stable.read_text())["access_token"] == "ya29.test"
+
+    @patch("token_store.get_from_keychain", return_value=None)
+    def test_legacy_not_used_when_fallback_exists(self, _kc, tmp_path):
+        """Fallback path takes priority over legacy — no unnecessary migration."""
+        legacy = tmp_path / "legacy" / "token.json"
+        legacy.parent.mkdir()
+        legacy.write_text('{"access_token": "old"}')
+
+        stable = tmp_path / "data" / "token.json"
+        stable.parent.mkdir()
+        stable.write_text(SAMPLE_TOKEN)
+
+        with patch("token_store._LEGACY_TOKEN_PATH", legacy):
+            result = resolve_token_path(stable)
+
+        assert result == stable
+        # Stable content unchanged (not overwritten by legacy)
+        assert json.loads(stable.read_text())["access_token"] == "ya29.test"
+
+
+class TestHasTokenLegacy:
+    """Tests for has_token() with legacy path."""
+
+    @patch("token_store.get_from_keychain", return_value=None)
+    def test_finds_legacy_token(self, _kc, tmp_path):
+        """has_token returns True when token exists at legacy path."""
+        legacy = tmp_path / "legacy" / "token.json"
+        legacy.parent.mkdir()
+        legacy.write_text(SAMPLE_TOKEN)
+
+        missing = tmp_path / "data" / "token.json"
+
+        with patch("token_store._LEGACY_TOKEN_PATH", legacy):
+            assert has_token(missing) is True
+
+    @patch("token_store.get_from_keychain", return_value=None)
+    def test_legacy_same_as_fallback_no_double_count(self, _kc, tmp_path):
+        """When legacy == fallback and file missing, returns False (not True from self-match)."""
+        token_file = tmp_path / "token.json"
+        with patch("token_store._LEGACY_TOKEN_PATH", token_file):
+            assert has_token(token_file) is False
 
 
 # =============================================================================
@@ -232,8 +290,9 @@ class TestHasToken:
         token_file.write_text(SAMPLE_TOKEN)
         assert has_token(token_file) is True
 
+    @patch("token_store._LEGACY_TOKEN_PATH", Path("/nonexistent/token.json"))
     @patch("token_store.get_from_keychain", return_value=None)
     def test_neither_present(self, _kc, tmp_path):
-        """No Keychain, no file → False."""
+        """No Keychain, no file, no legacy → False."""
         token_file = tmp_path / "token.json"
         assert has_token(token_file) is False

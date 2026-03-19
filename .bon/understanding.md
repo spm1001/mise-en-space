@@ -22,9 +22,13 @@ The remote push is explicitly **single-user** (one `token.json`, one `lru_cache`
 
 **Token refresh for long-running server** requires a specific sequence: refresh the token file AND call `clear_service_cache()` AND rebuild services. The `lru_cache` bakes in a `Credentials` object at service creation time — refreshing `token.json` on disk without clearing the cache does nothing.
 
-## Overwrite markdown rendering gap
+## Plugin distribution (Mar 2026)
 
-Create renders markdown (bold, tables, lists) because it uses Drive's import engine (`files().create()` with `mimetype="text/markdown"`). Overwrite uses Docs API `insertText` which has no conversion — markdown syntax appears literally. The likely fix is using `files().update()` with the same markdown MIME type, but this needs verification: `scripts/test_overwrite_conversion.py` tests whether `files().update()` triggers the same import conversion as `files().create()`. Run it with real credentials to unblock mise-zobuci. If update conversion doesn't work, fall back to temp-doc-body-copy (documented in the brief).
+The batterie-de-savoir marketplace is the distribution channel. `${CLAUDE_PLUGIN_ROOT}` is the only reliable path mechanism in plugin.json — referenced files (.mcp.json) don't get variable expansion, and `python3 script.py` resolves relative to CC's cwd not the project dir. Everything must use absolute paths via CLAUDE_PLUGIN_ROOT. The `.mcp.json` auto-discovery creates naming collisions with inline mcpServers — rename or delete the file in source repos.
+
+SessionStart hooks are the right place for setup automation (dep install, auth checks) but only fire after exit+relaunch, not /reload-plugins. All batterie scripts use python3 not jq — jq is a system dependency that fresh machines don't have, and installing it is friction.
+
+The two-phase PKCE auth flow (get_auth_url saves verifier, authenticate --code loads it) is critical for remote/headless use where Claude can't do interactive stdin. OAuth credentials are installed type (not web) after GCP breach detection forced the change.
 
 ## Code patterns worth knowing
 
@@ -40,7 +44,7 @@ The httpx migration (mise-fokoli) is **two-phase by design** (see `docs/decision
 
 **Phase 2 (future, single-shot):** Convert tools layer and server.py to `async def`. Switch `get_sync_client()` → `get_http_client()` (async), add `await`, delete `MiseSyncClient`. Then restructure for real concurrency — `asyncio.gather()` for metadata+comments, search sources, slides thumbnails.
 
-**Remaining cleanup:** `services.py` has zero production consumers — only integration test scaffolding still imports it. Can be deleted once test setup/teardown is migrated (~20 min). Write operation integration tests haven't been run post-migration (tracked as mise-vozapu).
+**Remaining cleanup:** `services.py` has zero production consumers — only integration test scaffolding still imports it. Can be deleted once test setup/teardown is migrated.
 
 **Key things to know:**
 - `MiseSyncClient` and `MiseHttpClient` in `adapters/http_client.py` are intentional near-duplicates. Don't consolidate them — MiseSyncClient dies in Phase 2.
@@ -58,8 +62,10 @@ The overwrite markdown rendering gap (mise-numado) is fixed. `files().update()` 
 
 ## Current state (Mar 2026)
 
-Web fetching code has been fully removed — mise is Workspace-only. The core MCP server is stable and in daily use via stdio. Remote mode transport and content delivery are done (StreamableHTTP, inline content, safe-op filter). The remaining remote path is: auth middleware (mise-tokiju) → token management (mise-winala) → httpx migration (mise-fokoli, in progress) → containerisation + deploy (mise-sefepo).
+Web fetching code has been fully removed — mise is Workspace-only. The core MCP server is stable and in daily use via stdio. Remote mode transport and content delivery are done (StreamableHTTP, inline content, safe-op filter). The remaining remote path is: auth middleware (mise-tokiju) → token management (mise-winala) → containerisation + deploy (mise-sefepo). The httpx migration is complete (Phase 1 — sync).
 
 Phase 1 of the httpx migration is complete — all adapters and tools use httpx. `services.py` is dead code kept only for integration test scaffolding. Write operation integration tests are the key remaining verification (mise-vozapu). See section above for details.
 
-The backlog includes edge-case polish (image/PDF, GIF handling), a latency/observability initiative (profiling, telemetry), and several feature additions (Apps Script port, meeting prep, calendar write ops, image embedding in Docs, aboyeur Gmail polling). These are all Tier 3 — valuable but not blocking the remote deployment.
+The plugin distribution path (mise-fipabo) is substantially complete — marketplace works, MCP server connects from plugin cache. The workspace pattern (mise-bipaka) is next: defining where files go for non-repo knowledge workers.
+
+The backlog includes edge-case polish (image/PDF, GIF handling), a latency/observability initiative (profiling, telemetry), and several feature additions (Apps Script port, meeting prep, calendar write ops, image embedding in Docs, aboyeur Gmail polling). These are all Tier 3 — valuable but not blocking the remote deployment or team onboarding.

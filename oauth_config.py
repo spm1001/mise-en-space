@@ -50,6 +50,15 @@ LOCAL_CREDENTIALS_FILE = _PACKAGE_ROOT / 'credentials.json'
 GCP_PROJECT = 'mit-workspace-mcp-server'
 SECRET_NAME = 'mise-credentials'
 
+# Plugin data directory — version-stable, survives plugin cache upgrades.
+# Claude Code creates ~/.claude/plugins/data/{name}-{publisher}/ automatically.
+# Falls back to _PACKAGE_ROOT if the data dir doesn't exist (e.g. running from repo).
+_PLUGIN_DATA_DIR = Path.home() / '.claude' / 'plugins' / 'data' / 'mise-batterie-de-savoir'
+
 # Local token storage (user's OAuth tokens, not shared)
-# Absolute path so it works regardless of cwd when MCP runs
-TOKEN_FILE = _PACKAGE_ROOT / 'token.json'
+# Prefer plugin data dir (version-stable) over package root (version-specific)
+TOKEN_FILE = (
+    _PLUGIN_DATA_DIR / 'token.json'
+    if _PLUGIN_DATA_DIR.is_dir()
+    else _PACKAGE_ROOT / 'token.json'
+)

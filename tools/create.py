@@ -13,6 +13,7 @@ Uses httpx via MiseSyncClient (Phase 1 migration).
 import csv
 import io
 import json
+import logging
 import mimetypes
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,10 +28,29 @@ from workspace import enrich_manifest
 from tools.common import resolve_source as _resolve_source
 from validation import validate_drive_id, sanitize_title
 
+logger = logging.getLogger(__name__)
 
 # Drive API v3 base URLs
 _DRIVE_API = "https://www.googleapis.com/drive/v3/files"
 _UPLOAD_API = "https://www.googleapis.com/upload/drive/v3/files"
+
+
+def _mise_file_metadata(title: str, mime_type: str | None = None, folder_id: str | None = None) -> dict[str, Any]:
+    """Build Drive file metadata with mise provenance stamped.
+
+    Sets description (visible in Drive UI) and properties (searchable via
+    Drive API: properties has { key='mise' and value='true' }).
+    """
+    metadata: dict[str, Any] = {
+        "name": title,
+        "description": "Created by mise-en-space MCP",
+        "properties": {"mise": "true"},
+    }
+    if mime_type:
+        metadata["mimeType"] = mime_type
+    if folder_id:
+        metadata["parents"] = [folder_id]
+    return metadata
 
 
 def _create_error(kind: str, message: str) -> dict[str, Any]:
@@ -339,9 +359,9 @@ def _create_file(
     client = get_sync_client()
     mime_type = _infer_mime_type(title)
 
-    file_metadata: dict[str, Any] = {"name": title}
-    if folder_id:
-        file_metadata["parents"] = [folder_id]
+    file_metadata = _mise_file_metadata(title, folder_id=folder_id)
+
+    logger.info("create file: title=%r mime=%s folder=%s", title, mime_type, folder_id)
 
     result = client.upload_multipart(
         _UPLOAD_API, file_metadata, content.encode("utf-8"), mime_type,
@@ -376,12 +396,9 @@ def _create_doc(
     """
     client = get_sync_client()
 
-    file_metadata: dict[str, Any] = {
-        "name": title,
-        "mimeType": GOOGLE_DOC_MIME,
-    }
-    if folder_id:
-        file_metadata["parents"] = [folder_id]
+    file_metadata = _mise_file_metadata(title, mime_type=GOOGLE_DOC_MIME, folder_id=folder_id)
+
+    logger.info("create doc: title=%r folder=%s content_len=%d", title, folder_id, len(content))
 
     result = client.upload_multipart(
         _UPLOAD_API, file_metadata, content.encode("utf-8"), "text/markdown",
@@ -414,12 +431,9 @@ def _create_sheet(
     """
     client = get_sync_client()
 
-    file_metadata: dict[str, Any] = {
-        "name": title,
-        "mimeType": GOOGLE_SHEET_MIME,
-    }
-    if folder_id:
-        file_metadata["parents"] = [folder_id]
+    file_metadata = _mise_file_metadata(title, mime_type=GOOGLE_SHEET_MIME, folder_id=folder_id)
+
+    logger.info("create sheet: title=%r folder=%s content_len=%d", title, folder_id, len(content))
 
     result = client.upload_multipart(
         _UPLOAD_API, file_metadata, content.encode("utf-8"), "text/csv",
