@@ -62,10 +62,10 @@ The overwrite markdown rendering gap (mise-numado) is fixed. `files().update()` 
 
 ## Current state (Mar 2026)
 
-Web fetching code has been fully removed — mise is Workspace-only. The core MCP server is stable and in daily use via stdio. Remote mode transport and content delivery are done (StreamableHTTP, inline content, safe-op filter). The remaining remote path is: auth middleware (mise-tokiju) → token management (mise-winala) → containerisation + deploy (mise-sefepo). The httpx migration is complete (Phase 1 — sync).
+Web fetching code has been fully removed — mise is Workspace-only. The core MCP server is stable and in daily use via stdio. Remote mode transport and content delivery are done (StreamableHTTP, inline content, safe-op filter). The remaining remote path is: auth middleware (mise-tokiju) → token management (mise-winala) → containerisation + deploy (mise-sefepo).
 
-Phase 1 of the httpx migration is complete — all adapters and tools use httpx. `services.py` is dead code kept only for integration test scaffolding. Write operation integration tests are the key remaining verification (mise-vozapu). See section above for details.
+The httpx migration (mise-fokoli) is **complete** — all adapters and tools use sync httpx. Phase 2 (async) is future work if/when the remote server needs real concurrency. Write operation integration tests verified post-migration (mise-vozapu done). `services.py` is dead code kept only for integration test scaffolding.
 
-The plugin distribution path (mise-fipabo) is substantially complete — marketplace works, MCP server connects from plugin cache. The workspace pattern (mise-bipaka) is next: defining where files go for non-repo knowledge workers.
+Plugin distribution (mise-fipabo) and OAuth smoothing (mise-lolane) are done. Token storage now uses `~/.claude/plugins/data/mise-batterie-de-savoir/` (version-stable) with auto-migration from versioned cache dirs. Created files are stamped with `description` and `properties.mise=true` for provenance tracking.
 
-The backlog includes edge-case polish (image/PDF, GIF handling), a latency/observability initiative (profiling, telemetry), and several feature additions (Apps Script port, meeting prep, calendar write ops, image embedding in Docs, aboyeur Gmail polling). These are all Tier 3 — valuable but not blocking the remote deployment or team onboarding.
+The backlog includes edge-case polish (image/PDF, GIF handling), a latency/observability initiative (profiling, telemetry), MCP call logging (mise-gakubo), and several feature additions (Apps Script port, meeting prep, calendar write ops, image embedding in Docs, aboyeur Gmail polling).
