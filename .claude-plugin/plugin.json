@@ -1,15 +1,30 @@
 {
   "name": "mise",
-  "version": "0.2.0",
-  "description": "Google Workspace MCP server — search Drive, fetch Gmail, act on documents",
-  "author": { "name": "Sameer Modha", "url": "https://github.com/spm1001" },
+  "version": "0.3.0",
+  "description": "Google Workspace MCP server \u2014 search Drive, fetch Gmail, act on documents",
+  "author": {
+    "name": "Sameer Modha",
+    "url": "https://github.com/spm1001"
+  },
   "repository": "https://github.com/spm1001/mise-en-space",
   "license": "MIT",
-  "keywords": ["google", "workspace", "drive", "gmail", "mcp"],
+  "keywords": [
+    "google",
+    "workspace",
+    "drive",
+    "gmail",
+    "mcp"
+  ],
   "mcpServers": {
     "mise": {
       "command": "uv",
-      "args": ["run", "--project", "${CLAUDE_PLUGIN_ROOT}", "python3", "${CLAUDE_PLUGIN_ROOT}/server.py"]
+      "args": [
+        "run",
+        "--project",
+        "${CLAUDE_PLUGIN_ROOT}",
+        "python3",
+        "${CLAUDE_PLUGIN_ROOT}/server.py"
+      ]
     }
   },
   "hooks": {
