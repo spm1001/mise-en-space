@@ -41,6 +41,7 @@ from starlette.responses import JSONResponse
 
 from adapters.conversion import cleanup_orphaned_temp_files
 from adapters.drive import get_file_metadata
+from logging_config import configure_call_logging, log_mcp_call
 from tools import do_search, do_fetch, do_create, do_move, do_rename, do_share, do_overwrite, do_prepend, do_append, do_replace_text, do_draft, do_reply_draft, do_archive, do_star, do_label, OPERATIONS
 from models import DoResult, FetchResult, MiseError
 from resources.tools import get_tool_registry
@@ -191,13 +192,31 @@ def search(
         calendar_count: Number of Calendar results
         cues: Scope notes and warnings (present when folder_id is set)
     """
+    call_params = {"query": query, "sources": sources, "max_results": max_results}
+    if folder_id:
+        call_params["folder_id"] = folder_id
+
     if _REMOTE_MODE:
-        return _search_remote(query, sources, max_results, base_path, folder_id)
+        result = _search_remote(query, sources, max_results, base_path, folder_id)
+        _log_search_result(call_params, result)
+        return result
 
     if not base_path:
         return {"error": True, "kind": "invalid_input",
                 "message": "base_path is required — pass your working directory so deposits land in your project, not the MCP server's directory"}
-    return do_search(query, sources, max_results, base_path=Path(base_path), folder_id=folder_id).to_dict()
+    result = do_search(query, sources, max_results, base_path=Path(base_path), folder_id=folder_id).to_dict()
+    _log_search_result(call_params, result)
+    return result
+
+
+def _log_search_result(call_params: dict[str, Any], result: dict[str, Any]) -> None:
+    if result.get("error"):
+        log_mcp_call("search", params=call_params, ok=False, error=result.get("message"))
+    else:
+        log_mcp_call("search", params=call_params, result_summary={
+            k: result[k] for k in ("drive_count", "gmail_count", "activity_count", "calendar_count")
+            if k in result and result[k]
+        })
 
 
 def _search_remote(
@@ -257,13 +276,36 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None) -> d
         content: (remote mode only) Inline content body
         comments: (remote mode only) Inline comments markdown
     """
+    call_params: dict[str, Any] = {"file_id": file_id}
+    if attachment:
+        call_params["attachment"] = attachment
+
     if _REMOTE_MODE:
-        return _fetch_remote(file_id, base_path, attachment)
+        result = _fetch_remote(file_id, base_path, attachment)
+        _log_fetch_result(call_params, result)
+        return result
 
     if not base_path:
         return {"error": True, "kind": "invalid_input",
                 "message": "base_path is required — pass your working directory so deposits land in your project, not the MCP server's directory"}
-    return do_fetch(file_id, base_path=Path(base_path), attachment=attachment).to_dict()
+    result = do_fetch(file_id, base_path=Path(base_path), attachment=attachment).to_dict()
+    _log_fetch_result(call_params, result)
+    return result
+
+
+def _log_fetch_result(call_params: dict[str, Any], result: dict[str, Any]) -> None:
+    if result.get("error"):
+        log_mcp_call("fetch", params=call_params, ok=False, error=result.get("message"))
+    else:
+        summary: dict[str, Any] = {}
+        for k in ("type", "format", "metadata"):
+            if k in result:
+                val = result[k]
+                if k == "metadata" and isinstance(val, dict):
+                    summary["title"] = val.get("title")
+                else:
+                    summary[k] = val
+        log_mcp_call("fetch", params=call_params, result_summary=summary)
 
 
 def _fetch_remote(file_id: str, base_path: str, attachment: str | None) -> dict[str, Any]:
@@ -383,16 +425,33 @@ def do(
     remove: bool = False,
 ) -> dict[str, Any]:
     """Act on Google Workspace."""
+    # Build log params — include operation and non-None values that matter,
+    # but skip content (can be huge) and base_path (noise).
+    call_params: dict[str, Any] = {"operation": operation}
+    for k, v in [
+        ("title", title), ("doc_type", doc_type), ("folder_id", folder_id),
+        ("file_id", file_id), ("destination_folder_id", destination_folder_id),
+        ("source", source), ("find", find), ("to", to), ("subject", subject),
+        ("cc", cc), ("label", label), ("role", role), ("remove", remove),
+        ("reply_all", reply_all), ("confirm", confirm),
+    ]:
+        if v is not None and v is not False:
+            call_params[k] = v
+    if content is not None:
+        call_params["content_len"] = len(content)
+
     # In remote mode, reject operations outside the safe subset.
     # Error message lists only allowed ops — don't leak restricted op names.
     if _REMOTE_MODE and operation not in _REMOTE_ALLOWED_OPS:
-        return {"error": True, "kind": "invalid_input",
-                "message": f"Operation not available in remote mode. Supported: {sorted(_REMOTE_ALLOWED_OPS)}"}
+        msg = f"Operation not available in remote mode. Supported: {sorted(_REMOTE_ALLOWED_OPS)}"
+        log_mcp_call("do", params=call_params, ok=False, error=msg)
+        return {"error": True, "kind": "invalid_input", "message": msg}
 
     handler = _DISPATCH.get(operation)
     if not handler:
-        return {"error": True, "kind": "invalid_input",
-                "message": f"Unknown operation: {operation}. Supported: {sorted(OPERATIONS)}"}
+        msg = f"Unknown operation: {operation}. Supported: {sorted(OPERATIONS)}"
+        log_mcp_call("do", params=call_params, ok=False, error=msg)
+        return {"error": True, "kind": "invalid_input", "message": msg}
 
     params = {
         "content": content, "title": title, "doc_type": doc_type,
@@ -407,8 +466,9 @@ def do(
     required = _REQUIRED_PARAMS.get(operation, set())
     missing = {p for p in required if params.get(p) is None}
     if missing:
-        return {"error": True, "kind": "INVALID_INPUT",
-                "message": f"'{operation}' requires: {', '.join(sorted(missing))}"}
+        msg = f"'{operation}' requires: {', '.join(sorted(missing))}"
+        log_mcp_call("do", params=call_params, ok=False, error=msg)
+        return {"error": True, "kind": "INVALID_INPUT", "message": msg}
 
     # Pre-fetch metadata for content operations — one Drive API call shared
     # by routing logic and handler, instead of each handler fetching its own.
@@ -416,14 +476,25 @@ def do(
         try:
             params["_metadata"] = get_file_metadata(file_id)
         except MiseError as e:
-            return {"error": True, "kind": e.kind.value, "message": e.message}
+            err = {"error": True, "kind": e.kind.value, "message": e.message}
+            log_mcp_call("do", params=call_params, ok=False, error=e.message)
+            return err
 
     try:
         result = handler(params)
     except Exception as e:
+        log_mcp_call("do", params=call_params, ok=False, error=str(e))
         return {"error": True, "kind": "INTERNAL",
                 "message": f"Operation '{operation}' failed: {e}", "retryable": False}
-    return result.to_dict() if hasattr(result, "to_dict") else result
+    result_dict = result.to_dict() if hasattr(result, "to_dict") else result
+    # Log success with key identifiers
+    summary: dict[str, Any] = {}
+    if isinstance(result_dict, dict):
+        for k in ("file_id", "title", "web_link", "operation"):
+            if k in result_dict:
+                summary[k] = result_dict[k]
+    log_mcp_call("do", params=call_params, result_summary=summary)
+    return result_dict
 
 
 # ============================================================================
@@ -1039,6 +1110,7 @@ if __name__ == "__main__":
     args = _parse_args()
     signal.signal(signal.SIGTERM, _shutdown_handler)
     signal.signal(signal.SIGINT, _shutdown_handler)
+    configure_call_logging()
     if _REMOTE_MODE:
         logger.info("Starting in remote mode (StreamableHTTP on /mcp)")
         logger.info(f"Allowed do() operations: {sorted(_REMOTE_ALLOWED_OPS)}")
