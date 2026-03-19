@@ -23,6 +23,7 @@ from models import (
     FolderItem,
     FolderFile,
     FolderListing,
+    FolderTreeNode,
     MiseError,
     ErrorKind,
     FileCommentsData,
@@ -490,6 +491,68 @@ def list_folder(folder_id: str) -> FolderListing:
         types=types,
         truncated=truncated,
     )
+
+
+# =============================================================================
+# RECURSIVE FOLDER TREE
+# =============================================================================
+
+# Safety caps for recursive traversal
+TREE_MAX_DEPTH = 5
+TREE_MAX_ITEMS = 1000
+
+
+def list_folder_recursive(
+    folder_id: str,
+    folder_name: str = "",
+    *,
+    max_depth: int = TREE_MAX_DEPTH,
+    max_items: int = TREE_MAX_ITEMS,
+) -> FolderTreeNode:
+    """
+    Recursively list a Drive folder tree.
+
+    Calls list_folder() at each level, traversing subfolders depth-first.
+    Stops when max_depth or max_items is reached.
+
+    Args:
+        folder_id: Root folder ID
+        folder_name: Root folder name (for the tree node)
+        max_depth: Maximum traversal depth (default 5)
+        max_items: Maximum total items across all levels (default 1000)
+
+    Returns:
+        FolderTreeNode with nested children
+    """
+    items_seen = 0
+
+    def _traverse(fid: str, fname: str, depth: int) -> FolderTreeNode:
+        nonlocal items_seen
+
+        listing = list_folder(fid)
+        items_seen += listing.item_count
+
+        children: list[FolderTreeNode] = []
+        depth_truncated = False
+
+        if depth + 1 >= max_depth:
+            depth_truncated = bool(listing.subfolders)
+        elif items_seen < max_items:
+            for sf in listing.subfolders:
+                if items_seen >= max_items:
+                    depth_truncated = True
+                    break
+                children.append(_traverse(sf.id, sf.name, depth + 1))
+
+        return FolderTreeNode(
+            id=fid,
+            name=fname,
+            listing=listing,
+            children=children,
+            depth_truncated=depth_truncated,
+        )
+
+    return _traverse(folder_id, folder_name, 0)
 
 
 # =============================================================================

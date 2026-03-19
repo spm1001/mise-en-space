@@ -43,6 +43,7 @@ from adapters.conversion import cleanup_orphaned_temp_files
 from adapters.drive import get_file_metadata
 from logging_config import configure_call_logging, log_mcp_call
 from tools import do_search, do_fetch, do_create, do_move, do_rename, do_share, do_overwrite, do_prepend, do_append, do_replace_text, do_draft, do_reply_draft, do_archive, do_star, do_label, OPERATIONS
+from tools.search import VALID_TYPE_FILTERS
 from models import DoResult, FetchResult, MiseError
 from resources.tools import get_tool_registry
 
@@ -161,11 +162,12 @@ async def health_check(request: Request) -> JSONResponse:
 
 @mcp.tool()
 def search(
-    query: str,
+    query: str = "",
     sources: list[str] | None = None,
     max_results: int = 20,
     base_path: str = "",
     folder_id: str | None = None,
+    type: str | None = None,
 ) -> dict[str, Any]:
     """
     Search across Drive and Gmail.
@@ -174,13 +176,15 @@ def search(
     Read the deposited JSON file for full results.
 
     Args:
-        query: Search terms
+        query: Search terms. Optional when type or folder_id is set.
         sources: ['drive', 'gmail'] — default: both. Also: 'activity' (recent comments), 'calendar' (recent events with attachments)
         max_results: Maximum results per source
         base_path: Directory for deposits (pass your cwd so files land next to your project, not the MCP server's directory)
         folder_id: Optional Drive folder ID to scope results to immediate children only.
             Non-recursive — only files directly inside this folder are returned.
             When set, forces sources=['drive'] (Gmail has no folder concept).
+        type: Optional Drive file type filter. Applies to Drive only.
+            Values: folder, doc, spreadsheet, sheet, slides, presentation, pdf, image, video, form
 
     Returns:
         path: Path to deposited search results JSON
@@ -190,21 +194,32 @@ def search(
         gmail_count: Number of Gmail results
         activity_count: Number of Activity results
         calendar_count: Number of Calendar results
-        cues: Scope notes and warnings (present when folder_id is set)
+        cues: Scope notes and warnings
     """
-    call_params = {"query": query, "sources": sources, "max_results": max_results}
+    if not query.strip() and type is None and folder_id is None:
+        return {"error": True, "kind": "invalid_input",
+                "message": "search requires at least one of: query, type, or folder_id"}
+
+    if type is not None and type not in VALID_TYPE_FILTERS:
+        canonical = sorted(VALID_TYPE_FILTERS - {"document", "sheet", "presentation"})
+        return {"error": True, "kind": "invalid_input",
+                "message": f"Unknown type '{type}'. Valid: {', '.join(canonical)}"}
+
+    call_params: dict[str, Any] = {"query": query, "sources": sources, "max_results": max_results}
     if folder_id:
         call_params["folder_id"] = folder_id
+    if type:
+        call_params["type"] = type
 
     if _REMOTE_MODE:
-        result = _search_remote(query, sources, max_results, base_path, folder_id)
+        result = _search_remote(query, sources, max_results, base_path, folder_id, type)
         _log_search_result(call_params, result)
         return result
 
     if not base_path:
         return {"error": True, "kind": "invalid_input",
                 "message": "base_path is required — pass your working directory so deposits land in your project, not the MCP server's directory"}
-    result = do_search(query, sources, max_results, base_path=Path(base_path), folder_id=folder_id).to_dict()
+    result = do_search(query, sources, max_results, base_path=Path(base_path), folder_id=folder_id, type=type).to_dict()
     _log_search_result(call_params, result)
     return result
 
@@ -221,7 +236,7 @@ def _log_search_result(call_params: dict[str, Any], result: dict[str, Any]) -> N
 
 def _search_remote(
     query: str, sources: list[str] | None, max_results: int,
-    base_path: str, folder_id: str | None,
+    base_path: str, folder_id: str | None, type: str | None = None,
 ) -> dict[str, Any]:
     """
     Remote search: deposit to temp dir, return full results inline.
@@ -237,7 +252,7 @@ def _search_remote(
         temp_dir = tempfile.mkdtemp(prefix="mise-remote-search-")
         effective_base = Path(temp_dir)
     try:
-        result = do_search(query, sources, max_results, base_path=effective_base, folder_id=folder_id)
+        result = do_search(query, sources, max_results, base_path=effective_base, folder_id=folder_id, type=type)
         # Strip the path — remote clients can't read it. This triggers
         # SearchResult.to_dict() to return full results inline.
         result.path = None
@@ -250,7 +265,7 @@ def _search_remote(
 
 
 @mcp.tool()
-def fetch(file_id: str, base_path: str = "", attachment: str | None = None) -> dict[str, Any]:
+def fetch(file_id: str, base_path: str = "", attachment: str | None = None, recursive: bool = False) -> dict[str, Any]:
     """
     Fetch content to filesystem.
 
@@ -260,18 +275,26 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None) -> d
     Always optimizes for LLM consumption (markdown, CSV, clean text).
     Auto-detects input type and routes appropriately.
 
+    Supports Drive files, Gmail threads, AND Drive folders.
+    When given a folder ID, returns a directory listing (subfolders with IDs,
+    files grouped by type) — use this to explore folder contents without
+    needing a search query.
+
     Args:
-        file_id: Drive file ID or Gmail thread ID
+        file_id: Drive file ID, Gmail thread ID, or Drive folder ID
         base_path: Directory for deposits (pass your cwd so files land next to your project, not the MCP server's directory)
         attachment: Specific attachment filename to extract from a Gmail thread.
                     Use this to extract Office files (DOCX/XLSX/PPTX) that are
                     skipped during normal thread fetch. Also works for PDFs and images.
+        recursive: When fetching a folder, traverse subfolders recursively to
+                   produce a full tree view. Default False (immediate children only).
+                   Capped at depth 5 and 1000 total items.
 
     Returns:
         path: Filesystem path to fetched content folder
         content_file: Path to main content file
         format: Output format (markdown, csv)
-        type: Content type (doc, sheet, slides, gmail)
+        type: Content type (doc, sheet, slides, gmail, folder)
         metadata: File metadata
         content: (remote mode only) Inline content body
         comments: (remote mode only) Inline comments markdown
@@ -279,16 +302,18 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None) -> d
     call_params: dict[str, Any] = {"file_id": file_id}
     if attachment:
         call_params["attachment"] = attachment
+    if recursive:
+        call_params["recursive"] = True
 
     if _REMOTE_MODE:
-        result = _fetch_remote(file_id, base_path, attachment)
+        result = _fetch_remote(file_id, base_path, attachment, recursive=recursive)
         _log_fetch_result(call_params, result)
         return result
 
     if not base_path:
         return {"error": True, "kind": "invalid_input",
                 "message": "base_path is required — pass your working directory so deposits land in your project, not the MCP server's directory"}
-    result = do_fetch(file_id, base_path=Path(base_path), attachment=attachment).to_dict()
+    result = do_fetch(file_id, base_path=Path(base_path), attachment=attachment, recursive=recursive).to_dict()
     _log_fetch_result(call_params, result)
     return result
 
@@ -308,7 +333,7 @@ def _log_fetch_result(call_params: dict[str, Any], result: dict[str, Any]) -> No
         log_mcp_call("fetch", params=call_params, result_summary=summary)
 
 
-def _fetch_remote(file_id: str, base_path: str, attachment: str | None) -> dict[str, Any]:
+def _fetch_remote(file_id: str, base_path: str, attachment: str | None, *, recursive: bool = False) -> dict[str, Any]:
     """
     Remote fetch: deposit to temp dir, read content back inline, clean up.
 
@@ -322,7 +347,7 @@ def _fetch_remote(file_id: str, base_path: str, attachment: str | None) -> dict[
         temp_dir = tempfile.mkdtemp(prefix="mise-remote-")
         effective_base = Path(temp_dir)
     try:
-        result = do_fetch(file_id, base_path=effective_base, attachment=attachment)
+        result = do_fetch(file_id, base_path=effective_base, attachment=attachment, recursive=recursive)
 
         if not isinstance(result, FetchResult):
             return result.to_dict()
@@ -360,7 +385,7 @@ Args:
     title: Document title (required for create, falls back to manifest title when using source)
     doc_type: 'doc' | 'sheet' | 'slides' | 'file' (for create). 'file' uploads as-is without Google conversion (MIME inferred from title extension).
     folder_id: Optional destination folder (for create)
-    file_id: Target file or thread (required for move, rename, share, overwrite, prepend, append, replace_text, reply_draft, archive, star, label)
+    file_id: Target file or thread (required for move, rename, share, overwrite, prepend, append, replace_text, reply_draft, archive, star, label). For move: accepts a list of IDs to batch-move multiple files to the same destination in one call.
     destination_folder_id: Where to move the file (required for move)
     source: Path to deposit folder containing content to publish (for create/overwrite). Reads content.md (doc) or content.csv (sheet) from the folder. Manifest is enriched with creation receipt after success.
     base_path: Directory for resolving relative source paths (pass your cwd)
@@ -409,7 +434,7 @@ def do(
     title: str | None = None,
     doc_type: str = "doc",
     folder_id: str | None = None,
-    file_id: str | None = None,
+    file_id: str | list[str] | None = None,
     destination_folder_id: str | None = None,
     source: str | None = None,
     base_path: str | None = None,
@@ -565,10 +590,11 @@ This pattern:
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `query` | str | required | Search terms |
+| `query` | str | "" | Search terms. Optional when `type` or `folder_id` is set. |
 | `sources` | list[str] | ['drive', 'gmail'] | Which sources to search |
 | `max_results` | int | 20 | Maximum results per source |
 | `folder_id` | str | None | Drive folder ID to scope results to immediate children only. Non-recursive. Forces sources=['drive']. |
+| `type` | str | None | Drive file type filter. Values: `folder`, `doc`, `spreadsheet`, `sheet`, `slides`, `presentation`, `pdf`, `image`, `video`, `form`. Applies to Drive only. |
 
 ## Examples
 
@@ -577,6 +603,10 @@ This pattern:
 search("Q4 planning")
 # Returns: {"path": "mise/search--q4-planning--2026-01-31T21-12-53.json",
 #           "drive_count": 15, "gmail_count": 8, ...}
+
+# Filter by type (no keyword needed)
+search(type="spreadsheet")
+search("budget", type="spreadsheet")
 
 # Scope to a specific folder (non-recursive — immediate children only)
 search("GA4", folder_id="1UclqiqLBfe3BfLRNFTWb0eDbnssxA3Tp")
@@ -602,7 +632,7 @@ Read("mise/search--q4-planning--2026-01-31T21-12-53.json")
 }
 ```
 
-`cues` is only present when `folder_id` is set. `sources_note` only present when Gmail was in the requested sources and was excluded.
+`cues` is present when `folder_id` or `type` affects the search. `sources_note` when Gmail was excluded by `folder_id`. `type_note` when `type` was ignored (Drive not in sources).
 
 ## Deposited File Shape
 
@@ -640,7 +670,7 @@ Fetch content to filesystem. Writes to `mise/` in current directory.
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `file_id` | str | Drive file ID or Gmail thread ID |
+| `file_id` | str | Drive file ID, Gmail thread ID, or Drive folder ID |
 
 ## Supported Content Types
 
@@ -650,6 +680,7 @@ Fetch content to filesystem. Writes to `mise/` in current directory.
 | Google Sheets | CSV + comments.md | All sheets, with headers, open comments |
 | Google Slides | markdown + thumbnails + comments.md | Selective thumbnails, open comments |
 | Gmail threads | markdown | Signature stripping, attachment list |
+| **Drive folders** | **markdown** | **Directory listing: subfolders with IDs, files grouped by type** |
 | PDFs | markdown | Hybrid: markitdown → Drive fallback |
 | DOCX/XLSX/PPTX | markdown/CSV | Via Drive conversion |
 | Video/Audio | markdown + AI summary | Requires chrome-debug for summaries |
@@ -705,6 +736,10 @@ fetch("1abc...")
 
 # Fetch Gmail thread
 fetch("18f3a4b5c6d7e8f9")
+
+# List folder contents (no search query needed)
+fetch("1FolderIdHere...")
+# Returns: subfolders with IDs (for further fetch/move), files grouped by type
 ```
 """
 

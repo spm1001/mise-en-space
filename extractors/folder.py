@@ -3,11 +3,13 @@ Folder extractor — pure function, no I/O.
 
 Converts a FolderListing into a markdown directory listing.
 Subfolders first (with IDs as action targets), files grouped by MIME type.
+
+Also handles recursive FolderTreeNode → indented tree rendering.
 """
 
 from collections import defaultdict
 
-from models import FolderListing
+from models import FolderListing, FolderTreeNode
 
 
 def extract_folder_content(listing: FolderListing, title: str = "") -> str:
@@ -63,3 +65,49 @@ def extract_folder_content(listing: FolderListing, title: str = "") -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+def extract_folder_tree(tree: FolderTreeNode) -> str:
+    """
+    Convert a recursive FolderTreeNode into an indented tree markdown.
+
+    Each level is indented with 2 spaces. Folders show their ID for
+    action targeting (move, fetch). Files are listed under their folder.
+
+    Args:
+        tree: FolderTreeNode from adapters.drive.list_folder_recursive()
+
+    Returns:
+        Markdown string with tree structure.
+    """
+    lines: list[str] = []
+    lines.append(f"# {tree.name}")
+    lines.append("")
+    _render_tree_node(tree, lines, depth=0)
+    return "\n".join(lines)
+
+
+def _render_tree_node(node: FolderTreeNode, lines: list[str], depth: int) -> None:
+    """Recursively render a tree node with indentation."""
+    indent = "  " * depth
+
+    # Files at this level
+    for f in node.listing.files:
+        lines.append(f"{indent}- {f.name}")
+
+    # Child folders (recursive)
+    for child in node.children:
+        lines.append(f"{indent}- {child.name}/  `{child.id}`")
+        _render_tree_node(child, lines, depth + 1)
+
+    # Subfolders that weren't traversed (no children but exist in listing)
+    traversed_ids = {c.id for c in node.children}
+    for sf in node.listing.subfolders:
+        if sf.id not in traversed_ids:
+            lines.append(f"{indent}- {sf.name}/  `{sf.id}`  *(not traversed)*")
+
+    if node.depth_truncated and not node.children:
+        lines.append(f"{indent}  *(depth limit reached)*")
+
+    if node.listing.truncated:
+        lines.append(f"{indent}  *(truncated — more items exist)*")

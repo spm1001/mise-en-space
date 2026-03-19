@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from adapters.drive import get_file_metadata, parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME, GOOGLE_FOLDER_MIME
-from adapters.drive import list_folder as adapter_list_folder
+from adapters.drive import list_folder as adapter_list_folder, list_folder_recursive as adapter_list_folder_recursive
 from adapters.docs import fetch_document
 from adapters.sheets import fetch_spreadsheet
 from adapters.slides import fetch_presentation
@@ -17,7 +17,7 @@ from adapters.office import fetch_and_convert_office, get_office_type_from_mime,
 from adapters.image import fetch_image as adapter_fetch_image, is_image_file, is_svg
 from extractors.image import resize_image_bytes
 from extractors.docs import extract_doc_content
-from extractors.folder import extract_folder_content
+from extractors.folder import extract_folder_content, extract_folder_tree
 from extractors.sheets import extract_sheets_content, extract_sheets_per_tab
 from extractors.slides import extract_slides_content
 from extractors.video import extract_video_content
@@ -30,7 +30,7 @@ from .common import (
 )
 
 
-def fetch_drive(file_id: str, base_path: Path | None = None) -> FetchResult | FetchError:
+def fetch_drive(file_id: str, base_path: Path | None = None, recursive: bool = False) -> FetchResult | FetchError:
     """Fetch Drive file, route by type, extract content, deposit to workspace."""
     # Get metadata to determine type
     metadata = get_file_metadata(file_id)
@@ -42,7 +42,7 @@ def fetch_drive(file_id: str, base_path: Path | None = None) -> FetchResult | Fe
 
     # Route by MIME type
     if mime_type == GOOGLE_FOLDER_MIME:
-        return fetch_folder(file_id, title, metadata, base_path=base_path)
+        return fetch_folder(file_id, title, metadata, base_path=base_path, recursive=recursive)
     elif mime_type == GOOGLE_DOC_MIME:
         return fetch_doc(file_id, title, metadata, email_context, base_path=base_path)
     elif mime_type == GOOGLE_SHEET_MIME:
@@ -69,8 +69,11 @@ def fetch_drive(file_id: str, base_path: Path | None = None) -> FetchResult | Fe
         )
 
 
-def fetch_folder(folder_id: str, title: str, metadata: dict[str, Any], *, base_path: Path | None = None) -> FetchResult:
+def fetch_folder(folder_id: str, title: str, metadata: dict[str, Any], *, base_path: Path | None = None, recursive: bool = False) -> FetchResult:
     """Fetch Drive folder — deposit directory listing as content.md."""
+    if recursive:
+        return _fetch_folder_recursive(folder_id, title, base_path=base_path)
+
     listing = adapter_list_folder(folder_id)
     content = extract_folder_content(listing, title=title)
 
@@ -113,6 +116,71 @@ def fetch_folder(folder_id: str, title: str, metadata: dict[str, Any], *, base_p
         metadata=result_meta,
         cues=cues,
     )
+
+
+def _fetch_folder_recursive(folder_id: str, title: str, *, base_path: Path | None = None) -> FetchResult:
+    """Fetch Drive folder recursively — deposit tree view as content.md."""
+    tree = adapter_list_folder_recursive(folder_id, folder_name=title)
+    content = extract_folder_tree(tree)
+
+    folder_path = get_deposit_folder("folder", title, folder_id, base_path=base_path)
+    content_path = write_content(folder_path, content)
+
+    # Count totals across the tree
+    total_files, total_folders = _count_tree(tree)
+    any_truncated = _any_truncated(tree)
+
+    extra: dict[str, Any] = {
+        "file_count": total_files,
+        "folder_count": total_folders,
+        "recursive": True,
+    }
+    if any_truncated:
+        extra["truncated"] = True
+    write_manifest(folder_path, "folder", title, folder_id, extra=extra)
+
+    result_meta: dict[str, Any] = {
+        "title": title,
+        "file_count": total_files,
+        "folder_count": total_folders,
+        "recursive": True,
+    }
+
+    cues = _build_cues(folder_path)
+    cues["file_count"] = total_files
+    cues["folder_count"] = total_folders
+    cues["recursive"] = True
+    if any_truncated:
+        cues["truncated"] = True
+
+    return FetchResult(
+        path=str(folder_path),
+        content_file=str(content_path),
+        format="markdown",
+        type="folder",
+        metadata=result_meta,
+        cues=cues,
+    )
+
+
+def _count_tree(node: "FolderTreeNode") -> tuple[int, int]:
+    """Count total files and folders in a tree."""
+    from models import FolderTreeNode  # avoid circular at module level
+    files = node.listing.file_count
+    folders = node.listing.folder_count
+    for child in node.children:
+        cf, cfo = _count_tree(child)
+        files += cf
+        folders += cfo
+    return files, folders
+
+
+def _any_truncated(node: "FolderTreeNode") -> bool:
+    """Check if any node in the tree was truncated."""
+    from models import FolderTreeNode
+    if node.listing.truncated or node.depth_truncated:
+        return True
+    return any(_any_truncated(c) for c in node.children)
 
 
 def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:

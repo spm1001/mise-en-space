@@ -185,3 +185,108 @@ class TestDoMove:
 
         assert result["error"] is True
         assert result["kind"] == "invalid_input"
+
+
+class TestBatchMove:
+    """Batch move: file_id as list[str]."""
+
+    @patch("retry.time.sleep")
+    @patch("tools.move.get_sync_client")
+    def test_batch_all_succeed(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        # dest check once + file parents per file (1 + 2 = 3 get_json calls)
+        mock_client.get_json.side_effect = [
+            {"mimeType": "application/vnd.google-apps.folder", "name": "Archive"},
+            {"id": "f1", "name": "Doc1.pdf", "parents": ["old1"], "webViewLink": ""},
+            {"id": "f2", "name": "Doc2.pdf", "parents": ["old2"], "webViewLink": ""},
+        ]
+        mock_client.patch_json.side_effect = [
+            {"id": "f1", "name": "Doc1.pdf", "parents": ["dest"], "webViewLink": ""},
+            {"id": "f2", "name": "Doc2.pdf", "parents": ["dest"], "webViewLink": ""},
+        ]
+
+        result = do_move(["f1", "f2"], "dest_folder")
+
+        assert result["batch"] is True
+        assert result["total"] == 2
+        assert result["succeeded"] == 2
+        assert result["failed"] == 0
+        assert result["operation"] == "move"
+        assert result["destination_folder_id"] == "dest_folder"
+        assert all(r["ok"] for r in result["results"])
+
+    @patch("retry.time.sleep")
+    @patch("tools.move.get_sync_client")
+    def test_batch_partial_failure(self, mock_get_client, _sleep) -> None:
+        """One file fails (404), other succeeds — partial result returned."""
+        import httpx
+        from unittest.mock import Mock
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_response = Mock()
+        mock_response.status_code = 404
+
+        mock_client.get_json.side_effect = [
+            # Destination validated once upfront
+            {"mimeType": "application/vnd.google-apps.folder", "name": "Archive"},
+            # f1: file lookup → 404
+            httpx.HTTPStatusError("not found", request=Mock(), response=mock_response),
+            # f2: file lookup OK
+            {"id": "f2", "name": "Doc2.pdf", "parents": ["old2"], "webViewLink": ""},
+        ]
+        mock_client.patch_json.return_value = {
+            "id": "f2", "name": "Doc2.pdf", "parents": ["dest"], "webViewLink": "",
+        }
+
+        result = do_move(["f1", "f2"], "dest_folder")
+
+        assert result["batch"] is True
+        assert result["total"] == 2
+        assert result["succeeded"] == 1
+        assert result["failed"] == 1
+        failed = [r for r in result["results"] if not r["ok"]]
+        assert failed[0]["file_id"] == "f1"
+
+    @patch("retry.time.sleep")
+    @patch("tools.move.get_sync_client")
+    def test_batch_invalid_destination_id(self, mock_get_client, _sleep) -> None:
+        """Invalid destination ID fails fast before any API calls."""
+        result = do_move(["f1", "f2"], "has spaces!")
+
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+        mock_get_client.assert_not_called()
+
+    @patch("retry.time.sleep")
+    @patch("tools.move.get_sync_client")
+    def test_batch_invalid_file_id_in_list(self, mock_get_client, _sleep) -> None:
+        """Invalid file ID in list fails fast before any API calls."""
+        result = do_move(["valid1", "bad id!"], "dest_folder")
+
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+        mock_get_client.assert_not_called()
+
+    @patch("retry.time.sleep")
+    @patch("tools.move.get_sync_client")
+    def test_batch_via_do_wrapper(self, mock_get_client, _sleep) -> None:
+        """do(operation='move', file_id=[...]) routes to batch path."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_client.get_json.side_effect = [
+            {"mimeType": "application/vnd.google-apps.folder", "name": "Archive"},
+            {"id": "f1", "name": "Doc.pdf", "parents": ["old"], "webViewLink": ""},
+        ]
+        mock_client.patch_json.return_value = {
+            "id": "f1", "name": "Doc.pdf", "parents": ["dest"], "webViewLink": "",
+        }
+
+        result = do(operation="move", file_id=["f1"], destination_folder_id="dest_folder")
+
+        assert result["batch"] is True
+        assert result["succeeded"] == 1

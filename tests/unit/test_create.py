@@ -95,16 +95,23 @@ class TestDoCreateValidation:
         assert result["kind"] == "invalid_input"
         assert "outside" in result["message"]
 
-    def test_sanitizes_title_control_chars(self) -> None:
-        # Title with control chars should be sanitized, not rejected
-        # (the sanitized title still works, just has control chars stripped)
-        # This test verifies the sanitization path runs without error
-        # before hitting the "no content" check
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_sync_client")
+    def test_sanitizes_title_control_chars(self, mock_get_client, _sleep) -> None:
+        # Title with control chars should be sanitized, not rejected.
+        # Must mock client — without it, this hits real Drive API and creates
+        # ghost "TitleName" docs (the \x00 gets stripped by sanitize_title).
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = {
+            "id": "new123", "name": "TitleName", "webViewLink": "", "parents": [],
+        }
         result = do_create("\x00\x01", "Title\x00Name")
-        # Will fail on "content" validation since \x00\x01 is empty after...
-        # actually content isn't sanitized, just title. Let's just verify
-        # a valid create with control-char title doesn't crash pre-API
         assert result is not None
+        # Verify the sanitized title was sent to the API
+        call_args = mock_client.upload_multipart.call_args
+        metadata = call_args[0][1]  # second positional arg is file metadata
+        assert metadata["name"] == "TitleName"  # \x00 stripped
 
 
 class TestDoCreateDoc:

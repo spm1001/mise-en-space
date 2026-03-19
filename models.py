@@ -356,6 +356,16 @@ class FolderListing:
     truncated: bool           # True if more than 300 items exist
 
 
+@dataclass
+class FolderTreeNode:
+    """A folder in a recursive tree — listing plus nested children."""
+    id: str
+    name: str
+    listing: FolderListing
+    children: list["FolderTreeNode"]
+    depth_truncated: bool = False  # True if max depth prevented further traversal
+
+
 # ============================================================================
 # SEARCH RESULT TYPES
 # ============================================================================

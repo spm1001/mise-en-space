@@ -26,6 +26,24 @@ from validation import escape_drive_query, sanitize_gmail_query, validate_drive_
 from workspace.manager import write_search_results
 
 
+# Friendly name → Drive API mimeType query clause
+_TYPE_MIME_MAP: dict[str, str] = {
+    "folder":       "mimeType = 'application/vnd.google-apps.folder'",
+    "doc":          "mimeType = 'application/vnd.google-apps.document'",
+    "document":     "mimeType = 'application/vnd.google-apps.document'",
+    "spreadsheet":  "mimeType = 'application/vnd.google-apps.spreadsheet'",
+    "sheet":        "mimeType = 'application/vnd.google-apps.spreadsheet'",
+    "slides":       "mimeType = 'application/vnd.google-apps.presentation'",
+    "presentation": "mimeType = 'application/vnd.google-apps.presentation'",
+    "pdf":          "mimeType = 'application/pdf'",
+    "image":        "mimeType contains 'image/'",
+    "video":        "mimeType contains 'video/'",
+    "form":         "mimeType = 'application/vnd.google-apps.form'",
+}
+# Canonical names for user-facing messages (alphabetical, no aliases)
+VALID_TYPE_FILTERS: frozenset[str] = frozenset(_TYPE_MIME_MAP)
+
+
 def format_drive_result(result: DriveSearchResult) -> dict[str, Any]:
     """Convert DriveSearchResult to JSON-serializable dict."""
     output: dict[str, Any] = {
@@ -145,11 +163,12 @@ def _enrich_drive_results_with_meetings(
 
 
 def do_search(
-    query: str,
+    query: str = "",
     sources: list[str] | None = None,
     max_results: int = 20,
     base_path: Path | None = None,
     folder_id: str | None = None,
+    type: str | None = None,
 ) -> SearchResult:
     """
     Search across Drive, Gmail, Activity, and Calendar.
@@ -163,7 +182,7 @@ def do_search(
     Args:
         query: Search terms (not used for activity/calendar sources —
             activity returns recent comment events, calendar returns
-            recent events with attachments).
+            recent events with attachments). Optional when type or folder_id is set.
         sources: List of sources to search (default: ['drive', 'gmail']).
             Valid sources: 'drive', 'gmail', 'activity', 'calendar'.
         max_results: Maximum results per source
@@ -171,12 +190,22 @@ def do_search(
         folder_id: Optional Drive folder ID to scope results to immediate children only.
             Non-recursive — only files directly inside this folder are returned.
             Implies sources=['drive'] when provided.
+        type: Optional Drive file type filter. Friendly names: folder, doc, spreadsheet,
+            sheet, slides, presentation, pdf, image, video, form. Applies to Drive only.
 
     Returns:
         SearchResult with path to deposited file and result counts
     """
     if sources is None:
         sources = ["drive", "gmail"]
+
+    # Resolve type filter → Drive query clause (validated by caller, guard for direct use)
+    type_clause: str | None = None
+    if type is not None:
+        type_clause = _TYPE_MIME_MAP.get(type)
+        if type_clause is None:
+            canonical = sorted(set(_TYPE_MIME_MAP) - {"document", "sheet", "presentation"})
+            raise ValueError(f"Unknown type '{type}'. Valid: {', '.join(canonical)}")
 
     # Validate folder_id before entering retry scope — ValueError here would
     # be swallowed into MiseError(UNKNOWN) by @with_retry in search_files()
@@ -206,10 +235,16 @@ def do_search(
     search_activity = "activity" in sources
     search_calendar = "calendar" in sources
 
+    if type is not None and not search_drive:
+        result.cues["type_note"] = f"type='{type}' applies to Drive only — Drive not in sources, filter ignored"
+
     def _run_drive() -> list[DriveSearchResult]:
-        escaped_query = escape_drive_query(query)
-        drive_query = f"fullText contains '{escaped_query}' and trashed = false"
-        return search_files(drive_query, max_results=max_results, folder_id=folder_id)
+        parts = ["trashed = false"]
+        if query.strip():
+            parts.append(f"fullText contains '{escape_drive_query(query)}'")
+        if type_clause:
+            parts.append(type_clause)
+        return search_files(" and ".join(parts), max_results=max_results, folder_id=folder_id)
 
     def _run_gmail() -> list[GmailSearchResult]:
         sanitized_query = sanitize_gmail_query(query)

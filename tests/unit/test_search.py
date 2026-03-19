@@ -945,3 +945,72 @@ class TestCalendarSearch:
         assert "Calendar" in result.cues.get("sources_note", "")
 
 
+class TestTypeFilter:
+    """search(type=...) applies MIME type clause to Drive query."""
+
+    @patch("tools.search.write_search_results")
+    @patch("tools.search.search_files")
+    def test_type_spreadsheet_adds_mime_clause(self, mock_drive, mock_write) -> None:
+        mock_drive.return_value = []
+        mock_write.return_value = "/tmp/fake/results.json"
+
+        do_search("budget", sources=["drive"], type="spreadsheet")
+
+        query_arg = mock_drive.call_args[0][0]
+        assert "application/vnd.google-apps.spreadsheet" in query_arg
+        assert "fullText contains 'budget'" in query_arg
+
+    @patch("tools.search.write_search_results")
+    @patch("tools.search.search_files")
+    def test_type_sheet_alias(self, mock_drive, mock_write) -> None:
+        mock_drive.return_value = []
+        mock_write.return_value = "/tmp/fake/results.json"
+
+        do_search("q4", sources=["drive"], type="sheet")
+
+        query_arg = mock_drive.call_args[0][0]
+        assert "application/vnd.google-apps.spreadsheet" in query_arg
+
+    @patch("tools.search.write_search_results")
+    @patch("tools.search.search_files")
+    def test_type_image_uses_contains_clause(self, mock_drive, mock_write) -> None:
+        """image type uses 'contains' not '=' since MIME prefix match."""
+        mock_drive.return_value = []
+        mock_write.return_value = "/tmp/fake/results.json"
+
+        do_search("logo", sources=["drive"], type="image")
+
+        query_arg = mock_drive.call_args[0][0]
+        assert "mimeType contains 'image/'" in query_arg
+
+    @patch("tools.search.write_search_results")
+    @patch("tools.search.search_files")
+    def test_type_without_query(self, mock_drive, mock_write) -> None:
+        """type without query omits fullText clause — lists all of that type."""
+        mock_drive.return_value = []
+        mock_write.return_value = "/tmp/fake/results.json"
+
+        do_search(type="folder", sources=["drive"])
+
+        query_arg = mock_drive.call_args[0][0]
+        assert "fullText" not in query_arg
+        assert "application/vnd.google-apps.folder" in query_arg
+        assert "trashed = false" in query_arg
+
+    @patch("tools.search.write_search_results")
+    @patch("tools.search.search_threads")
+    def test_type_ignored_with_no_drive_source_adds_cue(self, mock_gmail, mock_write) -> None:
+        mock_gmail.return_value = []
+        mock_write.return_value = "/tmp/fake/results.json"
+
+        result = do_search("test", sources=["gmail"], type="spreadsheet")
+
+        assert "type_note" in result.cues
+        assert "Drive not in sources" in result.cues["type_note"]
+
+    def test_invalid_type_raises(self) -> None:
+        import pytest
+        with pytest.raises(ValueError, match="Unknown type"):
+            do_search("test", type="banana")
+
+
