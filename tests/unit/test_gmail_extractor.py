@@ -96,16 +96,16 @@ class TestSignatureStripping:
         """Strip corporate signature with phone + fewer than 3 URLs."""
         text = (
             "Please see the attached report.\n\n"
-            "Ross Partington\n\n"
-            "Head of Ad Sales Research, ITV\n"
-            "Phone: +44 20 7157 3000\n"
-            "https://www.itv.com\n"
-            "https://www.itvmedia.co.uk\n"
+            "Jane Smith\n\n"
+            "Head of Research, Acme Corp\n"
+            "Phone: +44 20 7946 0958\n"
+            "https://www.example.com\n"
+            "https://www.example.co.uk\n"
         )
         result = strip_signature_and_quotes(text)
         assert "attached report" in result
-        assert "Ross Partington" not in result
-        assert "Head of Ad Sales" not in result
+        assert "Jane Smith" not in result
+        assert "Head of Research" not in result
         assert "itv.com" not in result
 
     def test_strips_corporate_sig_mobile_label(self):

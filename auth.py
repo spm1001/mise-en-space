@@ -37,6 +37,7 @@ from oauth_config import (
     SECRET_NAME,
     LOCAL_CREDENTIALS_FILE,
 )
+from token_store import save_token
 
 
 def _can_open_browser() -> bool:
@@ -141,8 +142,9 @@ def main() -> None:
                 code=args.code,
                 port=OAUTH_PORT,
             )
+            save_token(TOKEN_FILE)
             print()
-            print(f"Authentication complete. {TOKEN_FILE} created.")
+            print("Authentication complete.")
         else:
             # Auto mode — needs a browser
             if not _can_open_browser():
@@ -154,8 +156,9 @@ def main() -> None:
                 scopes=SCOPES,
                 port=OAUTH_PORT,
             )
+            save_token(TOKEN_FILE)
             print()
-            print(f"Authentication complete. {TOKEN_FILE} created.")
+            print("Authentication complete.")
     except KeyboardInterrupt:
         print("\n\nAuthentication cancelled")
         sys.exit(1)

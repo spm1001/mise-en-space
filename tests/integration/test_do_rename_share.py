@@ -100,12 +100,12 @@ def test_share_preview(cleanup_created_files: list[str]) -> None:
     """Share without confirm returns preview, does NOT create permissions."""
     file_id = _create_test_doc(cleanup_created_files, "mise-test-share-preview")
 
-    result = do(operation="share", file_id=file_id, to="sameer_modha@icloud.com")
+    result = do(operation="share", file_id=file_id, to="test-share@example.com")
 
     assert result.get("preview") is True
     assert "Would share" in result["message"]
     assert result["role"] == "reader"
-    assert result["shared_with"] == ["sameer_modha@icloud.com"]
+    assert result["shared_with"] == ["test-share@example.com"]
 
     # Verify no permissions were created (only owner should exist)
     client = get_sync_client()
@@ -114,7 +114,7 @@ def test_share_preview(cleanup_created_files: list[str]) -> None:
         params={"fields": "permissions(emailAddress,role)"},
     )
     emails = [p.get("emailAddress", "") for p in perms.get("permissions", [])]
-    assert "sameer_modha@icloud.com" not in emails
+    assert "test-share@example.com" not in emails
 
 
 # --- Share: Confirmed ---
@@ -127,15 +127,15 @@ def test_share_confirmed_non_google_account(cleanup_created_files: list[str]) ->
 
     result = do(
         operation="share", file_id=file_id,
-        to="sameer_modha@icloud.com", confirm=True,
+        to="test-share@example.com", confirm=True,
     )
 
     assert "error" not in result, f"Share failed: {result}"
     assert result["operation"] == "share"
     assert result["cues"]["role"] == "reader"
-    assert result["cues"]["shared_with"] == ["sameer_modha@icloud.com"]
+    assert result["cues"]["shared_with"] == ["test-share@example.com"]
     # Non-Google account triggers notification fallback
-    assert "sameer_modha@icloud.com" in result["cues"]["notified"]
+    assert "test-share@example.com" in result["cues"]["notified"]
     assert "notification_note" in result["cues"]
 
     # Verify permission exists
@@ -145,8 +145,8 @@ def test_share_confirmed_non_google_account(cleanup_created_files: list[str]) ->
         params={"fields": "permissions(emailAddress,role)"},
     )
     perm_map = {p.get("emailAddress"): p["role"] for p in perms.get("permissions", [])}
-    assert "sameer_modha@icloud.com" in perm_map
-    assert perm_map["sameer_modha@icloud.com"] == "reader"
+    assert "test-share@example.com" in perm_map
+    assert perm_map["test-share@example.com"] == "reader"
 
 
 @pytest.mark.integration
@@ -156,12 +156,12 @@ def test_share_with_role_non_google(cleanup_created_files: list[str]) -> None:
 
     result = do(
         operation="share", file_id=file_id,
-        to="sameer_modha@icloud.com", role="writer", confirm=True,
+        to="test-share@example.com", role="writer", confirm=True,
     )
 
     assert "error" not in result, f"Share failed: {result}"
     assert result["cues"]["role"] == "writer"
-    assert "sameer_modha@icloud.com" in result["cues"]["notified"]
+    assert "test-share@example.com" in result["cues"]["notified"]
 
     client = get_sync_client()
     perms = client.get_json(
@@ -169,7 +169,7 @@ def test_share_with_role_non_google(cleanup_created_files: list[str]) -> None:
         params={"fields": "permissions(emailAddress,role)"},
     )
     perm_map = {p.get("emailAddress"): p["role"] for p in perms.get("permissions", [])}
-    assert perm_map.get("sameer_modha@icloud.com") == "writer"
+    assert perm_map.get("test-share@example.com") == "writer"
 
 
 @pytest.mark.integration
@@ -177,7 +177,7 @@ def test_share_nonexistent_file() -> None:
     """Share a file that doesn't exist returns error."""
     result = do(
         operation="share", file_id="nonexistent_file_id_xyz",
-        to="sameer_modha@icloud.com", confirm=True,
+        to="test-share@example.com", confirm=True,
     )
 
     assert "error" in result

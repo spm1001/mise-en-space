@@ -174,4 +174,4 @@ uv run python -m auth --code URL_OR_CODE  # Non-interactive (for Claude/scripts)
 
 ## Field Reports
 
-`field-reports/` captures real-world skill/tool gaps. Pattern: notice gap → write field report → fix → commit together.
+`docs/` contains field reports capturing real-world skill/tool gaps. Pattern: notice gap → write field report → fix → commit together.

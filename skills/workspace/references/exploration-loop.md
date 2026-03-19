@@ -25,7 +25,7 @@ When search returns a Drive file, check for `email_context`:
   "name": "Strawman Framework.docx",
   "email_context": {
     "message_id": "19b2d00b5124952e",
-    "from": "Anthony.Jones@thinkbox.tv",
+    "from": "alice.jones@example.com",
     "subject": "Lantern - data & privacy"
   }
 }

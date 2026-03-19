@@ -140,11 +140,11 @@ See `references/exploration-loop.md` for a worked example.
 
 ```python
 # BAD — keyword soup returns noise
-search("Elizabeth Kiernan Lantern data privacy contracts")
+search("Elizabeth Smith Project Alpha data privacy contracts")
 
 # GOOD — operators target precisely
 search("from:elizabeth@example.com after:2025/12/01", sources=["gmail"])
-search("filename:strawman from:legal@thinkbox.tv", sources=["gmail"])
+search("filename:strawman from:legal@example.com", sources=["gmail"])
 search("has:attachment subject:lantern after:2025/12/01", sources=["gmail"])
 ```
 

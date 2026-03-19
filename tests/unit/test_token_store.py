@@ -1,0 +1,239 @@
+"""Tests for token_store — Keychain-backed OAuth token persistence."""
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock, call, patch
+
+import pytest
+
+from token_store import (
+    KEYCHAIN_SERVICE,
+    get_from_keychain,
+    store_to_keychain,
+    delete_from_keychain,
+    resolve_token_path,
+    save_token,
+    has_token,
+)
+
+# Sample token payload used across tests
+SAMPLE_TOKEN = json.dumps({
+    "access_token": "ya29.test",
+    "refresh_token": "1//test-refresh",
+    "client_id": "test-client.apps.googleusercontent.com",
+    "token_uri": "https://oauth2.googleapis.com/token",
+})
+
+SAMPLE_TOKEN_HEX = SAMPLE_TOKEN.encode("utf-8").hex()
+
+
+def _mock_security_success(stdout: str = "") -> MagicMock:
+    """Return a CompletedProcess mimicking a successful `security` call."""
+    result = MagicMock(spec=subprocess.CompletedProcess)
+    result.stdout = stdout
+    result.returncode = 0
+    return result
+
+
+# =============================================================================
+# get_from_keychain()
+# =============================================================================
+
+
+class TestGetFromKeychain:
+    """Reading tokens from macOS Keychain via `security find-generic-password`."""
+
+    @patch("token_store.subprocess.run")
+    @patch("token_store._has_keychain", return_value=True)
+    def test_plain_json(self, _kc, mock_run):
+        """Plain JSON returned by `security -w` is passed through unchanged."""
+        mock_run.return_value = _mock_security_success(stdout=SAMPLE_TOKEN + "\n")
+        result = get_from_keychain()
+        assert result == SAMPLE_TOKEN
+        parsed = json.loads(result)
+        assert parsed["access_token"] == "ya29.test"
+
+    @patch("token_store.subprocess.run")
+    @patch("token_store._has_keychain", return_value=True)
+    def test_hex_encoded_json(self, _kc, mock_run):
+        """Long passwords are hex-encoded by `security` — decode transparently."""
+        mock_run.return_value = _mock_security_success(stdout=SAMPLE_TOKEN_HEX + "\n")
+        result = get_from_keychain()
+        assert result == SAMPLE_TOKEN
+
+    @patch("token_store.subprocess.run")
+    @patch("token_store._has_keychain", return_value=True)
+    def test_invalid_data_returns_none(self, _kc, mock_run):
+        """Garbled data that isn't JSON or valid hex → None (don't raise)."""
+        mock_run.return_value = _mock_security_success(stdout="not-json-not-hex\n")
+        assert get_from_keychain() is None
+
+    @patch("token_store._has_keychain", return_value=False)
+    def test_no_keychain_returns_none(self, _kc):
+        """Non-macOS or missing `security` binary → None without subprocess calls."""
+        assert get_from_keychain() is None
+
+    @patch("token_store.subprocess.run", side_effect=subprocess.CalledProcessError(44, "security"))
+    @patch("token_store._has_keychain", return_value=True)
+    def test_keychain_item_not_found(self, _kc, _run):
+        """Missing Keychain entry (exit 44) → None, no exception propagated."""
+        assert get_from_keychain() is None
+
+
+# =============================================================================
+# store_to_keychain()
+# =============================================================================
+
+
+class TestStoreToKeychain:
+    """Writing tokens to macOS Keychain via `security add-generic-password`."""
+
+    @patch("token_store.subprocess.run")
+    @patch("token_store._has_keychain", return_value=True)
+    def test_success(self, _kc, mock_run):
+        """Delete-then-add sequence succeeds → True."""
+        mock_run.return_value = _mock_security_success()
+        assert store_to_keychain(SAMPLE_TOKEN) is True
+        # First call: delete old entry; second call: add new entry
+        assert mock_run.call_count == 2
+        add_call = mock_run.call_args_list[1]
+        assert "add-generic-password" in add_call[0][0]
+
+    @patch("token_store.subprocess.run")
+    @patch("token_store._has_keychain", return_value=True)
+    def test_add_failure_returns_false(self, _kc, mock_run):
+        """If `security add-generic-password` fails → False."""
+        # Delete succeeds, add raises
+        mock_run.side_effect = [
+            _mock_security_success(),
+            subprocess.CalledProcessError(1, "security"),
+        ]
+        assert store_to_keychain(SAMPLE_TOKEN) is False
+
+    @patch("token_store._has_keychain", return_value=False)
+    def test_no_keychain_returns_false(self, _kc):
+        """Non-macOS → False without subprocess calls."""
+        assert store_to_keychain(SAMPLE_TOKEN) is False
+
+
+# =============================================================================
+# delete_from_keychain()
+# =============================================================================
+
+
+class TestDeleteFromKeychain:
+    """Removing tokens from macOS Keychain."""
+
+    @patch("token_store.subprocess.run")
+    @patch("token_store._has_keychain", return_value=True)
+    def test_success(self, _kc, mock_run):
+        mock_run.return_value = _mock_security_success()
+        assert delete_from_keychain() is True
+
+    @patch("token_store.subprocess.run", side_effect=subprocess.CalledProcessError(44, "security"))
+    @patch("token_store._has_keychain", return_value=True)
+    def test_not_found_returns_false(self, _kc, _run):
+        assert delete_from_keychain() is False
+
+    @patch("token_store._has_keychain", return_value=False)
+    def test_no_keychain_returns_false(self, _kc):
+        assert delete_from_keychain() is False
+
+
+# =============================================================================
+# resolve_token_path()
+# =============================================================================
+
+
+class TestResolveTokenPath:
+    """Materializing a token file from Keychain for jeton.load_credentials()."""
+
+    @patch("token_store.get_from_keychain", return_value=SAMPLE_TOKEN)
+    def test_keychain_writes_to_fallback(self, _kc, tmp_path):
+        """Keychain token is written to fallback_path so jeton can read it."""
+        token_file = tmp_path / "token.json"
+        result = resolve_token_path(token_file)
+        assert result == token_file
+        assert token_file.exists()
+        assert json.loads(token_file.read_text())["access_token"] == "ya29.test"
+
+    @patch("token_store.get_from_keychain", return_value=None)
+    def test_no_keychain_returns_fallback_path(self, _kc, tmp_path):
+        """No Keychain entry → return fallback_path as-is (may not exist)."""
+        token_file = tmp_path / "token.json"
+        result = resolve_token_path(token_file)
+        assert result == token_file
+        assert not token_file.exists()
+
+    @patch("token_store.get_from_keychain", return_value=None)
+    def test_existing_file_returned_without_keychain(self, _kc, tmp_path):
+        """Pre-existing file on disk is returned when Keychain is empty."""
+        token_file = tmp_path / "token.json"
+        token_file.write_text(SAMPLE_TOKEN)
+        result = resolve_token_path(token_file)
+        assert result == token_file
+        assert token_file.exists()
+
+
+# =============================================================================
+# save_token()
+# =============================================================================
+
+
+class TestSaveToken:
+    """Persisting a freshly-written token.json into Keychain."""
+
+    @patch("token_store.store_to_keychain", return_value=True)
+    def test_stores_and_removes_file(self, mock_store, tmp_path):
+        """Success: token pushed to Keychain, file deleted."""
+        token_file = tmp_path / "token.json"
+        token_file.write_text(SAMPLE_TOKEN)
+        save_token(token_file)
+        mock_store.assert_called_once_with(SAMPLE_TOKEN)
+        assert not token_file.exists()
+
+    @patch("token_store.store_to_keychain", return_value=False)
+    def test_keychain_failure_keeps_file(self, mock_store, tmp_path):
+        """Keychain failure: file stays on disk as fallback."""
+        token_file = tmp_path / "token.json"
+        token_file.write_text(SAMPLE_TOKEN)
+        save_token(token_file)
+        mock_store.assert_called_once()
+        assert token_file.exists()
+
+    @patch("token_store.store_to_keychain")
+    def test_missing_file_is_noop(self, mock_store, tmp_path):
+        """Non-existent token file → early return, no Keychain call."""
+        token_file = tmp_path / "token.json"
+        save_token(token_file)
+        mock_store.assert_not_called()
+
+
+# =============================================================================
+# has_token()
+# =============================================================================
+
+
+class TestHasToken:
+    """Checking whether any token source is available."""
+
+    @patch("token_store.get_from_keychain", return_value=SAMPLE_TOKEN)
+    def test_keychain_present(self, _kc, tmp_path):
+        """Keychain has a token → True regardless of file."""
+        token_file = tmp_path / "token.json"
+        assert has_token(token_file) is True
+
+    @patch("token_store.get_from_keychain", return_value=None)
+    def test_file_present(self, _kc, tmp_path):
+        """No Keychain, but file exists → True."""
+        token_file = tmp_path / "token.json"
+        token_file.write_text(SAMPLE_TOKEN)
+        assert has_token(token_file) is True
+
+    @patch("token_store.get_from_keychain", return_value=None)
+    def test_neither_present(self, _kc, tmp_path):
+        """No Keychain, no file → False."""
+        token_file = tmp_path / "token.json"
+        assert has_token(token_file) is False

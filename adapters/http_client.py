@@ -32,6 +32,7 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 
 from jeton import load_credentials
 from oauth_config import TOKEN_FILE, SCOPES
+from token_store import resolve_token_path
 
 # Default timeout for Google API calls
 API_TIMEOUT = 60
@@ -53,10 +54,11 @@ class MiseHttpClient:
                 max_keepalive_connections=10,
             ),
         )
-        self._credentials = load_credentials(TOKEN_FILE, scopes=SCOPES)
+        token_path = resolve_token_path(TOKEN_FILE)
+        self._credentials = load_credentials(token_path, scopes=SCOPES)
         if self._credentials is None:
             raise FileNotFoundError(
-                f"{TOKEN_FILE} not found or invalid. Run: uv run python -m auth"
+                "No OAuth token found (checked Keychain and token.json). Run: uv run python -m auth"
             )
 
     def _ensure_valid_token(self) -> None:
@@ -238,10 +240,11 @@ class MiseSyncClient:
                 max_keepalive_connections=10,
             ),
         )
-        self._credentials = load_credentials(TOKEN_FILE, scopes=SCOPES)
+        token_path = resolve_token_path(TOKEN_FILE)
+        self._credentials = load_credentials(token_path, scopes=SCOPES)
         if self._credentials is None:
             raise FileNotFoundError(
-                f"{TOKEN_FILE} not found or invalid. Run: uv run python -m auth"
+                "No OAuth token found (checked Keychain and token.json). Run: uv run python -m auth"
             )
 
     def _ensure_valid_token(self) -> None:
