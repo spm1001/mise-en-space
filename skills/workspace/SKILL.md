@@ -105,6 +105,7 @@ fetch("1abc...", base_path="...")                          # Drive file
 fetch("https://docs.google.com/...", base_path="...")      # Drive URL
 fetch("18f3a4b...", base_path="...")                       # Gmail thread
 fetch("thread_id", attachment="budget.xlsx", base_path="...")  # Single attachment
+fetch("folder_id", base_path="...", recursive=True)        # Full folder tree (depth 5, 1000 items max)
 ```
 
 **Gmail URL gotcha:** Browser URLs contain web-format IDs (`FMfcgz...`), not API IDs. The MCP converts automatically, but conversion fails for self-sent emails (~2018+). If fetch errors on a Gmail URL, ask the user for the thread ID.
@@ -159,7 +160,14 @@ Drive search uses plain keywords — **not Gmail operators.** `from:`, `is:starr
 ```python
 search("Q4 budget", sources=["drive"], base_path="...")     # Drive only
 search("budget 2026", base_path="...")                       # Both sources
+
+# Type filter — narrows Drive results by file type (query optional)
+search(type="spreadsheet", base_path="...")                  # All spreadsheets
+search("budget", type="spreadsheet", base_path="...")        # Budget spreadsheets only
+search(type="folder", sources=["drive"], base_path="...")    # List folders
 ```
+
+Type values: `folder`, `doc`, `spreadsheet` / `sheet`, `slides` / `presentation`, `pdf`, `image`, `video`, `form`. Type filter applies to Drive only — ignored for Gmail.
 
 ### Triage Large Results
 
@@ -204,7 +212,7 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 | Operation | What it does | Key params |
 |-----------|-------------|------------|
 | `create` | New Doc/Sheet/Slides/plain file | `content`+`title` OR `source` |
-| `move` | Move file between folders | `file_id`, `destination_folder_id` |
+| `move` | Move file(s) between folders — single or batch | `file_id` (str or list), `destination_folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
 | `share` | Share file with people (confirm gate) | `file_id`, `to`, `confirm=True` |
 | `overwrite` | Replace full file content (Google Doc or plain file) | `file_id`, `content` OR `source` |
@@ -247,8 +255,12 @@ do(operation="create", content="<svg>...</svg>", title="diagram.svg", doc_type="
 do(operation="create", content="# Notes\n\nContent here", title="notes.md", doc_type="file")
 do(operation="create", content='{"key": "value"}', title="config.json", doc_type="file")
 
-# Move
+# Move single file
 do(operation="move", file_id="1abc...", destination_folder_id="1xyz...")
+
+# Batch move — validates destination once, returns per-file summary
+do(operation="move", file_id=["1abc...", "1def...", "1ghi..."], destination_folder_id="1xyz...")
+# Returns: {batch: true, total: 3, succeeded: 2, failed: 1, results: [...]}
 ```
 
 **Create:** Without `folder_id`, the doc lands in Drive root. Response includes `cues.folder` showing where it landed. Use `doc_type="file"` for plain files (markdown, SVG, JSON, YAML, etc.) — MIME type is inferred from the title extension. The file stays as-is in Drive, no conversion to Google format. Response includes `cues.plain_file` and `cues.mime_type`.

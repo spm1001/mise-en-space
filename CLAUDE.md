@@ -60,9 +60,12 @@ docs/           Design documents and references
 
 **Key behaviors:**
 - `search` returns metadata only — Claude triages before fetching
+- `search` accepts `type=` for MIME filter: `folder`, `doc`, `spreadsheet`/`sheet`, `slides`, `pdf`, `image`, `video`, `form`. `query` is optional when `type` or `folder_id` is set.
 - `fetch` auto-detects ID type (Drive file ID vs Gmail thread ID)
 - `fetch` accepts optional `attachment` param for extracting specific Gmail attachments
+- `fetch` accepts `recursive=True` on folder IDs — returns full indented tree (max depth 5, 1000 items)
 - `do` routes via `operation` param — `do(operation="create", ...)`
+- `do(move)` accepts `file_id` as a list for batch moves — validates destination once, returns per-file summary
 - **Comments included automatically** — open comments deposited as `comments.md`
 - **Cues in every response** — `cues` block surfaces files, comment count, warnings, email context
 - `base_path` is required on all tools in stdio mode — MCP servers run as separate processes, `Path.cwd()` is theirs not Claude's. In remote mode, `base_path` is optional (temp dir used automatically).
