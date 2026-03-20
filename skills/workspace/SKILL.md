@@ -390,6 +390,60 @@ fetch("thread_id", attachment="budget.xlsx", base_path="...")
 
 See `references/deposit-structure.md` for the full attachment layout.
 
+## Workflow 5: Folder Triage
+
+**When:** "Organise this Drive folder" / "What's in this folder?" / "Move all the spreadsheets into one place"
+
+Three-step loop: explore → understand → batch-move.
+
+### Step 1: Find subfolders
+
+```python
+# Find subfolders inside a parent (query optional — type alone is enough)
+search(type="folder", folder_id="<parent_id>", base_path="...")
+
+# Or search by name if you don't have the parent ID
+search("Q4 reports", type="folder", base_path="...")
+```
+
+### Step 2: Explore the tree
+
+```python
+# Recursive fetch — builds full indented tree, capped at depth 5 / 1000 items
+fetch("<folder_id>", recursive=True, base_path="...")
+```
+
+The deposited `content.md` shows the full hierarchy with file IDs. Read it to understand what's where.
+
+**If the tree is truncated** (`cues["truncated"] is True`): the cap was hit. Fetch individual subfolders separately to explore those branches:
+
+```python
+fetch("<subfolder_id>", recursive=True, base_path="...")  # repeat per branch
+```
+
+### Step 3: Batch move
+
+```python
+# Move multiple files in one call — validates destination once, per-file summary
+do(
+    operation="move",
+    file_id=["<id1>", "<id2>", "<id3>"],
+    destination_folder_id="<dest_id>",
+    base_path="..."
+)
+# Returns: {batch: true, total: 3, succeeded: 2, failed: 1, results: [...]}
+```
+
+Check `results` in the response — each entry has its own `ok`/`error`. A failed move on one file doesn't block the others.
+
+### Anti-patterns
+
+| Pattern | Problem | Fix |
+|---------|---------|-----|
+| Assume truncated tree is complete | Miss files in capped branches | Check `cues["truncated"]` and fetch sub-branches |
+| Search with full-text query for type filter | Unnecessary, adds noise | `type="folder"` alone is enough with a `folder_id` |
+| Move files one at a time | Slow, no batch summary | Pass `file_id` as a list |
+
 ## Error Handling
 
 | Error | Meaning | What to do |

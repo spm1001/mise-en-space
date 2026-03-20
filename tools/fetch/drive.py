@@ -152,6 +152,10 @@ def _fetch_folder_recursive(folder_id: str, title: str, *, base_path: Path | Non
     cues["recursive"] = True
     if any_truncated:
         cues["truncated"] = True
+        cues["truncation_note"] = (
+            "Recursive traversal was capped (depth 5 or 1000 items) — some subfolders not shown. "
+            "Fetch individual subfolders to explore further."
+        )
 
     return FetchResult(
         path=str(folder_path),

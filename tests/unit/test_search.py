@@ -1014,3 +1014,42 @@ class TestTypeFilter:
             do_search("test", type="banana")
 
 
+# ============================================================================
+# SERVER.PY SEARCH() VALIDATION (MCP entry point early-return paths)
+# ============================================================================
+
+class TestSearchMCPValidation:
+    """server.search() early-return validation paths (before do_search is called)."""
+
+    def test_invalid_type_returns_error(self) -> None:
+        import server
+        from server import search
+        with patch.object(server, "_REMOTE_MODE", False), \
+             patch("server.do_search") as mock_do:
+            result = search(query="test", type="banana", base_path="/tmp")
+        assert result.get("error") is True
+        assert result.get("kind") == "invalid_input"
+        assert "banana" in result.get("message", "")
+        mock_do.assert_not_called()
+
+    def test_empty_query_no_type_no_folder_returns_error(self) -> None:
+        import server
+        from server import search
+        with patch.object(server, "_REMOTE_MODE", False), \
+             patch("server.do_search") as mock_do:
+            result = search(query="", base_path="/tmp")
+        assert result.get("error") is True
+        assert result.get("kind") == "invalid_input"
+        mock_do.assert_not_called()
+
+    def test_missing_base_path_returns_error_in_stdio_mode(self) -> None:
+        import server
+        from server import search
+        with patch.object(server, "_REMOTE_MODE", False), \
+             patch("server.do_search") as mock_do:
+            result = search(query="something")
+        assert result.get("error") is True
+        assert result.get("kind") == "invalid_input"
+        assert "base_path" in result.get("message", "")
+        mock_do.assert_not_called()
+

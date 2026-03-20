@@ -204,3 +204,27 @@ class TestFetchFolderRecursiveWiring:
         result = fetch_folder("root", "Root", {}, base_path=Path("/tmp"), recursive=False)
         mock_flat.assert_called_once_with("root")
         assert result.cues.get("recursive") is None
+
+    @patch("tools.fetch.drive.adapter_list_folder_recursive")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
+    def test_truncated_tree_emits_cue(
+        self, mock_manifest, mock_write, mock_folder, mock_recursive
+    ):
+        from tools.fetch.drive import fetch_folder
+        from pathlib import Path
+
+        mock_folder.return_value = Path("/tmp/test-folder")
+        mock_write.return_value = Path("/tmp/test-folder/content.md")
+        mock_recursive.return_value = FolderTreeNode(
+            id="root", name="Root",
+            listing=_make_listing(subfolders=[("s1", "Deep")]),
+            children=[],
+            depth_truncated=True,
+        )
+
+        result = fetch_folder("root", "Root", {}, base_path=Path("/tmp"), recursive=True)
+        assert result.cues.get("truncated") is True
+        assert "truncation_note" in result.cues
+        assert "subfolders" in result.cues["truncation_note"]

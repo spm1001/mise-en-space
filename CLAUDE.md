@@ -148,6 +148,18 @@ uv run mypy models.py extractors/ adapters/ validation.py workspace/
 
 Integration tests require `-m integration` flag and real credentials.
 
+### Call Log
+
+Every MCP tool call is logged to `~/.local/share/mise/calls.jsonl` (5 MB rotation, 3 backups). Fields: `ts`, `tool`, `params`, `ok`, `error` (on failure), `result` (key summary fields). Useful for debugging ghost docs, bad params, or unexpected tool behaviour without adding print statements.
+
+```bash
+# Last 10 calls
+tail -10 ~/.local/share/mise/calls.jsonl | python3 -c "import json,sys; [print(json.dumps(json.loads(l), indent=2)) for l in sys.stdin]"
+
+# Failed calls only
+grep '"ok": false' ~/.local/share/mise/calls.jsonl | tail -5
+```
+
 ## OAuth
 
 ```bash
