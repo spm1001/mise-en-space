@@ -8,7 +8,10 @@
       "mcp__workspace__get_comments",
       "mcp__mise__search",
       "mcp__mise__fetch",
-      "mcp__mise__do"
+      "mcp__mise__do",
+      "mcp__plugin_mise_mise__do",
+      "mcp__plugin_mise_mise__fetch",
+      "mcp__plugin_mise_mise__search"
     ]
   },
   "enableAllProjectMcpServers": true,
