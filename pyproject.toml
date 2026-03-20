@@ -24,7 +24,7 @@ mise = "cli:main"
 
 [project.optional-dependencies]
 macos = [
-    "pyobjc-framework-Quartz>=10.0",
+    "pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'",
 ]
 dev = [
     "pytest>=8.0.0",
