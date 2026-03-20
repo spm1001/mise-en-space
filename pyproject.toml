@@ -1,6 +1,6 @@
 [project]
 name = "mise-en-space"
-version = "0.3.0"
+dynamic = ["version"]
 description = "Google Workspace MCP — mise-en-place for knowledge work"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -37,6 +37,10 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = ".claude-plugin/plugin.json"
+pattern = "\"version\":\\s*\"(?P<version>[^\"]+)\""
 
 [tool.hatch.metadata]
 allow-direct-references = true
