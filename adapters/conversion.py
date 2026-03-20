@@ -87,6 +87,13 @@ def convert_via_drive(
     Raises:
         ValueError: If no source provided or conflicting sources
     """
+    # Validate inputs before auth
+    if not source_file_id:
+        if file_bytes is None and file_path is None:
+            raise ValueError("Must provide file_bytes, file_path, or source_file_id")
+        if file_bytes is not None and file_path is not None:
+            raise ValueError("Cannot provide both file_bytes and file_path")
+
     client = get_sync_client()
     warnings: list[str] = []
 
@@ -105,10 +112,6 @@ def convert_via_drive(
         temp_id = copied["id"]
     else:
         # Upload with conversion (from disk or in-memory)
-        if file_bytes is None and file_path is None:
-            raise ValueError("Must provide file_bytes, file_path, or source_file_id")
-        if file_bytes is not None and file_path is not None:
-            raise ValueError("Cannot provide both file_bytes and file_path")
 
         if file_path is not None:
             upload_bytes = file_path.read_bytes()
@@ -166,6 +169,13 @@ def upload_and_convert(
     Returns:
         Temp file ID in Drive (as Google Workspace format)
     """
+    # Validate inputs before auth
+    if not source_file_id:
+        if file_bytes is None and file_path is None:
+            raise ValueError("Must provide file_bytes, file_path, or source_file_id")
+        if file_bytes is not None and file_path is not None:
+            raise ValueError("Cannot provide both file_bytes and file_path")
+
     client = get_sync_client()
     target_mime = CONVERSION_TARGETS[target_type]
     temp_name = f"{temp_name_prefix}{file_id_hint}" if file_id_hint else temp_name_prefix
@@ -178,10 +188,6 @@ def upload_and_convert(
         )
         return copied["id"]
     else:
-        if file_bytes is None and file_path is None:
-            raise ValueError("Must provide file_bytes, file_path, or source_file_id")
-        if file_bytes is not None and file_path is not None:
-            raise ValueError("Cannot provide both file_bytes and file_path")
 
         if file_path is not None:
             upload_bytes = file_path.read_bytes()
