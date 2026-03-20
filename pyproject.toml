@@ -1,6 +1,6 @@
 [project]
 name = "mise-en-space"
-version = "0.2.0"
+version = "0.3.0"
 description = "Google Workspace MCP — mise-en-place for knowledge work"
 readme = "README.md"
 requires-python = ">=3.11"
