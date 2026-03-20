@@ -43,7 +43,7 @@ from adapters.conversion import cleanup_orphaned_temp_files
 from adapters.drive import get_file_metadata
 from logging_config import configure_call_logging, log_mcp_call
 from tools import do_search, do_fetch, do_create, do_move, do_rename, do_share, do_overwrite, do_prepend, do_append, do_replace_text, do_draft, do_reply_draft, do_archive, do_star, do_label, OPERATIONS
-from tools.search import VALID_TYPE_FILTERS
+from tools.search import VALID_TYPE_FILTERS, CANONICAL_TYPE_NAMES
 from models import DoResult, FetchResult, MiseError
 from resources.tools import get_tool_registry
 
@@ -201,9 +201,8 @@ def search(
                 "message": "search requires at least one of: query, type, or folder_id"}
 
     if type is not None and type not in VALID_TYPE_FILTERS:
-        canonical = sorted(VALID_TYPE_FILTERS - {"document", "sheet", "presentation"})
         return {"error": True, "kind": "invalid_input",
-                "message": f"Unknown type '{type}'. Valid: {', '.join(canonical)}"}
+                "message": f"Unknown type '{type}'. Valid: {', '.join(sorted(CANONICAL_TYPE_NAMES))}"}
 
     call_params: dict[str, Any] = {"query": query, "sources": sources, "max_results": max_results}
     if folder_id:

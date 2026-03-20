@@ -40,8 +40,12 @@ _TYPE_MIME_MAP: dict[str, str] = {
     "video":        "mimeType contains 'video/'",
     "form":         "mimeType = 'application/vnd.google-apps.form'",
 }
-# Canonical names for user-facing messages (alphabetical, no aliases)
+# Aliases that map to the same MIME as another key — excluded from error messages
+_TYPE_ALIASES: frozenset[str] = frozenset({"document", "sheet", "presentation"})
+# All accepted values (includes aliases)
 VALID_TYPE_FILTERS: frozenset[str] = frozenset(_TYPE_MIME_MAP)
+# Canonical names for user-facing messages (no aliases, alphabetical)
+CANONICAL_TYPE_NAMES: frozenset[str] = VALID_TYPE_FILTERS - _TYPE_ALIASES
 
 
 def format_drive_result(result: DriveSearchResult) -> dict[str, Any]:
@@ -204,8 +208,7 @@ def do_search(
     if type is not None:
         type_clause = _TYPE_MIME_MAP.get(type)
         if type_clause is None:
-            canonical = sorted(set(_TYPE_MIME_MAP) - {"document", "sheet", "presentation"})
-            raise ValueError(f"Unknown type '{type}'. Valid: {', '.join(canonical)}")
+            raise ValueError(f"Unknown type '{type}'. Valid: {', '.join(sorted(CANONICAL_TYPE_NAMES))}")
 
     # Validate folder_id before entering retry scope — ValueError here would
     # be swallowed into MiseError(UNKNOWN) by @with_retry in search_files()
