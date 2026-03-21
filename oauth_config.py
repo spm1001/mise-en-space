@@ -47,8 +47,8 @@ OAUTH_PORT = 3000
 LOCAL_CREDENTIALS_FILE = _PACKAGE_ROOT / 'credentials.json'
 
 # GCP Secret Manager (optional — used by maintainer when local credentials.json absent)
-GCP_PROJECT = 'mit-workspace-mcp-server'
-SECRET_NAME = 'mise-credentials'
+GCP_PROJECT = 'planetmodha-tools'
+SECRET_NAME = 'aby-hemimi-credentials'
 
 # Plugin data directory — version-stable, survives plugin cache upgrades.
 # Claude Code creates ~/.claude/plugins/data/{name}-{publisher}/ automatically.
