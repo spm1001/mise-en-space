@@ -1137,6 +1137,30 @@ class TestLookupExfiltrated:
 # ============================================================================
 
 
+class TestSearchFilesCreatedTime:
+    """Test that created_time is populated from Drive API response."""
+
+    def test_created_time_parsed(self) -> None:
+        mock_client = MagicMock()
+        mock_client.get_json.return_value = {
+            "files": [{
+                "id": "abc123",
+                "name": "Test",
+                "mimeType": "application/pdf",
+                "createdTime": "2025-12-01T09:00:00.000Z",
+                "modifiedTime": "2026-01-15T10:30:00.000Z",
+            }]
+        }
+
+        with patch("adapters.drive.get_sync_client", return_value=mock_client):
+            results = search_files("trashed = false")
+
+        assert results[0].created_time is not None
+        assert results[0].created_time.year == 2025
+        assert results[0].created_time.month == 12
+        assert results[0].modified_time is not None
+
+
 class TestSearchFilesScoped:
     """Test folder_id scoping in search_files."""
 

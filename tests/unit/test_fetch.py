@@ -1226,6 +1226,29 @@ class TestFetchDoc:
         manifest_extra = mock_manifest.call_args[1].get("extra") or mock_manifest.call_args[0][4] if len(mock_manifest.call_args[0]) > 4 else mock_manifest.call_args[1]["extra"]
         assert "warnings" in manifest_extra
 
+    @patch("tools.fetch.drive.fetch_document")
+    @patch("tools.fetch.drive.extract_doc_content", return_value="# Doc")
+    @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/doc"))
+    @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/doc/content.md"))
+    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
+    @patch("tools.fetch.drive.write_manifest")
+    def test_doc_manifest_includes_dates(self, mock_manifest, mock_comments, mock_write, mock_folder, mock_extract, mock_fetch):
+        """File dates from Drive metadata appear in manifest extra."""
+        mock_doc = MagicMock()
+        mock_doc.tabs = [MagicMock()]
+        mock_doc.warnings = []
+        mock_fetch.return_value = mock_doc
+
+        metadata = _drive_metadata("application/vnd.google-apps.document")
+        metadata["createdTime"] = "2025-12-01T09:00:00.000Z"
+        metadata["modifiedTime"] = "2026-01-15T10:30:00.000Z"
+
+        fetch_doc("doc1", "My Doc", metadata)
+
+        extra = mock_manifest.call_args[1]["extra"]
+        assert extra["created_time"] == "2025-12-01T09:00:00.000Z"
+        assert extra["modified_time"] == "2026-01-15T10:30:00.000Z"
+
 
 class TestFetchSheet:
     """Tests for fetch_sheet orchestration."""

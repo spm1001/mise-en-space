@@ -61,13 +61,26 @@ class TestFormatDriveResult:
         assert formatted["owners"] == ["alice@example.com"]
         assert formatted["url"] == "https://docs.google.com/document/d/abc123"
 
-    def test_none_modified_time(self) -> None:
+    def test_created_time_included(self) -> None:
+        result = DriveSearchResult(
+            file_id="abc123",
+            name="Test Doc",
+            mime_type="application/vnd.google-apps.document",
+            created_time=datetime(2025, 12, 1, 9, 0),
+            modified_time=datetime(2026, 1, 15, 10, 30),
+        )
+        formatted = format_drive_result(result)
+        assert formatted["created"] == "2025-12-01T09:00:00"
+        assert formatted["modified"] == "2026-01-15T10:30:00"
+
+    def test_none_dates(self) -> None:
         result = DriveSearchResult(
             file_id="abc123",
             name="Test Doc",
             mime_type="application/pdf",
         )
         formatted = format_drive_result(result)
+        assert formatted["created"] is None
         assert formatted["modified"] is None
 
     def test_snippet_included(self) -> None:

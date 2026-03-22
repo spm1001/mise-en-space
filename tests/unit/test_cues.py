@@ -379,17 +379,17 @@ class TestSearchResultPreview:
     """Tests for preview in search responses."""
 
     def test_preview_with_drive_results(self) -> None:
-        """Drive results preview shows name, id, mimeType (top 5)."""
+        """Drive results preview shows name, id, mimeType, modified (top 5)."""
         result = SearchResult(
             query="Q4 planning",
             sources=["drive"],
             drive_results=[
-                {"name": "Q4 Plan.docx", "id": "abc123", "mimeType": "application/vnd.google-apps.document"},
-                {"name": "Q4 Budget.xlsx", "id": "def456", "mimeType": "application/vnd.google-apps.spreadsheet"},
-                {"name": "Q4 Deck.pptx", "id": "ghi789", "mimeType": "application/vnd.google-apps.presentation"},
-                {"name": "Q4 Notes.docx", "id": "jkl012", "mimeType": "application/vnd.google-apps.document"},
-                {"name": "Q4 Review.docx", "id": "mno345", "mimeType": "application/vnd.google-apps.document"},
-                {"name": "Q4 Extra.docx", "id": "pqr678", "mimeType": "application/vnd.google-apps.document"},
+                {"name": "Q4 Plan.docx", "id": "abc123", "mimeType": "application/vnd.google-apps.document", "modified": "2026-01-15T10:30:00"},
+                {"name": "Q4 Budget.xlsx", "id": "def456", "mimeType": "application/vnd.google-apps.spreadsheet", "modified": None},
+                {"name": "Q4 Deck.pptx", "id": "ghi789", "mimeType": "application/vnd.google-apps.presentation", "modified": "2026-01-10T08:00:00"},
+                {"name": "Q4 Notes.docx", "id": "jkl012", "mimeType": "application/vnd.google-apps.document", "modified": "2026-01-14T16:00:00"},
+                {"name": "Q4 Review.docx", "id": "mno345", "mimeType": "application/vnd.google-apps.document", "modified": "2026-01-13T12:00:00"},
+                {"name": "Q4 Extra.docx", "id": "pqr678", "mimeType": "application/vnd.google-apps.document", "modified": "2026-01-12T09:00:00"},
             ],
             path="/tmp/search.json",
         )
@@ -400,6 +400,8 @@ class TestSearchResultPreview:
         assert d["preview"]["drive"][0]["name"] == "Q4 Plan.docx"
         assert d["preview"]["drive"][0]["id"] == "abc123"
         assert d["preview"]["drive"][0]["mimeType"] == "application/vnd.google-apps.document"
+        assert d["preview"]["drive"][0]["modified"] == "2026-01-15T10:30:00"
+        assert d["preview"]["drive"][1]["modified"] is None
 
     def test_preview_drive_includes_email_context(self) -> None:
         """Drive preview includes email_context when present (exfil'd files)."""

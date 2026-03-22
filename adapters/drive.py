@@ -88,6 +88,7 @@ FILE_METADATA_FIELDS = (
     "id,"
     "name,"
     "mimeType,"
+    "createdTime,"
     "modifiedTime,"
     "size,"
     "owners(displayName,emailAddress),"
@@ -104,6 +105,7 @@ SEARCH_RESULT_FIELDS = (
     "id,"
     "name,"
     "mimeType,"
+    "createdTime,"
     "modifiedTime,"
     "owners(displayName),"
     "webViewLink,"
@@ -319,6 +321,7 @@ def search_files(
                 file_id=file["id"],
                 name=file.get("name", ""),
                 mime_type=file.get("mimeType", ""),
+                created_time=_parse_datetime(file.get("createdTime")),
                 modified_time=_parse_datetime(file.get("modifiedTime")),
                 snippet=file.get("contentSnippet"),
                 owners=owners,

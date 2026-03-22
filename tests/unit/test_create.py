@@ -12,6 +12,8 @@ from server import do
 from tools.create import (
     do_create, _do_create_internal, _read_source, _read_multi_tab_source,
     _csv_text_to_values, DOC_TYPE_TO_MIME,
+    _parse_image_refs, _find_placeholder_indices, _embed_images_in_doc,
+    _PLACEHOLDER_PREFIX, _PLACEHOLDER_SUFFIX,
 )
 
 
@@ -262,6 +264,77 @@ class TestDoCreateFile:
         assert isinstance(result, DoResult)
         assert result.cues["folder"] == "My Folder"
         assert result.cues["mime_type"] == "text/yaml"
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_sync_client")
+    def test_creates_file_from_file_path(self, mock_get_client, _sleep, tmp_path: Path) -> None:
+        """Binary file upload via file_path sends raw bytes, not UTF-8 encoded."""
+        png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+        test_file = tmp_path / "diagram.png"
+        test_file.write_bytes(png_bytes)
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="png_abc",
+            webViewLink="https://drive.google.com/file/d/png_abc/view",
+            name="diagram.png",
+        )
+
+        result = do_create(
+            file_path=str(test_file),
+            doc_type="file",
+            base_path=str(tmp_path),
+        )
+
+        assert isinstance(result, DoResult)
+        assert result.file_id == "png_abc"
+        assert result.title == "diagram.png"
+        assert result.cues["mime_type"] == "image/png"
+
+        # Verify raw bytes were sent, not UTF-8 encoded text
+        upload_call = mock_client.upload_multipart.call_args
+        uploaded_bytes = upload_call[0][2]  # 3rd positional arg = content bytes
+        assert uploaded_bytes == png_bytes
+
+    def test_file_path_mutual_exclusion_with_content(self, tmp_path: Path) -> None:
+        test_file = tmp_path / "test.png"
+        test_file.write_bytes(b"\x89PNG")
+        result = do_create(
+            content="text", file_path=str(test_file),
+            doc_type="file", base_path=str(tmp_path),
+        )
+        assert result["error"] is True
+        assert "content" in result["message"] and "file_path" in result["message"]
+
+    def test_file_path_rejects_non_file_doc_type(self, tmp_path: Path) -> None:
+        test_file = tmp_path / "test.png"
+        test_file.write_bytes(b"\x89PNG")
+        result = do_create(
+            file_path=str(test_file), doc_type="doc",
+            base_path=str(tmp_path),
+        )
+        assert result["error"] is True
+        assert "doc_type='file'" in result["message"]
+
+    def test_file_path_not_found(self, tmp_path: Path) -> None:
+        result = do_create(
+            file_path=str(tmp_path / "nonexistent.png"),
+            doc_type="file", base_path=str(tmp_path),
+        )
+        assert result["error"] is True
+        assert "not found" in result["message"].lower()
+
+    def test_file_path_containment_check(self, tmp_path: Path) -> None:
+        """file_path outside base_path is rejected."""
+        test_file = tmp_path / "test.png"
+        test_file.write_bytes(b"\x89PNG")
+        result = do_create(
+            file_path=str(test_file), doc_type="file",
+            base_path=str(tmp_path / "subdir"),
+        )
+        assert result["error"] is True
+        assert "within" in result["message"].lower()
 
     def test_file_rejects_source_param(self, tmp_path: Path) -> None:
         (tmp_path / "content.md").write_text("# Hello")
@@ -955,3 +1028,162 @@ class TestMultiTabSheetCreation:
         call_args = mock_update.call_args
         values = call_args[1]["values"]
         assert any("=SUM(Data!B:B)" in str(row) for row in values)
+
+
+# ============================================================================
+# IMAGE EMBEDDING TESTS
+# ============================================================================
+
+
+class TestParseImageRefs:
+    """Test markdown image ref parsing and placeholder replacement."""
+
+    def test_parses_local_image_refs(self) -> None:
+        content = "# Title\n\n![chart](images/chart.png)\n\nSome text\n\n![logo](logo.jpg)"
+        modified, refs = _parse_image_refs(content)
+
+        assert len(refs) == 2
+        assert refs[0].path == "images/chart.png"
+        assert refs[0].alt == "chart"
+        assert refs[1].path == "logo.jpg"
+        # Placeholders should be in the modified content
+        assert refs[0].placeholder in modified
+        assert refs[1].placeholder in modified
+        # Original refs should be gone
+        assert "![chart]" not in modified
+        assert "![logo]" not in modified
+
+    def test_skips_http_urls(self) -> None:
+        content = "![remote](https://example.com/img.png)\n![local](local.png)"
+        modified, refs = _parse_image_refs(content)
+
+        assert len(refs) == 1
+        assert refs[0].path == "local.png"
+        # Remote URL left as-is
+        assert "https://example.com/img.png" in modified
+
+    def test_no_images_returns_empty(self) -> None:
+        content = "# Just text\n\nNo images here."
+        modified, refs = _parse_image_refs(content)
+
+        assert len(refs) == 0
+        assert modified == content
+
+    def test_placeholder_uniqueness(self) -> None:
+        content = "![a](1.png)\n![b](2.png)\n![c](3.png)"
+        _, refs = _parse_image_refs(content)
+
+        placeholders = [r.placeholder for r in refs]
+        assert len(set(placeholders)) == 3  # All unique
+
+
+class TestEmbedImagesInDoc:
+    """Test the full image embedding pipeline (mocked)."""
+
+    @patch("tools.create.get_sync_client")
+    @patch("extractors.image.resize_image_bytes")
+    def test_embeds_images_successfully(self, mock_resize, mock_get_client, tmp_path: Path) -> None:
+        """Full pipeline: upload → share → find indices → batchUpdate → cleanup."""
+        # Create test image file
+        png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
+        img_file = tmp_path / "chart.png"
+        img_file.write_bytes(png_bytes)
+
+        # Mock resize to return unchanged
+        mock_resized = MagicMock()
+        mock_resized.content_bytes = png_bytes
+        mock_resized.mime_type = "image/png"
+        mock_resize.return_value = mock_resized
+
+        # Mock client
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        # upload_multipart returns file ID
+        mock_client.upload_multipart.return_value = {"id": "temp_img_123"}
+
+        # documents().get() returns doc structure with placeholder
+        placeholder = f"{_PLACEHOLDER_PREFIX}0{_PLACEHOLDER_SUFFIX}"
+        mock_client.get_json.return_value = {
+            "body": {
+                "content": [{
+                    "paragraph": {
+                        "elements": [{
+                            "startIndex": 10,
+                            "endIndex": 10 + len(placeholder),
+                            "textRun": {"content": placeholder},
+                        }]
+                    }
+                }]
+            }
+        }
+
+        # batchUpdate succeeds
+        mock_client.post_json.return_value = {}
+
+        refs = [_parse_image_refs(f"![chart](chart.png)")[1][0]]
+        result = _embed_images_in_doc("doc123", refs, tmp_path)
+
+        assert result["images_embedded"] == 1
+        assert "image_errors" not in result
+
+    def test_missing_image_produces_warning(self) -> None:
+        """Missing image files produce warnings, not crashes."""
+        refs = [_parse_image_refs("![missing](nonexistent.png)")[1][0]]
+        result = _embed_images_in_doc("doc123", refs, Path("/tmp/empty"))
+
+        assert "image_errors" in result
+        assert any("not found" in e.lower() for e in result["image_errors"])
+
+    def test_empty_refs_returns_empty(self) -> None:
+        result = _embed_images_in_doc("doc123", [], None)
+        assert result == {}
+
+
+class TestDocCreateWithImages:
+    """Integration: do_create with markdown containing image refs."""
+
+    @patch("retry.time.sleep")
+    @patch("tools.create._embed_images_in_doc")
+    @patch("tools.create.get_sync_client")
+    def test_doc_with_images_triggers_embedding(self, mock_get_client, mock_embed, _sleep, tmp_path: Path) -> None:
+        """Creating a doc with image refs triggers post-creation embedding."""
+        # Create test image
+        (tmp_path / "diagram.png").write_bytes(b"\x89PNG")
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="doc_abc",
+            webViewLink="https://docs.google.com/document/d/doc_abc/edit",
+            name="Report",
+        )
+        mock_embed.return_value = {"images_embedded": 1}
+
+        result = do_create(
+            content="# Report\n\n![diagram](diagram.png)\n\nAnalysis here.",
+            title="Report",
+            doc_type="doc",
+            base_path=str(tmp_path),
+        )
+
+        assert isinstance(result, DoResult)
+        mock_embed.assert_called_once()
+        assert result.cues["images_embedded"] == 1
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_sync_client")
+    def test_doc_without_images_skips_embedding(self, mock_get_client, _sleep) -> None:
+        """Creating a doc without image refs doesn't trigger embedding."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="doc_abc",
+            webViewLink="https://docs.google.com/document/d/doc_abc/edit",
+            name="Plain Doc",
+        )
+
+        result = do_create(content="# Just text\n\nNo images.", title="Plain Doc", doc_type="doc")
+
+        assert isinstance(result, DoResult)
+        assert "images_embedded" not in result.cues

@@ -385,6 +385,7 @@ class DriveSearchResult:
     file_id: str
     name: str
     mime_type: str
+    created_time: datetime | None = None
     modified_time: datetime | None = None
 
     # For triage
@@ -507,6 +508,7 @@ class SearchResult:
                     "name": r.get("name", ""),
                     "id": r.get("id", ""),
                     "mimeType": r.get("mimeType", ""),
+                    "modified": r.get("modified"),
                 }
                 if r.get("email_context"):
                     item["email_context"] = r["email_context"]

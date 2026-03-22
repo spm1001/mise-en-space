@@ -34,6 +34,7 @@ htmlcov/
 # Secrets - NEVER commit
 credentials.json
 token.json
+.oauth-stash/
 *.env
 .env.*
 *_secret*

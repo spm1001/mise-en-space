@@ -18,17 +18,19 @@ The remote push is explicitly **single-user** (one `token.json`, one `lru_cache`
 
 **Tailscale Funnel** is the tunnel, not Cloudflare Tunnel — fewer moving parts since tailscaled is already on kube. Funnel has a 100 conn/min rate limit and 1MB/s throughput cap that should be tested with representative payloads (large inline doc responses).
 
-**Sequencing constraint:** the httpx migration (mise-fokoli) must complete before containerisation (mise-sefepo). The sync `googleapiclient` library blocks the event loop under concurrent load via `asyncio.to_thread()`, hitting Python's default `ThreadPoolExecutor` limit. For a long-running server this is a scalability ceiling, not just a nice-to-have refactor. mise-sefepo is formally `bon wait`-blocked on this.
+**Sequencing constraint:** the httpx migration (mise-fokoli) is complete. Containerisation (mise-sefepo) is unblocked on that front. The remaining remote path is: auth middleware (mise-tokiju) → token management (mise-winala) → containerisation + deploy (mise-sefepo).
 
 **Token refresh for long-running server** requires a specific sequence: refresh the token file AND call `clear_service_cache()` AND rebuild services. The `lru_cache` bakes in a `Credentials` object at service creation time — refreshing `token.json` on disk without clearing the cache does nothing.
 
-## Plugin distribution (Mar 2026)
+## OAuth and credential architecture
 
-The batterie-de-savoir marketplace is the distribution channel. `${CLAUDE_PLUGIN_ROOT}` is the only reliable path mechanism in plugin.json — referenced files (.mcp.json) don't get variable expansion, and `python3 script.py` resolves relative to CC's cwd not the project dir. Everything must use absolute paths via CLAUDE_PLUGIN_ROOT. The `.mcp.json` auto-discovery creates naming collisions with inline mcpServers — rename or delete the file in source repos.
+The OAuth client is an installed-app type — the client secret is intentionally distributable (Google's design for desktop/CLI apps, where users can always extract it from the binary). The `credentials.json` ships with the repo for this reason. The real secret is the refresh token, which lives in the plugin data dir and is never committed.
 
-SessionStart hooks are the right place for setup automation (dep install, auth checks) but only fire after exit+relaunch, not /reload-plugins. All batterie scripts use python3 not jq — jq is a system dependency that fresh machines don't have, and installing it is friction.
+As of March 2026, the GCP project for credentials is `planetmodha-tools` (personal), not `mit-workspace-mcp-server` (ITV). The secret is `aby-hemimi-credentials`.
 
-The two-phase PKCE auth flow (get_auth_url saves verifier, authenticate --code loads it) is critical for remote/headless use where Claude can't do interactive stdin. OAuth credentials are installed type (not web) after GCP breach detection forced the change.
+**Two-account architecture:** `claude@planetmodha.com` is the daemon account used by aboyeur for Gmail polling (served/HTTP mode). `sameer.modha@itv.com` is for stdio/plugin (Sameer's personal use). They share a codebase but need separate `token.json` paths. Until mise-jatadu (configurable token path env var) is done, only one can be active at a time.
+
+Token storage uses `~/.claude/plugins/data/mise-batterie-de-savoir/` (version-stable) with auto-migration from versioned cache dirs. The two-phase PKCE auth flow (get_auth_url saves verifier, authenticate --code loads it) is critical for remote/headless use where Claude can't do interactive stdin.
 
 ## Code patterns worth knowing
 
@@ -36,11 +38,11 @@ The two-phase PKCE auth flow (get_auth_url saves verifier, authenticate --code l
 
 **PDF rendering** is platform-adaptive: CoreGraphics on macOS (5.7ms/page), pdf2image/poppler on Linux (83ms/page). The remote host is Debian — `poppler-utils` is a hard requirement in the Dockerfile. Text extraction works without it; thumbnails don't.
 
-## httpx migration — Phase 1 complete (Mar 2026)
+## httpx migration — complete (Mar 2026)
 
-The httpx migration (mise-fokoli) is **two-phase by design** (see `docs/decisions.md`):
+The httpx migration (mise-fokoli) is **complete** — all adapters and tools use sync httpx. The migration was two-phase by design (see `docs/decisions.md`):
 
-**Phase 1 (complete):** All adapters and tools migrated from `googleapiclient` to `httpx.Client` (sync). Adapters use `get_sync_client()` from `adapters/http_client.py`. Tests mock `get_sync_client` returning a MagicMock with `.get_json()`, `.get_bytes()`, `.post_json()`, etc. The `retry.py` `_get_http_status()` extracts status from `httpx.HTTPStatusError.response.status_code`.
+**Phase 1 (done):** All adapters and tools migrated from `googleapiclient` to `httpx.Client` (sync). Adapters use `get_sync_client()` from `adapters/http_client.py`. Tests mock `get_sync_client` returning a MagicMock with `.get_json()`, `.get_bytes()`, `.post_json()`, etc. The `retry.py` `_get_http_status()` extracts status from `httpx.HTTPStatusError.response.status_code`.
 
 **Phase 2 (future, single-shot):** Convert tools layer and server.py to `async def`. Switch `get_sync_client()` → `get_http_client()` (async), add `await`, delete `MiseSyncClient`. Then restructure for real concurrency — `asyncio.gather()` for metadata+comments, search sources, slides thumbnails.
 
@@ -48,24 +50,19 @@ The httpx migration (mise-fokoli) is **two-phase by design** (see `docs/decision
 
 **Key things to know:**
 - `MiseSyncClient` and `MiseHttpClient` in `adapters/http_client.py` are intentional near-duplicates. Don't consolidate them — MiseSyncClient dies in Phase 2.
-- Google API URLs are hardcoded constants (e.g., `_DRIVE_API = "https://www.googleapis.com/drive/v3/files"`), not discovered at runtime. Unit tests mock the client so **wrong URLs won't be caught** — verify against Google REST docs or run integration tests.
-- `upload_file_content` uses `client.request()` + `orjson.loads()` manually because the upload uses a file MIME type but returns JSON. Slight wart.
+- Google API URLs are hardcoded constants (e.g., `_DRIVE_API = "https://www.googleapis.com/drive/v3/files"`), not discovered at runtime. Unit tests mock the client so wrong URLs won't be caught — verify against Google REST docs or run integration tests.
+- `upload_file_content` uses `client.request()` + `orjson.loads()` manually because the upload uses a file MIME type but returns JSON.
 - `download_file_to_temp` replaced `MediaIoBaseDownload` (resumable) with plain HTTP streaming (`stream_to_file`). If interrupted, the retry decorator restarts from scratch rather than resuming.
 - Gmail `search_threads` replaced Google's batch HTTP API with sequential individual GETs. Slightly slower in Phase 1, but simpler code — in Phase 2 these become `asyncio.gather()`, actually faster than batch.
 - `MiseSyncClient.upload_multipart()` handles multipart/related encoding for Drive uploads. Used by both `tools/create.py` and `adapters/conversion.py`. Boundary is hardcoded (`mise_upload_boundary`) — fine for single-user.
 - google-auth's `Credentials.valid` only checks local `expiry` — if `expiry` is None, reports valid even when expired server-side. The httpx client retries once on 401 with forced `credentials.refresh()`. Unit tests can never catch this class of bug.
-- No benchmarks were run during Phase 1. The profiling infrastructure (mise-cadadi) doesn't exist yet.
-
-## Overwrite — resolved (Mar 2026)
-
-The overwrite markdown rendering gap (mise-numado) is fixed. `files().update()` with `text/markdown` media type triggers Drive's import engine — same conversion as `files().create()`. All markdown formatting (headings, bold, tables, lists) renders automatically. The old Docs API path (delete → insertText → apply heading styles, UTF-16 position tracking) was deleted entirely.
 
 ## Current state (Mar 2026)
 
 Web fetching code has been fully removed — mise is Workspace-only. The core MCP server is stable and in daily use via stdio. Remote mode transport and content delivery are done (StreamableHTTP, inline content, safe-op filter). The remaining remote path is: auth middleware (mise-tokiju) → token management (mise-winala) → containerisation + deploy (mise-sefepo).
 
-The httpx migration (mise-fokoli) is **complete** — all adapters and tools use sync httpx. Phase 2 (async) is future work if/when the remote server needs real concurrency. Write operation integration tests verified post-migration (mise-vozapu done). `services.py` is dead code kept only for integration test scaffolding.
+The httpx migration (mise-fokoli) is complete. Write operation integration tests verified post-migration (mise-vozapu done). `services.py` is dead code kept only for integration test scaffolding. Folder triage (mise-wimamo) and call logging (mise-gakubo) shipped as part of 0.4.2.
 
-Plugin distribution (mise-fipabo) and OAuth smoothing (mise-lolane) are done. Token storage now uses `~/.claude/plugins/data/mise-batterie-de-savoir/` (version-stable) with auto-migration from versioned cache dirs. Created files are stamped with `description` and `properties.mise=true` for provenance tracking.
+Plugin distribution (mise-fipabo) and OAuth smoothing (mise-lolane) are done. Created files are stamped with `description` and `properties.mise=true` for provenance tracking.
 
-The backlog includes edge-case polish (image/PDF, GIF handling), a latency/observability initiative (profiling, telemetry), MCP call logging (mise-gakubo), and several feature additions (Apps Script port, meeting prep, calendar write ops, image embedding in Docs, aboyeur Gmail polling).
+The backlog includes: Apps Script email extractor (mise-tagemu, repeatedly deferred — should be prioritised), edge-case polish (image/PDF, GIF handling), a latency/observability initiative (profiling, telemetry), and several feature additions (meeting prep, calendar write ops, image embedding in Docs, aboyeur Gmail polling, file dates in search results). mise-jatadu (configurable token paths) unblocks two-account coexistence.

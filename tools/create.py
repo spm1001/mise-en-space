@@ -15,6 +15,8 @@ import io
 import json
 import logging
 import mimetypes
+import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -194,6 +196,7 @@ def do_create(
     folder_id: str | None = None,
     source: str | None = None,
     base_path: str | None = None,
+    file_path: str | None = None,
 ) -> DoResult | dict[str, Any]:
     """
     Create a Google Workspace document.
@@ -201,14 +204,16 @@ def do_create(
     Content comes from either:
     - `content` param (inline, backwards compatible)
     - `source` param (path to deposit folder with content.md or content.csv)
+    - `file_path` param (local binary file — PNG, DOCX, PDF etc.)
 
     Args:
         content: Inline content (markdown for doc, CSV for sheet)
         title: Document title (falls back to manifest title when using source)
-        doc_type: 'doc' | 'sheet' | 'slides'
+        doc_type: 'doc' | 'sheet' | 'slides' | 'file'
         folder_id: Optional destination folder ID
         source: Path to deposit folder to read content from
         base_path: Working directory for resolving relative source paths
+        file_path: Local file path for binary upload (doc_type='file' only)
 
     Returns:
         DoResult on success, error dict on failure
@@ -228,11 +233,41 @@ def do_create(
     if title:
         title = sanitize_title(title)
 
-    if not content and not source:
-        return {"error": True, "kind": "invalid_input",
-                "message": "create requires 'content' or 'source'"}
+    # Resolve and validate file_path
+    resolved_file_path: Path | None = None
+    if file_path:
+        if content:
+            return _create_error("invalid_input", "Provide either 'content' or 'file_path', not both.")
+        if source:
+            return _create_error("invalid_input", "Provide either 'source' or 'file_path', not both.")
+        if doc_type != "file":
+            return _create_error("invalid_input", "file_path is only valid for doc_type='file'.")
 
-    return _do_create_internal(content, title, doc_type, folder_id, resolved_source)
+        resolved_file_path = Path(file_path)
+        if not resolved_file_path.is_absolute() and base_path:
+            resolved_file_path = Path(base_path) / resolved_file_path
+        resolved_file_path = resolved_file_path.resolve()
+
+        # Containment check — file_path must be under base_path
+        if base_path:
+            base_resolved = Path(base_path).resolve()
+            if not str(resolved_file_path).startswith(str(base_resolved)):
+                return _create_error("invalid_input", "file_path must be within the working directory.")
+
+        if not resolved_file_path.exists():
+            return _create_error("invalid_input", f"File not found: {file_path}")
+        if not resolved_file_path.is_file():
+            return _create_error("invalid_input", f"Not a file: {file_path}")
+
+        # Infer title from filename if not provided
+        if not title:
+            title = resolved_file_path.name
+
+    if not content and not source and not file_path:
+        return {"error": True, "kind": "invalid_input",
+                "message": "create requires 'content', 'source', or 'file_path'"}
+
+    return _do_create_internal(content, title, doc_type, folder_id, resolved_source, resolved_file_path, base_path)
 
 
 def _do_create_internal(
@@ -241,6 +276,8 @@ def _do_create_internal(
     doc_type: str = "doc",
     folder_id: str | None = None,
     source: Path | None = None,
+    file_path: Path | None = None,
+    base_path: str | None = None,
 ) -> DoResult | dict[str, Any]:
     """Internal create logic. Returns DoResult on success, error dict on failure."""
     # Validate doc_type
@@ -281,17 +318,26 @@ def _do_create_internal(
         if not title:
             title = manifest_title
 
-    if not multi_tab_data and not content:
-        return _create_error("invalid_input", "No content provided. Pass 'content' or 'source'.")
+    if not multi_tab_data and not content and not file_path:
+        return _create_error("invalid_input", "No content provided. Pass 'content', 'source', or 'file_path'.")
     if not title:
         return _create_error(
             "invalid_input",
             "No title provided. Pass 'title' or include it in the source manifest.",
         )
 
+    # Check for local image refs in doc content
+    image_refs: list[_ImageRef] = []
+    image_base_path: Path | None = None
+    if doc_type == "doc" and content and _IMAGE_REF_RE.search(content):
+        content, image_refs = _parse_image_refs(content)
+        # Resolve image paths relative to source folder or base_path
+        image_base_path = source.parent if source else (Path(base_path) if base_path else None)  # type: ignore[arg-type]
+
     try:
         if doc_type == "file":
-            result = _create_file(content, title, folder_id)
+            file_bytes = file_path.read_bytes() if file_path else None
+            result = _create_file(content, title, folder_id, file_bytes=file_bytes)
         elif doc_type == "doc":
             result = _create_doc(content, title, folder_id)
         elif doc_type == "sheet" and multi_tab_data:
@@ -303,6 +349,14 @@ def _do_create_internal(
                 "not_implemented",
                 f"Creating {doc_type} is not yet implemented. Currently supported: doc, sheet, file.",
             )
+
+        # Post-creation: embed local images if any were found
+        if image_refs and isinstance(result, DoResult):
+            embed_result = _embed_images_in_doc(result.file_id, image_refs, image_base_path)
+            if embed_result.get("images_embedded"):
+                result.cues["images_embedded"] = embed_result["images_embedded"]
+            if embed_result.get("image_errors"):
+                result.cues["image_errors"] = embed_result["image_errors"]
 
         # Enrich manifest if created from source
         if source and isinstance(result, DoResult):
@@ -344,15 +398,20 @@ def _infer_mime_type(title: str) -> str:
 
 @with_retry(max_attempts=3, delay_ms=1000)
 def _create_file(
-    content: str,
+    content: str | None,
     title: str,
     folder_id: str | None = None,
+    file_bytes: bytes | None = None,
 ) -> DoResult:
     """
     Upload a plain file to Drive without Google conversion.
 
     MIME type is inferred from the title's file extension (e.g. .md → text/markdown,
     .svg → image/svg+xml, .json → application/json). Falls back to text/plain.
+
+    Content comes from either:
+    - file_bytes (binary upload from file_path — PNG, DOCX, PDF etc.)
+    - content (text, encoded to UTF-8)
 
     The file stays as-is in Drive — no conversion to Google Doc/Sheet/Slides.
     """
@@ -361,10 +420,12 @@ def _create_file(
 
     file_metadata = _mise_file_metadata(title, folder_id=folder_id)
 
-    logger.info("create file: title=%r mime=%s folder=%s", title, mime_type, folder_id)
+    upload_bytes = file_bytes if file_bytes is not None else content.encode("utf-8")  # type: ignore[union-attr]
+
+    logger.info("create file: title=%r mime=%s folder=%s binary=%s", title, mime_type, folder_id, file_bytes is not None)
 
     result = client.upload_multipart(
-        _UPLOAD_API, file_metadata, content.encode("utf-8"), mime_type,
+        _UPLOAD_API, file_metadata, upload_bytes, mime_type,
         params={"uploadType": "multipart", "fields": "id,webViewLink,name,parents", "supportsAllDrives": "true"},
     )
 
@@ -503,4 +564,259 @@ def _create_multi_tab_sheet(
     result.cues["tab_count"] = tab_count
     result.cues["tab_names"] = [name for name, _ in tabs]
 
+    return result
+
+
+# ============================================================================
+# IMAGE EMBEDDING — post-creation injection of local images into Google Docs
+# ============================================================================
+
+# Regex for markdown image refs: ![alt](path)
+# Skips http/https URLs — those are external, not local files.
+_IMAGE_REF_RE = re.compile(r"!\[([^\]]*)\]\((?!https?://)([^)]+)\)")
+
+# Sentinel prefix unlikely to appear in real content
+_PLACEHOLDER_PREFIX = "\u3014MISE_IMG_"
+_PLACEHOLDER_SUFFIX = "\u3015"
+
+
+@dataclass
+class _ImageRef:
+    """A local image reference parsed from markdown."""
+    index: int
+    alt: str
+    path: str
+    placeholder: str
+
+
+def _parse_image_refs(content: str) -> tuple[str, list[_ImageRef]]:
+    """Parse markdown for local image refs, replace with unique placeholders.
+
+    Returns (modified_content, list_of_refs). Remote URLs are left as-is.
+    """
+    refs: list[_ImageRef] = []
+
+    def _replace(match: re.Match) -> str:
+        alt = match.group(1)
+        path = match.group(2)
+        idx = len(refs)
+        placeholder = f"{_PLACEHOLDER_PREFIX}{idx}{_PLACEHOLDER_SUFFIX}"
+        refs.append(_ImageRef(index=idx, alt=alt, path=path, placeholder=placeholder))
+        return placeholder
+
+    modified = _IMAGE_REF_RE.sub(_replace, content)
+    return modified, refs
+
+
+def _resolve_image_path(ref_path: str, base_path: Path | None) -> Path | None:
+    """Resolve an image path relative to base_path. Returns None if not found."""
+    p = Path(ref_path)
+    if p.is_absolute():
+        return p if p.exists() else None
+    if base_path:
+        resolved = (base_path / p).resolve()
+        return resolved if resolved.exists() else None
+    return None
+
+
+def _upload_temp_image(image_bytes: bytes, filename: str, mime_type: str) -> str:
+    """Upload image bytes to Drive as a temp file. Returns file ID."""
+    client = get_sync_client()
+    metadata = {
+        "name": f"_mise_temp_{filename}",
+        "description": "Temporary image for mise doc embedding — safe to delete",
+    }
+    result = client.upload_multipart(
+        _UPLOAD_API, metadata, image_bytes, mime_type,
+        params={"uploadType": "multipart", "fields": "id", "supportsAllDrives": "true"},
+    )
+    return result["id"]
+
+
+def _share_publicly(file_id: str) -> None:
+    """Make a Drive file publicly readable (required for Docs API insertInlineImage)."""
+    client = get_sync_client()
+    client.post_json(
+        f"{_DRIVE_API}/{file_id}/permissions",
+        json_body={"role": "reader", "type": "anyone"},
+        params={"supportsAllDrives": "true"},
+    )
+
+
+def _revoke_public(file_id: str) -> None:
+    """Revoke public access from a Drive file."""
+    client = get_sync_client()
+    try:
+        client.request(
+            "DELETE",
+            f"{_DRIVE_API}/{file_id}/permissions/anyoneWithLink",
+            params={"supportsAllDrives": "true"},
+        )
+    except Exception:
+        pass  # Best-effort cleanup
+
+
+def _delete_temp_file(file_id: str) -> None:
+    """Delete a temporary Drive file."""
+    client = get_sync_client()
+    try:
+        client.request(
+            "DELETE",
+            f"{_DRIVE_API}/{file_id}",
+            params={"supportsAllDrives": "true"},
+        )
+    except Exception:
+        pass  # Best-effort cleanup
+
+
+def _find_placeholder_indices(
+    doc_id: str, placeholders: list[str],
+) -> dict[str, tuple[int, int]]:
+    """Find start/end indices of placeholder text in a Google Doc.
+
+    Returns {placeholder: (startIndex, endIndex)} for each found placeholder.
+    """
+    client = get_sync_client()
+    doc = client.get_json(
+        f"https://docs.googleapis.com/v1/documents/{doc_id}",
+        params={"fields": "body(content(paragraph(elements(textRun(content),startIndex,endIndex))))"},
+    )
+
+    result: dict[str, tuple[int, int]] = {}
+    placeholder_set = set(placeholders)
+
+    for item in doc.get("body", {}).get("content", []):
+        for elem in item.get("paragraph", {}).get("elements", []):
+            text = elem.get("textRun", {}).get("content", "")
+            for ph in placeholder_set:
+                offset = text.find(ph)
+                if offset >= 0:
+                    start = elem["startIndex"] + offset
+                    end = start + len(ph)
+                    result[ph] = (start, end)
+
+    return result
+
+
+def _embed_images_in_doc(
+    doc_id: str,
+    refs: list[_ImageRef],
+    base_path: Path | None,
+) -> dict[str, Any]:
+    """Post-creation: embed local images into a Google Doc.
+
+    Uploads images to Drive, temporarily shares publicly, inserts via
+    Docs batchUpdate, then revokes permissions and cleans up.
+
+    Returns dict with images_embedded count and image_errors list.
+    """
+    from extractors.image import resize_image_bytes
+    from adapters.image import is_svg, _render_svg_to_png
+
+    if not refs:
+        return {}
+
+    # Phase 1: Prepare images — resolve paths, read bytes, resize
+    prepared: list[tuple[_ImageRef, bytes, str]] = []  # (ref, bytes, mime_type)
+    errors: list[str] = []
+    for ref in refs:
+        resolved = _resolve_image_path(ref.path, base_path)
+        if not resolved:
+            errors.append(f"Image not found: {ref.path}")
+            continue
+
+        try:
+            image_bytes = resolved.read_bytes()
+            mime_type = mimetypes.guess_type(str(resolved))[0] or "image/png"
+
+            # SVG → PNG conversion (Docs API can't display SVG inline)
+            if is_svg(mime_type):
+                png_bytes, _, _ = _render_svg_to_png(image_bytes)
+                if png_bytes:
+                    image_bytes = png_bytes
+                    mime_type = "image/png"
+                else:
+                    errors.append(f"SVG rendering failed: {ref.path}")
+                    continue
+
+            # Resize if needed
+            resized = resize_image_bytes(image_bytes, mime_type)
+            image_bytes = resized.content_bytes
+            mime_type = resized.mime_type
+
+            prepared.append((ref, image_bytes, mime_type))
+        except Exception as e:
+            errors.append(f"Image processing failed for {ref.path}: {e}")
+
+    if not prepared:
+        return {"image_errors": errors} if errors else {}
+
+    # Phase 2: Upload images to Drive and share publicly
+    uploaded: list[tuple[_ImageRef, str]] = []  # (ref, drive_file_id)
+    for ref, image_bytes, mime_type in prepared:
+        try:
+            filename = Path(ref.path).name
+            file_id = _upload_temp_image(image_bytes, filename, mime_type)
+            _share_publicly(file_id)
+            uploaded.append((ref, file_id))
+        except Exception as e:
+            errors.append(f"Upload failed for {ref.path}: {e}")
+
+    if not uploaded:
+        return {"image_errors": errors} if errors else {}
+
+    # Phase 3: Find placeholder indices in the created doc
+    placeholders = [ref.placeholder for ref, _ in uploaded]
+    indices = _find_placeholder_indices(doc_id, placeholders)
+
+    # Phase 4: Build batchUpdate requests in reverse index order
+    requests: list[dict[str, Any]] = []
+    for ref, file_id in uploaded:
+        if ref.placeholder not in indices:
+            errors.append(f"Placeholder not found in doc for {ref.path}")
+            continue
+        start, end = indices[ref.placeholder]
+        # Delete placeholder text, then insert image at same position
+        # Reverse order: insert first (at start), then delete (start to end)
+        # Actually: we process all placeholders in reverse startIndex order,
+        # each one: deleteContentRange then insertInlineImage
+        requests.append((start, end, file_id))
+
+    # Sort by start index descending — prevents index drift
+    requests.sort(key=lambda x: x[0], reverse=True)
+
+    batch_requests: list[dict[str, Any]] = []
+    for start, end, file_id in requests:
+        # Delete the placeholder text
+        batch_requests.append({
+            "deleteContentRange": {
+                "range": {"startIndex": start, "endIndex": end, "segmentId": ""},
+            }
+        })
+        # Insert image at the same position
+        batch_requests.append({
+            "insertInlineImage": {
+                "uri": f"https://drive.google.com/uc?export=view&id={file_id}",
+                "location": {"index": start, "segmentId": ""},
+            }
+        })
+
+    if batch_requests:
+        try:
+            client = get_sync_client()
+            client.post_json(
+                f"https://docs.googleapis.com/v1/documents/{doc_id}:batchUpdate",
+                json_body={"requests": batch_requests},
+            )
+        except Exception as e:
+            errors.append(f"Docs batchUpdate failed: {e}")
+
+    # Phase 5: Revoke permissions and delete temp files
+    for _, file_id in uploaded:
+        _revoke_public(file_id)
+        _delete_temp_file(file_id)
+
+    result: dict[str, Any] = {"images_embedded": len(requests)}
+    if errors:
+        result["image_errors"] = errors
     return result

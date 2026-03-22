@@ -54,6 +54,7 @@ def format_drive_result(result: DriveSearchResult) -> dict[str, Any]:
         "id": result.file_id,
         "name": result.name,
         "mimeType": result.mime_type,
+        "created": result.created_time.isoformat() if result.created_time else None,
         "modified": result.modified_time.isoformat() if result.modified_time else None,
         "url": result.web_view_link,
         "owners": result.owners,

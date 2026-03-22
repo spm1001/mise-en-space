@@ -105,6 +105,7 @@ _DISPATCH: dict[str, Any] = {
     "create": lambda p: do_create(
         content=p["content"], title=p["title"], doc_type=p["doc_type"],
         folder_id=p["folder_id"], source=p["source"], base_path=p["base_path"],
+        file_path=p.get("file_path"),
     ),
     "move": lambda p: do_move(
         file_id=p["file_id"], destination_folder_id=p["destination_folder_id"],
@@ -445,6 +446,7 @@ def do(
     reply_all: bool = False,
     role: str | None = None,
     confirm: bool = False,
+    file_path: str | None = None,
     label: str | None = None,
     remove: bool = False,
 ) -> dict[str, Any]:
@@ -455,7 +457,7 @@ def do(
     for k, v in [
         ("title", title), ("doc_type", doc_type), ("folder_id", folder_id),
         ("file_id", file_id), ("destination_folder_id", destination_folder_id),
-        ("source", source), ("find", find), ("to", to), ("subject", subject),
+        ("source", source), ("file_path", file_path), ("find", find), ("to", to), ("subject", subject),
         ("cc", cc), ("label", label), ("role", role), ("remove", remove),
         ("reply_all", reply_all), ("confirm", confirm),
     ]:
@@ -481,7 +483,8 @@ def do(
         "content": content, "title": title, "doc_type": doc_type,
         "folder_id": folder_id, "file_id": file_id,
         "destination_folder_id": destination_folder_id,
-        "source": source, "base_path": base_path, "find": find,
+        "source": source, "base_path": base_path, "file_path": file_path,
+        "find": find,
         "to": to, "subject": subject, "cc": cc, "include": include,
         "reply_all": reply_all, "role": role, "confirm": confirm,
         "label": label, "remove": remove,

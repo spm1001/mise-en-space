@@ -30,6 +30,14 @@ from .common import (
 )
 
 
+def _add_file_dates(extra: dict[str, Any], metadata: dict[str, Any]) -> None:
+    """Add created/modified timestamps from Drive metadata to manifest extra dict."""
+    if metadata.get("createdTime"):
+        extra["created_time"] = metadata["createdTime"]
+    if metadata.get("modifiedTime"):
+        extra["modified_time"] = metadata["modifiedTime"]
+
+
 def fetch_drive(file_id: str, base_path: Path | None = None, recursive: bool = False) -> FetchResult | FetchError:
     """Fetch Drive file, route by type, extract content, deposit to workspace."""
     # Get metadata to determine type
@@ -203,6 +211,7 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: 
         extra["warnings"] = doc_data.warnings
     if open_comment_count > 0:
         extra["open_comment_count"] = open_comment_count
+    _add_file_dates(extra, metadata)
     write_manifest(folder, "doc", title, doc_id, extra=extra)
 
     result_metadata: dict[str, Any] = {"title": title, "mimeType": metadata.get("mimeType")}
@@ -296,6 +305,7 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
         extra["warnings"] = sheet_data.warnings
     if open_comment_count > 0:
         extra["open_comment_count"] = open_comment_count
+    _add_file_dates(extra, metadata)
     write_manifest(folder, "sheet", title, sheet_id, extra=extra)
 
     result_meta: dict[str, Any] = {
@@ -362,6 +372,7 @@ def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], ema
         extra["warnings"] = presentation_data.warnings
     if open_comment_count > 0:
         extra["open_comment_count"] = open_comment_count
+    _add_file_dates(extra, metadata)
     write_manifest(folder, "slides", title, presentation_id, extra=extra)
 
     result_meta: dict[str, Any] = {
@@ -425,6 +436,7 @@ def fetch_video(file_id: str, title: str, metadata: dict[str, Any], email_contex
     }
     if duration_ms:
         extra["duration_ms"] = int(duration_ms)
+    _add_file_dates(extra, metadata)
     write_manifest(folder, "video", title, file_id, extra=extra)
 
     result_meta: dict[str, Any] = {
@@ -471,6 +483,7 @@ def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context:
     }
     if result.warnings:
         extra["warnings"] = result.warnings
+    _add_file_dates(extra, metadata)
     write_manifest(folder, "pdf", title, file_id, extra=extra)
 
     result_meta: dict[str, Any] = {
@@ -549,6 +562,7 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
         extra_office["raw_file"] = raw_file
     if result.warnings:
         extra_office["warnings"] = result.warnings
+    _add_file_dates(extra_office, metadata)
     write_manifest(folder, office_type, title, file_id, extra=extra_office if extra_office else None)
 
     result_meta: dict[str, Any] = {
@@ -608,6 +622,7 @@ def fetch_text(file_id: str, title: str, metadata: dict[str, Any], email_context
         "mime_type": mime_type,
         "char_count": len(content),
     }
+    _add_file_dates(extra, metadata)
     write_manifest(folder, "text", title, file_id, extra=extra)
 
     result_meta: dict[str, Any] = {
@@ -698,7 +713,7 @@ def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_c
             extra["has_rendered_png"] = False
     if result.warnings:
         extra["warnings"] = result.warnings
-
+    _add_file_dates(extra, metadata)
     write_manifest(folder, "image", title, file_id, extra=extra)
 
     # Build result metadata
