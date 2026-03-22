@@ -7,9 +7,8 @@ Two credential sources, tried in order:
 2. GCP Secret Manager (for maintainer — requires gcloud CLI)
 
 Usage:
-    uv run python -m auth                    # Auto mode (opens browser)
-    uv run python -m auth --remote           # Print auth URL for remote/SSH
-    uv run python -m auth --code URL         # Exchange code from --remote flow
+    uv run python -m auth                    # Auto mode (opens browser, or prints URL if headless)
+    uv run python -m auth --code URL         # Exchange code from headless flow
     uv run python -m auth --project OTHER    # Use different GCP project
 
 Prerequisites (external users):
@@ -20,14 +19,12 @@ Prerequisites (maintainer):
     - Access to the GCP project containing the secret
 """
 
-import os
-import sys
-import argparse
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
-from jeton import authenticate, get_auth_url
+from jeton import HeadlessError, authenticate
 
 from oauth_config import (
     TOKEN_FILE,
@@ -38,20 +35,6 @@ from oauth_config import (
     LOCAL_CREDENTIALS_FILE,
 )
 from token_store import save_token
-
-
-def _can_open_browser() -> bool:
-    """Check if we can open a browser for automatic OAuth flow.
-
-    The auto flow opens a browser and starts a localhost callback server —
-    no terminal input needed. The question is simply: can we open a browser?
-    - macOS: always yes (via `open` command)
-    - Linux with X11/Wayland: yes
-    - Linux without display (SSH, CI): no
-    """
-    if sys.platform == "darwin":
-        return True
-    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
 def fetch_credentials_from_secret_manager(project: str, secret_name: str) -> str:
@@ -77,18 +60,15 @@ def fetch_credentials_from_secret_manager(project: str, secret_name: str) -> str
 
 
 def main() -> None:
+    import argparse
+
     parser = argparse.ArgumentParser(
         description="OAuth authentication for mise-en-space"
     )
     parser.add_argument(
-        '--remote',
-        action='store_true',
-        help='Print auth URL and save PKCE state (for remote/SSH — complete with --code)'
-    )
-    parser.add_argument(
         '--code',
         type=str,
-        help='Exchange auth code or redirect URL from --remote flow'
+        help='Auth code or redirect URL (from headless flow)'
     )
     parser.add_argument(
         '--project',
@@ -115,50 +95,26 @@ def main() -> None:
         credentials_path = tmp_path
 
     try:
-        if args.remote:
-            # Phase 1: generate auth URL and save PKCE state
-            auth_url = get_auth_url(
-                credentials_path=credentials_path,
-                token_path=TOKEN_FILE,
-                scopes=SCOPES,
-                port=OAUTH_PORT,
-            )
-            print()
-            print("Open this URL in your browser:")
-            print()
-            print(auth_url)
-            print()
-            print("After granting permissions, you'll be redirected to localhost (it will fail).")
-            print("Copy the full redirect URL from the browser address bar, then run:")
-            print()
-            print(f"  uv run python -m auth --code '<redirect_url>'")
-            print()
-        elif args.code:
-            # Phase 2: exchange code using saved PKCE state
-            authenticate(
-                credentials_path=credentials_path,
-                token_path=TOKEN_FILE,
-                scopes=SCOPES,
-                code=args.code,
-                port=OAUTH_PORT,
-            )
-            save_token(TOKEN_FILE)
-            print()
-            print("Authentication complete.")
-        else:
-            # Auto mode — needs a browser
-            if not _can_open_browser():
-                print("No browser available — use --remote instead.")
-                sys.exit(1)
-            authenticate(
-                credentials_path=credentials_path,
-                token_path=TOKEN_FILE,
-                scopes=SCOPES,
-                port=OAUTH_PORT,
-            )
-            save_token(TOKEN_FILE)
-            print()
-            print("Authentication complete.")
+        creds = authenticate(
+            credentials_path=credentials_path,
+            token_path=TOKEN_FILE,
+            scopes=SCOPES,
+            code=args.code,
+            port=OAUTH_PORT,
+        )
+        save_token(TOKEN_FILE)
+        print()
+        print("Authentication complete.")
+    except HeadlessError as e:
+        print("No browser available.\n")
+        print("Open this URL in your browser:")
+        print()
+        print(e.url)
+        print()
+        print("After granting permissions, copy the redirect URL and run:")
+        print()
+        print(f"  uv run python -m auth --code '<redirect_url>'")
+        print()
     except KeyboardInterrupt:
         print("\n\nAuthentication cancelled")
         sys.exit(1)

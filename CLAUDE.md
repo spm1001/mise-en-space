@@ -163,9 +163,8 @@ grep '"ok": false' ~/.local/share/mise/calls.jsonl | tail -5
 ## OAuth
 
 ```bash
-uv run python -m auth          # Opens browser automatically on macOS/Linux desktop
-uv run python -m auth --manual # SSH/remote mode (paste redirect URL back)
-uv run python -m auth --code URL_OR_CODE  # Non-interactive (for Claude/scripts)
+uv run python -m auth                    # Auto (opens browser, or prints URL if headless)
+uv run python -m auth --code URL_OR_CODE # Exchange code from headless flow
 ```
 
 `credentials.json` (OAuth client config, not secret) ships with the repo. Token auto-refreshes; `clear_service_cache` handles revoked refresh tokens. Maintainer can also fetch credentials from GCP Secret Manager as fallback.
