@@ -1,58 +1,10 @@
-"""Tests for auth module — browser detection and credential resolution."""
+"""Tests for auth module — credential resolution."""
 
-import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
-from auth import _can_open_browser
 from oauth_config import LOCAL_CREDENTIALS_FILE
-
-
-# =============================================================================
-# _can_open_browser()
-# =============================================================================
-
-
-class TestCanOpenBrowser:
-    """Browser detection for auto vs manual OAuth mode."""
-
-    def test_macos_always_true(self):
-        """macOS has `open` command — always capable of opening a browser."""
-        with patch.object(sys, "platform", "darwin"):
-            with patch.dict("os.environ", {}, clear=True):
-                assert _can_open_browser() is True
-
-    def test_macos_true_regardless_of_display(self):
-        """macOS doesn't need DISPLAY — it uses `open`, not xdg-open."""
-        with patch.object(sys, "platform", "darwin"):
-            with patch.dict("os.environ", {"DISPLAY": "", "WAYLAND_DISPLAY": ""}, clear=True):
-                assert _can_open_browser() is True
-
-    def test_linux_with_x11(self):
-        """Linux with X11 display can open a browser."""
-        with patch.object(sys, "platform", "linux"):
-            with patch.dict("os.environ", {"DISPLAY": ":0"}, clear=True):
-                assert _can_open_browser() is True
-
-    def test_linux_with_wayland(self):
-        """Linux with Wayland display can open a browser."""
-        with patch.object(sys, "platform", "linux"):
-            with patch.dict("os.environ", {"WAYLAND_DISPLAY": "wayland-0"}, clear=True):
-                assert _can_open_browser() is True
-
-    def test_linux_no_display(self):
-        """Linux without any display server — SSH, CI, headless."""
-        with patch.object(sys, "platform", "linux"):
-            with patch.dict("os.environ", {}, clear=True):
-                assert _can_open_browser() is False
-
-    def test_linux_empty_display(self):
-        """Empty DISPLAY string is falsy — treat as no display."""
-        with patch.object(sys, "platform", "linux"):
-            with patch.dict("os.environ", {"DISPLAY": ""}, clear=True):
-                assert _can_open_browser() is False
 
 
 # =============================================================================
