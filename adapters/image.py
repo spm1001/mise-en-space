@@ -121,7 +121,7 @@ def fetch_image(file_id: str, filename: str, mime_type: str) -> ImageResult:
 
     # For SVG, also render to PNG
     if is_svg(mime_type):
-        png_bytes, method, warning = _render_svg_to_png(image_bytes)
+        png_bytes, method, warning = render_svg_to_png(image_bytes)
         if png_bytes:
             result.rendered_png_bytes = png_bytes
             result.render_method = method
@@ -131,7 +131,7 @@ def fetch_image(file_id: str, filename: str, mime_type: str) -> ImageResult:
     return result
 
 
-def _render_svg_to_png(svg_bytes: bytes) -> tuple[bytes | None, Literal["rsvg-convert", "sips"] | None, str | None]:
+def render_svg_to_png(svg_bytes: bytes) -> tuple[bytes | None, Literal["rsvg-convert", "sips"] | None, str | None]:
     """
     Render SVG to PNG.
 

@@ -633,23 +633,27 @@ def _upload_temp_image(image_bytes: bytes, filename: str, mime_type: str) -> str
     return result["id"]
 
 
-def _share_publicly(file_id: str) -> None:
-    """Make a Drive file publicly readable (required for Docs API insertInlineImage)."""
+def _share_publicly(file_id: str) -> str:
+    """Make a Drive file publicly readable (required for Docs API insertInlineImage).
+
+    Returns the permission ID for later revocation.
+    """
     client = get_sync_client()
-    client.post_json(
+    result = client.post_json(
         f"{_DRIVE_API}/{file_id}/permissions",
         json_body={"role": "reader", "type": "anyone"},
-        params={"supportsAllDrives": "true"},
+        params={"supportsAllDrives": "true", "fields": "id"},
     )
+    return result.get("id", "anyoneWithLink")
 
 
-def _revoke_public(file_id: str) -> None:
-    """Revoke public access from a Drive file."""
+def _revoke_public(file_id: str, permission_id: str) -> None:
+    """Revoke a specific permission from a Drive file."""
     client = get_sync_client()
     try:
         client.request(
             "DELETE",
-            f"{_DRIVE_API}/{file_id}/permissions/anyoneWithLink",
+            f"{_DRIVE_API}/{file_id}/permissions/{permission_id}",
             params={"supportsAllDrives": "true"},
         )
     except Exception:
@@ -675,6 +679,9 @@ def _find_placeholder_indices(
     """Find start/end indices of placeholder text in a Google Doc.
 
     Returns {placeholder: (startIndex, endIndex)} for each found placeholder.
+
+    Concatenates all text runs in each paragraph before searching, so
+    placeholders that span text run boundaries are still found.
     """
     client = get_sync_client()
     doc = client.get_json(
@@ -686,14 +693,23 @@ def _find_placeholder_indices(
     placeholder_set = set(placeholders)
 
     for item in doc.get("body", {}).get("content", []):
-        for elem in item.get("paragraph", {}).get("elements", []):
-            text = elem.get("textRun", {}).get("content", "")
-            for ph in placeholder_set:
-                offset = text.find(ph)
-                if offset >= 0:
-                    start = elem["startIndex"] + offset
-                    end = start + len(ph)
-                    result[ph] = (start, end)
+        elements = item.get("paragraph", {}).get("elements", [])
+        if not elements:
+            continue
+
+        # Concatenate all text runs in this paragraph with their absolute positions
+        para_text = ""
+        para_start = elements[0].get("startIndex", 0)
+        for elem in elements:
+            para_text += elem.get("textRun", {}).get("content", "")
+
+        # Search for each placeholder in the concatenated paragraph text
+        for ph in placeholder_set:
+            offset = para_text.find(ph)
+            if offset >= 0:
+                start = para_start + offset
+                end = start + len(ph)
+                result[ph] = (start, end)
 
     return result
 
@@ -711,7 +727,7 @@ def _embed_images_in_doc(
     Returns dict with images_embedded count and image_errors list.
     """
     from extractors.image import resize_image_bytes
-    from adapters.image import is_svg, _render_svg_to_png
+    from adapters.image import is_svg, render_svg_to_png
 
     if not refs:
         return {}
@@ -731,7 +747,7 @@ def _embed_images_in_doc(
 
             # SVG → PNG conversion (Docs API can't display SVG inline)
             if is_svg(mime_type):
-                png_bytes, _, _ = _render_svg_to_png(image_bytes)
+                png_bytes, _, _ = render_svg_to_png(image_bytes)
                 if png_bytes:
                     image_bytes = png_bytes
                     mime_type = "image/png"
@@ -752,13 +768,13 @@ def _embed_images_in_doc(
         return {"image_errors": errors} if errors else {}
 
     # Phase 2: Upload images to Drive and share publicly
-    uploaded: list[tuple[_ImageRef, str]] = []  # (ref, drive_file_id)
+    uploaded: list[tuple[_ImageRef, str, str]] = []  # (ref, drive_file_id, permission_id)
     for ref, image_bytes, mime_type in prepared:
         try:
             filename = Path(ref.path).name
             file_id = _upload_temp_image(image_bytes, filename, mime_type)
-            _share_publicly(file_id)
-            uploaded.append((ref, file_id))
+            perm_id = _share_publicly(file_id)
+            uploaded.append((ref, file_id, perm_id))
         except Exception as e:
             errors.append(f"Upload failed for {ref.path}: {e}")
 
@@ -766,20 +782,16 @@ def _embed_images_in_doc(
         return {"image_errors": errors} if errors else {}
 
     # Phase 3: Find placeholder indices in the created doc
-    placeholders = [ref.placeholder for ref, _ in uploaded]
+    placeholders = [ref.placeholder for ref, _, _ in uploaded]
     indices = _find_placeholder_indices(doc_id, placeholders)
 
     # Phase 4: Build batchUpdate requests in reverse index order
     requests: list[dict[str, Any]] = []
-    for ref, file_id in uploaded:
+    for ref, file_id, _ in uploaded:
         if ref.placeholder not in indices:
             errors.append(f"Placeholder not found in doc for {ref.path}")
             continue
         start, end = indices[ref.placeholder]
-        # Delete placeholder text, then insert image at same position
-        # Reverse order: insert first (at start), then delete (start to end)
-        # Actually: we process all placeholders in reverse startIndex order,
-        # each one: deleteContentRange then insertInlineImage
         requests.append((start, end, file_id))
 
     # Sort by start index descending — prevents index drift
@@ -812,8 +824,8 @@ def _embed_images_in_doc(
             errors.append(f"Docs batchUpdate failed: {e}")
 
     # Phase 5: Revoke permissions and delete temp files
-    for _, file_id in uploaded:
-        _revoke_public(file_id)
+    for _, file_id, perm_id in uploaded:
+        _revoke_public(file_id, perm_id)
         _delete_temp_file(file_id)
 
     result: dict[str, Any] = {"images_embedded": len(requests)}

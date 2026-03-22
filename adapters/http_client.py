@@ -397,7 +397,8 @@ class MiseSyncClient:
             content_type: MIME type of the file content
             params: Optional query parameters (uploadType, fields, etc.)
         """
-        boundary = "mise_upload_boundary"
+        import uuid
+        boundary = f"mise_{uuid.uuid4().hex}"
         body = (
             f"--{boundary}\r\n"
             f"Content-Type: application/json; charset=UTF-8\r\n\r\n"

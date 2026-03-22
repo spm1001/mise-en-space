@@ -15,7 +15,7 @@ from adapters.image import (
     SVG_MIME,
     ALL_IMAGE_MIMES,
     ImageResult,
-    _render_svg_to_png,
+    render_svg_to_png,
 )
 from tools.fetch import fetch_image_file
 
@@ -100,7 +100,7 @@ class TestFetchImageAdapter:
         assert result.render_method is None
 
     @patch("adapters.image.get_file_size")
-    @patch("adapters.image._render_svg_to_png")
+    @patch("adapters.image.render_svg_to_png")
     @patch("adapters.image.download_file")
     def test_fetch_svg_with_successful_render(self, mock_download, mock_render, mock_size):
         """Fetches SVG and renders to PNG."""
@@ -119,7 +119,7 @@ class TestFetchImageAdapter:
         assert result.render_method == "rsvg-convert"
 
     @patch("adapters.image.get_file_size")
-    @patch("adapters.image._render_svg_to_png")
+    @patch("adapters.image.render_svg_to_png")
     @patch("adapters.image.download_file")
     def test_fetch_svg_with_failed_render(self, mock_download, mock_render, mock_size):
         """Handles SVG render failure gracefully."""
@@ -153,7 +153,7 @@ class TestRenderSvgToPng:
         with patch("adapters.image.Path.exists", return_value=True):
             with patch("adapters.image.Path.read_bytes", return_value=png_bytes):
                 with patch("adapters.image.Path.unlink"):
-                    result_bytes, method, warning = _render_svg_to_png(svg_bytes)
+                    result_bytes, method, warning = render_svg_to_png(svg_bytes)
 
         assert method == "rsvg-convert"
         assert warning is None
@@ -173,7 +173,7 @@ class TestRenderSvgToPng:
         with patch("adapters.image.Path.exists", return_value=True):
             with patch("adapters.image.Path.read_bytes", return_value=png_bytes):
                 with patch("adapters.image.Path.unlink"):
-                    result_bytes, method, warning = _render_svg_to_png(svg_bytes)
+                    result_bytes, method, warning = render_svg_to_png(svg_bytes)
 
         assert method == "sips"
         assert warning is None
@@ -190,7 +190,7 @@ class TestRenderSvgToPng:
         ]
 
         with patch("adapters.image.Path.unlink"):
-            result_bytes, method, warning = _render_svg_to_png(svg_bytes)
+            result_bytes, method, warning = render_svg_to_png(svg_bytes)
 
         assert result_bytes is None
         assert method is None
