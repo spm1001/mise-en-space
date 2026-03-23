@@ -25,11 +25,17 @@ if [ ! -d "$PLUGIN_ROOT/.venv" ]; then
     fi
 fi
 
-# 3. Check for OAuth token (Keychain or file)
+# 3. Check for OAuth token (Keychain, data dir, or plugin root)
 HAS_TOKEN=false
 if command -v security &>/dev/null; then
     security find-generic-password -s "mise-oauth-token" -w &>/dev/null && HAS_TOKEN=true
 fi
+# Plugin data dir (version-stable, where token_store.py actually writes on Linux)
+PLUGIN_DATA_DIR="$HOME/.claude/plugins/data/mise-batterie-de-savoir"
+if [ "$HAS_TOKEN" = false ] && [ -f "$PLUGIN_DATA_DIR/token.json" ]; then
+    HAS_TOKEN=true
+fi
+# Legacy: plugin root (versioned cache dir)
 if [ "$HAS_TOKEN" = false ] && [ -f "$PLUGIN_ROOT/token.json" ]; then
     HAS_TOKEN=true
 fi
