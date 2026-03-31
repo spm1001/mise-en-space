@@ -1,6 +1,6 @@
 {
   "name": "mise",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Google Workspace MCP server \u2014 search Drive, fetch Gmail, act on documents",
   "author": {
     "name": "Sameer Modha",
@@ -35,6 +35,10 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ensure-mise.sh"
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh"
           }
         ]
       }
