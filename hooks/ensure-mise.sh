@@ -2,6 +2,14 @@
 # SessionStart hook: ensure mise MCP server can start
 # Silent when everything is fine; helpful when it's not.
 
+# Symlink instruction shard into rules/
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_PLUGIN_ROOT="$(dirname "$HOOK_DIR")"
+if [ -f "$_PLUGIN_ROOT/instructions.md" ]; then
+    mkdir -p "$HOME/.claude/rules"
+    ln -sf "$_PLUGIN_ROOT/instructions.md" "$HOME/.claude/rules/mise.md"
+fi
+
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
 [ -z "$PLUGIN_ROOT" ] && exit 0
 
