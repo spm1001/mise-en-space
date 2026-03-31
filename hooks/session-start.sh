@@ -1,6 +1,6 @@
 #!/bin/bash
 # SessionStart hook: symlink instruction shard into rules/
-set -euo pipefail
+# set -euo pipefail  # removed: races with plugin autoUpdate cache swap
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(dirname "$HOOK_DIR")"
 if [ -f "$PLUGIN_ROOT/instructions.md" ]; then
