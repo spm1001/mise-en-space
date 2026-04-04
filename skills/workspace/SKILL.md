@@ -1,6 +1,6 @@
 ---
 name: mise
-description: Orchestrates content fetching via mcp__mise__ tools. MANDATORY before using search/fetch/do — load FIRST when you see 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace', 'move this file', 'create a doc'. Prevents keyword-soup searches, missed comments, and orphaned context using file→email→meaning loop pattern, Gmail operators, comment checking, and result filtering the tools alone don't know. (user)
+description: Orchestrates content fetching via mcp__mise__ tools. Load before using search/fetch/do — invoke first when you see 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace', 'move this file', 'create a doc'. Prevents keyword-soup searches, missed comments, and orphaned context using file→email→meaning loop pattern, Gmail operators, comment checking, and result filtering the tools alone don't know. (user)
 allowed-tools: [Bash, Read, "mcp__mise__*"]
 ---
 
