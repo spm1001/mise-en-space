@@ -1,0 +1,7 @@
+{
+  "scriptId": "YOUR_SCRIPT_ID_HERE",
+  "src": "./src",
+  "credentials": "../credentials.json",
+  "gcpProjectId": "YOUR_GCP_PROJECT_ID",
+  "filterConfig": "../config/attachment_filters.json"
+}

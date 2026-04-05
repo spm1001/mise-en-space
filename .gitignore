@@ -42,6 +42,9 @@ token.json
 *.key
 *.secret
 
+# Apps Script user config (personal script IDs)
+apps-script/deploy.json
+
 # MCP workspace output
 .mcp-workspace/
 /mise/

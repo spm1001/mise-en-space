@@ -1,0 +1,28 @@
+{
+  "timeZone": "Europe/London",
+  "executionApi": {
+    "access": "MYSELF"
+  },
+  "dependencies": {
+    "enabledAdvancedServices": [
+      {
+        "userSymbol": "Gmail",
+        "version": "v1",
+        "serviceId": "gmail"
+      },
+      {
+        "userSymbol": "Drive",
+        "version": "v3",
+        "serviceId": "drive"
+      }
+    ]
+  },
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/script.external_request",
+    "https://www.googleapis.com/auth/script.scriptapp"
+  ],
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8"
+}

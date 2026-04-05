@@ -10,6 +10,7 @@ adapters/       Thin Google API wrappers (easily mocked)
 tools/          MCP tool definitions (thin wiring layer)
 workspace/      File deposit management (mise/ in cwd)
 server.py       FastMCP entry point (stdio default, --remote for StreamableHTTP)
+apps-script/    Google Apps Script for email attachment extraction (runs in Google, not Python)
 docs/           Design documents and references
 ```
 

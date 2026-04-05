@@ -158,6 +158,12 @@ ln -s /path/to/mise-en-space/skill ~/.pi/agent/skills/mise
 
 Without the skill, Claude can call the tools but won't know the patterns that make them useful (like following `email_context` hints or filtering large results with jq).
 
+### 5. Email attachment extractor (optional)
+
+The `apps-script/` directory contains a Google Apps Script that runs in your Google account, extracting email attachments to dated Drive folders (`Email Attachments/YYYY-MM/`). This enables Drive fullText search to find content inside PDF attachments — the "pre-exfil detection" pattern that makes mise searches across Gmail and Drive seamless.
+
+See [`apps-script/README.md`](apps-script/README.md) for setup instructions.
+
 ## What to Expect (Latency)
 
 MCP server startup is ~1.3s (import + first auth). After that, the server stays alive — subsequent calls skip startup.

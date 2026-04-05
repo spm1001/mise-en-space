@@ -54,15 +54,34 @@ The httpx migration (mise-fokoli) is **complete** — all adapters and tools use
 - `upload_file_content` uses `client.request()` + `orjson.loads()` manually because the upload uses a file MIME type but returns JSON.
 - `download_file_to_temp` replaced `MediaIoBaseDownload` (resumable) with plain HTTP streaming (`stream_to_file`). If interrupted, the retry decorator restarts from scratch rather than resuming.
 - Gmail `search_threads` replaced Google's batch HTTP API with sequential individual GETs. Slightly slower in Phase 1, but simpler code — in Phase 2 these become `asyncio.gather()`, actually faster than batch.
-- `MiseSyncClient.upload_multipart()` handles multipart/related encoding for Drive uploads. Used by both `tools/create.py` and `adapters/conversion.py`. Boundary is hardcoded (`mise_upload_boundary`) — fine for single-user.
+- `MiseSyncClient.upload_multipart()` handles multipart/related encoding for Drive uploads. Used by both `tools/create.py` and `adapters/conversion.py`. Boundary is UUID-based (`mise_{uuid4}`) — changed from static string because binary file uploads (via `file_path` parameter) could contain the boundary in their content.
 - google-auth's `Credentials.valid` only checks local `expiry` — if `expiry` is None, reports valid even when expired server-side. The httpx client retries once on 401 with forced `credentials.refresh()`. Unit tests can never catch this class of bug.
 
-## Current state (Mar 2026)
+## Image embedding architecture
+
+`do(create)` with `doc_type='doc'` supports `![alt](local/path.png)` in markdown content. The implementation uses a post-creation injection pattern via Docs API `batchUpdate`:
+
+1. Parse image refs from markdown, replace with Unicode sentinel placeholders
+2. Create the doc via Drive import (markdown → Google Doc)
+3. Upload each image to Drive, share publicly (briefly), get public URL
+4. Find placeholders in the doc via Docs API, replace with `insertInlineImage`
+5. Revoke public sharing, delete temp Drive uploads
+
+**Critical constraint:** Docs API `insertInlineImage` requires a publicly accessible HTTPS URL — no "insert from Drive file ID" equivalent (unlike Slides API). This means enterprise Workspace accounts with DLP policies will 403 on the `permissions.create(type=anyone)` call. Graceful degradation works (images skipped, reported in `cues.image_errors`), but the entire happy path is mocked — batchUpdate format, `uc?export=view` URI, and permission lifecycle have never hit real APIs (tracked by mise-gozati, now closed but see mise-hagaru for the deeper fix).
+
+GCS signed URLs is the clean alternative if enterprise support is needed — time-limited public URL without Drive sharing semantics.
+
+## Current state (Apr 2026)
 
 Web fetching code has been fully removed — mise is Workspace-only. The core MCP server is stable and in daily use via stdio. Remote mode transport and content delivery are done (StreamableHTTP, inline content, safe-op filter). The remaining remote path is: auth middleware (mise-tokiju) → token management (mise-winala) → containerisation + deploy (mise-sefepo).
 
 The httpx migration (mise-fokoli) is complete. Write operation integration tests verified post-migration (mise-vozapu done). `services.py` is dead code kept only for integration test scaffolding. Folder triage (mise-wimamo) and call logging (mise-gakubo) shipped as part of 0.4.2.
 
-Plugin distribution (mise-fipabo) and OAuth smoothing (mise-lolane) are done. Created files are stamped with `description` and `properties.mise=true` for provenance tracking.
+Plugin distribution (mise-fipabo) and OAuth smoothing (mise-lolane) are done. Created files are stamped with `description` and `properties.mise=true` for provenance tracking. Version 0.5.1 shipped with file dates in search/fetch, binary uploads (`file_path` on `do(create)`), and image embedding in Docs.
 
-The backlog includes: Apps Script email extractor (mise-tagemu, repeatedly deferred — should be prioritised), edge-case polish (image/PDF, GIF handling), a latency/observability initiative (profiling, telemetry), and several feature additions (meeting prep, calendar write ops, image embedding in Docs, aboyeur Gmail polling, file dates in search results). mise-jatadu (configurable token paths) unblocks two-account coexistence.
+**0.5.1 shipped features:**
+- `createdTime`/`modifiedTime` in search results, previews, and fetch manifests (mise-pudibu)
+- `file_path` parameter for binary uploads via `do(create, doc_type='file')` (mise-likaba)
+- Image embedding in Google Docs via Docs API batchUpdate (mise-dulajo)
+
+The backlog includes: Apps Script email extractor (mise-tagemu, repeatedly deferred — should be prioritised), edge-case polish (image/PDF, GIF handling), Google Sheets merged cell detection (mise-vakabu, marked URGENT), Google Docs heading numbering bug (mise-gonase), and several feature additions (meeting prep, calendar write ops, aboyeur Gmail polling, folder creation, Drive shortcuts). mise-jatadu (configurable token paths) unblocks two-account coexistence.
