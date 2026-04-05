@@ -9,7 +9,7 @@ import pytest
 from unittest.mock import patch, MagicMock, call
 
 from models import SpreadsheetData
-from adapters.sheets import fetch_spreadsheet, _parse_cell_value, _parse_row
+from adapters.sheets import fetch_spreadsheet, _parse_cell_value, _parse_row, _resolve_merges
 
 
 # ============================================================================
@@ -48,6 +48,128 @@ class TestParseRow:
 
     def test_empty_row(self) -> None:
         assert _parse_row([]) == []
+
+
+# ============================================================================
+# MERGE RESOLUTION
+# ============================================================================
+
+
+class TestResolveMerges:
+    """Test merged cell value propagation."""
+
+    def test_vertical_merge(self) -> None:
+        """Vertical merge propagates top-left value down empty rows."""
+        values = [
+            ["Region", "Revenue"],
+            [None, "100"],
+            [None, "200"],
+            ["Other", "300"],
+        ]
+        merge = {
+            "startRowIndex": 0, "endRowIndex": 3,
+            "startColumnIndex": 0, "endColumnIndex": 1,
+        }
+        filled = _resolve_merges(values, [merge])
+
+        assert values[1][0] == "Region"
+        assert values[2][0] == "Region"
+        assert values[3][0] == "Other"  # Not in merge range
+        assert filled == 2
+
+    def test_horizontal_merge(self) -> None:
+        """Horizontal merge propagates value across columns."""
+        values = [
+            ["Header", None, None],
+            ["a", "b", "c"],
+        ]
+        merge = {
+            "startRowIndex": 0, "endRowIndex": 1,
+            "startColumnIndex": 0, "endColumnIndex": 3,
+        }
+        filled = _resolve_merges(values, [merge])
+
+        assert values[0] == ["Header", "Header", "Header"]
+        assert filled == 2
+
+    def test_block_merge(self) -> None:
+        """2x2 block merge fills all cells from top-left."""
+        values = [
+            ["Total", None],
+            [None, None],
+        ]
+        merge = {
+            "startRowIndex": 0, "endRowIndex": 2,
+            "startColumnIndex": 0, "endColumnIndex": 2,
+        }
+        filled = _resolve_merges(values, [merge])
+
+        assert values[0] == ["Total", "Total"]
+        assert values[1] == ["Total", "Total"]
+        assert filled == 3
+
+    def test_no_merges(self) -> None:
+        """No merges returns zero."""
+        values = [["a", "b"], ["c", "d"]]
+        filled = _resolve_merges(values, [])
+        assert filled == 0
+
+    def test_merge_beyond_data(self) -> None:
+        """Merge referencing rows beyond data is safely skipped."""
+        values = [["a"]]
+        merge = {
+            "startRowIndex": 5, "endRowIndex": 7,
+            "startColumnIndex": 0, "endColumnIndex": 1,
+        }
+        filled = _resolve_merges(values, [merge])
+        assert filled == 0
+
+    def test_sparse_row_extended(self) -> None:
+        """Short rows are extended when merge range exceeds row length."""
+        values = [
+            ["X"],
+            [],
+        ]
+        merge = {
+            "startRowIndex": 0, "endRowIndex": 2,
+            "startColumnIndex": 0, "endColumnIndex": 1,
+        }
+        filled = _resolve_merges(values, [merge])
+
+        assert values[1][0] == "X"
+        assert filled == 1
+
+    def test_source_value_none_skipped(self) -> None:
+        """Merge with None source value doesn't fill anything."""
+        values = [
+            [None, "ok"],
+            [None, "fine"],
+        ]
+        merge = {
+            "startRowIndex": 0, "endRowIndex": 2,
+            "startColumnIndex": 0, "endColumnIndex": 1,
+        }
+        filled = _resolve_merges(values, [merge])
+        assert filled == 0
+
+    def test_multiple_merges(self) -> None:
+        """Multiple independent merges are all resolved."""
+        values = [
+            ["A", "B", "X"],
+            [None, None, "Y"],
+        ]
+        merges = [
+            {"startRowIndex": 0, "endRowIndex": 2,
+             "startColumnIndex": 0, "endColumnIndex": 1},
+            {"startRowIndex": 0, "endRowIndex": 2,
+             "startColumnIndex": 1, "endColumnIndex": 2},
+        ]
+        filled = _resolve_merges(values, merges)
+
+        assert values[1][0] == "A"
+        assert values[1][1] == "B"
+        assert values[1][2] == "Y"  # Not in any merge
+        assert filled == 2
 
 
 # ============================================================================

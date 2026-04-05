@@ -24,11 +24,12 @@ from adapters.charts import get_charts_from_spreadsheet, render_charts_as_pngs
 _SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
 
 # Fields to request from spreadsheets().get()
-# Include sheetType to filter OBJECT sheets, and charts for metadata
+# Include sheetType to filter OBJECT sheets, charts for metadata, and merges
 SPREADSHEET_METADATA_FIELDS = (
     "spreadsheetId,"
     "properties(title,locale,timeZone),"
     "sheets(properties(sheetId,title,sheetType),"
+    "merges,"
     "charts(chartId,spec(title,basicChart(chartType),pieChart,histogramChart)))"
 )
 
@@ -46,6 +47,53 @@ def _parse_cell_value(value: Any) -> CellValue:
 def _parse_row(row: list[Any]) -> list[CellValue]:
     """Parse a row of cell values."""
     return [_parse_cell_value(v) for v in row]
+
+
+def _resolve_merges(
+    values: list[list[CellValue]],
+    merges: list[dict[str, Any]],
+) -> int:
+    """
+    Propagate top-left cell values into empty merged cells.
+
+    Google Sheets API returns values only in the top-left cell of a merge
+    range — all other cells come back as empty. This fills them in so CSV
+    output has correct data in every row.
+
+    Mutates `values` in place. Returns the number of cells filled.
+    """
+    filled = 0
+
+    for merge in merges:
+        start_row = merge.get("startRowIndex", 0)
+        end_row = merge.get("endRowIndex", start_row + 1)
+        start_col = merge.get("startColumnIndex", 0)
+        end_col = merge.get("endColumnIndex", start_col + 1)
+
+        # Get the top-left cell value (the source of truth)
+        if start_row >= len(values):
+            continue
+        top_row = values[start_row]
+        source_value = top_row[start_col] if start_col < len(top_row) else None
+
+        if source_value is None:
+            continue
+
+        # Fill all cells in the merge range (skip the top-left itself)
+        for row_idx in range(start_row, min(end_row, len(values))):
+            row = values[row_idx]
+            # Extend row if needed (sparse rows shorter than merge range)
+            while len(row) < end_col:
+                row.append(None)
+
+            for col_idx in range(start_col, end_col):
+                if row_idx == start_row and col_idx == start_col:
+                    continue  # Skip the source cell
+                if row[col_idx] is None or row[col_idx] == "":
+                    row[col_idx] = source_value
+                    filled += 1
+
+    return filled
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
@@ -85,14 +133,21 @@ def fetch_spreadsheet(
     time_zone = properties.get("timeZone")
 
     # Separate GRID sheets (have values) from OBJECT sheets (chart sheets)
+    # Also collect merge ranges per sheet for merged-cell resolution
     grid_sheets: list[tuple[str, str]] = []  # (name, sheetType)
     all_sheet_info: list[tuple[str, str]] = []
+    merges_by_sheet: dict[str, list[dict[str, Any]]] = {}  # sheet name → merge ranges
 
     for sheet in metadata.get("sheets", []):
         props = sheet.get("properties", {})
         name = props.get("title", "")
         sheet_type = props.get("sheetType", "GRID")
         all_sheet_info.append((name, sheet_type))
+
+        # Collect merge ranges for GRID sheets
+        sheet_merges = sheet.get("merges", [])
+        if sheet_merges:
+            merges_by_sheet[name] = sheet_merges
 
         # Only GRID sheets have values to fetch
         if sheet_type == "GRID":
@@ -101,6 +156,7 @@ def fetch_spreadsheet(
     # Fetch values only for GRID sheets
     sheets: list[SheetTab] = []
     formula_count = 0
+    merged_cell_count = 0
 
     if grid_sheets:
         ranges = [f"'{name}'" for name, _ in grid_sheets]
@@ -129,6 +185,13 @@ def fetch_spreadsheet(
         for (sheet_name, sheet_type), value_range in zip(grid_sheets, value_ranges):
             raw_values = value_range.get("values", [])
             parsed_values = [_parse_row(row) for row in raw_values]
+
+            # Resolve merged cells: propagate top-left value to all covered cells
+            if sheet_name in merges_by_sheet:
+                merged_cell_count += _resolve_merges(
+                    parsed_values, merges_by_sheet[sheet_name]
+                )
+
             sheets.append(SheetTab(
                 name=sheet_name,
                 values=parsed_values,
@@ -168,6 +231,7 @@ def fetch_spreadsheet(
         time_zone=time_zone,
         chart_render_time_ms=chart_render_time_ms,
         formula_count=formula_count,
+        merged_cell_count=merged_cell_count,
     )
 
 
@@ -198,7 +262,7 @@ def add_sheet(spreadsheet_id: str, title: str) -> int:
         f"{_SHEETS_API}/{spreadsheet_id}:batchUpdate",
         json_body=body,
     )
-    return response["replies"][0]["addSheet"]["properties"]["sheetId"]
+    return int(response["replies"][0]["addSheet"]["properties"]["sheetId"])
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
@@ -230,7 +294,7 @@ def update_sheet_values(
         params={"valueInputOption": value_input_option},
         json_body=body,
     )
-    return orjson.loads(response.content).get("updatedCells", 0)
+    return int(orjson.loads(response.content).get("updatedCells", 0))
 
 
 @with_retry(max_attempts=3, delay_ms=1000)

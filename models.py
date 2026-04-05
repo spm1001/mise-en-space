@@ -134,6 +134,9 @@ class SpreadsheetData:
     # Formula cell count (cells where FORMULA differs from FORMATTED_VALUE)
     formula_count: int = 0
 
+    # Merged cell count (cells resolved by propagating top-left value)
+    merged_cell_count: int = 0
+
     # Warnings during extraction (empty sheets, truncation, etc.)
     warnings: list[str] = field(default_factory=list)
 

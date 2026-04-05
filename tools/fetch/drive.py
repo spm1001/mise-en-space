@@ -298,6 +298,8 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
         extra["tabs"] = tabs_info
     if sheet_data.formula_count > 0:
         extra["formula_count"] = sheet_data.formula_count
+    if sheet_data.merged_cell_count > 0:
+        extra["merged_cell_count"] = sheet_data.merged_cell_count
     if chart_count > 0:
         extra["chart_count"] = chart_count
         extra["chart_render_time_ms"] = sheet_data.chart_render_time_ms
@@ -318,6 +320,12 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
     if email_context:
         result_meta["email_context"] = _build_email_context_metadata(email_context)
 
+    if sheet_data.merged_cell_count > 0:
+        sheet_data.warnings.append(
+            f"{sheet_data.merged_cell_count} merged cells detected and resolved "
+            "— verify values in merged regions"
+        )
+
     tab_names = [s.name for s in sheet_data.sheets] if len(sheet_data.sheets) > 1 else None
     cues = _build_cues(
         folder,
@@ -326,6 +334,7 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
         email_context=email_context,
         tab_names=tab_names,
         formula_count=sheet_data.formula_count,
+        merged_cell_count=sheet_data.merged_cell_count,
     )
 
     return FetchResult(

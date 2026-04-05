@@ -653,6 +653,32 @@ class TestFetchSheetCues:
         extra = ctx.mocks["write_manifest"].call_args[1]["extra"]
         assert extra["formula_count"] == 47
 
+    def test_sheet_cues_with_merged_cells(self, tmp_path: Path) -> None:
+        """Sheet with merged cells shows merged_cell_count in cues and warning."""
+        from tests.helpers import sheet_fetch_context
+
+        with sheet_fetch_context(tmp_path) as ctx:
+            ctx.sheet_data.merged_cell_count = 12
+
+            result = fetch_sheet("sheet1", "Merged Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
+
+        cues = result.cues
+        assert cues["merged_cell_count"] == 12
+        assert any("merged cells" in w for w in cues["warnings"])
+
+        # Also in manifest
+        extra = ctx.mocks["write_manifest"].call_args[1]["extra"]
+        assert extra["merged_cell_count"] == 12
+
+    def test_sheet_cues_no_merges_omits_field(self, tmp_path: Path) -> None:
+        """Sheet without merges has no merged_cell_count in cues."""
+        from tests.helpers import sheet_fetch_context
+
+        with sheet_fetch_context(tmp_path) as ctx:
+            result = fetch_sheet("sheet1", "Clean Sheet", _drive_metadata("application/vnd.google-apps.spreadsheet"))
+
+        assert "merged_cell_count" not in result.cues
+
 
 # ============================================================================
 # Integration: cues built during fetch_slides

@@ -65,6 +65,7 @@ def sheet_fetch_context(
     sheet_data.charts = []
     sheet_data.warnings = []
     sheet_data.formula_count = 0
+    sheet_data.merged_cell_count = 0
     sheet_data.chart_render_time_ms = 0
 
     comment_content = "comments" if comment_count > 0 else None

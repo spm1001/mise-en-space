@@ -26,6 +26,10 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
+# httpx params accept dict, list-of-tuples, or QueryParams.
+# list-of-tuples is needed for repeated keys (e.g. batchGet ranges).
+QueryParamsType = dict[str, Any] | list[tuple[str, str]] | None
+
 import httpx
 import orjson
 from google.auth.transport.requests import Request as GoogleAuthRequest
@@ -80,7 +84,7 @@ class MiseHttpClient:
         method: str,
         url: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
         json_body: Any | None = None,
         content: bytes | None = None,
         content_type: str | None = None,
@@ -118,7 +122,7 @@ class MiseHttpClient:
         self,
         url: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> dict[str, Any]:
         """GET and parse response as JSON via orjson."""
         response = await self.request("GET", url, params=params)
@@ -129,7 +133,7 @@ class MiseHttpClient:
         url: str,
         *,
         json_body: Any | None = None,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> dict[str, Any]:
         """POST with JSON body and parse response via orjson."""
         response = await self.request("POST", url, json_body=json_body, params=params)
@@ -140,7 +144,7 @@ class MiseHttpClient:
         url: str,
         *,
         json_body: Any | None = None,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> dict[str, Any]:
         """PATCH with JSON body and parse response via orjson."""
         response = await self.request("PATCH", url, json_body=json_body, params=params)
@@ -152,7 +156,7 @@ class MiseHttpClient:
         content: bytes,
         content_type: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> dict[str, Any]:
         """PATCH raw bytes (file upload/update) and parse JSON response.
 
@@ -170,7 +174,7 @@ class MiseHttpClient:
         content: bytes,
         content_type: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> dict[str, Any]:
         """PUT raw bytes (file upload) and parse response via orjson."""
         response = await self.request(
@@ -182,7 +186,7 @@ class MiseHttpClient:
         self,
         url: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> bytes:
         """GET and return raw response bytes (for file downloads)."""
         response = await self.request("GET", url, params=params)
@@ -193,7 +197,7 @@ class MiseHttpClient:
         self,
         url: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> AsyncIterator[httpx.Response]:
         """Stream a large download. Use for files over ~50MB.
 
@@ -213,7 +217,7 @@ class MiseHttpClient:
         self,
         url: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> None:
         """DELETE request (no response body expected)."""
         await self.request("DELETE", url, params=params)
@@ -262,7 +266,7 @@ class MiseSyncClient:
         method: str,
         url: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
         json_body: Any | None = None,
         content: bytes | None = None,
         content_type: str | None = None,
@@ -301,7 +305,7 @@ class MiseSyncClient:
         self,
         url: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> dict[str, Any]:
         """GET and parse response as JSON via orjson."""
         response = self.request("GET", url, params=params)
@@ -312,7 +316,7 @@ class MiseSyncClient:
         url: str,
         *,
         json_body: Any | None = None,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> dict[str, Any]:
         """POST with JSON body and parse response via orjson."""
         response = self.request("POST", url, json_body=json_body, params=params)
@@ -323,7 +327,7 @@ class MiseSyncClient:
         url: str,
         *,
         json_body: Any | None = None,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> dict[str, Any]:
         """PATCH with JSON body and parse response via orjson."""
         response = self.request("PATCH", url, json_body=json_body, params=params)
@@ -335,7 +339,7 @@ class MiseSyncClient:
         content: bytes,
         content_type: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> dict[str, Any]:
         """PATCH raw bytes (file upload/update) and parse JSON response."""
         response = self.request(
@@ -349,7 +353,7 @@ class MiseSyncClient:
         content: bytes,
         content_type: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> dict[str, Any]:
         """PUT raw bytes (file upload) and parse response via orjson."""
         response = self.request(
@@ -361,7 +365,7 @@ class MiseSyncClient:
         self,
         url: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> bytes:
         """GET and return raw response bytes (for file downloads)."""
         response = self.request("GET", url, params=params)
@@ -371,7 +375,7 @@ class MiseSyncClient:
         self,
         url: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> None:
         """DELETE request (no response body expected)."""
         self.request("DELETE", url, params=params)
@@ -383,7 +387,7 @@ class MiseSyncClient:
         content: bytes,
         content_type: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
     ) -> dict[str, Any]:
         """Upload file using multipart/related encoding (Drive API).
 
@@ -423,7 +427,7 @@ class MiseSyncClient:
         url: str,
         file_obj: Any,
         *,
-        params: dict[str, Any] | None = None,
+        params: QueryParamsType = None,
         chunk_size: int = 65536,
     ) -> None:
         """Stream a download directly to a file object.
