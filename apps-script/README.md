@@ -149,6 +149,15 @@ Check `isTrivialAttachment()` and `EXCLUDED_SUBJECT_PATTERNS`. Run `testBackfill
 - `resetOffset(2025)` — re-scan current month only
 - `resetState()` — nuclear option, clears everything
 
+## Migrating Existing Triggers
+
+If you're redeploying over an existing Apps Script project that had per-year triggers (e.g. `chunk2023`, `chunk2024`), those functions no longer exist. After deploying the new code:
+
+1. Run `clearTriggers()` to remove the old per-year triggers
+2. Run `setupTriggers()` to create the new single `chunkBackfillAll` trigger
+
+Without this, the old triggers will fire on missing functions and generate error emails.
+
 ## Adding a New Year
 
 Add the year to `BACKFILL_YEARS` in Config.gs:
