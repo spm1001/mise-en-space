@@ -231,6 +231,9 @@ class EmailMessage:
     # Forwarded messages (MIME message/rfc822 parts)
     forwarded_messages: list[ForwardedMessage] = field(default_factory=list)
 
+    # Gmail label IDs (INBOX, UNREAD, STARRED, IMPORTANT, user labels, etc.)
+    label_ids: list[str] = field(default_factory=list)
+
 
 @dataclass
 class GmailThreadData:
@@ -414,6 +417,8 @@ class GmailSearchResult:
     message_count: int = 1
     has_attachments: bool = False
     attachment_names: list[str] = field(default_factory=list)
+    is_unread: bool = False
+    label_ids: list[str] = field(default_factory=list)
 
 
 # ============================================================================

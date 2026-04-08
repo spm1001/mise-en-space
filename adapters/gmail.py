@@ -177,6 +177,7 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
         attachments=attachments,
         drive_links=drive_links,
         forwarded_messages=forwarded,
+        label_ids=msg.get("labelIds", []),
     )
 
 
@@ -325,6 +326,13 @@ def search_threads(
             logger.warning("Thread response with empty thread_id — skipping")
             continue
 
+        # Collect label IDs from first message (thread-level view)
+        first_label_ids = first_msg.get("labelIds", [])
+        # Thread is unread if any message has UNREAD label
+        thread_is_unread = any(
+            "UNREAD" in msg.get("labelIds", []) for msg in messages
+        )
+
         results.append(GmailSearchResult(
             thread_id=resp_thread_id,
             subject=headers.get("Subject", ""),
@@ -334,6 +342,8 @@ def search_threads(
             message_count=len(messages),
             has_attachments=len(attachment_names) > 0,
             attachment_names=attachment_names,
+            is_unread=thread_is_unread,
+            label_ids=first_label_ids,
         ))
 
     return results

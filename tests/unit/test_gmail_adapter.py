@@ -381,6 +381,29 @@ class TestBuildMessage:
         assert result.from_address == ""
         assert result.subject == ""
 
+    def test_label_ids_captured(self) -> None:
+        """Message labelIds from API response are captured."""
+        msg = {
+            "id": "m1",
+            "labelIds": ["INBOX", "UNREAD", "IMPORTANT"],
+            "payload": {
+                "mimeType": "text/plain",
+                "body": {"data": "SGVsbG8="},
+                "headers": [
+                    {"name": "From", "value": "test@example.com"},
+                    {"name": "Subject", "value": "Labels test"},
+                ],
+            },
+        }
+        result = _build_message(msg)
+        assert result.label_ids == ["INBOX", "UNREAD", "IMPORTANT"]
+
+    def test_label_ids_empty_when_absent(self) -> None:
+        """Message without labelIds gets empty list."""
+        msg = {"id": "m1", "payload": {"mimeType": "text/plain", "body": {}}}
+        result = _build_message(msg)
+        assert result.label_ids == []
+
 
 # ============================================================================
 # FETCH THREAD (mocked httpx client)
@@ -650,6 +673,109 @@ class TestSearchThreads:
 
         assert results == []  # Empty thread_id skipped, not stored under ""
         assert any("empty thread_id" in r.message for r in caplog.records)
+
+    @patch('adapters.gmail.get_sync_client')
+    def test_search_captures_label_ids_and_unread(self, mock_get_client) -> None:
+        """Search results include is_unread and label_ids from messages."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_client.get_json.side_effect = [
+            # threads.list
+            {"threads": [
+                {"id": "t1", "snippet": "Unread thread"},
+                {"id": "t2", "snippet": "Read thread"},
+            ]},
+            # threads.get for t1 — has UNREAD label
+            {
+                "id": "t1",
+                "messages": [{
+                    "id": "m1",
+                    "labelIds": ["INBOX", "UNREAD", "IMPORTANT"],
+                    "internalDate": "1706745600000",
+                    "payload": {
+                        "headers": [
+                            {"name": "From", "value": "alice@example.com"},
+                            {"name": "Subject", "value": "Unread"},
+                        ],
+                        "mimeType": "text/plain",
+                    },
+                }],
+            },
+            # threads.get for t2 — no UNREAD label
+            {
+                "id": "t2",
+                "messages": [{
+                    "id": "m2",
+                    "labelIds": ["INBOX"],
+                    "internalDate": "1706832000000",
+                    "payload": {
+                        "headers": [
+                            {"name": "From", "value": "bob@example.com"},
+                            {"name": "Subject", "value": "Read"},
+                        ],
+                        "mimeType": "text/plain",
+                    },
+                }],
+            },
+        ]
+
+        with patch('retry.time.sleep'):
+            results = search_threads("test", max_results=10)
+
+        assert len(results) == 2
+        # t1 is unread
+        assert results[0].is_unread is True
+        assert "UNREAD" in results[0].label_ids
+        assert "INBOX" in results[0].label_ids
+        # t2 is read
+        assert results[1].is_unread is False
+        assert "INBOX" in results[1].label_ids
+        assert "UNREAD" not in results[1].label_ids
+
+    @patch('adapters.gmail.get_sync_client')
+    def test_search_unread_from_any_message_in_thread(self, mock_get_client) -> None:
+        """Thread is unread if ANY message has UNREAD label, not just first."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_client.get_json.side_effect = [
+            {"threads": [{"id": "t1", "snippet": "Thread"}]},
+            {
+                "id": "t1",
+                "messages": [
+                    {  # First message is read
+                        "id": "m1",
+                        "labelIds": ["INBOX"],
+                        "internalDate": "1706745600000",
+                        "payload": {
+                            "headers": [
+                                {"name": "From", "value": "alice@example.com"},
+                                {"name": "Subject", "value": "Thread"},
+                            ],
+                            "mimeType": "text/plain",
+                        },
+                    },
+                    {  # Second message is unread
+                        "id": "m2",
+                        "labelIds": ["INBOX", "UNREAD"],
+                        "internalDate": "1706832000000",
+                        "payload": {
+                            "headers": [
+                                {"name": "From", "value": "bob@example.com"},
+                                {"name": "Subject", "value": "Re: Thread"},
+                            ],
+                            "mimeType": "text/plain",
+                        },
+                    },
+                ],
+            },
+        ]
+
+        with patch('retry.time.sleep'):
+            results = search_threads("test", max_results=10)
+
+        assert results[0].is_unread is True
 
 
 # ============================================================================

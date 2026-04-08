@@ -155,6 +155,28 @@ class TestFormatGmailResult:
         formatted = format_gmail_result(result)
         assert formatted["date"] is None
 
+    def test_label_fields_included(self) -> None:
+        result = GmailSearchResult(
+            thread_id="t1",
+            subject="Labelled",
+            snippet="...",
+            is_unread=True,
+            label_ids=["INBOX", "UNREAD", "IMPORTANT"],
+        )
+        formatted = format_gmail_result(result)
+        assert formatted["is_unread"] is True
+        assert formatted["labels"] == ["INBOX", "UNREAD", "IMPORTANT"]
+
+    def test_label_fields_defaults(self) -> None:
+        result = GmailSearchResult(
+            thread_id="t1",
+            subject="No labels",
+            snippet="",
+        )
+        formatted = format_gmail_result(result)
+        assert formatted["is_unread"] is False
+        assert formatted["labels"] == []
+
 
 # ============================================================================
 # do_search WIRING (mocked adapters)

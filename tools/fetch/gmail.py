@@ -435,6 +435,17 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
             f"To fetch individually: {'; '.join(img_examples)}"
         )
 
+    # Label summary from message label_ids
+    unread_count = sum(1 for msg in thread_data.messages if "UNREAD" in msg.label_ids)
+    if unread_count:
+        metadata["unread_count"] = unread_count
+    # Collect unique labels across all messages
+    all_label_ids: set[str] = set()
+    for msg in thread_data.messages:
+        all_label_ids.update(msg.label_ids)
+    if all_label_ids:
+        metadata["labels"] = sorted(all_label_ids)
+
     # Build participants list (unique, ordered by first appearance)
     seen_participants: set[str] = set()
     participants: list[str] = []
@@ -462,6 +473,13 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
         has_attachments=thread_data.has_attachments,
         date_range=date_range,
     )
+
+    # Add label-derived cues
+    if unread_count:
+        cues["unread_messages"] = unread_count
+    notable_labels = all_label_ids & {"STARRED", "IMPORTANT"}
+    if notable_labels:
+        cues["notable_labels"] = sorted(notable_labels)
 
     return FetchResult(
         path=str(folder),

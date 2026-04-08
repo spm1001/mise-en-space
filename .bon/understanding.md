@@ -2,6 +2,14 @@
 
 Mise-en-space is a Google Workspace MCP server that gives Claude access to Drive and Gmail through three verbs: search, fetch, and do. The architecture follows a strict layering — extractors (pure functions), adapters (thin API wrappers), tools (MCP wiring) — and this separation is load-bearing, not cosmetic.
 
+## The MCP description length ceiling
+
+MCP tool descriptions have a hard ceiling at 2048 characters, enforced by Claude Code's `MAX_MCP_DESCRIPTION_LENGTH` constant at `src/services/mcp/client.ts:218`. Descriptions over this limit are sliced and suffixed with `'… [truncated]'`. This truncation triggers a secondary, more insidious failure: the Anthropic API silently drops properties from the tool's JSON schema during `tool_reference` expansion (the mechanism that expands deferred tools when ToolSearch is called). The schema is sent in full by CC — the property loss happens API-side during expansion, not during transmission.
+
+**Diagnostic signature:** ToolSearch returns fewer properties than `mcp._tool_manager._tools[name].parameters` reports. The dropped property appears nowhere in the ToolSearch result — not truncated, just absent. When Claude emits a tool_use including the missing property, the API strips it before CC sees the tool_use block, so CC's `z.object({}).passthrough()` never gets the chance to help.
+
+**Fix within MCP server control:** Keep tool descriptions short and put detail in MCP resources (`mise://tools/*`). The `do()` description went from a full Args/Returns docstring (2494ch) to a compact operation summary (~600ch). All 21 properties survived immediately. Don't expand descriptions without checking `len(tool.description) + len(json.dumps(tool.parameters))` against practical limits. This applies to all batterie MCP servers, not just mise.
+
 ## Remote mode architecture
 
 The remote mode (StreamableHTTP for Claude.ai connectors) was designed around the principle of *not touching the fetchers*. The 10+ type-specific fetch functions in `tools/fetch/` are battle-tested and complex. Rather than making them remote-aware, `server.py` intercepts after the fetch completes: deposits go to a temp dir, content is read back and included inline in the response, then the temp dir is cleaned up. This "post-hoc read-back" pattern means all fetchers work unchanged in both modes. The same applies to search — `SearchResult.to_dict()` already had an inline mode (`path=None`), so remote just clears the path after deposit. When extending for new content types, keep the interception at `server.py`, never inside the fetchers themselves.
@@ -30,17 +38,13 @@ Token storage: `~/.claude/plugins/data/mise-batterie-de-savoir/` (version-stable
 
 ## Google Sheets: the merged-cell trap
 
-Google's Sheets value APIs (`values.batchGet`) return *display* data, not *structural* data. Merge ranges live in the metadata endpoint (`spreadsheets.get`), not the value endpoint. When you fetch values with `FORMATTED_VALUE`, merged cells return the value only in the top-left cell; every other cell in the merge range comes back as an empty string. This is invisible at the CSV layer — the data looks clean, just wrong.
+Google's Sheets value APIs (`values.batchGet`) return *display* data, not *structural* data. Merge ranges live in the metadata endpoint (`spreadsheets.get`), not the value endpoint. When you fetch values with `FORMATTED_VALUE`, merged cells return the value only in the top-left cell; every other cell in the merge range comes back as an empty string.
 
-The ITV regionality session lost hours to 94 false `no_service` results that were actually substitutions hidden by merged cells. The fix was straightforward once diagnosed: request `sheets.merges` in the metadata fields, `_resolve_merges` propagates top-left values post-fetch. But the *discovery* required a human screenshot — the data was plausible enough that Claude confidently presented it as correct.
-
-**Lesson:** Be sceptical of "clean" tabular data from Sheets. If a cue says `merged_cell_count > 0`, pay attention to the merged regions. `_resolve_merges` propagates top-left values into ALL cells of a merge range, including horizontal merges — for merged column headers (e.g. "Q1 2026" spanning 3 months), each column gets the same value. Strictly better than empty strings but could mislead about tabular structure. The warning cue mitigates.
+The fix: request `sheets.merges` in the metadata fields, `_resolve_merges` propagates top-left values post-fetch. `_resolve_merges` handles horizontal merges too — merged column headers get the same value in each spanned column. The warning cue mitigates misinterpretation.
 
 ## httpx migration — complete (Mar 2026)
 
-All adapters and tools use sync httpx. Phase 2 (async) is future work: convert tools layer and server.py to `async def`, switch to async client, restructure for real concurrency with `asyncio.gather()`.
-
-Key patterns: `MiseSyncClient` and `MiseHttpClient` are intentional near-duplicates (MiseSyncClient dies in Phase 2). Google API URLs are hardcoded constants. `services.py` is dead code kept only for integration test scaffolding.
+All adapters and tools use sync httpx. Phase 2 (async) is future work. Key patterns: `MiseSyncClient` and `MiseHttpClient` are intentional near-duplicates (MiseSyncClient dies in Phase 2). Google API URLs are hardcoded constants. `services.py` is dead code kept only for integration test scaffolding.
 
 ## Image embedding architecture
 
@@ -53,9 +57,11 @@ Key patterns: `MiseSyncClient` and `MiseHttpClient` are intentional near-duplica
 - `get_deposit_folder` wipes on re-call — never call twice for the same folder mid-operation (retry hazard in remote mode)
 - `MiseSyncClient.upload_multipart()` boundary is UUID-based (binary uploads could contain static boundaries)
 - google-auth `Credentials.valid` only checks local `expiry` — httpx client retries once on 401 with forced refresh
+- **Token error diagnostics** — `_load_and_diagnose_credentials` in `adapters/http_client.py` distinguishes missing file, corrupt JSON, no refresh_token, and failed refresh. Clear error messages for each case.
+- **Heading extraction** — blockquote prefix suppressed when a heading prefix is already present (`extractors/docs.py`), preventing `> ##` output for indented headings.
 
 ## Current state (Apr 2026)
 
-Core MCP server stable and in daily use via stdio. Remote mode transport done. Web fetching fully removed — Workspace-only. Apps Script email extractor ported from archived repo. Merged-cell resolution shipped in 0.5.7 with 10 new tests (1525 total passing).
+Core MCP server stable and in daily use via stdio (v0.5.9). Remote mode transport done. Merged-cell resolution, pageless doc creation, folder creation, token diagnostics, and heading extraction all shipped. MCP description length fixed (property drop bug resolved). Apps Script email extractor ported from archived repo.
 
-Backlog: remote deployment path (auth → tokens → container), image/PDF edge cases, Docs heading numbering bug (mise-gonase), quality-of-life features under mise-vakabu, Gmail pagination (mise-putadu).
+Backlog: remote deployment path (auth → tokens → container), image/PDF edge cases (mise-heferu), Gmail pagination (mise-putadu), Drive shortcuts (mise-nitaco), keychain token materialisation (mise-zozewa), image embedding privacy (mise-hagaru).

@@ -84,6 +84,8 @@ def format_gmail_result(result: GmailSearchResult) -> dict[str, Any]:
         "message_count": result.message_count,
         "has_attachments": result.has_attachments,
         "attachment_names": result.attachment_names,
+        "is_unread": result.is_unread,
+        "labels": result.label_ids,
     }
 
 

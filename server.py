@@ -524,6 +524,7 @@ Supported: Google Docs, Sheets, Slides, Gmail threads, PDFs, Office files, video
 
 - `mise://docs/overview` — This overview
 - `mise://docs/search` — Search tool details
+- `mise://docs/gmail-search` — Gmail search operator reference (is:, in:, from:, label:, etc.)
 - `mise://docs/fetch` — Fetch tool details and supported types
 - `mise://docs/do` — Do tool details (create, move, rename, edit)
 - `mise://docs/workspace` — Deposit folder structure
@@ -616,8 +617,110 @@ The JSON file contains the full results:
 ## Notes
 
 - Drive search uses fullText contains (searches content, not just filename)
-- Gmail search supports Gmail operators (from:, to:, subject:, after:, before:)
+- Gmail search supports Gmail operators — see `mise://docs/gmail-search` for full reference
 - Results are sorted by relevance (Google's ranking)
+"""
+
+
+@mcp.resource("mise://docs/gmail-search")
+def docs_gmail_search() -> str:
+    """Gmail search operator reference — tested against production API."""
+    return """# Gmail Search Operators
+
+Gmail search accepts the same operators as the web UI. Pass these in the `query`
+parameter of `search(sources=["gmail"], query="...")`.
+
+Tested: 2026-01-31 against production Gmail API.
+
+## Location & Status
+
+| Operator | Example | What it finds |
+|----------|---------|---------------|
+| `in:inbox` | `in:inbox` | Inbox threads |
+| `in:sent` | `in:sent` | Sent mail |
+| `in:draft` | `in:draft` | Drafts |
+| `in:anywhere` | `in:anywhere` | Including spam/trash |
+| `is:unread` | `is:unread` | Unread messages |
+| `is:read` | `is:read` | Read messages |
+| `is:starred` | `is:starred` | Starred |
+| `is:important` | `is:important` | Marked important |
+| `is:snoozed` | `is:snoozed` | Snoozed |
+| `label:X` | `label:work` | Custom or system label |
+| `category:primary` | `category:primary` | Inbox tab |
+| `category:updates` | `category:updates` | Updates tab |
+| `category:promotions` | `category:promotions` | Promotions tab |
+
+## People & Content
+
+| Operator | Example | What it finds |
+|----------|---------|---------------|
+| `from:` | `from:alice@example.com` | Sender |
+| `to:` | `to:team@company.com` | Recipient |
+| `cc:` | `cc:manager@company.com` | CC'd |
+| `subject:` | `subject:quarterly review` | Subject line |
+| `"exact phrase"` | `"budget approved"` | Literal match |
+
+## Attachments
+
+| Operator | Example | What it finds |
+|----------|---------|---------------|
+| `has:attachment` | `has:attachment` | Any attachment |
+| `has:drive` | `has:drive` | Drive file link |
+| `has:document` | `has:document` | Google Doc attached |
+| `has:spreadsheet` | `has:spreadsheet` | Google Sheet attached |
+| `filename:` | `filename:report.pdf` | Attachment by name |
+| `filename:*.xlsx` | `filename:*.xlsx` | Wildcard match |
+
+## Dates
+
+| Operator | Example | Notes |
+|----------|---------|-------|
+| `after:` | `after:2026/01/01` | Date format: YYYY/MM/DD (slashes, not dashes) |
+| `before:` | `before:2026/03/31` | |
+| `newer_than:` | `newer_than:7d` | Relative: d=days, w=weeks, m=months, y=years |
+| `older_than:` | `older_than:30d` | |
+
+## Size
+
+| Operator | Example | Notes |
+|----------|---------|-------|
+| `larger:` | `larger:5M` | Units: K, M, G |
+| `smaller:` | `smaller:1M` | |
+
+## Boolean & Grouping
+
+| Operator | Example | Notes |
+|----------|---------|-------|
+| `OR` | `budget OR forecast` | Either term (must be uppercase) |
+| `-` | `-newsletter` | Exclude term |
+| `()` | `(budget OR forecast) from:john` | Grouping |
+| `AROUND N` | `AROUND 5 budget approved` | Words within N of each other |
+
+## Triage Recipes
+
+```
+# Unread inbox
+in:inbox is:unread
+
+# Unread from a specific person this week
+from:boss@company.com is:unread newer_than:7d
+
+# Attachments needing review
+has:attachment is:unread newer_than:30d
+
+# Everything from a domain
+from:@example.com
+
+# Large emails (cleanup)
+larger:10M older_than:1y
+```
+
+## Gotchas
+
+- `resultSizeEstimate` from the API is unreliable — treat as "has results" signal, not count
+- Gmail operators do NOT work in Drive search (Drive uses SQL-like syntax)
+- Date format is `YYYY/MM/DD` with slashes — dashes will silently fail
+- `in:anywhere` is needed to search spam/trash — default excludes them
 """
 
 
