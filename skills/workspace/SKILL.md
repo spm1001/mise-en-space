@@ -1,6 +1,6 @@
 ---
 name: mise
-description: Orchestrates content fetching via mcp__mise__ tools. Load before using search/fetch/do — invoke first when you see 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace', 'move this file', 'create a doc'. Prevents keyword-soup searches, missed comments, and orphaned context using file→email→meaning loop pattern, Gmail operators, comment checking, and result filtering the tools alone don't know. (user)
+description: Orchestrates content fetching via mcp__mise__ tools. Load before using search/fetch/do — invoke first when you see 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace', 'move this file', 'create a doc', 'triage my inbox', 'archive these', 'draft an email'. Covers research loops, Gmail triage with batch ops, email drafting, and result filtering the tools alone don't know. (user)
 allowed-tools: [Bash, Read, "mcp__mise__*"]
 ---
 
@@ -64,7 +64,7 @@ fetch("1abc...", base_path="/Users/modha/Repos/my-project")
 |------|---------|--------|
 | `search` | Find files/emails/activity/calendar events | Path to deposited JSON + counts |
 | `fetch` | Extract content to disk | Deposit folder: content.md, comments.md, manifest.json |
-| `do` | Act on Workspace (create, move, rename, share, overwrite, edit, email, Gmail ops) | File ID + web URL + cues |
+| `do` | Act on Workspace (create, move, rename, share, overwrite, edit, draft, archive, star, label) | File ID + web URL + cues |
 
 `fetch` auto-detects input: Drive file ID, Drive URL, or Gmail thread ID.
 
@@ -219,6 +219,11 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 | `prepend` | Insert at start of file | `file_id`, `content` |
 | `append` | Insert at end of file | `file_id`, `content` |
 | `replace_text` | Find-and-replace in file | `file_id`, `find`, `content` |
+| `draft` | Compose a new Gmail draft | `to`, `subject`, `content`, optional `include` (Drive file IDs) |
+| `reply_draft` | Reply draft in an existing thread | `file_id` (thread ID), `content`, optional `include` |
+| `archive` | Remove thread(s) from Inbox | `file_id` (str or list) |
+| `star` | Star thread(s) | `file_id` (str or list) |
+| `label` | Add/remove label on thread(s) | `file_id` (str or list), `label`, optional `remove=True` |
 
 ### Choosing the Right Edit Operation
 
@@ -444,6 +449,101 @@ Check `results` in the response — each entry has its own `ok`/`error`. A faile
 | Search with full-text query for type filter | Unnecessary, adds noise | `type="folder"` alone is enough with a `folder_id` |
 | Move files one at a time | Slow, no batch summary | Pass `file_id` as a list |
 
+## Workflow 6: Inbox Triage
+
+**When:** "Help me triage my inbox" / "Archive everything from that newsletter" / "Star the important threads"
+
+The triage workflow combines search, review, and batch actions. Pagination and batch ops work together — search surfaces the full picture, batch operations let you act on it efficiently.
+
+### Step 1: Search with Gmail operators
+
+Target what matters using operators rather than keywords:
+
+```python
+# Unread in inbox
+search("is:unread in:inbox", sources=["gmail"], base_path="...")
+
+# Recent unread from a person
+search("is:unread from:alice@example.com newer_than:7d", sources=["gmail"], base_path="...")
+
+# Newsletters and promotions (good candidates for bulk archive)
+search("category:promotions newer_than:30d", sources=["gmail"], base_path="...")
+
+# Custom label
+search("label:project-alpha is:unread", sources=["gmail"], base_path="...")
+```
+
+Search follows `nextPageToken` automatically, so results aren't capped at the first page. If results are truncated (very large result set), `cues.truncated` will be `true`.
+
+### Step 2: Review and decide
+
+Read the search results. Each thread shows subject, participants, date, and snippet. Decide which threads to act on — fetch individual threads if you need more context before deciding:
+
+```python
+fetch("thread_id", base_path="...")  # Read the full conversation
+```
+
+### Step 3: Act in batch
+
+Pass a list of thread IDs to process multiple threads in one call:
+
+```python
+# Archive threads you've reviewed
+do(operation="archive", file_id=["thread1", "thread2", "thread3"], base_path="...")
+
+# Star threads that need follow-up
+do(operation="star", file_id=["thread4", "thread5"], base_path="...")
+
+# Label threads for a project
+do(operation="label", file_id=["thread6", "thread7"], label="follow-up", base_path="...")
+```
+
+Each batch call returns a summary with `succeeded`/`failed` counts and per-thread results — a failed operation on one thread doesn't block the others.
+
+### The `label` operation covers more than labels
+
+`label` works with system labels, which means it handles several triage actions through one operation:
+
+| Triage action | How |
+|---------------|-----|
+| Archive | `archive` (or `label` with `label="INBOX"`, `remove=True`) |
+| Star | `star` (or `label` with `label="STARRED"`) |
+| Unstar | `label` with `label="STARRED"`, `remove=True` |
+| Mark read | `label` with `label="UNREAD"`, `remove=True` |
+| Mark unread | `label` with `label="UNREAD"` |
+| Add custom label | `label` with `label="your-label-name"` |
+| Remove custom label | `label` with `label="your-label-name"`, `remove=True` |
+
+Label names are resolved automatically — use human-readable names like `"follow-up"`, not Gmail's internal IDs.
+
+### Drafting emails
+
+Compose drafts for the user to review and send from Gmail:
+
+```python
+# New email
+do(operation="draft", to="alice@example.com", subject="Q4 update", content="...", base_path="...")
+
+# Reply in a thread
+do(operation="reply_draft", file_id="thread_id", content="Thanks for the update...", base_path="...")
+
+# Include Drive files as formatted links in the body
+do(operation="draft", to="team@example.com", subject="Report ready",
+   content="Here's the report", include=["drive_file_id"], base_path="...")
+```
+
+Draft-only — Claude composes, the user reviews and sends from Gmail. This is a safety boundary, not a limitation.
+
+### Common mistakes
+
+| Mistake | What happens | Better approach |
+|---------|-------------|-----------------|
+| Keyword soup for triage search | Noisy results, hard to batch-act | Use operators: `is:unread in:inbox newer_than:7d` |
+| Archiving without reviewing | Important threads disappear | Fetch uncertain threads first, then batch the clear ones |
+| One thread at a time | Slow, many tool calls | Pass `file_id` as a list for batch operations |
+| Separate mark_read operation | Doesn't exist as its own op | Use `label` with `label="UNREAD"`, `remove=True` |
+| Forgetting `sources=["gmail"]` | Searches Drive too, slower and noisier | Set `sources=["gmail"]` for inbox work |
+
 ## Error Handling
 
 | Error | Meaning | What to do |
@@ -468,6 +568,8 @@ Check `results` in the response — each entry has its own `ok`/`error`. A faile
 | Overwrite a doc with images/tables | Content destroyed, not recoverable | Use `prepend`/`append`/`replace_text` |
 | `replace_text` without checking cues | Silent no-op if text not found | Check `cues.occurrences_changed > 0` |
 | Share with `confirm=True` without preview | Bypasses user approval | Always call without confirm first, show preview, then confirm |
+| Archive/star one thread at a time | Slow — one tool call per thread | Pass `file_id` as a list for batch operations |
+| Looking for a `mark_read` operation | Doesn't exist | Use `label` with `label="UNREAD"`, `remove=True` |
 
 ## Integration
 
@@ -482,13 +584,14 @@ Check `results` in the response — each entry has its own `ok`/`error`. A faile
 - Research tasks involving multiple Drive/Gmail sources
 - Finding context around a document (who sent it, what was discussed)
 - Creating or editing Google Docs/Sheets/Slides
+- Inbox triage — searching, reviewing, and batch-acting on Gmail threads
+- Composing email drafts (new or reply)
 - Any task needing cross-source exploration
 
-## When NOT to Use
+## Boundaries
 
-- Task doesn't involve content fetching (no Drive or Gmail)
+- Task doesn't involve Google Workspace (no Drive or Gmail)
 - Pure filesystem operations
-
 
 ## Success Criteria
 
@@ -499,4 +602,6 @@ This skill works when:
 - `email_context` hints are followed to source emails
 - Large results are filtered before reading
 - Research tasks follow the exploration loop, not single-search-and-stop
+- Triage uses batch operations, not one-thread-at-a-time
+- `label` is used for mark_read/unread/unstar rather than seeking separate operations
 - Errors are reported with actionable guidance, not just "it failed"
