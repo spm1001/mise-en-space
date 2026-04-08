@@ -204,6 +204,30 @@ def test_create_sheet_with_formulae(cleanup_created_files: list[str]) -> None:
 
 
 @pytest.mark.integration
+def test_create_doc_pageless(cleanup_created_files: list[str]) -> None:
+    """Test creating a pageless Google Doc via page_setup parameter."""
+    content = "# Pageless Test\n\nThis doc should have no page breaks."
+    title = "mise-en-space-test-pageless"
+
+    result = do(
+        operation="create", content=content, title=title,
+        page_setup="pageless",
+    )
+
+    assert "error" not in result, f"Create failed: {result}"
+    assert result["cues"].get("page_setup") == "pageless"
+    cleanup_created_files.append(result["file_id"])
+
+    # Verify via Docs API that documentMode is PAGELESS
+    client = get_sync_client()
+    doc = client.get_json(
+        f"https://docs.googleapis.com/v1/documents/{result['file_id']}",
+        params={"fields": "documentStyle.documentFormat"},
+    )
+    assert doc["documentStyle"]["documentFormat"]["documentMode"] == "PAGELESS"
+
+
+@pytest.mark.integration
 def test_create_invalid_type() -> None:
     """Test that invalid doc_type returns error."""
     result = do(operation="create", content="content", title="title", doc_type="invalid")

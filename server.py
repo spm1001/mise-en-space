@@ -266,41 +266,12 @@ def _search_remote(
 
 
 @mcp.tool()
-def fetch(file_id: str, base_path: str = "", attachment: str | None = None, recursive: bool = False, tabs: list[str] | None = None) -> dict[str, Any]:
+def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs: list[str] | None = None, recursive: bool = False) -> dict[str, Any]:
     """
-    Fetch content to filesystem.
+    Fetch content to mise/ — auto-detects type (Drive file, Gmail thread, folder).
 
-    Writes processed content to mise/ in the specified directory.
-    Returns path for caller to read with standard file tools.
-
-    Always optimizes for LLM consumption (markdown, CSV, clean text).
-    Auto-detects input type and routes appropriately.
-
-    Supports Drive files, Gmail threads, AND Drive folders.
-    When given a folder ID, returns a directory listing (subfolders with IDs,
-    files grouped by type) — use this to explore folder contents without
-    needing a search query.
-
-    Args:
-        file_id: Drive file ID, Gmail thread ID, or Drive folder ID
-        base_path: Directory for deposits (pass your cwd so files land next to your project, not the MCP server's directory)
-        attachment: Specific attachment filename to extract from a Gmail thread.
-                    Use this to extract Office files (DOCX/XLSX/PPTX) that are
-                    skipped during normal thread fetch. Also works for PDFs and images.
-        recursive: When fetching a folder, traverse subfolders recursively to
-                   produce a full tree view. Default False (immediate children only).
-                   Capped at depth 5 and 1000 total items.
-        tabs: List of tab names to fetch from a spreadsheet. When set, only named
-              tabs are exported (others skipped). Default None (all tabs).
-
-    Returns:
-        path: Filesystem path to fetched content folder
-        content_file: Path to main content file
-        format: Output format (markdown, csv)
-        type: Content type (doc, sheet, slides, gmail, folder)
-        metadata: File metadata
-        content: (remote mode only) Inline content body
-        comments: (remote mode only) Inline comments markdown
+    Pass base_path=cwd. Use attachment= for specific Gmail attachments (Office/PDF/image).
+    Use recursive=True on folders for full tree. Use tabs= to fetch specific spreadsheet tabs.
     """
     call_params: dict[str, Any] = {"file_id": file_id}
     if attachment:
@@ -384,32 +355,12 @@ def _fetch_remote(file_id: str, base_path: str, attachment: str | None, *, recur
 _DO_DESCRIPTION_FULL = """\
 Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail.
 
-Args:
-    operation: What to do. One of: 'create', 'move', 'rename', 'share', 'overwrite', 'prepend', 'append', 'replace_text', 'draft', 'reply_draft', 'archive', 'star', 'label'
-    content: Text content. Usage varies by operation.
-    title: Document title (required for create, falls back to manifest title when using source)
-    doc_type: 'doc' | 'sheet' | 'slides' | 'file' (for create). 'file' uploads as-is without Google conversion (MIME inferred from title extension).
-    folder_id: Optional destination folder (for create)
-    page_setup: Page layout for doc creation. 'pageless' creates a pageless Google Doc (for create with doc_type='doc').
-    file_id: Target file or thread (required for move, rename, share, overwrite, prepend, append, replace_text, reply_draft, archive, star, label). For move: accepts a list of IDs to batch-move multiple files to the same destination in one call.
-    destination_folder_id: Where to move the file (required for move)
-    source: Path to deposit folder containing content to publish (for create/overwrite). Reads content.md (doc) or content.csv (sheet) from the folder. Manifest is enriched with creation receipt after success.
-    base_path: Directory for resolving relative source paths (pass your cwd)
-    file_path: Local file path to read content from (for create/overwrite). Reads directly from the file — no deposit folder needed. For create with doc_type='file', uploads as binary; for doc/sheet, reads as UTF-8 text.
-    find: Text to find (required for replace_text)
-    to: Recipient email address(es), comma-separated (for draft, share)
-    subject: Email subject (for draft; separate from title which is for create)
-    cc: CC address(es), comma-separated (for draft, reply_draft). Overrides inferred Cc for reply_draft.
-    include: List of Drive file IDs to include as links in the email body (for draft, reply_draft)
-    reply_all: If True, infer Cc from all recipients on the last message (for reply_draft)
-    role: Permission role for share — 'reader' (default), 'writer', or 'commenter'
-    confirm: Required True to execute share (safety gate — first call previews, second executes)
-    label: Label name to add/remove (for label operation; resolved to ID automatically)
-    remove: If True, remove the label instead of adding it (for label operation)
-
-Returns:
-    file_id: File ID, draft ID, or thread ID
-    web_link: URL to view/edit"""
+Operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label.
+Create: content + title + doc_type (doc/sheet/slides/file). page_setup='pageless' for pageless docs. file_path= to read from disk.
+Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content).
+Email: draft (to + subject + content), reply_draft (file_id + content), archive/star/label.
+Share: file_id + to + role (reader/writer/commenter), confirm=True to execute.
+Move: file_id (single or list) + destination_folder_id."""
 
 _DO_DESCRIPTION_REMOTE = """\
 Act on Google Workspace (remote mode — safe operations only).
@@ -441,10 +392,12 @@ def do(
     title: str | None = None,
     doc_type: str = "doc",
     folder_id: str | None = None,
+    page_setup: str | None = None,
     file_id: str | list[str] | None = None,
     destination_folder_id: str | None = None,
     source: str | None = None,
     base_path: str | None = None,
+    file_path: str | None = None,
     find: str | None = None,
     to: str | None = None,
     subject: str | None = None,
@@ -453,10 +406,8 @@ def do(
     reply_all: bool = False,
     role: str | None = None,
     confirm: bool = False,
-    file_path: str | None = None,
     label: str | None = None,
     remove: bool = False,
-    page_setup: str | None = None,
 ) -> dict[str, Any]:
     """Act on Google Workspace."""
     # Build log params — include operation and non-None values that matter,
