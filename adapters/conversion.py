@@ -116,6 +116,7 @@ def convert_via_drive(
         if file_path is not None:
             upload_bytes = file_path.read_bytes()
         else:
+            assert file_bytes is not None  # validated above
             upload_bytes = file_bytes
 
         metadata = {"name": temp_name, "mimeType": target_mime}
@@ -192,6 +193,7 @@ def upload_and_convert(
         if file_path is not None:
             upload_bytes = file_path.read_bytes()
         else:
+            assert file_bytes is not None  # validated above
             upload_bytes = file_bytes
 
         metadata = {"name": temp_name, "mimeType": target_mime}

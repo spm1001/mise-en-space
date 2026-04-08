@@ -264,7 +264,7 @@ def search_threads(
     client = get_sync_client()
 
     # Step 1: Collect thread IDs across pages (Gmail caps at 100 per page)
-    threads: list[dict] = []
+    threads: list[dict[str, Any]] = []
     page_token: str | None = None
     truncated = False
 

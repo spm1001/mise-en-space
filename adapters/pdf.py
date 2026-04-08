@@ -111,6 +111,7 @@ def convert_pdf_content(
         result = md.convert_local(str(file_path))
         content = result.text_content or ""
     else:
+        assert file_bytes is not None  # validated above
         content = _convert_with_markitdown(file_bytes)
     char_count = len(content.strip())
 
@@ -335,7 +336,7 @@ def _render_via_coregraphics(
     Requires PyObjC (pyobjc-framework-Quartz).
     CoreGraphics needs a file path — if given bytes, writes to temp first.
     """
-    import Quartz  # type: ignore[import-untyped]
+    import Quartz
 
     # CoreGraphics needs a file path
     tmp_created = False
@@ -355,7 +356,7 @@ def _render_via_coregraphics(
 
 def _do_coregraphics_render(file_path: Path, Quartz: Any) -> PdfThumbnailResult:
     """Core rendering logic using Quartz framework."""
-    import CoreFoundation  # type: ignore[import-untyped]
+    import CoreFoundation
 
     url = CoreFoundation.CFURLCreateFromFileSystemRepresentation(
         None, str(file_path).encode(), len(str(file_path).encode()), False
@@ -443,8 +444,8 @@ def _render_via_pdf2image(
     Uses fixed DPI for all pages. Requires poppler-utils system package.
     """
     import io
-    from pdf2image import convert_from_bytes, convert_from_path  # type: ignore[import-untyped]
-    from pdf2image.exceptions import (  # type: ignore[import-untyped]
+    from pdf2image import convert_from_bytes, convert_from_path
+    from pdf2image.exceptions import (
         PDFInfoNotInstalledError,
         PDFPageCountError,
     )
@@ -483,10 +484,11 @@ def _render_via_pdf2image(
     # If we got exactly MAX_THUMBNAIL_PAGES, there might be more — try to count
     if total_pages == MAX_THUMBNAIL_PAGES:
         try:
-            from pdf2image import pdfinfo_from_bytes, pdfinfo_from_path  # type: ignore[import-untyped]
+            from pdf2image import pdfinfo_from_bytes, pdfinfo_from_path
             if file_path is not None:
                 info = pdfinfo_from_path(str(file_path))
             else:
+                assert file_bytes is not None  # validated at function entry
                 info = pdfinfo_from_bytes(file_bytes)
             real_count = info.get("Pages", total_pages)
             if real_count > MAX_THUMBNAIL_PAGES:

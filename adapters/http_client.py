@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 API_TIMEOUT = 60
 
 
-def _load_and_diagnose_credentials(token_path):
+def _load_and_diagnose_credentials(token_path: str) -> Any:
     """Load OAuth credentials with clear error messages for each failure mode.
 
     Instead of a generic "token not found" error, distinguishes:
