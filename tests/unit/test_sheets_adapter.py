@@ -387,3 +387,110 @@ class TestFetchSpreadsheet:
             result = fetch_spreadsheet("sheet123")
 
         assert result.formula_count == 1
+
+
+# ============================================================================
+# TAB FILTERING
+# ============================================================================
+
+class TestTabFiltering:
+    """Test tabs parameter filters which sheets are fetched."""
+
+    def _make_multi_tab_metadata(self) -> dict:
+        return {
+            "spreadsheetId": "sheet123",
+            "properties": {"title": "Multi-Tab"},
+            "sheets": [
+                {"properties": {"sheetId": 0, "title": "Overview", "sheetType": "GRID"}},
+                {"properties": {"sheetId": 1, "title": "Details", "sheetType": "GRID"}},
+                {"properties": {"sheetId": 2, "title": "Archive", "sheetType": "GRID"}},
+            ],
+        }
+
+    @patch('adapters.sheets.render_charts_as_pngs')
+    @patch('adapters.sheets.get_charts_from_spreadsheet')
+    @patch('adapters.sheets.get_sync_client')
+    def test_tabs_filter_selects_only_named_tabs(self, mock_get_client, mock_charts, mock_render) -> None:
+        """Only requested tabs are fetched and returned."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_client.get_json.side_effect = [
+            self._make_multi_tab_metadata(),
+            # batchGet FORMATTED_VALUE — only 2 tabs requested
+            {"valueRanges": [
+                {"values": [["A", "B"]]},
+                {"values": [["X", "Y"]]},
+            ]},
+            # batchGet FORMULA
+            {"valueRanges": [
+                {"values": [["A", "B"]]},
+                {"values": [["X", "Y"]]},
+            ]},
+        ]
+
+        mock_charts.return_value = []
+
+        with patch('retry.time.sleep'):
+            result = fetch_spreadsheet("sheet123", tabs=["Overview", "Details"])
+
+        assert len(result.sheets) == 2
+        assert result.sheets[0].name == "Overview"
+        assert result.sheets[1].name == "Details"
+
+        # Verify batchGet only requested 2 ranges
+        batch_call = mock_client.get_json.call_args_list[1]
+        ranges_in_call = [v for k, v in batch_call.kwargs.get("params", batch_call[1].get("params", [])) if k == "ranges"]
+        assert len(ranges_in_call) == 2
+
+    @patch('adapters.sheets.render_charts_as_pngs')
+    @patch('adapters.sheets.get_charts_from_spreadsheet')
+    @patch('adapters.sheets.get_sync_client')
+    def test_tabs_filter_warns_on_missing_tab(self, mock_get_client, mock_charts, mock_render) -> None:
+        """Requesting a non-existent tab adds a warning."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_client.get_json.side_effect = [
+            self._make_multi_tab_metadata(),
+            {"valueRanges": [{"values": [["A"]]}]},
+            {"valueRanges": [{"values": [["A"]]}]},
+        ]
+
+        mock_charts.return_value = []
+
+        with patch('retry.time.sleep'):
+            result = fetch_spreadsheet("sheet123", tabs=["Overview", "Nonexistent"])
+
+        assert len(result.sheets) == 1
+        assert result.sheets[0].name == "Overview"
+        assert any("Nonexistent" in w for w in result.warnings)
+
+    @patch('adapters.sheets.render_charts_as_pngs')
+    @patch('adapters.sheets.get_charts_from_spreadsheet')
+    @patch('adapters.sheets.get_sync_client')
+    def test_tabs_none_fetches_all(self, mock_get_client, mock_charts, mock_render) -> None:
+        """Default tabs=None fetches all tabs (no change in behaviour)."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_client.get_json.side_effect = [
+            self._make_multi_tab_metadata(),
+            {"valueRanges": [
+                {"values": [["A"]]},
+                {"values": [["B"]]},
+                {"values": [["C"]]},
+            ]},
+            {"valueRanges": [
+                {"values": [["A"]]},
+                {"values": [["B"]]},
+                {"values": [["C"]]},
+            ]},
+        ]
+
+        mock_charts.return_value = []
+
+        with patch('retry.time.sleep'):
+            result = fetch_spreadsheet("sheet123", tabs=None)
+
+        assert len(result.sheets) == 3

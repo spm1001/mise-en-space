@@ -1705,7 +1705,7 @@ class TestDoFetchRouting:
         """Drive IDs route to fetch_drive."""
         mock_drive.return_value = FetchResult(path="/p", content_file="/p/c.md", format="markdown", type="doc", metadata={})
         result = do_fetch("f1")
-        mock_drive.assert_called_once_with("f1", base_path=None, recursive=False)
+        mock_drive.assert_called_once_with("f1", base_path=None, recursive=False, tabs=None)
 
     def test_mise_error_caught(self):
         """MiseError becomes FetchError."""
@@ -1734,7 +1734,7 @@ class TestDoFetchRouting:
         """base_path is forwarded to fetcher."""
         mock_drive.return_value = FetchResult(path="/p", content_file="/p/c.md", format="markdown", type="doc", metadata={})
         do_fetch("f1", base_path=Path("/custom"))
-        mock_drive.assert_called_once_with("f1", base_path=Path("/custom"), recursive=False)
+        mock_drive.assert_called_once_with("f1", base_path=Path("/custom"), recursive=False, tabs=None)
 
 
 class TestFetchGmailEdgeCases:

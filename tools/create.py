@@ -197,6 +197,7 @@ def do_create(
     source: str | None = None,
     base_path: str | None = None,
     file_path: str | None = None,
+    page_setup: str | None = None,
 ) -> DoResult | dict[str, Any]:
     """
     Create a Google Workspace document.
@@ -204,7 +205,7 @@ def do_create(
     Content comes from either:
     - `content` param (inline, backwards compatible)
     - `source` param (path to deposit folder with content.md or content.csv)
-    - `file_path` param (local binary file — PNG, DOCX, PDF etc.)
+    - `file_path` param (local file — binary for doc_type='file', text for doc/sheet)
 
     Args:
         content: Inline content (markdown for doc, CSV for sheet)
@@ -213,11 +214,17 @@ def do_create(
         folder_id: Optional destination folder ID
         source: Path to deposit folder to read content from
         base_path: Working directory for resolving relative source paths
-        file_path: Local file path for binary upload (doc_type='file' only)
+        file_path: Local file path to read content from
+        page_setup: Page layout for doc creation. 'pageless' creates a pageless doc.
 
     Returns:
         DoResult on success, error dict on failure
     """
+    # Validate page_setup
+    if page_setup and page_setup != "pageless":
+        return _create_error("invalid_input", f"Unsupported page_setup: {page_setup}. Supported: 'pageless'")
+    if page_setup and doc_type != "doc":
+        return _create_error("invalid_input", "page_setup is only valid for doc_type='doc'")
     # Resolve source path
     try:
         resolved_source = _resolve_source(source, base_path)
@@ -240,8 +247,6 @@ def do_create(
             return _create_error("invalid_input", "Provide either 'content' or 'file_path', not both.")
         if source:
             return _create_error("invalid_input", "Provide either 'source' or 'file_path', not both.")
-        if doc_type != "file":
-            return _create_error("invalid_input", "file_path is only valid for doc_type='file'.")
 
         resolved_file_path = Path(file_path)
         if not resolved_file_path.is_absolute() and base_path:
@@ -263,11 +268,19 @@ def do_create(
         if not title:
             title = resolved_file_path.name
 
+        # For doc/sheet: read file as text content (no binary path needed)
+        if doc_type in ("doc", "sheet"):
+            try:
+                content = resolved_file_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                return _create_error("invalid_input", f"File is not valid UTF-8 text: {file_path}")
+            resolved_file_path = None  # Content extracted — don't pass as binary
+
     if not content and not source and not file_path:
         return {"error": True, "kind": "invalid_input",
                 "message": "create requires 'content', 'source', or 'file_path'"}
 
-    return _do_create_internal(content, title, doc_type, folder_id, resolved_source, resolved_file_path, base_path)
+    return _do_create_internal(content, title, doc_type, folder_id, resolved_source, resolved_file_path, base_path, page_setup=page_setup)
 
 
 def _do_create_internal(
@@ -278,6 +291,7 @@ def _do_create_internal(
     source: Path | None = None,
     file_path: Path | None = None,
     base_path: str | None = None,
+    page_setup: str | None = None,
 ) -> DoResult | dict[str, Any]:
     """Internal create logic. Returns DoResult on success, error dict on failure."""
     # Validate doc_type
@@ -349,6 +363,14 @@ def _do_create_internal(
                 "not_implemented",
                 f"Creating {doc_type} is not yet implemented. Currently supported: doc, sheet, file.",
             )
+
+        # Post-creation: set pageless mode if requested
+        if page_setup == "pageless" and isinstance(result, DoResult):
+            try:
+                _set_pageless(result.file_id)
+                result.cues["page_setup"] = "pageless"
+            except Exception as e:
+                result.cues["page_setup_error"] = str(e)
 
         # Post-creation: embed local images if any were found
         if image_refs and isinstance(result, DoResult):
@@ -565,6 +587,38 @@ def _create_multi_tab_sheet(
     result.cues["tab_names"] = [name for name, _ in tabs]
 
     return result
+
+
+# ============================================================================
+# PAGE SETUP — post-creation document style changes
+# ============================================================================
+
+_DOCS_API = "https://docs.googleapis.com/v1/documents"
+
+
+def _set_pageless(doc_id: str) -> None:
+    """Set a Google Doc to pageless mode via Docs API batchUpdate.
+
+    Uses UpdateDocumentStyleRequest with documentFormat.documentMode = PAGELESS.
+    """
+    client = get_sync_client()
+    client.post_json(
+        f"{_DOCS_API}/{doc_id}:batchUpdate",
+        json_body={
+            "requests": [
+                {
+                    "updateDocumentStyle": {
+                        "documentStyle": {
+                            "documentFormat": {
+                                "documentMode": "PAGELESS",
+                            },
+                        },
+                        "fields": "documentFormat",
+                    }
+                }
+            ]
+        },
+    )
 
 
 # ============================================================================

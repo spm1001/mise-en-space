@@ -64,9 +64,11 @@ docs/           Design documents and references
 - `search` accepts `type=` for MIME filter: `folder`, `doc`, `spreadsheet`/`sheet`, `slides`, `pdf`, `image`, `video`, `form`. `query` is optional when `type` or `folder_id` is set.
 - `fetch` auto-detects ID type (Drive file ID vs Gmail thread ID)
 - `fetch` accepts optional `attachment` param for extracting specific Gmail attachments
+- `fetch` accepts optional `tabs` param (list of tab names) to fetch only specific tabs from spreadsheets
 - `fetch` accepts `recursive=True` on folder IDs — returns full indented tree (max depth 5, 1000 items)
 - `do` routes via `operation` param — `do(operation="create", ...)`
-- `do(create)` accepts `file_path` for binary uploads (PNG, DOCX, PDF) — reads bytes from disk, auto-detects MIME from extension. Only valid with `doc_type='file'`. Mutually exclusive with `content` and `source`.
+- `do(create)` and `do(overwrite)` accept `file_path` to read content directly from a local file — no deposit folder needed. For `doc_type='file'`, reads as binary; for `doc`/`sheet`, reads as UTF-8 text. Mutually exclusive with `content` and `source`.
+- `do(create)` accepts `page_setup='pageless'` (doc_type='doc' only) — sets pageless mode via Docs API after creation.
 - `do(create)` with `doc_type='doc'` auto-embeds local images: `![alt](local/path.png)` in markdown triggers post-creation Docs API injection. Requires brief public sharing of each image via Drive permissions — may be blocked by enterprise DLP policies. Check `cues.image_errors` for failures.
 - `do(move)` accepts `file_id` as a list for batch moves — validates destination once, returns per-file summary
 - **Comments included automatically** — open comments deposited as `comments.md`
@@ -137,7 +139,7 @@ mise/
 | **Remote is single-user** | One `token.json`, one `lru_cache(maxsize=1)` per service. Multi-tenancy would require per-request credential injection — architecturally significant. This is a confirmed design choice. |
 | **`search` query is `""` not `None` when omitted** | `query` defaults to `""`. Empty string and absent query are indistinguishable inside `do_search` — both skip the `fullText` clause. If you add a source that needs to distinguish "no query given" from "empty query", use a sentinel (e.g. `query: str \| None = None` and check `is None`). Don't assume `""` means "give me everything" — the type/folder_id validation gate catches the all-empty case. |
 | **Image embedding needs public sharing** | `do(create)` with local image refs uses Docs API `insertInlineImage`, which requires a publicly accessible URL. Images are uploaded to Drive, shared publicly for seconds, then permissions revoked and temp files deleted. Enterprise Workspace accounts with DLP policies may block the `permissions.create` call — images will be skipped with `cues.image_errors`, doc is still created. |
-| **`file_path` is stdio-only** | `file_path` on `do(create)` reads from disk — meaningless when the server is remote. Currently no remote gate (the param just won't resolve). Don't use `file_path` in remote mode. |
+| **`file_path` is stdio-only** | `file_path` on `do(create)` and `do(overwrite)` reads from disk — meaningless when the server is remote. Currently no remote gate (the param just won't resolve). Don't use `file_path` in remote mode. |
 
 ## Development
 

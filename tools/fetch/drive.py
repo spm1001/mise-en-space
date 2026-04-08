@@ -38,7 +38,7 @@ def _add_file_dates(extra: dict[str, Any], metadata: dict[str, Any]) -> None:
         extra["modified_time"] = metadata["modifiedTime"]
 
 
-def fetch_drive(file_id: str, base_path: Path | None = None, recursive: bool = False) -> FetchResult | FetchError:
+def fetch_drive(file_id: str, base_path: Path | None = None, recursive: bool = False, tabs: list[str] | None = None) -> FetchResult | FetchError:
     """Fetch Drive file, route by type, extract content, deposit to workspace."""
     # Get metadata to determine type
     metadata = get_file_metadata(file_id)
@@ -54,7 +54,7 @@ def fetch_drive(file_id: str, base_path: Path | None = None, recursive: bool = F
     elif mime_type == GOOGLE_DOC_MIME:
         return fetch_doc(file_id, title, metadata, email_context, base_path=base_path)
     elif mime_type == GOOGLE_SHEET_MIME:
-        return fetch_sheet(file_id, title, metadata, email_context, base_path=base_path)
+        return fetch_sheet(file_id, title, metadata, email_context, base_path=base_path, tabs=tabs)
     elif mime_type == GOOGLE_SLIDES_MIME:
         return fetch_slides(file_id, title, metadata, email_context, base_path=base_path)
     elif is_media_file(mime_type):
@@ -257,9 +257,9 @@ def _write_per_tab_csvs(
     return result
 
 
-def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
+def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None, tabs: list[str] | None = None) -> FetchResult:
     """Fetch Google Sheet with charts rendered as PNGs and open comments included."""
-    sheet_data = fetch_spreadsheet(sheet_id)
+    sheet_data = fetch_spreadsheet(sheet_id, tabs=tabs)
     content = extract_sheets_content(sheet_data)
 
     folder = get_deposit_folder("sheet", title, sheet_id, base_path=base_path)

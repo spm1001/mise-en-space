@@ -11,6 +11,7 @@ passed via metadata= param. If metadata is None (direct call, not via do()),
 we fall through to the Google Doc path for backward compatibility.
 """
 
+from pathlib import Path
 from typing import Any
 
 from adapters.drive import GOOGLE_DOC_MIME, upload_file_content
@@ -26,16 +27,18 @@ def do_overwrite(
     source: str | None = None,
     base_path: str | None = None,
     metadata: dict[str, Any] | None = None,
+    file_path: str | None = None,
 ) -> DoResult | dict[str, Any]:
     """
     Replace full content of a Google Doc or plain file.
 
     Args:
         file_id: Target file ID
-        content: Content string (mutually exclusive with source)
+        content: Content string (mutually exclusive with source and file_path)
         source: Path to deposit folder with content file
-        base_path: Working directory for resolving relative source paths
+        base_path: Working directory for resolving relative paths
         metadata: Pre-fetched file metadata (from dispatch). If None, assumes Google Doc.
+        file_path: Local file path to read content from (no deposit folder needed)
 
     Returns:
         DoResult on success, error dict on failure
@@ -54,6 +57,36 @@ def do_overwrite(
     except ValueError as e:
         return {"error": True, "kind": "invalid_input", "message": str(e)}
 
+    # Resolve file_path — read content directly from a local file
+    if file_path:
+        inputs = sum([content is not None, resolved_source is not None])
+        if inputs > 0:
+            return {
+                "error": True,
+                "kind": "invalid_input",
+                "message": "Provide only one of 'content', 'source', or 'file_path'",
+            }
+        resolved = Path(file_path)
+        if not resolved.is_absolute() and base_path:
+            resolved = Path(base_path) / resolved
+        resolved = resolved.resolve()
+        if base_path:
+            base_resolved = Path(base_path).resolve()
+            if not str(resolved).startswith(str(base_resolved)):
+                return {"error": True, "kind": "invalid_input",
+                        "message": "file_path must be within the working directory"}
+        if not resolved.exists():
+            return {"error": True, "kind": "invalid_input",
+                    "message": f"File not found: {file_path}"}
+        if not resolved.is_file():
+            return {"error": True, "kind": "invalid_input",
+                    "message": f"Not a file: {file_path}"}
+        try:
+            content = resolved.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            return {"error": True, "kind": "invalid_input",
+                    "message": f"File is not valid UTF-8 text: {file_path}"}
+
     if resolved_source and content:
         return {
             "error": True,
@@ -65,7 +98,7 @@ def do_overwrite(
         return {
             "error": True,
             "kind": "invalid_input",
-            "message": "overwrite requires 'content' or 'source'",
+            "message": "overwrite requires 'content', 'source', or 'file_path'",
         }
 
     # Route by file type: Google Docs → Drive import, plain files → Drive Files API

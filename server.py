@@ -105,7 +105,7 @@ _DISPATCH: dict[str, Any] = {
     "create": lambda p: do_create(
         content=p["content"], title=p["title"], doc_type=p["doc_type"],
         folder_id=p["folder_id"], source=p["source"], base_path=p["base_path"],
-        file_path=p.get("file_path"),
+        file_path=p.get("file_path"), page_setup=p.get("page_setup"),
     ),
     "move": lambda p: do_move(
         file_id=p["file_id"], destination_folder_id=p["destination_folder_id"],
@@ -121,6 +121,7 @@ _DISPATCH: dict[str, Any] = {
         file_id=p["file_id"], content=p["content"],
         source=p["source"], base_path=p["base_path"],
         metadata=p.get("_metadata"),
+        file_path=p.get("file_path"),
     ),
     "prepend": lambda p: do_prepend(file_id=p["file_id"], content=p["content"], metadata=p.get("_metadata")),
     "append": lambda p: do_append(file_id=p["file_id"], content=p["content"], metadata=p.get("_metadata")),
@@ -265,7 +266,7 @@ def _search_remote(
 
 
 @mcp.tool()
-def fetch(file_id: str, base_path: str = "", attachment: str | None = None, recursive: bool = False) -> dict[str, Any]:
+def fetch(file_id: str, base_path: str = "", attachment: str | None = None, recursive: bool = False, tabs: list[str] | None = None) -> dict[str, Any]:
     """
     Fetch content to filesystem.
 
@@ -289,6 +290,8 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None, recu
         recursive: When fetching a folder, traverse subfolders recursively to
                    produce a full tree view. Default False (immediate children only).
                    Capped at depth 5 and 1000 total items.
+        tabs: List of tab names to fetch from a spreadsheet. When set, only named
+              tabs are exported (others skipped). Default None (all tabs).
 
     Returns:
         path: Filesystem path to fetched content folder
@@ -304,16 +307,18 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None, recu
         call_params["attachment"] = attachment
     if recursive:
         call_params["recursive"] = True
+    if tabs:
+        call_params["tabs"] = tabs
 
     if _REMOTE_MODE:
-        result = _fetch_remote(file_id, base_path, attachment, recursive=recursive)
+        result = _fetch_remote(file_id, base_path, attachment, recursive=recursive, tabs=tabs)
         _log_fetch_result(call_params, result)
         return result
 
     if not base_path:
         return {"error": True, "kind": "invalid_input",
                 "message": "base_path is required — pass your working directory so deposits land in your project, not the MCP server's directory"}
-    result = do_fetch(file_id, base_path=Path(base_path), attachment=attachment, recursive=recursive).to_dict()
+    result = do_fetch(file_id, base_path=Path(base_path), attachment=attachment, recursive=recursive, tabs=tabs).to_dict()
     _log_fetch_result(call_params, result)
     return result
 
@@ -333,7 +338,7 @@ def _log_fetch_result(call_params: dict[str, Any], result: dict[str, Any]) -> No
         log_mcp_call("fetch", params=call_params, result_summary=summary)
 
 
-def _fetch_remote(file_id: str, base_path: str, attachment: str | None, *, recursive: bool = False) -> dict[str, Any]:
+def _fetch_remote(file_id: str, base_path: str, attachment: str | None, *, recursive: bool = False, tabs: list[str] | None = None) -> dict[str, Any]:
     """
     Remote fetch: deposit to temp dir, read content back inline, clean up.
 
@@ -347,7 +352,7 @@ def _fetch_remote(file_id: str, base_path: str, attachment: str | None, *, recur
         temp_dir = tempfile.mkdtemp(prefix="mise-remote-")
         effective_base = Path(temp_dir)
     try:
-        result = do_fetch(file_id, base_path=effective_base, attachment=attachment, recursive=recursive)
+        result = do_fetch(file_id, base_path=effective_base, attachment=attachment, recursive=recursive, tabs=tabs)
 
         if not isinstance(result, FetchResult):
             return result.to_dict()
@@ -385,10 +390,12 @@ Args:
     title: Document title (required for create, falls back to manifest title when using source)
     doc_type: 'doc' | 'sheet' | 'slides' | 'file' (for create). 'file' uploads as-is without Google conversion (MIME inferred from title extension).
     folder_id: Optional destination folder (for create)
+    page_setup: Page layout for doc creation. 'pageless' creates a pageless Google Doc (for create with doc_type='doc').
     file_id: Target file or thread (required for move, rename, share, overwrite, prepend, append, replace_text, reply_draft, archive, star, label). For move: accepts a list of IDs to batch-move multiple files to the same destination in one call.
     destination_folder_id: Where to move the file (required for move)
     source: Path to deposit folder containing content to publish (for create/overwrite). Reads content.md (doc) or content.csv (sheet) from the folder. Manifest is enriched with creation receipt after success.
     base_path: Directory for resolving relative source paths (pass your cwd)
+    file_path: Local file path to read content from (for create/overwrite). Reads directly from the file — no deposit folder needed. For create with doc_type='file', uploads as binary; for doc/sheet, reads as UTF-8 text.
     find: Text to find (required for replace_text)
     to: Recipient email address(es), comma-separated (for draft, share)
     subject: Email subject (for draft; separate from title which is for create)
@@ -449,6 +456,7 @@ def do(
     file_path: str | None = None,
     label: str | None = None,
     remove: bool = False,
+    page_setup: str | None = None,
 ) -> dict[str, Any]:
     """Act on Google Workspace."""
     # Build log params — include operation and non-None values that matter,
@@ -457,7 +465,7 @@ def do(
     for k, v in [
         ("title", title), ("doc_type", doc_type), ("folder_id", folder_id),
         ("file_id", file_id), ("destination_folder_id", destination_folder_id),
-        ("source", source), ("file_path", file_path), ("find", find), ("to", to), ("subject", subject),
+        ("source", source), ("file_path", file_path), ("page_setup", page_setup), ("find", find), ("to", to), ("subject", subject),
         ("cc", cc), ("label", label), ("role", role), ("remove", remove),
         ("reply_all", reply_all), ("confirm", confirm),
     ]:
@@ -488,6 +496,7 @@ def do(
         "to": to, "subject": subject, "cc": cc, "include": include,
         "reply_all": reply_all, "role": role, "confirm": confirm,
         "label": label, "remove": remove,
+        "page_setup": page_setup,
     }
 
     required = _REQUIRED_PARAMS.get(operation, set())
@@ -673,6 +682,17 @@ Fetch content to filesystem. Writes to `mise/` in current directory.
 | Param | Type | Description |
 |-------|------|-------------|
 | `file_id` | str | Drive file ID, Gmail thread ID, or Drive folder ID |
+| `tabs` | list[str] | Tab names to fetch from a spreadsheet (default: all tabs) |
+
+## Tab Filtering (Sheets)
+
+For large multi-tab spreadsheets, use `tabs` to fetch only what you need:
+
+```python
+fetch("1spreadsheetId...", tabs=["Current", "Sky postcode database"])
+```
+
+Only named tabs are fetched from the API. Missing tab names produce a warning in cues.
 
 ## Supported Content Types
 
@@ -757,11 +777,11 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 
 | Operation | Description | Required params |
 |-----------|-------------|-----------------|
-| `create` | Create Doc/Sheet/plain file from content or deposit | `content`+`title` OR `source` |
+| `create` | Create Doc/Sheet/plain file from content, deposit, or file_path | `content`+`title` OR `source` OR `file_path` |
 | `move` | Move file to different folder | `file_id`, `destination_folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
 | `share` | Share file with people by email | `file_id`, `to` |
-| `overwrite` | Replace full document content | `file_id`, plus `content` OR `source` |
+| `overwrite` | Replace full document content | `file_id`, plus `content` OR `source` OR `file_path` |
 | `prepend` | Insert text at start of document | `file_id`, `content` |
 | `append` | Insert text at end of document | `file_id`, `content` |
 | `replace_text` | Find and replace text in document | `file_id`, `find`, `content` |
@@ -795,7 +815,9 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `file_id` | str | None | move, rename, share, overwrite, prepend, append, replace_text |
 | `destination_folder_id` | str | None | move |
 | `source` | str | None | create, overwrite (path to deposit folder) |
-| `base_path` | str | None | Required with source (your cwd) |
+| `file_path` | str | None | create, overwrite (local file path — no deposit needed) |
+| `base_path` | str | None | Required with source or file_path (your cwd) |
+| `page_setup` | str | None | create ('pageless' for pageless Google Docs) |
 | `find` | str | None | replace_text (case-sensitive) |
 | `role` | str | 'reader' | share ('reader', 'writer', 'commenter') |
 | `confirm` | bool | False | share (must be True to execute — first call previews) |
@@ -853,6 +875,12 @@ do(operation="create", content="# Meeting Notes\\n\\n- Item 1", title="Team Sync
 # Create from deposit folder (deposit-then-publish)
 do(operation="create", source="mise/sheet--q4-analysis--draft/", title="Q4 Analysis", doc_type="sheet", base_path="/path/to/project")
 
+# Create from a local file (no deposit folder needed)
+do(operation="create", file_path="report.md", title="Q4 Report", doc_type="doc", base_path="/path/to/project")
+
+# Create a pageless doc (wide tables won't be clipped)
+do(operation="create", content="# Wide Table\\n\\n| A | B | C | D | E |", title="Rosetta Stone", page_setup="pageless")
+
 # Move a file to a different folder
 do(operation="move", file_id="1abc...", destination_folder_id="1xyz...")
 
@@ -871,6 +899,9 @@ do(operation="share", file_id="1abc...", to="alice@example.com, bob@example.com"
 
 # Overwrite document content (replaces everything)
 do(operation="overwrite", file_id="1abc...", content="# New Content\\n\\nFresh start.")
+
+# Overwrite from a local file (no deposit folder needed)
+do(operation="overwrite", file_id="1abc...", file_path="updated-report.md", base_path="/path/to/project")
 
 # Prepend text to start of document
 do(operation="prepend", file_id="1abc...", content="# Important Update\\n\\n")

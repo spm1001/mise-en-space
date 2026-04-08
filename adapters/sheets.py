@@ -100,6 +100,7 @@ def _resolve_merges(
 def fetch_spreadsheet(
     spreadsheet_id: str,
     render_charts: bool = True,
+    tabs: list[str] | None = None,
 ) -> SpreadsheetData:
     """
     Fetch complete spreadsheet data including charts.
@@ -152,6 +153,21 @@ def fetch_spreadsheet(
         # Only GRID sheets have values to fetch
         if sheet_type == "GRID":
             grid_sheets.append((name, sheet_type))
+
+    # Filter to requested tabs (if specified)
+    warnings: list[str] = []
+    if tabs:
+        tab_set = set(tabs)
+        matched = {name for name, _ in grid_sheets if name in tab_set}
+        missing = tab_set - matched
+        if missing:
+            warnings.append(
+                f"Requested tab(s) not found: {', '.join(sorted(missing))}. "
+                f"Available: {', '.join(name for name, _ in grid_sheets)}"
+            )
+        grid_sheets = [(name, st) for name, st in grid_sheets if name in tab_set]
+        # Also filter non-GRID sheets
+        all_sheet_info = [(name, st) for name, st in all_sheet_info if name in tab_set or st != "GRID"]
 
     # Fetch values only for GRID sheets
     sheets: list[SheetTab] = []
@@ -222,7 +238,7 @@ def fetch_spreadsheet(
     if render_charts and charts:
         charts, chart_render_time_ms = render_charts_as_pngs(spreadsheet_id, charts)
 
-    return SpreadsheetData(
+    result = SpreadsheetData(
         title=title,
         spreadsheet_id=spreadsheet_id,
         sheets=sheets,
@@ -233,6 +249,8 @@ def fetch_spreadsheet(
         formula_count=formula_count,
         merged_cell_count=merged_cell_count,
     )
+    result.warnings.extend(warnings)
+    return result
 
 
 # ---------------------------------------------------------------------------

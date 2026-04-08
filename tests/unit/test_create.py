@@ -307,15 +307,87 @@ class TestDoCreateFile:
         assert result["error"] is True
         assert "content" in result["message"] and "file_path" in result["message"]
 
-    def test_file_path_rejects_non_file_doc_type(self, tmp_path: Path) -> None:
-        test_file = tmp_path / "test.png"
-        test_file.write_bytes(b"\x89PNG")
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_sync_client")
+    def test_creates_doc_from_file_path(self, mock_get_client, _sleep, tmp_path: Path) -> None:
+        """file_path with doc_type='doc' reads file as text content."""
+        md_file = tmp_path / "report.md"
+        md_file.write_text("# Report\n\nSome findings.", encoding="utf-8")
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="doc_from_file",
+            webViewLink="https://docs.google.com/document/d/doc_from_file/edit",
+            name="report.md",
+        )
+
         result = do_create(
-            file_path=str(test_file), doc_type="doc",
+            file_path=str(md_file),
+            doc_type="doc",
+            base_path=str(tmp_path),
+            title="My Report",
+        )
+
+        assert isinstance(result, DoResult)
+        assert result.file_id == "doc_from_file"
+        # Verify text content was sent as markdown, not binary
+        upload_call = mock_client.upload_multipart.call_args
+        uploaded_bytes = upload_call[0][2]
+        assert uploaded_bytes == b"# Report\n\nSome findings."
+        uploaded_mime = upload_call[0][3]
+        assert uploaded_mime == "text/markdown"
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_sync_client")
+    def test_creates_sheet_from_file_path(self, mock_get_client, _sleep, tmp_path: Path) -> None:
+        """file_path with doc_type='sheet' reads file as CSV text."""
+        csv_file = tmp_path / "data.csv"
+        csv_file.write_text("Name,Score\nAlice,95\nBob,87", encoding="utf-8")
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="sheet_from_file",
+            webViewLink="https://docs.google.com/spreadsheets/d/sheet_from_file/edit",
+            name="data.csv",
+        )
+
+        result = do_create(
+            file_path=str(csv_file),
+            doc_type="sheet",
+            base_path=str(tmp_path),
+            title="Score Data",
+        )
+
+        assert isinstance(result, DoResult)
+        assert result.file_id == "sheet_from_file"
+        upload_call = mock_client.upload_multipart.call_args
+        uploaded_bytes = upload_call[0][2]
+        assert uploaded_bytes == b"Name,Score\nAlice,95\nBob,87"
+        uploaded_mime = upload_call[0][3]
+        assert uploaded_mime == "text/csv"
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_sync_client")
+    def test_file_path_infers_title_from_filename(self, mock_get_client, _sleep, tmp_path: Path) -> None:
+        """When no title is given, file_path filename is used."""
+        md_file = tmp_path / "my-document.md"
+        md_file.write_text("content", encoding="utf-8")
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            name="my-document.md",
+        )
+
+        result = do_create(
+            file_path=str(md_file),
+            doc_type="doc",
             base_path=str(tmp_path),
         )
-        assert result["error"] is True
-        assert "doc_type='file'" in result["message"]
+        assert isinstance(result, DoResult)
+        assert result.title == "my-document.md"
 
     def test_file_path_not_found(self, tmp_path: Path) -> None:
         result = do_create(
@@ -1187,3 +1259,83 @@ class TestDocCreateWithImages:
 
         assert isinstance(result, DoResult)
         assert "images_embedded" not in result.cues
+
+
+class TestPageSetup:
+    """Tests for page_setup parameter on doc create."""
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_sync_client")
+    def test_pageless_calls_docs_api(self, mock_get_client, _sleep) -> None:
+        """page_setup='pageless' triggers a Docs API batchUpdate after creation."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="doc_pageless",
+            webViewLink="https://docs.google.com/document/d/doc_pageless/edit",
+            name="Wide Table Doc",
+        )
+        mock_client.post_json.return_value = {}
+
+        result = do_create(
+            content="# Wide Table\n\n| A | B | C | D | E | F | G | H |",
+            title="Wide Table Doc",
+            doc_type="doc",
+            page_setup="pageless",
+        )
+
+        assert isinstance(result, DoResult)
+        assert result.cues["page_setup"] == "pageless"
+
+        # Verify Docs API batchUpdate was called with correct payload
+        mock_client.post_json.assert_called_once()
+        call_args = mock_client.post_json.call_args
+        assert "doc_pageless:batchUpdate" in call_args[0][0]
+        body = call_args[1]["json_body"]
+        req = body["requests"][0]["updateDocumentStyle"]
+        assert req["documentStyle"]["documentFormat"]["documentMode"] == "PAGELESS"
+        assert req["fields"] == "documentFormat"
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_sync_client")
+    def test_pageless_error_is_non_fatal(self, mock_get_client, _sleep) -> None:
+        """If pageless batchUpdate fails, doc is still created — error in cues."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(id="doc1")
+        mock_client.post_json.side_effect = Exception("API error")
+
+        result = do_create(
+            content="# Test", title="Test", doc_type="doc", page_setup="pageless",
+        )
+
+        assert isinstance(result, DoResult)
+        assert "page_setup_error" in result.cues
+
+    def test_pageless_invalid_value_rejected(self) -> None:
+        result = do_create(
+            content="# Test", title="Test", doc_type="doc", page_setup="landscape",
+        )
+        assert result["error"] is True
+        assert "pageless" in result["message"]
+
+    def test_pageless_on_non_doc_rejected(self) -> None:
+        result = do_create(
+            content="a,b\n1,2", title="Test", doc_type="sheet", page_setup="pageless",
+        )
+        assert result["error"] is True
+        assert "doc_type='doc'" in result["message"]
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_sync_client")
+    def test_no_page_setup_skips_docs_api(self, mock_get_client, _sleep) -> None:
+        """Without page_setup, no Docs API batchUpdate is made."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response()
+
+        result = do_create(content="# Test", title="Test", doc_type="doc")
+
+        assert isinstance(result, DoResult)
+        assert "page_setup" not in result.cues
+        mock_client.post_json.assert_not_called()

@@ -210,6 +210,86 @@ class TestPlainFileOverwrite:
         mock_upload.assert_called_once_with("doc123", b"hello", "text/markdown")
 
 
+class TestOverwriteFromFilePath:
+    @patch("retry.time.sleep")
+    @patch("tools.overwrite.upload_file_content")
+    def test_overwrites_doc_from_file_path(self, mock_upload, _sleep, tmp_path) -> None:
+        """file_path reads content directly from a local file."""
+        md_file = tmp_path / "report.md"
+        md_file.write_text("# Fresh Content\n\nUpdated.")
+        mock_upload.return_value = {"name": "Doc"}
+
+        result = do_overwrite(
+            file_id="doc123",
+            file_path=str(md_file),
+            base_path=str(tmp_path),
+        )
+
+        assert isinstance(result, DoResult)
+        assert result.file_id == "doc123"
+        assert result.operation == "overwrite"
+        mock_upload.assert_called_once_with(
+            "doc123", b"# Fresh Content\n\nUpdated.", "text/markdown",
+        )
+
+    @patch("retry.time.sleep")
+    @patch("tools.plain_file.upload_file_content")
+    def test_overwrites_plain_file_from_file_path(self, mock_ul, _sleep, tmp_path) -> None:
+        """file_path works for plain file overwrite too."""
+        txt_file = tmp_path / "notes.txt"
+        txt_file.write_text("New plain content")
+
+        result = do_overwrite(
+            file_id="file123",
+            file_path=str(txt_file),
+            base_path=str(tmp_path),
+            metadata=_plain_file_metadata(name="notes.txt", mime="text/plain"),
+        )
+
+        assert isinstance(result, DoResult)
+        assert result.cues["plain_file"] is True
+
+    def test_file_path_mutual_exclusion_with_content(self, tmp_path) -> None:
+        md_file = tmp_path / "test.md"
+        md_file.write_text("content")
+        result = do_overwrite(
+            file_id="doc123", content="inline",
+            file_path=str(md_file), base_path=str(tmp_path),
+        )
+        assert result["error"] is True
+        assert "only one" in result["message"].lower()
+
+    def test_file_path_mutual_exclusion_with_source(self, tmp_path) -> None:
+        md_file = tmp_path / "test.md"
+        md_file.write_text("content")
+        result = do_overwrite(
+            file_id="doc123", source=str(tmp_path),
+            file_path=str(md_file), base_path=str(tmp_path),
+        )
+        assert result["error"] is True
+        assert "only one" in result["message"].lower()
+
+    def test_file_path_not_found(self, tmp_path) -> None:
+        result = do_overwrite(
+            file_id="doc123",
+            file_path=str(tmp_path / "missing.md"),
+            base_path=str(tmp_path),
+        )
+        assert result["error"] is True
+        assert "not found" in result["message"].lower()
+
+    def test_file_path_containment_check(self, tmp_path) -> None:
+        md_file = tmp_path / "test.md"
+        md_file.write_text("content")
+        result = do_overwrite(
+            file_id="doc123",
+            file_path=str(md_file),
+            base_path=str(tmp_path / "subdir"),
+        )
+        assert result["error"] is True
+        assert "within" in result["message"].lower()
+
+
 class TestOverwriteFromSource:
     @patch("retry.time.sleep")
     @patch("tools.overwrite.upload_file_content")
