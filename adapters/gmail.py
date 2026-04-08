@@ -314,7 +314,7 @@ def search_threads(
     # Fields mask gives us payload parts tree (for attachment filenames)
     # without message body data. Same fields as the old batch request.
     search_fields = (
-        "id,messages(id,internalDate,"
+        "id,messages(id,internalDate,labelIds,"
         "payload(headers,mimeType,parts(filename,mimeType,body(attachmentId,size))))"
     )
 

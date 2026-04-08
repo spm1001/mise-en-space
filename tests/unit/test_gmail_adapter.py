@@ -741,6 +741,47 @@ class TestSearchThreads:
         assert "UNREAD" not in results[1].label_ids
 
     @patch('adapters.gmail.get_sync_client')
+    def test_search_fields_mask_includes_label_ids(self, mock_get_client) -> None:
+        """The fields mask sent to threads.get must include labelIds.
+
+        Without labelIds in the mask, the API returns messages without
+        label data and is_unread is always false — even though the
+        parsing logic is correct. This test guards the mask itself.
+        """
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_client.get_json.side_effect = [
+            {"threads": [{"id": "t1", "snippet": "Test"}]},
+            {
+                "id": "t1",
+                "messages": [{
+                    "id": "m1",
+                    "labelIds": ["INBOX"],
+                    "internalDate": "1706745600000",
+                    "payload": {
+                        "headers": [
+                            {"name": "From", "value": "a@b.com"},
+                            {"name": "Subject", "value": "Test"},
+                        ],
+                        "mimeType": "text/plain",
+                    },
+                }],
+            },
+        ]
+
+        with patch('retry.time.sleep'):
+            search_threads("test", max_results=10)
+
+        # Second call is threads.get — check its fields param
+        thread_get_call = mock_client.get_json.call_args_list[1]
+        fields = thread_get_call.kwargs.get("params", {}).get("fields", "")
+        assert "labelIds" in fields, (
+            f"fields mask missing labelIds — is_unread will always be false. "
+            f"Got: {fields}"
+        )
+
+    @patch('adapters.gmail.get_sync_client')
     def test_search_unread_from_any_message_in_thread(self, mock_get_client) -> None:
         """Thread is unread if ANY message has UNREAD label, not just first."""
         mock_client = MagicMock()
