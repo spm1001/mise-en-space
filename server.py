@@ -525,8 +525,9 @@ Supported: Google Docs, Sheets, Slides, Gmail threads, PDFs, Office files, video
 - `mise://docs/overview` — This overview
 - `mise://docs/search` — Search tool details
 - `mise://docs/gmail-search` — Gmail search operator reference (is:, in:, from:, label:, etc.)
+- `mise://gmail/labels` — Live label directory (user + system labels with IDs)
 - `mise://docs/fetch` — Fetch tool details and supported types
-- `mise://docs/do` — Do tool details (create, move, rename, edit)
+- `mise://docs/do` — Do tool details (create, move, rename, edit, Gmail triage)
 - `mise://docs/workspace` — Deposit folder structure
 - `mise://docs/cross-source` — Cross-source search patterns (Drive↔Gmail linkage)
 """
@@ -722,6 +723,38 @@ larger:10M older_than:1y
 - Date format is `YYYY/MM/DD` with slashes — dashes will silently fail
 - `in:anywhere` is needed to search spam/trash — default excludes them
 """
+
+
+@mcp.resource("mise://gmail/labels")
+def gmail_labels() -> str:
+    """Live label directory from the connected Gmail account."""
+    from adapters.gmail import list_labels
+
+    try:
+        labels = list_labels()
+    except Exception as e:
+        return f"# Gmail Labels\n\nFailed to fetch labels: {e}"
+
+    system = [l for l in labels if l["type"] == "system"]
+    user = [l for l in labels if l["type"] == "user"]
+
+    lines = ["# Gmail Labels", ""]
+    if user:
+        lines.append("## User Labels")
+        lines.append("")
+        lines.append("| Name | ID |")
+        lines.append("|------|----|")
+        for l in sorted(user, key=lambda x: x["name"]):
+            lines.append(f"| {l['name']} | `{l['id']}` |")
+        lines.append("")
+    lines.append("## System Labels")
+    lines.append("")
+    lines.append("| Name | ID |")
+    lines.append("|------|----|")
+    for l in sorted(system, key=lambda x: x["name"]):
+        lines.append(f"| {l['name']} | `{l['id']}` |")
+
+    return "\n".join(lines)
 
 
 @mcp.resource("mise://docs/fetch")
@@ -1007,6 +1040,20 @@ do(operation="label", file_id="thread_abc123", label="Projects/Active")
 
 # Remove a label
 do(operation="label", file_id="thread_abc123", label="Follow-up", remove=True)
+
+# --- Gmail triage via label ---
+# The label operation handles system labels too — no separate operations needed.
+
+# Mark as read (remove UNREAD label)
+do(operation="label", file_id="thread_abc123", label="UNREAD", remove=True)
+
+# Mark as unread (add UNREAD label)
+do(operation="label", file_id="thread_abc123", label="UNREAD")
+
+# Unstar (remove STARRED label)
+do(operation="label", file_id="thread_abc123", label="STARRED", remove=True)
+
+# To discover available labels: read the mise://gmail/labels resource
 ```
 """
 

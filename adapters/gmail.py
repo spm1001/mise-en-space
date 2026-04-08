@@ -678,6 +678,21 @@ class ModifyThreadResult:
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
+def list_labels() -> list[dict[str, str]]:
+    """
+    List all Gmail labels (system + user).
+
+    Returns:
+        List of dicts with 'id', 'name', 'type' keys.
+    """
+    client = get_sync_client()
+    response = client.get_json(f"{_GMAIL_API}/labels")
+    return [
+        {"id": l["id"], "name": l["name"], "type": l.get("type", "system")}
+        for l in response.get("labels", [])
+    ]
+
+
 def resolve_label_name(name: str) -> str:
     """
     Resolve a human-readable label name to a Gmail label ID.
@@ -702,19 +717,17 @@ def resolve_label_name(name: str) -> str:
         return SYSTEM_LABELS[upper]
 
     # Fetch user labels and match by name
-    client = get_sync_client()
-    response = client.get_json(f"{_GMAIL_API}/labels")
-    labels = response.get("labels", [])
+    labels = list_labels()
 
     # Case-insensitive match on name
     name_lower = name.lower()
     for label in labels:
-        if label.get("name", "").lower() == name_lower:
+        if label["name"].lower() == name_lower:
             return label["id"]
 
     raise MiseError(
         ErrorKind.NOT_FOUND,
-        f"Label '{name}' not found. Available labels: {sorted(l['name'] for l in labels if l.get('type') == 'user')}",
+        f"Label '{name}' not found. Available labels: {sorted(l['name'] for l in labels if l['type'] == 'user')}",
     )
 
 

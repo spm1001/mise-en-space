@@ -50,6 +50,16 @@ All adapters and tools use sync httpx. Phase 2 (async) is future work. Key patte
 
 `do(create)` with `doc_type='doc'` supports `![alt](local/path.png)` via post-creation Docs API `batchUpdate`. Critical constraint: Docs API `insertInlineImage` requires a publicly accessible URL — no "insert from Drive file ID" equivalent. Enterprise DLP policies will 403 on the sharing step. GCS signed URLs is the clean alternative (tracked by mise-hagaru).
 
+## Gmail ecosystem landscape
+
+Three Workspace MCP servers were evaluated (repos cloned to `~/Repos/third-party/`): taylorwilsdon/google_workspace_mcp (2k stars), GongRzhe/Gmail-MCP-Server (1k stars), aaronsb/google-workspace-mcp (143 stars).
+
+**Safety model spectrum:** GongRzhe has no safety — permanent batch deletion without confirmation. taylorwilsdon's hardened fork removes dangerous code entirely. aaronsb has the gold standard: a composable policy engine (`src/factory/safety.ts`) with `allow`/`block`/`downgrade` actions — "downgrade" silently converts send to draft, reducing blast radius without blocking the agent. Mise's `_REMOTE_ALLOWED_OPS` is spiritually similar but coarser (binary allow/block, no downgrade). If mise ever needs finer-grained safety, aaronsb's pattern is the reference.
+
+**Batch operations are table stakes for triage.** taylorwilsdon has `batch_modify_gmail_message_labels`. Without batch, triaging 200 emails means 200 sequential tool calls. Mise's existing `do(move)` already accepts `file_id` as a list for Drive — extending archive/label/mark_read to accept lists is the natural pattern. The Gmail API also has a `batchModify` endpoint (single call for multiple threads) worth investigating for performance.
+
+**Content extraction is where mise leads.** Signature stripping (talon), eager attachment extraction, markitdown HTML conversion, Drive pre-exfil optimisation — mise's fetch quality is ahead of all three competitors. The gap is in breadth of Gmail actions and discoverability of search syntax, not content processing.
+
 ## Code patterns
 
 - **Folder cues** in `tools/create.py` use a shared `_resolve_folder_cues()` helper
@@ -64,4 +74,6 @@ All adapters and tools use sync httpx. Phase 2 (async) is future work. Key patte
 
 Core MCP server stable and in daily use via stdio (v0.5.9). Remote mode transport done. Merged-cell resolution, pageless doc creation, folder creation, token diagnostics, and heading extraction all shipped. MCP description length fixed (property drop bug resolved). Apps Script email extractor ported from archived repo.
 
-Backlog: remote deployment path (auth → tokens → container), image/PDF edge cases (mise-heferu), Gmail pagination (mise-putadu), Drive shortcuts (mise-nitaco), keychain token materialisation (mise-zozewa), image embedding privacy (mise-hagaru).
+Gmail capabilities expanding: search operators exposed as MCP resource, label IDs captured in data model (was the only Workspace MCP not doing this), Gmail write operations (draft, reply_draft, archive, star, label) shipped Feb 2026 but not yet reflected in workspace skill. Next: inbox management ops (mark_read, mark_unread, unstar, list_labels), then batch ops for triage.
+
+Backlog: remote deployment path (auth → tokens → container), image/PDF edge cases (mise-heferu), Drive shortcuts (mise-nitaco), keychain token materialisation (mise-zozewa), image embedding privacy (mise-hagaru).

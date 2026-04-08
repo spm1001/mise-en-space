@@ -22,6 +22,8 @@ from adapters.gmail import (
     fetch_message,
     search_threads,
     download_attachment,
+    list_labels,
+    resolve_label_name,
     AttachmentDownload,
     DRIVE_LINK_PATTERN,
 )
@@ -853,3 +855,97 @@ class TestDownloadAttachment:
 
         # Clean up
         result.temp_path.unlink()
+
+
+# ============================================================================
+# LIST LABELS + RESOLVE LABEL NAME
+# ============================================================================
+
+class TestListLabels:
+    """Test list_labels adapter function."""
+
+    @patch('adapters.gmail.get_sync_client')
+    def test_returns_system_and_user_labels(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
+            "labels": [
+                {"id": "INBOX", "name": "INBOX", "type": "system"},
+                {"id": "STARRED", "name": "STARRED", "type": "system"},
+                {"id": "Label_42", "name": "Projects/Active", "type": "user"},
+            ]
+        }
+
+        with patch('retry.time.sleep'):
+            result = list_labels()
+
+        assert len(result) == 3
+        assert result[0] == {"id": "INBOX", "name": "INBOX", "type": "system"}
+        assert result[2] == {"id": "Label_42", "name": "Projects/Active", "type": "user"}
+
+    @patch('adapters.gmail.get_sync_client')
+    def test_empty_labels(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"labels": []}
+
+        with patch('retry.time.sleep'):
+            result = list_labels()
+
+        assert result == []
+
+    @patch('adapters.gmail.get_sync_client')
+    def test_missing_type_defaults_to_system(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
+            "labels": [{"id": "INBOX", "name": "INBOX"}]
+        }
+
+        with patch('retry.time.sleep'):
+            result = list_labels()
+
+        assert result[0]["type"] == "system"
+
+
+class TestResolveLabelName:
+    """Test resolve_label_name uses list_labels for user labels."""
+
+    def test_system_label_resolved_without_api(self) -> None:
+        """System labels like UNREAD resolve without calling the API."""
+        result = resolve_label_name("UNREAD")
+        assert result == "UNREAD"
+
+    def test_system_label_case_insensitive(self) -> None:
+        assert resolve_label_name("inbox") == "INBOX"
+        assert resolve_label_name("Starred") == "STARRED"
+
+    @patch('adapters.gmail.list_labels')
+    def test_user_label_resolved_via_list_labels(self, mock_list) -> None:
+        mock_list.return_value = [
+            {"id": "Label_42", "name": "Projects/Active", "type": "user"},
+        ]
+
+        result = resolve_label_name("Projects/Active")
+        assert result == "Label_42"
+        mock_list.assert_called_once()
+
+    @patch('adapters.gmail.list_labels')
+    def test_user_label_case_insensitive(self, mock_list) -> None:
+        mock_list.return_value = [
+            {"id": "Label_42", "name": "Follow-up", "type": "user"},
+        ]
+
+        result = resolve_label_name("follow-up")
+        assert result == "Label_42"
+
+    @patch('adapters.gmail.list_labels')
+    def test_unknown_label_raises(self, mock_list) -> None:
+        from models import MiseError
+        mock_list.return_value = [
+            {"id": "Label_1", "name": "Work", "type": "user"},
+        ]
+
+        with pytest.raises(MiseError) as exc_info:
+            resolve_label_name("Nonexistent")
+        assert "not found" in str(exc_info.value)
