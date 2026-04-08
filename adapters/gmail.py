@@ -52,12 +52,6 @@ WANTED_HEADERS = frozenset({
     "Message-ID", "In-Reply-To", "References",
 })
 
-# Fields for search results — lighter than full thread fetch
-SEARCH_THREAD_FIELDS = (
-    "id,"
-    "snippet,"
-    "messages(id,payload(headers),internalDate,labelIds)"
-)
 
 # Regex to find Drive links in text
 DRIVE_LINK_PATTERN = re.compile(
