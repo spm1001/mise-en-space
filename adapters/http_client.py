@@ -30,6 +30,9 @@ from typing import Any, AsyncIterator
 # list-of-tuples is needed for repeated keys (e.g. batchGet ranges).
 QueryParamsType = dict[str, Any] | list[tuple[str, str]] | None
 
+import json
+import logging
+
 import httpx
 import orjson
 from google.auth.transport.requests import Request as GoogleAuthRequest
@@ -38,8 +41,59 @@ from jeton import load_credentials
 from oauth_config import TOKEN_FILE, SCOPES
 from token_store import resolve_token_path
 
+logger = logging.getLogger(__name__)
+
 # Default timeout for Google API calls
 API_TIMEOUT = 60
+
+
+def _load_and_diagnose_credentials(token_path):
+    """Load OAuth credentials with clear error messages for each failure mode.
+
+    Instead of a generic "token not found" error, distinguishes:
+    - Token file missing
+    - Token file corrupt
+    - Token expired with no refresh_token
+    - Token expired and refresh failed
+    """
+    from pathlib import Path
+    token_path = Path(token_path)
+
+    if not token_path.exists():
+        raise FileNotFoundError(
+            f"No OAuth token found at {token_path} (also checked Keychain). "
+            f"Run: uv run python -m auth"
+        )
+
+    # File exists — try to read it
+    try:
+        token_data = json.loads(token_path.read_text())
+    except (json.JSONDecodeError, IOError) as e:
+        raise FileNotFoundError(
+            f"OAuth token at {token_path} is corrupt ({type(e).__name__}). "
+            f"Delete it and re-authenticate: uv run python -m auth"
+        )
+
+    # Try loading through jeton (handles refresh automatically)
+    creds = load_credentials(token_path, scopes=SCOPES)
+    if creds is not None:
+        return creds
+
+    # jeton returned None — diagnose why
+    has_refresh = bool(token_data.get("refresh_token"))
+    has_expiry = bool(token_data.get("expiry"))
+
+    if not has_refresh:
+        raise FileNotFoundError(
+            f"OAuth token at {token_path} has no refresh_token — cannot auto-refresh. "
+            f"Re-authenticate: uv run python -m auth"
+        )
+
+    # Has refresh_token but load_credentials still returned None — refresh must have failed
+    raise FileNotFoundError(
+        f"OAuth token at {token_path} is expired and refresh failed "
+        f"(refresh_token may be revoked). Re-authenticate: uv run python -m auth"
+    )
 
 
 class MiseHttpClient:
@@ -59,11 +113,7 @@ class MiseHttpClient:
             ),
         )
         token_path = resolve_token_path(TOKEN_FILE)
-        self._credentials = load_credentials(token_path, scopes=SCOPES)
-        if self._credentials is None:
-            raise FileNotFoundError(
-                "No OAuth token found (checked Keychain and token.json). Run: uv run python -m auth"
-            )
+        self._credentials = _load_and_diagnose_credentials(token_path)
 
     def _ensure_valid_token(self) -> None:
         """Refresh the access token if expired.
@@ -245,11 +295,7 @@ class MiseSyncClient:
             ),
         )
         token_path = resolve_token_path(TOKEN_FILE)
-        self._credentials = load_credentials(token_path, scopes=SCOPES)
-        if self._credentials is None:
-            raise FileNotFoundError(
-                "No OAuth token found (checked Keychain and token.json). Run: uv run python -m auth"
-            )
+        self._credentials = _load_and_diagnose_credentials(token_path)
 
     def _ensure_valid_token(self) -> None:
         """Refresh the access token if expired."""

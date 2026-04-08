@@ -1,5 +1,7 @@
 """Tests for the httpx-based HTTP client wrapper."""
 
+from pathlib import Path
+
 import pytest
 import httpx
 import orjson
@@ -59,10 +61,37 @@ class TestAuth:
 
         creds.refresh.assert_not_called()
 
-    def test_missing_credentials_raises(self) -> None:
-        with patch("adapters.http_client.load_credentials", return_value=None):
-            with pytest.raises(FileNotFoundError, match="token.json"):
+    def test_missing_token_file_raises(self) -> None:
+        """Clear error when token.json doesn't exist."""
+        with patch("adapters.http_client.resolve_token_path", return_value=Path("/nonexistent/token.json")):
+            with pytest.raises(FileNotFoundError, match="No OAuth token found"):
                 MiseHttpClient()
+
+    def test_corrupt_token_file_raises(self, tmp_path) -> None:
+        """Clear error when token.json is corrupt."""
+        bad_token = tmp_path / "token.json"
+        bad_token.write_text("not json {{{")
+        with patch("adapters.http_client.resolve_token_path", return_value=bad_token):
+            with pytest.raises(FileNotFoundError, match="corrupt"):
+                MiseHttpClient()
+
+    def test_expired_no_refresh_token_raises(self, tmp_path) -> None:
+        """Clear error when token has no refresh_token."""
+        token_file = tmp_path / "token.json"
+        token_file.write_text('{"token": "expired", "expiry": "2020-01-01T00:00:00Z"}')
+        with patch("adapters.http_client.resolve_token_path", return_value=token_file):
+            with patch("adapters.http_client.load_credentials", return_value=None):
+                with pytest.raises(FileNotFoundError, match="no refresh_token"):
+                    MiseHttpClient()
+
+    def test_expired_refresh_failed_raises(self, tmp_path) -> None:
+        """Clear error when refresh_token exists but refresh fails."""
+        token_file = tmp_path / "token.json"
+        token_file.write_text('{"token": "expired", "refresh_token": "revoked", "expiry": "2020-01-01T00:00:00Z"}')
+        with patch("adapters.http_client.resolve_token_path", return_value=token_file):
+            with patch("adapters.http_client.load_credentials", return_value=None):
+                with pytest.raises(FileNotFoundError, match="refresh failed"):
+                    MiseHttpClient()
 
 
 # =============================================================================

@@ -1339,3 +1339,103 @@ class TestPageSetup:
         assert isinstance(result, DoResult)
         assert "page_setup" not in result.cues
         mock_client.post_json.assert_not_called()
+
+
+class TestCreateFolder:
+    """Tests for doc_type='folder' creation."""
+
+    @patch("tools.create.get_sync_client")
+    def test_creates_folder(self, mock_get_client) -> None:
+        """doc_type='folder' creates a Drive folder via files.create."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
+            "id": "folder_abc",
+            "name": "Research Data",
+            "webViewLink": "https://drive.google.com/drive/folders/folder_abc",
+            "parents": ["root"],
+        }
+
+        result = do_create(title="Research Data", doc_type="folder")
+
+        assert isinstance(result, DoResult)
+        assert result.file_id == "folder_abc"
+        assert result.title == "Research Data"
+        assert result.operation == "create"
+        assert result.extras["type"] == "folder"
+
+        # Verify API call used folder MIME type and supportsAllDrives
+        call_args = mock_client.post_json.call_args
+        body = call_args[1]["json_body"]
+        assert body["mimeType"] == "application/vnd.google-apps.folder"
+        assert body["name"] == "Research Data"
+        params = call_args[1]["params"]
+        assert params["supportsAllDrives"] == "true"
+
+    @patch("tools.create.get_sync_client")
+    def test_creates_folder_in_parent(self, mock_get_client) -> None:
+        """folder_id places the new folder inside a parent."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
+            "id": "sub_folder",
+            "name": "Q4 Analysis",
+            "webViewLink": "https://drive.google.com/drive/folders/sub_folder",
+            "parents": ["parent_123"],
+        }
+
+        result = do_create(title="Q4 Analysis", doc_type="folder", folder_id="parent_123")
+
+        assert isinstance(result, DoResult)
+        body = mock_client.post_json.call_args[1]["json_body"]
+        assert body["parents"] == ["parent_123"]
+
+    def test_folder_without_title_rejected(self) -> None:
+        """Folder creation requires a title."""
+        result = do_create(doc_type="folder")
+
+        assert result["error"] is True
+        assert "title" in result["message"].lower()
+
+    def test_folder_ignores_content(self) -> None:
+        """Content param is ignored for folder creation (no error, just unused)."""
+        with patch("tools.create.get_sync_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
+            mock_client.post_json.return_value = {
+                "id": "folder_abc",
+                "name": "Test",
+                "webViewLink": "https://drive.google.com/drive/folders/folder_abc",
+                "parents": ["root"],
+            }
+
+            result = do_create(content="ignored", title="Test", doc_type="folder")
+
+            assert isinstance(result, DoResult)
+            assert result.extras["type"] == "folder"
+
+    def test_folder_with_invalid_folder_id_rejected(self) -> None:
+        """Invalid parent folder_id is caught by validation."""
+        result = do_create(title="Test", doc_type="folder", folder_id="not a valid id!")
+
+        assert result["error"] is True
+        assert "folder_id" in result["message"]
+
+    @patch("tools.create.get_sync_client")
+    def test_folder_cues_include_parent(self, mock_get_client) -> None:
+        """Cues resolve the parent folder name."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        # First call: create folder, second call: resolve parent name
+        mock_client.post_json.return_value = {
+            "id": "new_folder",
+            "name": "Data",
+            "webViewLink": "https://drive.google.com/drive/folders/new_folder",
+            "parents": ["shared_drive_123"],
+        }
+        mock_client.get_json.return_value = {"name": "MIT Shared Reference"}
+
+        result = do_create(title="Data", doc_type="folder", folder_id="shared_drive_123")
+
+        assert isinstance(result, DoResult)
+        assert result.cues["folder"] == "MIT Shared Reference"

@@ -356,7 +356,7 @@ _DO_DESCRIPTION_FULL = """\
 Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail.
 
 Operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label.
-Create: content + title + doc_type (doc/sheet/slides/file). page_setup='pageless' for pageless docs. file_path= to read from disk.
+Create: content + title + doc_type (doc/sheet/slides/file/folder). page_setup='pageless' for pageless docs. file_path= to read from disk. folder: title only, no content needed.
 Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content).
 Email: draft (to + subject + content), reply_draft (file_id + content), archive/star/label.
 Share: file_id + to + role (reader/writer/commenter), confirm=True to execute.
@@ -728,7 +728,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 
 | Operation | Description | Required params |
 |-----------|-------------|-----------------|
-| `create` | Create Doc/Sheet/plain file from content, deposit, or file_path | `content`+`title` OR `source` OR `file_path` |
+| `create` | Create Doc/Sheet/plain file/folder from content, deposit, or file_path | `content`+`title` OR `source` OR `file_path`; folder: `title` only |
 | `move` | Move file to different folder | `file_id`, `destination_folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
 | `share` | Share file with people by email | `file_id`, `to` |
@@ -761,7 +761,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `operation` | str | **required** | All |
 | `content` | str | None | create, overwrite, prepend, append, replace_text, draft (email body) |
 | `title` | str | None | create, rename |
-| `doc_type` | str | 'doc' | create ('doc', 'sheet', 'slides', 'file'). 'file' uploads as-is — MIME inferred from title extension (.md, .svg, .json, etc.) |
+| `doc_type` | str | 'doc' | create ('doc', 'sheet', 'slides', 'file', 'folder'). 'file' uploads as-is — MIME inferred from title extension. 'folder' creates an empty folder (no content needed). |
 | `folder_id` | str | None | create |
 | `file_id` | str | None | move, rename, share, overwrite, prepend, append, replace_text |
 | `destination_folder_id` | str | None | move |
@@ -831,6 +831,12 @@ do(operation="create", file_path="report.md", title="Q4 Report", doc_type="doc",
 
 # Create a pageless doc (wide tables won't be clipped)
 do(operation="create", content="# Wide Table\\n\\n| A | B | C | D | E |", title="Rosetta Stone", page_setup="pageless")
+
+# Create a folder (no content needed)
+do(operation="create", title="Research Data", doc_type="folder")
+
+# Create a folder inside another folder (Shared Drives work too)
+do(operation="create", title="Q4 Analysis", doc_type="folder", folder_id="1xyz...")
 
 # Move a file to a different folder
 do(operation="move", file_id="1abc...", destination_folder_id="1xyz...")

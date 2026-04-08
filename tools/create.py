@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from adapters.http_client import get_sync_client
-from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME
+from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME, GOOGLE_FOLDER_MIME
 from adapters.sheets import add_sheet, update_sheet_values, rename_sheet
 from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
@@ -86,6 +86,45 @@ def _resolve_folder_cues(
         "folder": folder_name or ("My Drive" if not folder_id else folder_id),
         "folder_id": parents[0] if parents else folder_id,
     }
+
+
+def _create_folder(title: str | None, folder_id: str | None) -> DoResult | dict[str, Any]:
+    """Create a Google Drive folder."""
+    if not title:
+        return _create_error("invalid_input", "Folder creation requires a title.")
+
+    title = sanitize_title(title)
+
+    if folder_id:
+        try:
+            validate_drive_id(folder_id, "folder_id")
+        except ValueError as e:
+            return {"error": True, "kind": "invalid_input", "message": str(e)}
+
+    metadata = _mise_file_metadata(title, mime_type=GOOGLE_FOLDER_MIME, folder_id=folder_id)
+
+    client = get_sync_client()
+    try:
+        result = client.post_json(
+            _DRIVE_API,
+            json_body=metadata,
+            params={"fields": "id,name,webViewLink,parents", "supportsAllDrives": "true"},
+        )
+    except MiseError:
+        raise
+    except Exception as e:
+        return _create_error("INTERNAL", f"Folder creation failed: {e}")
+
+    cues = _resolve_folder_cues(result, folder_id)
+
+    return DoResult(
+        file_id=result["id"],
+        title=result.get("name", title),
+        web_link=result.get("webViewLink", ""),
+        operation="create",
+        cues=cues,
+        extras={"type": "folder"},
+    )
 
 
 # Supported doc types and their target MIME types
@@ -220,6 +259,10 @@ def do_create(
     Returns:
         DoResult on success, error dict on failure
     """
+    # Folder creation — no content needed, early return
+    if doc_type == "folder":
+        return _create_folder(title, folder_id)
+
     # Validate page_setup
     if page_setup and page_setup != "pageless":
         return _create_error("invalid_input", f"Unsupported page_setup: {page_setup}. Supported: 'pageless'")

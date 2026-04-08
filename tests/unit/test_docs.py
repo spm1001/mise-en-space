@@ -129,6 +129,54 @@ See the [documentation](https://example.com/docs) for more details[^1].
         assert "Content here" in result
 
 
+class TestHeadingWithIndentation:
+    """Headings with indentation should NOT get blockquote prefixes."""
+
+    def test_indented_heading_no_blockquote(self) -> None:
+        """Indented heading produces '# text', not '> > # text'."""
+        data = DocData(
+            title="Indented Headings",
+            document_id="ind-1",
+            tabs=[
+                DocTab(
+                    title="Main",
+                    tab_id="t.0",
+                    index=0,
+                    body={
+                        "content": [
+                            {
+                                "paragraph": {
+                                    "paragraphStyle": {
+                                        "namedStyleType": "HEADING_1",
+                                        "indentStart": {"magnitude": 72, "unit": "PT"},
+                                    },
+                                    "elements": [
+                                        {"textRun": {"content": "1. First Section\n", "textStyle": {}}}
+                                    ],
+                                }
+                            },
+                            {
+                                "paragraph": {
+                                    "paragraphStyle": {
+                                        "namedStyleType": "HEADING_1",
+                                        "indentStart": {"magnitude": 72, "unit": "PT"},
+                                    },
+                                    "elements": [
+                                        {"textRun": {"content": "2. Second Section\n", "textStyle": {}}}
+                                    ],
+                                }
+                            },
+                        ]
+                    },
+                )
+            ],
+        )
+        result = extract_doc_content(data)
+        assert "# 1. First Section" in result
+        assert "# 2. Second Section" in result
+        assert "> " not in result
+
+
 class TestMarkdownEscaping:
     """Tests for markdown escaping helpers."""
 

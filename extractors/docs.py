@@ -363,9 +363,9 @@ def _extract_paragraph(
         "HEADING_6": "###### ",
     }.get(named_style, "")
 
-    # Check for blockquote (indented non-list paragraph)
+    # Check for blockquote (indented non-list, non-heading paragraph)
     blockquote_prefix = ""
-    if not bullet:
+    if not bullet and not heading_prefix:
         indent_start = para_style.get("indentStart", {})
         indent_magnitude = indent_start.get("magnitude", 0)
         if indent_magnitude >= 30:
