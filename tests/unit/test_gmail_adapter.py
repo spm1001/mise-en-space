@@ -508,7 +508,8 @@ class TestSearchThreads:
         with patch('retry.time.sleep'):
             result = search_threads("nonexistent query")
 
-        assert result == []
+        assert result.results == []
+        assert result.truncated is False
 
     @patch('adapters.gmail.get_sync_client')
     def test_no_threads_key_returns_empty(self, mock_get_client) -> None:
@@ -520,7 +521,8 @@ class TestSearchThreads:
         with patch('retry.time.sleep'):
             result = search_threads("test")
 
-        assert result == []
+        assert result.results == []
+        assert result.truncated is False
 
     @patch('adapters.gmail.get_sync_client')
     def test_search_with_results(self, mock_get_client) -> None:
@@ -570,14 +572,15 @@ class TestSearchThreads:
         ]
 
         with patch('retry.time.sleep'):
-            results = search_threads("budget", max_results=10)
+            search = search_threads("budget", max_results=10)
 
-        assert len(results) == 2
-        assert all(isinstance(r, GmailSearchResult) for r in results)
-        assert results[0].thread_id == "t1"
-        assert results[0].subject == "Budget"
-        assert results[0].snippet == "Budget discussion"
-        assert results[1].thread_id == "t2"
+        assert len(search.results) == 2
+        assert search.truncated is False
+        assert all(isinstance(r, GmailSearchResult) for r in search.results)
+        assert search.results[0].thread_id == "t1"
+        assert search.results[0].subject == "Budget"
+        assert search.results[0].snippet == "Budget discussion"
+        assert search.results[1].thread_id == "t2"
 
     @patch('adapters.gmail.get_sync_client')
     def test_results_preserve_relevance_order(self, mock_get_client) -> None:
@@ -617,9 +620,10 @@ class TestSearchThreads:
         ]
 
         with patch('retry.time.sleep'):
-            results = search_threads("test", max_results=10)
+            search = search_threads("test", max_results=10)
 
         # Must match original relevance order
+        results = search.results
         assert len(results) == 3
         assert results[0].thread_id == "t1"
         assert results[1].thread_id == "t2"
@@ -639,9 +643,9 @@ class TestSearchThreads:
         ]
 
         with patch('retry.time.sleep'):
-            results = search_threads("test")
+            result = search_threads("test")
 
-        assert results == []  # Error thread skipped
+        assert result.results == []  # Error thread skipped
 
     @patch('adapters.gmail.get_sync_client')
     def test_empty_thread_id_skipped_with_warning(self, mock_get_client, caplog) -> None:
@@ -671,9 +675,9 @@ class TestSearchThreads:
         ]
 
         with patch('retry.time.sleep'), caplog.at_level(logging.WARNING, logger="adapters.gmail"):
-            results = search_threads("test")
+            result = search_threads("test")
 
-        assert results == []  # Empty thread_id skipped, not stored under ""
+        assert result.results == []  # Empty thread_id skipped, not stored under ""
         assert any("empty thread_id" in r.message for r in caplog.records)
 
     @patch('adapters.gmail.get_sync_client')
@@ -723,8 +727,9 @@ class TestSearchThreads:
         ]
 
         with patch('retry.time.sleep'):
-            results = search_threads("test", max_results=10)
+            search = search_threads("test", max_results=10)
 
+        results = search.results
         assert len(results) == 2
         # t1 is unread
         assert results[0].is_unread is True
@@ -775,9 +780,122 @@ class TestSearchThreads:
         ]
 
         with patch('retry.time.sleep'):
-            results = search_threads("test", max_results=10)
+            search = search_threads("test", max_results=10)
 
-        assert results[0].is_unread is True
+        assert search.results[0].is_unread is True
+
+    @patch('adapters.gmail.get_sync_client')
+    def test_pagination_collects_across_pages(self, mock_get_client) -> None:
+        """search_threads follows nextPageToken to collect results across pages."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        def make_thread_get(tid):
+            return {
+                "id": tid,
+                "messages": [{
+                    "id": f"m-{tid}",
+                    "internalDate": "1706745600000",
+                    "payload": {
+                        "headers": [
+                            {"name": "From", "value": f"{tid}@example.com"},
+                            {"name": "Subject", "value": f"Thread {tid}"},
+                        ],
+                        "mimeType": "text/plain",
+                    },
+                }],
+            }
+
+        mock_client.get_json.side_effect = [
+            # Page 1: 2 threads + nextPageToken
+            {"threads": [{"id": "t1", "snippet": ""}, {"id": "t2", "snippet": ""}],
+             "nextPageToken": "page2token"},
+            # Page 2: 1 thread, no nextPageToken
+            {"threads": [{"id": "t3", "snippet": ""}]},
+            # Individual thread GETs
+            make_thread_get("t1"),
+            make_thread_get("t2"),
+            make_thread_get("t3"),
+        ]
+
+        with patch('retry.time.sleep'):
+            search = search_threads("test", max_results=10)
+
+        assert len(search.results) == 3
+        assert search.truncated is False
+        assert [r.thread_id for r in search.results] == ["t1", "t2", "t3"]
+
+    @patch('adapters.gmail.get_sync_client')
+    def test_truncated_when_more_results_exist(self, mock_get_client) -> None:
+        """truncated is True when max_results is reached but more pages exist."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        def make_thread_get(tid):
+            return {
+                "id": tid,
+                "messages": [{
+                    "id": f"m-{tid}",
+                    "internalDate": "1706745600000",
+                    "payload": {
+                        "headers": [
+                            {"name": "From", "value": f"{tid}@example.com"},
+                            {"name": "Subject", "value": f"Thread {tid}"},
+                        ],
+                        "mimeType": "text/plain",
+                    },
+                }],
+            }
+
+        mock_client.get_json.side_effect = [
+            # Page 1: 2 threads + nextPageToken (more exist)
+            {"threads": [{"id": "t1", "snippet": ""}, {"id": "t2", "snippet": ""}],
+             "nextPageToken": "page2token"},
+            # Individual thread GETs
+            make_thread_get("t1"),
+            make_thread_get("t2"),
+        ]
+
+        with patch('retry.time.sleep'):
+            search = search_threads("test", max_results=2)
+
+        assert len(search.results) == 2
+        assert search.truncated is True
+
+    @patch('adapters.gmail.get_sync_client')
+    def test_not_truncated_when_exact_fit(self, mock_get_client) -> None:
+        """truncated is False when max_results matches available and no nextPageToken."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        def make_thread_get(tid):
+            return {
+                "id": tid,
+                "messages": [{
+                    "id": f"m-{tid}",
+                    "internalDate": "1706745600000",
+                    "payload": {
+                        "headers": [
+                            {"name": "From", "value": f"{tid}@example.com"},
+                            {"name": "Subject", "value": f"Thread {tid}"},
+                        ],
+                        "mimeType": "text/plain",
+                    },
+                }],
+            }
+
+        mock_client.get_json.side_effect = [
+            # Exactly 2 threads, no nextPageToken
+            {"threads": [{"id": "t1", "snippet": ""}, {"id": "t2", "snippet": ""}]},
+            make_thread_get("t1"),
+            make_thread_get("t2"),
+        ]
+
+        with patch('retry.time.sleep'):
+            search = search_threads("test", max_results=2)
+
+        assert len(search.results) == 2
+        assert search.truncated is False
 
 
 # ============================================================================

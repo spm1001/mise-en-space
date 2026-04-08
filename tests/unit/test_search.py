@@ -20,6 +20,7 @@ from models import (
     CommentActivity,
     DriveSearchResult,
     GmailSearchResult,
+    GmailSearchResults,
     EmailContext,
     MiseError,
     ErrorKind,
@@ -194,9 +195,9 @@ class TestDoSearch:
         mock_drive.return_value = [
             DriveSearchResult(file_id="d1", name="Doc", mime_type="text/plain"),
         ]
-        mock_gmail.return_value = [
+        mock_gmail.return_value = GmailSearchResults(results=[
             GmailSearchResult(thread_id="t1", subject="Email", snippet="..."),
-        ]
+        ])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result = do_search("test query")
@@ -209,6 +210,25 @@ class TestDoSearch:
         assert result.gmail_results[0]["thread_id"] == "t1"
         mock_drive.assert_called_once()
         mock_gmail.assert_called_once()
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
+    def test_gmail_truncated_adds_cue(self, mock_drive, mock_gmail, mock_write) -> None:
+        """Truncated Gmail results add a warning cue."""
+        mock_drive.return_value = []
+        mock_gmail.return_value = GmailSearchResults(
+            results=[
+                GmailSearchResult(thread_id="t1", subject="Email", snippet="..."),
+            ],
+            truncated=True,
+        )
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test")
+
+        assert "gmail_truncated" in result.cues
+        assert "capped at 1" in result.cues["gmail_truncated"]
 
     @patch('tools.search.write_search_results')
     @patch('tools.search.search_threads')
@@ -229,7 +249,7 @@ class TestDoSearch:
     @patch('tools.search.search_files')
     def test_gmail_only(self, mock_drive, mock_gmail, mock_write) -> None:
         """Only Gmail searched when sources=['gmail']."""
-        mock_gmail.return_value = []
+        mock_gmail.return_value = GmailSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result = do_search("test", sources=["gmail"])
@@ -244,9 +264,9 @@ class TestDoSearch:
     def test_drive_error_doesnt_block_gmail(self, mock_drive, mock_gmail, mock_write) -> None:
         """Drive failure still returns Gmail results."""
         mock_drive.side_effect = MiseError(ErrorKind.RATE_LIMITED, "API quota exceeded")
-        mock_gmail.return_value = [
+        mock_gmail.return_value = GmailSearchResults(results=[
             GmailSearchResult(thread_id="t1", subject="Email", snippet="..."),
-        ]
+        ])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result = do_search("test")
@@ -333,7 +353,7 @@ class TestDoSearch:
     def test_results_deposited_to_file(self, mock_drive, mock_gmail, mock_write) -> None:
         """Results written to filesystem via write_search_results."""
         mock_drive.return_value = []
-        mock_gmail.return_value = []
+        mock_gmail.return_value = GmailSearchResults(results=[])
         mock_write.return_value = "/workspace/mise/search-results.json"
 
         result = do_search("test")
@@ -408,7 +428,7 @@ class TestScopedSearch:
     def test_no_scope_note_without_folder_id(self, mock_drive, mock_gmail, mock_write) -> None:
         """No cues when folder_id not set (unscoped search)."""
         mock_drive.return_value = []
-        mock_gmail.return_value = []
+        mock_gmail.return_value = GmailSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result = do_search("test")
@@ -458,7 +478,7 @@ class TestScopedSearch:
     def test_unscoped_search_unchanged(self, mock_drive, mock_gmail, mock_write) -> None:
         """folder_id=None produces identical behaviour to omitting it."""
         mock_drive.return_value = []
-        mock_gmail.return_value = []
+        mock_gmail.return_value = GmailSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result_none = do_search("test", folder_id=None)
@@ -564,9 +584,9 @@ class TestActivitySearch:
         mock_drive.return_value = [
             DriveSearchResult(file_id="d1", name="Doc", mime_type="text/plain"),
         ]
-        mock_gmail.return_value = [
+        mock_gmail.return_value = GmailSearchResults(results=[
             GmailSearchResult(thread_id="t1", subject="Email", snippet="..."),
-        ]
+        ])
         mock_activity.return_value = ActivitySearchResult(
             activities=[_make_activity()],
         )
@@ -641,9 +661,9 @@ class TestActivitySearch:
         mock_drive.return_value = [
             DriveSearchResult(file_id="d1", name="Doc", mime_type="text/plain"),
         ]
-        mock_gmail.return_value = [
+        mock_gmail.return_value = GmailSearchResults(results=[
             GmailSearchResult(thread_id="t1", subject="Email", snippet="..."),
-        ]
+        ])
         mock_activity.side_effect = Exception("API broke")
         mock_write.return_value = "/tmp/fake/search-results.json"
 
@@ -1035,7 +1055,7 @@ class TestTypeFilter:
     @patch("tools.search.write_search_results")
     @patch("tools.search.search_threads")
     def test_type_ignored_with_no_drive_source_adds_cue(self, mock_gmail, mock_write) -> None:
-        mock_gmail.return_value = []
+        mock_gmail.return_value = GmailSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/results.json"
 
         result = do_search("test", sources=["gmail"], type="spreadsheet")

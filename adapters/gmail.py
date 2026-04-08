@@ -21,7 +21,7 @@ from email.utils import formataddr, getaddresses, parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
-from models import GmailThreadData, GmailSearchResult, EmailMessage, EmailAttachment, ForwardedMessage
+from models import GmailThreadData, GmailSearchResult, GmailSearchResults, EmailMessage, EmailAttachment, ForwardedMessage
 from retry import with_retry
 from adapters.http_client import get_sync_client
 from extractors.gmail import parse_message_payload, parse_attachments_from_payload, parse_forwarded_messages
@@ -246,37 +246,66 @@ def fetch_message(message_id: str) -> EmailMessage:
 def search_threads(
     query: str,
     max_results: int = 20,
-) -> list[GmailSearchResult]:
+) -> GmailSearchResults:
     """
     Search for threads matching query.
 
     Uses threads.list to find threads, then fetches metadata for each
     individually for subject, from, date extraction. Returns triage-ready results.
 
-    Phase 1 uses sequential GETs instead of the old batch API. In Phase 2
-    (async), these become asyncio.gather() — actually faster than batch.
+    Paginates through threads.list using nextPageToken until max_results
+    threads are collected or no more pages exist. Gmail API caps each page
+    at 100 threads, so queries requesting >100 results require multiple pages.
 
     Args:
         query: Gmail search query (e.g., "from:example@gmail.com budget")
         max_results: Maximum number of results
 
     Returns:
-        List of GmailSearchResult objects
+        GmailSearchResults with results list and truncated flag
 
     Raises:
         MiseError: On API failure
     """
     client = get_sync_client()
 
-    # Step 1: Get thread IDs and snippets
-    list_response = client.get_json(
-        f"{_GMAIL_API}/threads",
-        params={"q": query, "maxResults": min(max_results, 100)},
-    )
+    # Step 1: Collect thread IDs across pages (Gmail caps at 100 per page)
+    threads: list[dict] = []
+    page_token: str | None = None
+    truncated = False
 
-    threads = list_response.get("threads", [])
+    while len(threads) < max_results:
+        remaining = max_results - len(threads)
+        params: dict[str, Any] = {
+            "q": query,
+            "maxResults": min(remaining, 100),
+        }
+        if page_token:
+            params["pageToken"] = page_token
+
+        list_response = client.get_json(
+            f"{_GMAIL_API}/threads",
+            params=params,
+        )
+
+        page_threads = list_response.get("threads", [])
+        if not page_threads:
+            break
+
+        threads.extend(page_threads)
+        page_token = list_response.get("nextPageToken")
+
+        if not page_token:
+            break
+
+    # If we hit max_results and there's still a nextPageToken, results are truncated
+    if page_token and len(threads) >= max_results:
+        truncated = True
+
+    threads = threads[:max_results]
+
     if not threads:
-        return []
+        return GmailSearchResults(results=[], truncated=False)
 
     # Preserve snippets from list response — individual fetch with fields mask doesn't include them
     snippets_by_id = {t["id"]: t.get("snippet", "") for t in threads}
@@ -290,7 +319,7 @@ def search_threads(
     )
 
     results: list[GmailSearchResult] = []
-    for thread in threads[:max_results]:
+    for thread in threads:
         thread_id = thread["id"]
         try:
             response = client.get_json(
@@ -346,7 +375,7 @@ def search_threads(
             label_ids=first_label_ids,
         ))
 
-    return results
+    return GmailSearchResults(results=results, truncated=truncated)
 
 
 # =============================================================================

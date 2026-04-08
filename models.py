@@ -421,6 +421,13 @@ class GmailSearchResult:
     label_ids: list[str] = field(default_factory=list)
 
 
+@dataclass
+class GmailSearchResults:
+    """Wrapper for Gmail search results with pagination metadata."""
+    results: list[GmailSearchResult]
+    truncated: bool = False  # True when more results exist beyond max_results
+
+
 # ============================================================================
 # TOOL RESPONSE TYPES
 # ============================================================================

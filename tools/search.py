@@ -296,7 +296,13 @@ def do_search(
 
     if "gmail" in futures:
         try:
-            result.gmail_results = [format_gmail_result(r) for r in futures["gmail"].result()]
+            gmail_search = futures["gmail"].result()
+            result.gmail_results = [format_gmail_result(r) for r in gmail_search.results]
+            if gmail_search.truncated:
+                result.cues["gmail_truncated"] = (
+                    f"Results capped at {len(gmail_search.results)} — more exist. "
+                    "Narrow the query or increase max_results to see all."
+                )
         except MiseError as e:
             result.errors.append(f"Gmail search failed: {e.message}")
         except Exception as e:

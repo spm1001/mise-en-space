@@ -192,7 +192,7 @@ class TestRetryWiringEndToEnd:
         with patch('retry.time.sleep'):
             result = search_threads("test query", max_results=5)
 
-        assert isinstance(result, list)
+        assert result.results == []
         assert mock_client.get_json.call_count == 3
 
     @patch('adapters.drive.get_sync_client')
