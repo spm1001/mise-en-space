@@ -874,9 +874,9 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `replace_text` | Find and replace text in document | `file_id`, `find`, `content` |
 | `draft` | Create Gmail draft (does NOT send) | `to`, `subject`, `content` |
 | `reply_draft` | Create threaded reply draft | `file_id` (thread ID), `content` |
-| `archive` | Remove thread from Inbox | `file_id` (thread ID) |
-| `star` | Star a thread | `file_id` (thread ID) |
-| `label` | Add/remove a label on a thread | `file_id` (thread ID), `label` |
+| `archive` | Remove thread(s) from Inbox | `file_id` (thread ID or list) |
+| `star` | Star thread(s) | `file_id` (thread ID or list) |
+| `label` | Add/remove a label on thread(s) | `file_id` (thread ID or list), `label` |
 
 **Overwrite** destroys existing content (images, tables, formatting). Use `prepend`/`append`/`replace_text` when existing content matters.
 
@@ -886,7 +886,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 
 **Share** is a two-step operation (confirm gate). First call returns a preview showing what would happen. Second call with `confirm=True` executes. This ensures the user approves before files become visible to others. Default role is `reader` (least privilege). Notification emails are suppressed.
 
-**Archive/star/label** modify Gmail thread labels. Label names are resolved to IDs automatically (case-insensitive). Use `remove=True` with label to remove instead of add.
+**Archive/star/label** modify Gmail thread labels. Label names are resolved to IDs automatically (case-insensitive). Use `remove=True` with label to remove instead of add. All three accept `file_id` as a list for batch operations — returns per-thread results (like `move`).
 
 ## Parameters
 
@@ -1054,6 +1054,20 @@ do(operation="label", file_id="thread_abc123", label="UNREAD")
 do(operation="label", file_id="thread_abc123", label="STARRED", remove=True)
 
 # To discover available labels: read the mise://gmail/labels resource
+
+# --- Batch Gmail operations ---
+# archive, star, and label all accept file_id as a list for batch triage.
+
+# Archive multiple threads at once
+do(operation="archive", file_id=["thread_1", "thread_2", "thread_3"])
+
+# Batch mark as read
+do(operation="label", file_id=["thread_1", "thread_2"], label="UNREAD", remove=True)
+
+# Batch star
+do(operation="star", file_id=["thread_1", "thread_2"])
+
+# Batch returns: {"operation": "archive", "batch": true, "total": 3, "succeeded": 3, "failed": 0, "results": [...]}
 ```
 """
 

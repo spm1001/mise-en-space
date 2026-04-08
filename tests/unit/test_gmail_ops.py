@@ -303,3 +303,173 @@ class TestDoLabelSuccess:
 
         assert result["error"] is True
         assert result["kind"] == "permission_denied"
+
+
+# =============================================================================
+# BATCH: do_archive
+# =============================================================================
+
+
+THREAD_A = "a1b2c3d4e5f6a7b8"
+THREAD_B = "b2c3d4e5f6a7b8c9"
+THREAD_C = "c3d4e5f6a7b8c9d0"
+
+
+class TestBatchArchive:
+    @patch("retry.time.sleep")
+    @patch("tools.gmail_ops.modify_thread")
+    def test_batch_all_succeed(self, mock_modify, _sleep) -> None:
+        mock_modify.return_value = ModifyThreadResult(
+            thread_id="", added_labels=[], removed_labels=["INBOX"],
+        )
+
+        result = do_archive(file_id=[THREAD_A, THREAD_B, THREAD_C])
+
+        assert result["batch"] is True
+        assert result["operation"] == "archive"
+        assert result["total"] == 3
+        assert result["succeeded"] == 3
+        assert result["failed"] == 0
+        assert len(result["results"]) == 3
+        assert all(r["ok"] for r in result["results"])
+
+    @patch("retry.time.sleep")
+    @patch("tools.gmail_ops.modify_thread")
+    def test_batch_partial_failure(self, mock_modify, _sleep) -> None:
+        mock_modify.side_effect = [
+            ModifyThreadResult(thread_id=THREAD_A, added_labels=[], removed_labels=["INBOX"]),
+            MiseError(ErrorKind.NOT_FOUND, "Thread not found"),
+            ModifyThreadResult(thread_id=THREAD_C, added_labels=[], removed_labels=["INBOX"]),
+        ]
+
+        result = do_archive(file_id=[THREAD_A, THREAD_B, THREAD_C])
+
+        assert result["succeeded"] == 2
+        assert result["failed"] == 1
+        assert result["results"][0]["ok"] is True
+        assert result["results"][1]["ok"] is False
+        assert "not found" in result["results"][1]["error"].lower()
+        assert result["results"][2]["ok"] is True
+
+    def test_batch_rejects_invalid_id(self) -> None:
+        result = do_archive(file_id=[THREAD_A, "bad!"])
+
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+        assert "file_id[1]" in result["message"]
+
+
+# =============================================================================
+# BATCH: do_star
+# =============================================================================
+
+
+class TestBatchStar:
+    @patch("retry.time.sleep")
+    @patch("tools.gmail_ops.modify_thread")
+    def test_batch_all_succeed(self, mock_modify, _sleep) -> None:
+        mock_modify.return_value = ModifyThreadResult(
+            thread_id="", added_labels=["STARRED"], removed_labels=[],
+        )
+
+        result = do_star(file_id=[THREAD_A, THREAD_B])
+
+        assert result["batch"] is True
+        assert result["operation"] == "star"
+        assert result["total"] == 2
+        assert result["succeeded"] == 2
+        assert result["failed"] == 0
+
+    @patch("retry.time.sleep")
+    @patch("tools.gmail_ops.modify_thread")
+    def test_batch_partial_failure(self, mock_modify, _sleep) -> None:
+        mock_modify.side_effect = [
+            ModifyThreadResult(thread_id=THREAD_A, added_labels=["STARRED"], removed_labels=[]),
+            MiseError(ErrorKind.RATE_LIMITED, "Too many requests"),
+        ]
+
+        result = do_star(file_id=[THREAD_A, THREAD_B])
+
+        assert result["succeeded"] == 1
+        assert result["failed"] == 1
+        assert result["results"][1]["ok"] is False
+
+
+# =============================================================================
+# BATCH: do_label
+# =============================================================================
+
+
+class TestBatchLabel:
+    @patch("retry.time.sleep")
+    @patch("tools.gmail_ops.modify_thread")
+    @patch("tools.gmail_ops.resolve_label_name")
+    def test_batch_add_label(self, mock_resolve, mock_modify, _sleep) -> None:
+        mock_resolve.return_value = "Label_1"
+        mock_modify.return_value = ModifyThreadResult(
+            thread_id="", added_labels=["Label_1"], removed_labels=[],
+        )
+
+        result = do_label(
+            file_id=[THREAD_A, THREAD_B, THREAD_C],
+            label="Projects/Active",
+        )
+
+        assert result["batch"] is True
+        assert result["operation"] == "label"
+        assert result["total"] == 3
+        assert result["succeeded"] == 3
+        assert result["label"] == "Projects/Active"
+        assert result["removed"] is False
+        # Label resolved once, not per thread
+        mock_resolve.assert_called_once_with("Projects/Active")
+
+    @patch("retry.time.sleep")
+    @patch("tools.gmail_ops.modify_thread")
+    @patch("tools.gmail_ops.resolve_label_name")
+    def test_batch_remove_label(self, mock_resolve, mock_modify, _sleep) -> None:
+        mock_resolve.return_value = "UNREAD"
+        mock_modify.return_value = ModifyThreadResult(
+            thread_id="", added_labels=[], removed_labels=["UNREAD"],
+        )
+
+        result = do_label(
+            file_id=[THREAD_A, THREAD_B],
+            label="UNREAD",
+            remove=True,
+        )
+
+        assert result["batch"] is True
+        assert result["succeeded"] == 2
+        assert result["removed"] is True
+
+    @patch("retry.time.sleep")
+    @patch("tools.gmail_ops.resolve_label_name")
+    def test_batch_label_not_found(self, mock_resolve, _sleep) -> None:
+        mock_resolve.side_effect = MiseError(ErrorKind.NOT_FOUND, "Label 'Bogus' not found")
+
+        result = do_label(file_id=[THREAD_A], label="Bogus")
+
+        # Fails before any thread processing
+        assert result["error"] is True
+        assert result["kind"] == "not_found"
+
+    @patch("retry.time.sleep")
+    @patch("tools.gmail_ops.modify_thread")
+    @patch("tools.gmail_ops.resolve_label_name")
+    def test_batch_partial_failure(self, mock_resolve, mock_modify, _sleep) -> None:
+        mock_resolve.return_value = "Label_1"
+        mock_modify.side_effect = [
+            ModifyThreadResult(thread_id=THREAD_A, added_labels=["Label_1"], removed_labels=[]),
+            MiseError(ErrorKind.PERMISSION_DENIED, "No access"),
+        ]
+
+        result = do_label(
+            file_id=[THREAD_A, THREAD_B],
+            label="Projects",
+        )
+
+        assert result["succeeded"] == 1
+        assert result["failed"] == 1
+        assert result["results"][0]["ok"] is True
+        assert result["results"][1]["ok"] is False

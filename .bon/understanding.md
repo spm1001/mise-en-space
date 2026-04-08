@@ -2,6 +2,12 @@
 
 Mise-en-space is a Google Workspace MCP server that gives Claude access to Drive and Gmail through three verbs: search, fetch, and do. The architecture follows a strict layering — extractors (pure functions), adapters (thin API wrappers), tools (MCP wiring) — and this separation is load-bearing, not cosmetic.
 
+## The generic primitive beats the convenience alias
+
+When mise added `archive`, `star`, and `label` as do() operations, `label` was already the superset — archive is `label("INBOX", remove=True)`, star is `label("STARRED")`. A brief proposed adding `mark_read`, `mark_unread`, and `unstar` as three more convenience aliases. But each new operation name costs tokens in three places: tool description (hard-capped at 2048ch), dispatch table, and Claude's reasoning about which op to pick. The right move was zero new operations — just better docs showing that `label` with system label names covers all triage actions.
+
+**Before adding a new do() operation, check whether an existing operation already handles it with different parameters.** The description ceiling makes this more than aesthetics — it's a resource constraint.
+
 ## The MCP description length ceiling
 
 MCP tool descriptions have a hard ceiling at 2048 characters, enforced by Claude Code's `MAX_MCP_DESCRIPTION_LENGTH` constant at `src/services/mcp/client.ts:218`. Descriptions over this limit are sliced and suffixed with `'… [truncated]'`. This truncation triggers a secondary, more insidious failure: the Anthropic API silently drops properties from the tool's JSON schema during `tool_reference` expansion (the mechanism that expands deferred tools when ToolSearch is called). The schema is sent in full by CC — the property loss happens API-side during expansion, not during transmission.
@@ -56,7 +62,7 @@ Three Workspace MCP servers were evaluated (repos cloned to `~/Repos/third-party
 
 **Safety model spectrum:** GongRzhe has no safety — permanent batch deletion without confirmation. taylorwilsdon's hardened fork removes dangerous code entirely. aaronsb has the gold standard: a composable policy engine (`src/factory/safety.ts`) with `allow`/`block`/`downgrade` actions — "downgrade" silently converts send to draft, reducing blast radius without blocking the agent. Mise's `_REMOTE_ALLOWED_OPS` is spiritually similar but coarser (binary allow/block, no downgrade). If mise ever needs finer-grained safety, aaronsb's pattern is the reference.
 
-**Batch operations are table stakes for triage.** taylorwilsdon has `batch_modify_gmail_message_labels`. Without batch, triaging 200 emails means 200 sequential tool calls. Mise's existing `do(move)` already accepts `file_id` as a list for Drive — extending archive/label/mark_read to accept lists is the natural pattern. The Gmail API also has a `batchModify` endpoint (single call for multiple threads) worth investigating for performance.
+**Batch operations are table stakes for triage.** taylorwilsdon has `batch_modify_gmail_message_labels`. Without batch, triaging 200 emails means 200 sequential tool calls. Mise's existing `do(move)` already accepts `file_id` as a list for Drive — extending archive/label/star to accept lists is the natural pattern. The Gmail API also has a `batchModify` endpoint (single call for multiple threads) worth investigating for performance.
 
 **Content extraction is where mise leads.** Signature stripping (talon), eager attachment extraction, markitdown HTML conversion, Drive pre-exfil optimisation — mise's fetch quality is ahead of all three competitors. The gap is in breadth of Gmail actions and discoverability of search syntax, not content processing.
 
@@ -72,8 +78,8 @@ Three Workspace MCP servers were evaluated (repos cloned to `~/Repos/third-party
 
 ## Current state (Apr 2026)
 
-Core MCP server stable and in daily use via stdio (v0.5.9). Remote mode transport done. Merged-cell resolution, pageless doc creation, folder creation, token diagnostics, and heading extraction all shipped. MCP description length fixed (property drop bug resolved). Apps Script email extractor ported from archived repo.
+Core MCP server stable and in daily use via stdio (v0.5.10). Remote mode transport done. Merged-cell resolution, pageless doc creation, folder creation, token diagnostics, and heading extraction all shipped. MCP description length fixed (property drop bug resolved). Apps Script email extractor ported from archived repo.
 
-Gmail capabilities expanding: search operators exposed as MCP resource, label IDs captured in data model (was the only Workspace MCP not doing this), Gmail write operations (draft, reply_draft, archive, star, label) shipped Feb 2026 but not yet reflected in workspace skill. Next: inbox management ops (mark_read, mark_unread, unstar, list_labels), then batch ops for triage.
+Gmail capabilities: search operators exposed as MCP resource, label IDs in data model, live labels directory resource (`mise://gmail/labels`), `list_labels()` in gmail adapter. Write operations (draft, reply_draft, archive, star, label) shipped Feb 2026. Triage docs updated to show `label` covers mark_read/unread/unstar — no separate ops needed (see "generic primitive" principle above). Next: batch ops (mise-jokuwo), then workspace skill update (mise-dobida).
 
-Backlog: remote deployment path (auth → tokens → container), image/PDF edge cases (mise-heferu), Drive shortcuts (mise-nitaco), keychain token materialisation (mise-zozewa), image embedding privacy (mise-hagaru).
+Backlog: remote deployment path (auth → tokens → container), image/PDF edge cases (mise-heferu), Drive shortcuts (mise-nitaco), keychain token materialisation (mise-zozewa), image embedding privacy (mise-hagaru), calendar forward-looking (mise-milizo).

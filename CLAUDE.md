@@ -67,6 +67,7 @@ docs/           Design documents and references
 - `fetch` accepts optional `tabs` param (list of tab names) to fetch only specific tabs from spreadsheets
 - `fetch` accepts `recursive=True` on folder IDs — returns full indented tree (max depth 5, 1000 items)
 - `do` routes via `operation` param — `do(operation="create", ...)`
+- `do(move)`, `do(archive)`, `do(star)`, `do(label)` accept `file_id` as `str | list[str]` for batch operations — returns per-thread/file summary with `succeeded`/`failed` counts
 - `do(create)` and `do(overwrite)` accept `file_path` to read content directly from a local file — no deposit folder needed. For `doc_type='file'`, reads as binary; for `doc`/`sheet`, reads as UTF-8 text. Mutually exclusive with `content` and `source`.
 - `do(create)` accepts `doc_type='folder'` — creates a Drive folder (title only, no content needed). `supportsAllDrives` is set automatically for Shared Drive compatibility.
 - `do(create)` accepts `page_setup='pageless'` (doc_type='doc' only) — sets pageless mode via Docs API after creation.
