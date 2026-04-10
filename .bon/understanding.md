@@ -77,10 +77,42 @@ Three Workspace MCP servers were evaluated (repos cloned to `~/Repos/third-party
 - **Heading extraction** — blockquote prefix suppressed when a heading prefix is already present (`extractors/docs.py`), preventing `> ##` output for indented headings.
 - **Shadow field masks** — When an adapter defines a constant for API field selection but the call site uses a locally-defined string, mocked tests pass because mocks return whatever you tell them regardless of which fields were requested. The `is_unread` bug was this: `SEARCH_THREAD_FIELDS` had `labelIds` but `search_threads()` used a local `search_fields` that didn't. Guard by testing the mask itself (`assert "labelIds" in fields`), not just downstream logic. Any time you see a fields/projection/select mask in an API adapter, verify the call site actually uses the constant.
 
+## Observability and stock-taking
+
+The call log (`~/.local/share/mise/calls.jsonl`) is the primary operational data source. A stock-taking session (Apr 2026, ~375 calls over 19 days) revealed patterns invisible from feature work alone: fetch 47%, search 33%, do 20%. Gmail edges out Drive as most-searched source. `replace_text` is the top do() op. Six ops have zero real-world usage (draft, rename, share, prepend, star, label). Activity and calendar search sources are dormant. 99% success rate. The lesson: **periodically step back from building to observe how the thing is actually used** — the observation often matters more than the next feature.
+
+Code health (same session): 92% test coverage, zero layer violations, dispatch table sync verified, tool descriptions within 2048 limit, no TODO/FIXME/HACK. Mypy errors 30→22 (remaining are upstream httpx/orjson noise — the right fix is a thin `_parse_json` wrapper centralising one ignore, not scattershot `type: ignore`).
+
 ## Current state (Apr 2026)
 
 Core MCP server stable and in daily use via stdio (v0.5.13). Remote mode transport done. Merged-cell resolution, pageless doc creation, folder creation, token diagnostics, and heading extraction all shipped. MCP description length fixed (property drop bug resolved). Apps Script email extractor ported from archived repo.
 
 Gmail capabilities: search operators exposed as MCP resource, label IDs in data model, live labels directory resource (`mise://gmail/labels`), `list_labels()` in gmail adapter. Write operations (draft, reply_draft, archive, star, label) shipped Feb 2026. Triage docs updated to show `label` covers mark_read/unread/unstar — no separate ops needed (see "generic primitive" principle above). Batch ops (archive/star/label accept `file_id` as `str | list[str]`) and search pagination (follows `nextPageToken`, surfaces `truncated` flag as cue warning) both shipped Apr 2026. Workspace skill updated with full Gmail coverage (dobida). `is_unread` bug fixed — search fields mask was missing `labelIds` (daduti). mise-wiboka outcome complete.
 
-Backlog: remote deployment path (auth → tokens → container), image/PDF edge cases (mise-heferu), Drive shortcuts (mise-nitaco), keychain token materialisation (mise-zozewa), image embedding privacy (mise-hagaru), calendar forward-looking (mise-milizo).
+## Claude Desktop integration (Apr 2026, mise-hohoku)
+
+**Mise works in all Desktop modes (Chat, Cowork, Code) via two paths:**
+
+1. **`claude_desktop_config.json` → `mcpServers`** — Desktop runs the stdio server on the Mac and bridges it as a "connector" into Cowork's VM. The VM never connects directly; Desktop proxies. This is the simplest path for personal use.
+
+2. **MCPB extension (`.mcpb` file)** — the packaging format for distributing MCP servers. `manifest.json` with `"server.type": "uv"` lets Desktop auto-install Python + deps. Zero CLI for end users. Validated and tested: `mise-en-space-0.5.13.mcpb` (355KB). New extension install requires a full Desktop restart (not just new session).
+
+**What doesn't work in Cowork (yet):**
+- **Uploaded plugin MCP servers** — Desktop reads `.mcp.json`, shows the connector in UI, registers permissions, but `LocalPluginsReader` returns 0 and the server never starts. The plugin spec (`cowork-plugin-management/create-cowork-plugin`) documents this as supported. 90% of the plumbing is there. Likely a "not yet" or a missing toggle — don't accept "can't work" without re-investigating.
+- HTTP MCP from `.mcp.json` pointing at local IPs — gvisor networking blocks host access (`172.16.10.1` unreachable), `allowedDomains=1` restricts egress. Connectors route through Anthropic's cloud, not local network.
+- The Cowork VM is Linux ARM64, Python 3.10, ephemeral, with a MITM proxy for all outbound.
+
+**Three separate extension systems in Desktop (they don't share plumbing):**
+1. **MCPB extensions** (`Claude Extensions/`) → `LocalMcpServerManager` → MCP tools work, skills ignored
+2. **Uploaded plugins** (`rpm/`) → `RemotePluginManager` → skills work, MCP servers not launched
+3. **`claude_desktop_config.json`** → `mcpServers` → MCP tools work, no skills mechanism
+
+**MCPB packaging:** `manifest.json` + `pyproject.toml` + source code. `"server.type": "uv"` makes Desktop auto-install Python + deps. `mcpb validate` and `mcpb pack` via `@anthropic-ai/mcpb` CLI. `.mcpbignore` excludes dev artifacts. `${__dirname}` for portable paths. Resources listed but not bridged into Cowork (tools are bridged).
+
+**Full-fat plugin built:** `/tmp/mise-full-plugin.zip` (308KB, 74 files) — bundled source, `${CLAUDE_PLUGIN_ROOT}` paths, `.mcp.json` at root, workspace skill. Ready to become the one-zip solution when the MCP launch gap is fixed.
+
+**Cowork plugin architecture:** `cowork-plugin-shim.sh` (in app bundle) reveals compiled-binary plugins with `cowork_require_token` for credential injection and `cowork_gate` for permission bridging via filesystem IPC. First-party Gmail/Calendar MCPs (`gmail.mcp.claude.com`) are Anthropic-hosted HTTP services.
+
+**Strategic outcome:** Remote deployment path (tokiju → winala → sefepo) parked as someday/maybe. Only needed for Claude.ai web without Desktop, or mobile.
+
+Backlog: image/PDF edge cases (mise-heferu), Drive shortcuts (mise-nitaco), keychain token materialisation (mise-zozewa), image embedding privacy (mise-hagaru), calendar forward-looking (mise-milizo), plugin MCP launch gap investigation.
