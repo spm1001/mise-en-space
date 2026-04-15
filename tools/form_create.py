@@ -99,6 +99,19 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _split_title(title: str) -> tuple[str, str]:
+    """Split a multi-line title into (title, overflow_description).
+
+    The Forms API rejects newlines in item titles. When a YAML block scalar
+    puts detail below the first line, we move it to the description field.
+    """
+    title = title.strip()
+    if "\n" not in title:
+        return title, ""
+    first, rest = title.split("\n", 1)
+    return first.strip(), rest.strip()
+
+
 def _build_question_item(q: dict[str, Any]) -> dict[str, Any]:
     """Convert a single YAML question spec to a Forms API item."""
     qtype = q["type"]
@@ -106,16 +119,24 @@ def _build_question_item(q: dict[str, Any]) -> dict[str, Any]:
     if qtype == "section_break":
         item: dict[str, Any] = {"pageBreakItem": {}}
         if q.get("title"):
-            item["title"] = q["title"]
-        if q.get("description"):
+            title, extra = _split_title(q["title"])
+            item["title"] = title
+            desc_parts = [d for d in [extra, q.get("description")] if d]
+            if desc_parts:
+                item["description"] = "\n\n".join(desc_parts)
+        elif q.get("description"):
             item["description"] = q["description"]
         return item
 
     if qtype == "text":
         item = {"textItem": {}}
         if q.get("title"):
-            item["title"] = q["title"]
-        if q.get("description"):
+            title, extra = _split_title(q["title"])
+            item["title"] = title
+            desc_parts = [d for d in [extra, q.get("description")] if d]
+            if desc_parts:
+                item["description"] = "\n\n".join(desc_parts)
+        elif q.get("description"):
             item["description"] = q["description"]
         return item
 
@@ -151,12 +172,14 @@ def _build_question_item(q: dict[str, Any]) -> dict[str, Any]:
             scale["highLabel"] = q["high_label"]
         question_body["scaleQuestion"] = scale
 
+    title, extra_desc = _split_title(q.get("title", ""))
     item = {
-        "title": q.get("title", ""),
+        "title": title,
         "questionItem": {"question": question_body},
     }
-    if q.get("description"):
-        item["description"] = q["description"]
+    desc_parts = [d for d in [extra_desc, q.get("description")] if d]
+    if desc_parts:
+        item["description"] = "\n\n".join(desc_parts)
     return item
 
 

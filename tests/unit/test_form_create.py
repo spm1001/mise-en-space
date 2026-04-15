@@ -9,6 +9,7 @@ from tools.form_create import (
     _parse_spec,
     _validate_spec,
     _build_question_item,
+    _split_title,
     _spec_to_batch_requests,
     create_form,
 )
@@ -196,6 +197,52 @@ def test_question_with_description():
         "description": "Be specific",
     })
     assert item["description"] == "Be specific"
+
+
+# ============================================================================
+# Title splitting (Forms API rejects newlines in titles)
+# ============================================================================
+
+
+def test_split_title_single_line():
+    title, desc = _split_title("Simple question?")
+    assert title == "Simple question?"
+    assert desc == ""
+
+
+def test_split_title_multiline():
+    title, desc = _split_title("First line\n\nSecond line\nThird line")
+    assert title == "First line"
+    assert desc == "Second line\nThird line"
+
+
+def test_split_title_strips_whitespace():
+    title, desc = _split_title("  Title  \n  Extra  \n")
+    assert title == "Title"
+    assert desc == "Extra"
+
+
+def test_multiline_title_moves_to_description():
+    item = _build_question_item({
+        "type": "paragraph",
+        "title": "Rate these behaviours\n\n• Behaviour A\n• Behaviour B",
+        "required": True,
+    })
+    assert "\n" not in item["title"]
+    assert item["title"] == "Rate these behaviours"
+    assert "Behaviour A" in item["description"]
+    assert "Behaviour B" in item["description"]
+
+
+def test_multiline_title_merges_with_existing_description():
+    item = _build_question_item({
+        "type": "paragraph",
+        "title": "Main question\n\nContext here",
+        "description": "Additional guidance",
+    })
+    assert item["title"] == "Main question"
+    assert "Context here" in item["description"]
+    assert "Additional guidance" in item["description"]
 
 
 # ============================================================================
