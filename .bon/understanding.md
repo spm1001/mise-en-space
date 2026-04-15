@@ -85,7 +85,7 @@ Code health (same session): 92% test coverage, zero layer violations, dispatch t
 
 ## Current state (Apr 2026)
 
-Core MCP server stable and in daily use via stdio (v0.5.13). Remote mode transport done. Merged-cell resolution, pageless doc creation, folder creation, token diagnostics, and heading extraction all shipped. MCP description length fixed (property drop bug resolved). Apps Script email extractor ported from archived repo.
+Core MCP server stable and in daily use via stdio (v0.5.14). Remote mode transport done. Merged-cell resolution, pageless doc creation, folder creation, token diagnostics, and heading extraction all shipped. MCP description length fixed (property drop bug resolved). Apps Script email extractor ported from archived repo. Google Forms fetch added — adapter calls Forms API v1 (`forms.googleapis.com`), extractor renders all question types (choice, text, scale, date, grid, rating) as markdown, deposits `structure.json` for programmatic use alongside `content.md`.
 
 Gmail capabilities: search operators exposed as MCP resource, label IDs in data model, live labels directory resource (`mise://gmail/labels`), `list_labels()` in gmail adapter. Write operations (draft, reply_draft, archive, star, label) shipped Feb 2026. Triage docs updated to show `label` covers mark_read/unread/unstar — no separate ops needed (see "generic primitive" principle above). Batch ops (archive/star/label accept `file_id` as `str | list[str]`) and search pagination (follows `nextPageToken`, surfaces `truncated` flag as cue warning) both shipped Apr 2026. Workspace skill updated with full Gmail coverage (dobida). `is_unread` bug fixed — search fields mask was missing `labelIds` (daduti). mise-wiboka outcome complete.
 

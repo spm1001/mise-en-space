@@ -518,7 +518,7 @@ without being asked.
 
 ## Content Types
 
-Supported: Google Docs, Sheets, Slides, Gmail threads, PDFs, Office files, video/audio
+Supported: Google Docs, Sheets, Slides, Forms, Gmail threads, PDFs, Office files, video/audio
 
 ## Resources
 
@@ -788,6 +788,7 @@ Only named tabs are fetched from the API. Missing tab names produce a warning in
 | Google Docs | markdown + comments.md | Multi-tab support, inline images, open comments |
 | Google Sheets | CSV + comments.md | All sheets, with headers, open comments |
 | Google Slides | markdown + thumbnails + comments.md | Selective thumbnails, open comments |
+| Google Forms | markdown + structure.json | Questions, sections, grids, quiz scoring |
 | Gmail threads | markdown | Signature stripping, attachment list |
 | **Drive folders** | **markdown** | **Directory listing: subfolders with IDs, files grouped by type** |
 | PDFs | markdown | Hybrid: markitdown → Drive fallback |
@@ -1209,7 +1210,7 @@ mise/
 
 `{type}--{title-slug}--{id-prefix}/`
 
-- **type**: slides, doc, sheet, gmail, pdf, docx, xlsx, pptx, video
+- **type**: slides, doc, sheet, form, gmail, pdf, docx, xlsx, pptx, video
 - **title-slug**: Slugified title, max 50 chars
 - **id-prefix**: First 12 characters of resource ID
 
@@ -1233,7 +1234,7 @@ Self-describing metadata for each deposit:
 
 | Type | File | Format |
 |------|------|--------|
-| Docs, Slides, Gmail, PDF, Video | content.md | Markdown |
+| Docs, Slides, Forms, Gmail, PDF, Video | content.md | Markdown |
 | Sheets, XLSX | content.csv | CSV |
 | PPTX | content.txt | Plain text |
 
