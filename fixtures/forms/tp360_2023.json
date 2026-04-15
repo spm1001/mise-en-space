@@ -1,0 +1,106 @@
+{
+  "formId": "1LruW7CfNGW8q7bfyD2s1flgLAzL9ZkzZ67JC8gaTGSY",
+  "info": {
+    "title": "Talking Performance 360 feedback",
+    "description": "Hi, I'm doing a 360 review for XXX, who has identified you as someone who could provide constructive feedback for them. \n\nNote to manager:\n1/ do search and replace of 'XXX' with name\n2/ add key projects in question 1\n3/ delete these notes",
+    "documentTitle": "TP360 2023 Form"
+  },
+  "settings": {
+    "emailCollectionType": "RESPONDER_INPUT"
+  },
+  "revisionId": "0000012e",
+  "responderUri": "https://docs.google.com/forms/d/e/1FAIpQLScBgwWvOnoqXG0e-xvYA3cC0MzbfGjBeGMZT0OUFJOSsce4jQ/viewform",
+  "items": [
+    {
+      "itemId": "1111ff05",
+      "title": "These are key projects XXX worked on in recent months. \n\nPlease tick those you have experience of, and add a description in Other if you did work together which isn't listed. ",
+      "questionItem": {
+        "question": {
+          "questionId": "22866afa",
+          "required": true,
+          "choiceQuestion": {
+            "type": "CHECKBOX",
+            "options": [
+              {
+                "value": "Option 1"
+              },
+              {
+                "isOther": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "itemId": "4bdef3de",
+      "title": "Thinking about those projects, how would you describe your experience of working with XXX? What were the highlights? The challenges?",
+      "questionItem": {
+        "question": {
+          "questionId": "0f816b1a",
+          "required": true,
+          "textQuestion": {
+            "paragraph": true
+          }
+        }
+      }
+    },
+    {
+      "itemId": "5b0d5e67",
+      "title": "Thinking about what they work on, what projects do you think XXX could take on or do differently to have even greater impact for ITV? ",
+      "questionItem": {
+        "question": {
+          "questionId": "64fb2257",
+          "required": true,
+          "textQuestion": {
+            "paragraph": true
+          }
+        }
+      }
+    },
+    {
+      "itemId": "6a1696b4",
+      "title": "Thinking now about how they work, As a reminder these are the 6 ITV behaviours. Which of these would you say XXX most exhibits in their work? Please give examples.\n\n- Digital Mindset - supports the digital transformation of ITV by integrating digital thinking to challenge existing processes and approaches\n- Creativity & Innovation - encourages and contributes to a culture of experiment and innovation, including managed risk-taking\n- Agility - responds to and anticipates changes in business need driven by internal or external environment\n- Clarity & Pace - sets clear expectations to help move projects quickly forward\n- Collaboration - develops relationships and partnerships by supporting, collaborating and inspiring both internally and externally \n- Cultivates Resilience - actively manages stressful and difficult situations for self and those around them",
+      "questionItem": {
+        "question": {
+          "questionId": "7dfed689",
+          "required": true,
+          "textQuestion": {
+            "paragraph": true
+          }
+        }
+      }
+    },
+    {
+      "itemId": "5888c939",
+      "title": "A key focus for the whole of the CS&P team in 2023 is greater proactivity. What could XXX do to be more proactive in their work? ",
+      "questionItem": {
+        "question": {
+          "questionId": "5d04c65e",
+          "required": true,
+          "textQuestion": {
+            "paragraph": true
+          }
+        }
+      }
+    },
+    {
+      "itemId": "4130f11b",
+      "title": "Anything else you'd like to add to help XXX develop? ",
+      "questionItem": {
+        "question": {
+          "questionId": "5e982b3a",
+          "textQuestion": {
+            "paragraph": true
+          }
+        }
+      }
+    }
+  ],
+  "publishSettings": {
+    "publishState": {
+      "isPublished": true,
+      "isAcceptingResponses": true
+    }
+  }
+}

@@ -24,7 +24,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from jeton import HeadlessError, authenticate
+from jeton import authenticate, get_auth_url
 
 from oauth_config import (
     TOKEN_FILE,
@@ -95,26 +95,33 @@ def main() -> None:
         credentials_path = tmp_path
 
     try:
-        creds = authenticate(
-            credentials_path=credentials_path,
-            token_path=TOKEN_FILE,
-            scopes=SCOPES,
-            code=args.code,
-            port=OAUTH_PORT,
-        )
-        save_token(TOKEN_FILE)
-        print()
-        print("Authentication complete.")
-    except HeadlessError as e:
-        print("No browser available.\n")
-        print("Open this URL in your browser:")
-        print()
-        print(e.url)
-        print()
-        print("After granting permissions, copy the redirect URL and run:")
-        print()
-        print(f"  uv run python -m auth --code '<redirect_url>'")
-        print()
+        if args.code:
+            creds = authenticate(
+                credentials_path=credentials_path,
+                token_path=TOKEN_FILE,
+                scopes=SCOPES,
+                code=args.code,
+                port=OAUTH_PORT,
+            )
+            save_token(TOKEN_FILE)
+            print()
+            print("Authentication complete.")
+        else:
+            url = get_auth_url(
+                credentials_path=credentials_path,
+                token_path=TOKEN_FILE,
+                scopes=SCOPES,
+                port=OAUTH_PORT,
+            )
+            print()
+            print("Open this URL in your browser:")
+            print()
+            print(url)
+            print()
+            print("After granting permissions, copy the redirect URL and run:")
+            print()
+            print(f"  uv run python -m auth --code '<redirect_url>'")
+            print()
     except KeyboardInterrupt:
         print("\n\nAuthentication cancelled")
         sys.exit(1)

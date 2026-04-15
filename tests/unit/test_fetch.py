@@ -14,6 +14,7 @@ from tools.fetch import (
     _extract_attachment_content, _build_email_context_metadata,
     is_text_file, fetch_drive, fetch_doc, fetch_sheet, fetch_slides,
     fetch_video, fetch_pdf, fetch_office, fetch_text, fetch_image_file,
+    fetch_form_file,
 )
 from models import (
     GmailThreadData, EmailMessage, EmailAttachment, FetchResult, FetchError,
@@ -1159,6 +1160,14 @@ class TestFetchDriveRouting:
         mock_fn.assert_called_once()
 
     @patch("tools.fetch.drive.get_file_metadata")
+    @patch("tools.fetch.drive.fetch_form_file")
+    def test_routes_google_form(self, mock_fn, mock_meta):
+        mock_meta.return_value = _drive_metadata("application/vnd.google-apps.form")
+        mock_fn.return_value = FetchResult(path="/p", content_file="/p/c.md", format="markdown", type="form", metadata={})
+        result = fetch_drive("f1")
+        mock_fn.assert_called_once()
+
+    @patch("tools.fetch.drive.get_file_metadata")
     def test_unsupported_type_returns_error(self, mock_meta):
         mock_meta.return_value = _drive_metadata("application/x-unknown-format")
         result = fetch_drive("f1")
@@ -1248,6 +1257,79 @@ class TestFetchDoc:
         extra = mock_manifest.call_args[1]["extra"]
         assert extra["created_time"] == "2025-12-01T09:00:00.000Z"
         assert extra["modified_time"] == "2026-01-15T10:30:00.000Z"
+
+
+class TestFetchForm:
+    """Tests for fetch_form_file orchestration."""
+
+    @patch("tools.fetch.drive.write_manifest")
+    @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/form/content.md"))
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.extract_form_content", return_value="# Survey")
+    @patch("tools.fetch.drive.adapter_fetch_form")
+    def test_basic_form(self, mock_fetch, mock_extract, mock_folder, mock_write, mock_manifest, tmp_path):
+        """Form is fetched, extracted, and deposited with structure.json."""
+        mock_folder.return_value = tmp_path / "form"
+        (tmp_path / "form").mkdir()
+        mock_fetch.return_value = {
+            "formId": "f1",
+            "info": {"title": "Survey"},
+            "items": [
+                {"itemId": "1", "title": "Q1", "questionItem": {"question": {"questionId": "q1", "textQuestion": {"paragraph": False}}}},
+                {"itemId": "2", "title": "Q2", "questionItem": {"question": {"questionId": "q2", "required": True, "choiceQuestion": {"type": "RADIO", "options": [{"value": "Yes"}, {"value": "No"}]}}}},
+            ],
+        }
+
+        result = fetch_form_file("f1", "Survey", _drive_metadata("application/vnd.google-apps.form"))
+
+        assert isinstance(result, FetchResult)
+        assert result.type == "form"
+        assert result.format == "markdown"
+        assert result.metadata["title"] == "Survey"
+        assert result.metadata["question_count"] == 2
+        assert result.metadata["section_count"] == 0
+        mock_extract.assert_called_once()
+        assert (tmp_path / "form" / "structure.json").exists()
+
+    @patch("tools.fetch.drive.write_manifest")
+    @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/form/content.md"))
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.extract_form_content", return_value="# Quiz")
+    @patch("tools.fetch.drive.adapter_fetch_form")
+    def test_quiz_form(self, mock_fetch, mock_extract, mock_folder, mock_write, mock_manifest, tmp_path):
+        """Quiz flag surfaces in metadata."""
+        mock_folder.return_value = tmp_path / "form"
+        (tmp_path / "form").mkdir()
+        mock_fetch.return_value = {
+            "formId": "f1",
+            "info": {"title": "Quiz"},
+            "settings": {"quizSettings": {"isQuiz": True}},
+            "items": [],
+        }
+
+        result = fetch_form_file("f1", "Quiz", _drive_metadata("application/vnd.google-apps.form"))
+
+        assert result.metadata["is_quiz"] is True
+
+    @patch("tools.fetch.drive.write_manifest")
+    @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/form/content.md"))
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.extract_form_content", return_value="# Form")
+    @patch("tools.fetch.drive.adapter_fetch_form")
+    def test_linked_sheet_in_metadata(self, mock_fetch, mock_extract, mock_folder, mock_write, mock_manifest, tmp_path):
+        """Linked response sheet ID surfaces in metadata."""
+        mock_folder.return_value = tmp_path / "form"
+        (tmp_path / "form").mkdir()
+        mock_fetch.return_value = {
+            "formId": "f1",
+            "info": {"title": "Form"},
+            "linkedSheetId": "sheet_abc",
+            "items": [],
+        }
+
+        result = fetch_form_file("f1", "Form", _drive_metadata("application/vnd.google-apps.form"))
+
+        assert result.metadata["linked_sheet_id"] == "sheet_abc"
 
 
 class TestFetchSheet:

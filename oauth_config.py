@@ -38,6 +38,9 @@ SCOPES = [
     # Calendar: Meeting context (who was in the meeting, when, what docs linked)
     # Helps correlate docs with discussions.
     'https://www.googleapis.com/auth/calendar.readonly',
+
+    # Forms: Read form structure (questions, sections, options)
+    'https://www.googleapis.com/auth/forms.body.readonly',
 ]
 
 # OAuth server port (localhost callback receiver)

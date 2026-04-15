@@ -339,6 +339,7 @@ GOOGLE_DOC_MIME = "application/vnd.google-apps.document"
 GOOGLE_SHEET_MIME = "application/vnd.google-apps.spreadsheet"
 GOOGLE_SLIDES_MIME = "application/vnd.google-apps.presentation"
 GOOGLE_FOLDER_MIME = "application/vnd.google-apps.folder"
+GOOGLE_FORM_MIME = "application/vnd.google-apps.form"
 
 
 def is_google_workspace_file(mime_type: str) -> bool:

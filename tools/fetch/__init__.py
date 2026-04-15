@@ -15,8 +15,8 @@ from .common import (
 
 # Drive fetchers
 from .drive import (
-    fetch_drive, fetch_doc, fetch_sheet, fetch_slides, fetch_video,
-    fetch_pdf, fetch_office, fetch_text, fetch_image_file,
+    fetch_drive, fetch_doc, fetch_form_file, fetch_sheet, fetch_slides,
+    fetch_video, fetch_pdf, fetch_office, fetch_text, fetch_image_file,
 )
 
 # Gmail fetchers

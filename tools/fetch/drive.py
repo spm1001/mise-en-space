@@ -5,9 +5,12 @@ Drive file fetch — routes by MIME type, extracts content, deposits to workspac
 from pathlib import Path
 from typing import Any
 
-from adapters.drive import get_file_metadata, parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME, GOOGLE_FOLDER_MIME
+import orjson
+
+from adapters.drive import get_file_metadata, parse_email_context, download_file, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME, GOOGLE_FOLDER_MIME, GOOGLE_FORM_MIME
 from adapters.drive import list_folder as adapter_list_folder, list_folder_recursive as adapter_list_folder_recursive
 from adapters.docs import fetch_document
+from adapters.forms import fetch_form as adapter_fetch_form
 from adapters.sheets import fetch_spreadsheet
 from adapters.slides import fetch_presentation
 from adapters.genai import get_video_summary, is_media_file
@@ -18,6 +21,7 @@ from adapters.image import fetch_image as adapter_fetch_image, is_image_file, is
 from extractors.image import resize_image_bytes
 from extractors.docs import extract_doc_content
 from extractors.folder import extract_folder_content, extract_folder_tree
+from extractors.forms import extract_form_content
 from extractors.sheets import extract_sheets_content, extract_sheets_per_tab
 from extractors.slides import extract_slides_content
 from extractors.video import extract_video_content
@@ -57,6 +61,8 @@ def fetch_drive(file_id: str, base_path: Path | None = None, recursive: bool = F
         return fetch_sheet(file_id, title, metadata, email_context, base_path=base_path, tabs=tabs)
     elif mime_type == GOOGLE_SLIDES_MIME:
         return fetch_slides(file_id, title, metadata, email_context, base_path=base_path)
+    elif mime_type == GOOGLE_FORM_MIME:
+        return fetch_form_file(file_id, title, metadata, email_context, base_path=base_path)
     elif is_media_file(mime_type):
         return fetch_video(file_id, title, metadata, email_context, base_path=base_path)
     elif mime_type == "application/pdf":
@@ -404,6 +410,57 @@ def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], ema
         content_file=str(content_path),
         format="markdown",
         type="slides",
+        metadata=result_meta,
+        cues=cues,
+    )
+
+
+def fetch_form_file(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
+    """Fetch Google Form — deposits question structure as markdown."""
+    form_data = adapter_fetch_form(file_id)
+    content = extract_form_content(form_data)
+
+    folder = get_deposit_folder("form", title, file_id, base_path=base_path)
+    content_path = write_content(folder, content)
+
+    (folder / "structure.json").write_bytes(orjson.dumps(form_data, option=orjson.OPT_INDENT_2))
+
+    items = form_data.get("items", [])
+    question_count = sum(
+        1 for i in items if "questionItem" in i or "questionGroupItem" in i
+    )
+    section_count = sum(1 for i in items if "pageBreakItem" in i)
+    is_quiz = form_data.get("settings", {}).get("quizSettings", {}).get("isQuiz", False)
+
+    extra: dict[str, Any] = {
+        "question_count": question_count,
+        "section_count": section_count,
+        "is_quiz": is_quiz,
+    }
+    if form_data.get("linkedSheetId"):
+        extra["linked_sheet_id"] = form_data["linkedSheetId"]
+    _add_file_dates(extra, metadata)
+    write_manifest(folder, "form", title, file_id, extra=extra)
+
+    result_meta: dict[str, Any] = {
+        "title": title,
+        "question_count": question_count,
+        "section_count": section_count,
+    }
+    if is_quiz:
+        result_meta["is_quiz"] = True
+    if form_data.get("linkedSheetId"):
+        result_meta["linked_sheet_id"] = form_data["linkedSheetId"]
+    if email_context:
+        result_meta["email_context"] = _build_email_context_metadata(email_context)
+
+    cues = _build_cues(folder, email_context=email_context)
+
+    return FetchResult(
+        path=str(folder),
+        content_file=str(content_path),
+        format="markdown",
+        type="form",
         metadata=result_meta,
         cues=cues,
     )
