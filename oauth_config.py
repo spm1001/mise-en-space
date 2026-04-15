@@ -39,8 +39,8 @@ SCOPES = [
     # Helps correlate docs with discussions.
     'https://www.googleapis.com/auth/calendar.readonly',
 
-    # Forms: Read form structure (questions, sections, options)
-    'https://www.googleapis.com/auth/forms.body.readonly',
+    # Forms: Read and create form structure (questions, sections, options)
+    'https://www.googleapis.com/auth/forms.body',
 ]
 
 # OAuth server port (localhost callback receiver)

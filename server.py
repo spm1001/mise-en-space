@@ -356,7 +356,7 @@ _DO_DESCRIPTION_FULL = """\
 Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail.
 
 Operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label.
-Create: content + title + doc_type (doc/sheet/slides/file/folder). page_setup='pageless' for pageless docs. file_path= to read from disk. folder: title only, no content needed.
+Create: content + title + doc_type (doc/sheet/slides/file/folder/form). page_setup='pageless' for pageless docs. file_path= to read from disk. folder: title only, no content needed. form: content is YAML/JSON spec with title, description, questions.
 Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content).
 Email: draft (to + subject + content), reply_draft (file_id + content), archive/star/label.
 Share: file_id + to + role (reader/writer/commenter), confirm=True to execute.
@@ -369,7 +369,7 @@ Args:
     operation: What to do. One of: 'create', 'draft', 'reply_draft', 'archive', 'star', 'label'
     content: Text content (required for create, draft, reply_draft)
     title: Document title (for create)
-    doc_type: 'doc' | 'sheet' | 'slides' (for create)
+    doc_type: 'doc' | 'sheet' | 'slides' | 'form' (for create). form: content is YAML/JSON spec
     folder_id: Optional destination folder (for create)
     file_id: Target thread ID (for reply_draft, archive, star, label)
     to: Recipient email address(es), comma-separated (for draft)
@@ -898,7 +898,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `operation` | str | **required** | All |
 | `content` | str | None | create, overwrite, prepend, append, replace_text, draft (email body) |
 | `title` | str | None | create, rename |
-| `doc_type` | str | 'doc' | create ('doc', 'sheet', 'slides', 'file', 'folder'). 'file' uploads as-is — MIME inferred from title extension. 'folder' creates an empty folder (no content needed). |
+| `doc_type` | str | 'doc' | create ('doc', 'sheet', 'slides', 'file', 'folder', 'form'). 'file' uploads as-is — MIME inferred from title extension. 'folder' creates an empty folder (no content needed). 'form' creates a Google Form from a YAML/JSON spec. |
 | `folder_id` | str | None | create |
 | `file_id` | str | None | move, rename, share, overwrite, prepend, append, replace_text |
 | `destination_folder_id` | str | None | move |
@@ -968,6 +968,9 @@ do(operation="create", file_path="report.md", title="Q4 Report", doc_type="doc",
 
 # Create a pageless doc (wide tables won't be clipped)
 do(operation="create", content="# Wide Table\\n\\n| A | B | C | D | E |", title="Rosetta Stone", page_setup="pageless")
+
+# Create a Google Form from YAML spec
+do(operation="create", doc_type="form", content="title: Feedback\\ndescription: Please share your thoughts\\nquestions:\\n  - type: paragraph\\n    title: What went well?\\n    required: true\\n  - type: multiple_choice\\n    title: Rating\\n    options: [Excellent, Good, Fair, Poor]")
 
 # Create a folder (no content needed)
 do(operation="create", title="Research Data", doc_type="folder")

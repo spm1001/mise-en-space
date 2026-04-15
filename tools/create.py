@@ -28,6 +28,7 @@ from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 from workspace import enrich_manifest
 from tools.common import resolve_source as _resolve_source
+from tools.form_create import create_form
 from validation import validate_drive_id, sanitize_title
 
 logger = logging.getLogger(__name__)
@@ -262,6 +263,10 @@ def do_create(
     # Folder creation — no content needed, early return
     if doc_type == "folder":
         return _create_folder(title, folder_id)
+
+    # Form creation — entirely different API (Forms API, not Drive), early return
+    if doc_type == "form":
+        return create_form(content=content, title=title, folder_id=folder_id)
 
     # Validate page_setup
     if page_setup and page_setup != "pageless":
