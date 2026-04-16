@@ -31,7 +31,6 @@ macos = [
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
-    "black>=24.0.0",
     "ruff>=0.1.0",
     "mypy>=1.8.0",
 ]
@@ -57,10 +56,6 @@ packages = ["extractors", "adapters", "tools", "workspace"]
 "oauth_config.py" = "oauth_config.py"
 "auth.py" = "auth.py"
 "cli.py" = "cli.py"
-
-[tool.black]
-line-length = 100
-target-version = ['py311']
 
 [tool.ruff]
 line-length = 100
