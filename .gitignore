@@ -52,3 +52,6 @@ apps-script/deploy.json
 
 # uv
 uv.lock
+
+# mcpb bundle output
+*.mcpb

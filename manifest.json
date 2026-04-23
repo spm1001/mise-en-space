@@ -1,0 +1,41 @@
+{
+  "manifest_version": "0.4",
+  "name": "mise-en-space",
+  "display_name": "Google Workspace (mise)",
+  "version": "0.5.13",
+  "description": "Search Drive, fetch Gmail, act on documents — mise-en-place for knowledge work",
+  "long_description": "Full Google Workspace MCP server: Drive search and file fetch (Docs, Sheets, Slides, PDFs, Office files, images), Gmail thread search and content extraction, and write operations (create, overwrite, draft, reply, archive, star, label). Content is extracted to clean markdown with comments, cues, and attachment handling.",
+  "author": {
+    "name": "Sameer Modha",
+    "url": "https://github.com/spm1001"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spm1001/mise-en-space.git"
+  },
+  "homepage": "https://github.com/spm1001/mise-en-space",
+  "support": "https://github.com/spm1001/mise-en-space/issues",
+  "server": {
+    "type": "uv",
+    "entry_point": "server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--directory", "${__dirname}", "server.py"]
+    }
+  },
+  "tools": [
+    { "name": "search", "description": "Find files, emails, activity, or calendar events" },
+    { "name": "fetch", "description": "Download content to local workspace" },
+    { "name": "do", "description": "Act on Workspace: create, move, rename, share, overwrite, draft, reply, archive, star, label" }
+  ],
+  "tools_generated": true,
+  "keywords": ["google", "workspace", "drive", "gmail", "docs", "sheets"],
+  "license": "MIT",
+  "privacy_policies": ["https://policies.google.com/privacy"],
+  "compatibility": {
+    "platforms": ["darwin", "linux"],
+    "runtimes": {
+      "python": ">=3.11"
+    }
+  }
+}
