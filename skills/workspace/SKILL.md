@@ -574,10 +574,8 @@ Draft-only — Claude composes, the user reviews and sends from Gmail. This is a
 ## Integration
 
 **Composes with:**
-- **arc** — Research tasks often originate as arc actions; findings feed back into arc items
 - **todoist-gtd** — @Claude inbox items may request research; results inform outcomes
-- **filing** — mise fetches context; filing processes and files it
-- **mem** — "Have we researched this before?" Check mem before re-searching
+- **garde-manger** — "Have we researched this before?" Check `garde search` before re-searching
 
 ## When to Use
 
