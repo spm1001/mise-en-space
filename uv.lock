@@ -868,7 +868,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "httpx", extras = ["http2"], specifier = ">=0.27.0" },
+    { name = "httpx", extras = ["http2"], specifier = ">=0.28.1" },
     { name = "jeton", git = "https://github.com/spm1001/jeton.git" },
     { name = "markitdown", extras = ["pdf"], specifier = ">=0.1.4" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.23.0,<2.0.0" },
