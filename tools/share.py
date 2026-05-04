@@ -100,6 +100,7 @@ def _share_file(
     email_list = ", ".join(emails)
 
     if not confirm:
+        from cues_util import with_identity
         return {
             "preview": True,
             "operation": "share",
@@ -109,12 +110,12 @@ def _share_file(
             "message": f"Would share '{file_name}' with {email_list} as {role}",
             "shared_with": emails,
             "role": role,
-            "cues": {
+            "cues": with_identity({
                 "confirm_required": (
                     "This is a preview. To execute, call again with confirm=True. "
                     "Show this to the user and get their approval first."
                 ),
-            },
+            }),
         }
 
     shared_with = []

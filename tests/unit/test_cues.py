@@ -15,7 +15,7 @@ from unittest.mock import patch, MagicMock
 
 from tools.fetch import _build_cues, _build_email_context_metadata
 from models import (
-    FetchResult, FetchError, SearchResult, EmailContext,
+    FetchResult, FetchError, SearchResult, DoResult, EmailContext,
     GmailThreadData, EmailMessage, EmailAttachment,
 )
 
@@ -724,5 +724,83 @@ class TestFetchSlidesCues:
         cues = result.cues
         assert "slide_01.png" in cues["files"]
         assert cues["open_comment_count"] == 0
+
+
+# ============================================================================
+# _identity injection — every response self-discloses authenticated user
+# ============================================================================
+
+
+class TestIdentityInjection:
+    """Verify cues._identity surfaces the authenticated email in every verb's response.
+
+    Default conftest fixture patches current_user_email to None; these tests
+    re-patch to a known email to exercise the real injection path.
+    """
+
+    def test_fetch_result_includes_identity(self) -> None:
+        with patch("cues_util.current_user_email", return_value="user@itv.com"):
+            result = FetchResult(
+                path="/tmp/doc",
+                content_file="/tmp/doc/content.md",
+                format="markdown",
+                type="doc",
+                metadata={"title": "T"},
+                cues={"open_comment_count": 0},
+            )
+            d = result.to_dict()
+        assert d["cues"]["_identity"] == {"email": "user@itv.com"}
+        assert d["cues"]["open_comment_count"] == 0
+
+    def test_do_result_includes_identity(self) -> None:
+        with patch("cues_util.current_user_email", return_value="user@itv.com"):
+            result = DoResult(
+                file_id="abc",
+                title="t",
+                web_link="https://example.com",
+                operation="create",
+                cues={},
+            )
+            d = result.to_dict()
+        assert d["cues"]["_identity"] == {"email": "user@itv.com"}
+
+    def test_search_result_includes_identity_even_when_no_other_cues(self) -> None:
+        with patch("cues_util.current_user_email", return_value="user@itv.com"):
+            result = SearchResult(
+                query="q",
+                sources=["drive"],
+                path="/tmp/search.json",
+                cues={},
+            )
+            d = result.to_dict()
+        assert d["cues"]["_identity"] == {"email": "user@itv.com"}
+
+    def test_identity_absent_when_email_unresolvable(self) -> None:
+        # autouse fixture has current_user_email returning None
+        result = DoResult(
+            file_id="abc",
+            title="t",
+            web_link="https://example.com",
+            operation="create",
+            cues={"action": "Created"},
+        )
+        d = result.to_dict()
+        assert "_identity" not in d["cues"]
+        assert d["cues"] == {"action": "Created"}
+
+    def test_identity_does_not_mutate_source_cues(self) -> None:
+        original_cues = {"open_comment_count": 5}
+        with patch("cues_util.current_user_email", return_value="user@itv.com"):
+            result = FetchResult(
+                path="/tmp/doc",
+                content_file="/tmp/doc/content.md",
+                format="markdown",
+                type="doc",
+                metadata={},
+                cues=original_cues,
+            )
+            result.to_dict()
+        # Source dict on the dataclass shouldn't have grown _identity
+        assert "_identity" not in original_cues
 
 

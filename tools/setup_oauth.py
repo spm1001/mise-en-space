@@ -60,6 +60,15 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
         }
 
     if has_token(TOKEN_FILE) and not force:
+        from cues_util import with_identity
+        # Trigger sync client init so identity is eager-resolved before we
+        # build the response. Best-effort; if creds are corrupt, identity
+        # stays None and the cue is silently omitted.
+        try:
+            from adapters.http_client import get_sync_client
+            get_sync_client()
+        except Exception:
+            pass
         return {
             "operation": "setup_oauth",
             "status": "already_authenticated",
@@ -67,9 +76,9 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
                 "An OAuth token is already present. Try your original mise call again. "
                 "If it fails with an auth error, call setup_oauth with force=true to re-auth."
             ),
-            "cues": {
+            "cues": with_identity({
                 "token_location": str(TOKEN_FILE),
-            },
+            }),
         }
 
     # Pre-flight: is the OAuth callback port free?

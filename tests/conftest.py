@@ -10,7 +10,7 @@ adapters without hitting real Google APIs.
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from models import (
@@ -27,6 +27,19 @@ from datetime import datetime
 # Project root for fixture loading
 PROJECT_ROOT = Path(__file__).parent.parent
 FIXTURES_DIR = PROJECT_ROOT / "fixtures"
+
+
+# ============================================================================
+# Identity isolation
+# ============================================================================
+# Tests must not pick up the developer's live OAuth identity from Keychain.
+# Default current_user_email to None; tests that exercise _identity injection
+# re-patch with a known email. Patches `cues_util.current_user_email` because
+# that's what `with_identity` (used by all to_dict methods) calls.
+@pytest.fixture(autouse=True)
+def _no_identity_in_tests() -> "object":
+    with patch("cues_util.current_user_email", return_value=None):
+        yield
 
 
 def load_fixture(category: str, name: str) -> dict:

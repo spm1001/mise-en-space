@@ -306,6 +306,10 @@ class MiseSyncClient:
         )
         token_path = resolve_token_path(TOKEN_FILE)
         self._credentials = _load_and_diagnose_credentials(token_path)
+        # Resolve authenticated identity once, eagerly. Keeps response
+        # serialisation pure — to_dict() never triggers HTTP.
+        from cues_util import resolve_user_email_eager
+        resolve_user_email_eager(self, token_path)
 
     def _ensure_valid_token(self) -> None:
         """Refresh the access token if expired."""

@@ -15,6 +15,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from cues_util import with_identity
+
 
 # ============================================================================
 # ERROR TYPES
@@ -456,7 +458,7 @@ class FetchResult:
         }
         # Always include cues — explicit-null principle: empty cues means
         # "we checked, nothing to signal" not "cues not implemented"
-        result["cues"] = self.cues
+        result["cues"] = with_identity(self.cues)
         # Inline content for remote clients
         if self.content is not None:
             result["content"] = self.content
@@ -596,8 +598,7 @@ class SearchResult:
                 result["preview"] = preview
             if self.errors:
                 result["errors"] = self.errors
-            if self.cues:
-                result["cues"] = self.cues
+            result["cues"] = with_identity(self.cues)
             return result
         else:
             # Legacy: return full results inline
@@ -624,7 +625,7 @@ class DoResult:
             "title": self.title,
             "web_link": self.web_link,
             "operation": self.operation,
-            "cues": self.cues,
+            "cues": with_identity(self.cues),
         }
         result.update(self.extras)
         return result

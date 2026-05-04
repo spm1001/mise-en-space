@@ -10,11 +10,14 @@ Keychain stores it as the password field of a generic password entry.
 """
 
 import json
+import logging
 import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 KEYCHAIN_SERVICE = "mise-oauth-token"
 
@@ -126,12 +129,60 @@ def resolve_token_path(fallback_path: Path) -> Path:
     return fallback_path
 
 
+def _fetch_user_email(access_token: str) -> str | None:
+    """Resolve the authenticated user's email via Drive's about endpoint.
+
+    Drive `about?fields=user` returns the authenticated user's emailAddress and
+    works with the `auth/drive` scope mise already has — no extra OAuth scope
+    needed. Returns None on any failure; enrichment is best-effort.
+    """
+    try:
+        import httpx
+        resp = httpx.get(
+            "https://www.googleapis.com/drive/v3/about",
+            params={"fields": "user(emailAddress)"},
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=5.0,
+        )
+        resp.raise_for_status()
+        user = resp.json().get("user") or {}
+        email = user.get("emailAddress")
+        return email if isinstance(email, str) else None
+    except Exception as e:
+        logger.warning(
+            "Token enrichment via Drive about failed: %s: %s",
+            type(e).__name__, e,
+        )
+        return None
+
+
 def save_token(token_path: Path) -> None:
-    """After auth writes token.json, persist it to Keychain and remove the file."""
+    """After auth writes token.json, persist it to Keychain and remove the file.
+
+    Before storing, enrich with `_identity.email` resolved via userinfo.get.
+    The email is cached in the token JSON so cues._identity reads are cheap.
+    Enrichment is best-effort — userinfo failures don't block save.
+    """
     if not token_path.exists():
         return
-    token_json = token_path.read_text().strip()
-    if store_to_keychain(token_json):
+    raw = token_path.read_text().strip()
+    try:
+        token = json.loads(raw)
+        access_token = token.get("token") or token.get("access_token")
+        if access_token and "_identity" not in token:
+            email = _fetch_user_email(access_token)
+            if email:
+                token["_identity"] = {"email": email}
+                raw = json.dumps(token)
+                token_path.write_text(raw)
+                print(f"  Identity resolved: {email}", file=sys.stderr)
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(
+            "Token enrichment skipped (JSON/IO error): %s: %s",
+            type(e).__name__, e,
+        )
+
+    if store_to_keychain(raw):
         token_path.unlink(missing_ok=True)
         print(f"  Token stored in macOS Keychain (service: {KEYCHAIN_SERVICE}).", file=sys.stderr)
     else:

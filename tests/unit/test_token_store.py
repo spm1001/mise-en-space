@@ -268,6 +268,58 @@ class TestSaveToken:
         save_token(token_file)
         mock_store.assert_not_called()
 
+    @patch("token_store._fetch_user_email", return_value="user@itv.com")
+    @patch("token_store.store_to_keychain", return_value=True)
+    def test_enriches_with_identity_before_storing(
+        self, mock_store, mock_fetch, tmp_path
+    ):
+        """save_token resolves user email and writes _identity into the token
+        before pushing to Keychain — so future processes get it for free."""
+        token_file = tmp_path / "token.json"
+        token_file.write_text(SAMPLE_TOKEN)
+        save_token(token_file)
+        mock_fetch.assert_called_once_with("ya29.test")
+        # The string passed to Keychain should now have _identity merged in.
+        stored_json = mock_store.call_args[0][0]
+        stored = json.loads(stored_json)
+        assert stored["_identity"] == {"email": "user@itv.com"}
+        # Original fields preserved
+        assert stored["access_token"] == "ya29.test"
+        assert stored["refresh_token"] == "1//test-refresh"
+
+    @patch("token_store._fetch_user_email", return_value=None)
+    @patch("token_store.store_to_keychain", return_value=True)
+    def test_enrichment_failure_does_not_block_save(
+        self, mock_store, mock_fetch, tmp_path
+    ):
+        """If userinfo resolution fails (returns None), token still saves
+        without _identity — enrichment is best-effort."""
+        token_file = tmp_path / "token.json"
+        token_file.write_text(SAMPLE_TOKEN)
+        save_token(token_file)
+        mock_fetch.assert_called_once()
+        mock_store.assert_called_once()
+        stored = json.loads(mock_store.call_args[0][0])
+        assert "_identity" not in stored
+
+    @patch("token_store._fetch_user_email")
+    @patch("token_store.store_to_keychain", return_value=True)
+    def test_skips_enrichment_when_identity_already_present(
+        self, mock_store, mock_fetch, tmp_path
+    ):
+        """If _identity is already in the token (e.g. saved by a prior run),
+        don't re-fetch — saves an HTTP call on token rotation."""
+        token_with_identity = json.dumps({
+            **json.loads(SAMPLE_TOKEN),
+            "_identity": {"email": "existing@itv.com"},
+        })
+        token_file = tmp_path / "token.json"
+        token_file.write_text(token_with_identity)
+        save_token(token_file)
+        mock_fetch.assert_not_called()
+        stored = json.loads(mock_store.call_args[0][0])
+        assert stored["_identity"] == {"email": "existing@itv.com"}
+
 
 # =============================================================================
 # has_token()
