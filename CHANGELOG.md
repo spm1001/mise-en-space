@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.7.1] - 2026-05-04
+
+### Changed
+- Renamed skill directory `skills/workspace/` → `skills/mise/` so Cowork's Customize UI displays the skill as "mise" alongside the `mise:mise` connector. Removes the risk of users mistaking it for an Anthropic-shipped Workspace skill.
+
+## [0.7.0] - 2026-05-04
+
+### Added
+- `cues._identity.email` on every search/fetch/do response — self-discloses the authenticated Google account so callers can disambiguate when multiple Workspace connectors are loaded in the same session
+- `cues_util.py` at root level — identity resolution lives here (not in models), with `current_user_email()`, `with_identity()`, `resolve_user_email_eager()` for crosscutting reuse
+- `tests/unit/test_cues_util.py` (9 tests covering injection, eager-resolve happy/legacy/missing/idempotent/failure paths, autouse fixture meta-test)
+- `tests/conftest.py` autouse fixture that defaults `current_user_email` to None — prevents the developer's live Keychain identity leaking into tests
+
+### Changed
+- `MiseSyncClient.__init__` now eagerly resolves identity (Drive `about` for legacy tokens, cached read for enriched ones). `to_dict()` is pure — no HTTP at serialisation time.
+- `token_store.save_token` enriches new tokens with `_identity` at OAuth time; legacy tokens get backfilled lazily and the result written back to Keychain
+- `tools/setup_oauth.py` already_authenticated path triggers sync client init so identity actually populates in the response cues
+- `tools/share.py` preview path applies `with_identity` for consistency with the model-driven response builders
+- `skills/mise/SKILL.md` rewritten for Cowork — removed CC-specific `/exit then claude` reactivation chatter and CLI-only OAuth walkthrough; leads with `mise.do(operation="setup_oauth")` as canonical bootstrap; added Identity & multi-account section pointing at `cues._identity`
+
+### Fixed
+- Broad `except Exception` swallowing in identity resolution — now logs at WARN with exception type and message instead of silently caching None forever
+
 ## [0.2.0] - 2026-03-18
 
 Batterie-wide consistency pass: docs consolidation, CI, versioning.

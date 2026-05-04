@@ -30,6 +30,7 @@ from typing import Any
 
 from jeton import get_auth_url
 
+from cues_util import with_identity
 from oauth_config import LOCAL_CREDENTIALS_FILE, OAUTH_PORT, SCOPES, TOKEN_FILE
 from token_store import has_token
 
@@ -60,7 +61,6 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
         }
 
     if has_token(TOKEN_FILE) and not force:
-        from cues_util import with_identity
         # Trigger sync client init so identity is eager-resolved before we
         # build the response. Best-effort; if creds are corrupt, identity
         # stays None and the cue is silently omitted.

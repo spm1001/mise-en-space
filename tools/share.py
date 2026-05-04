@@ -19,6 +19,8 @@ from typing import Any
 
 import httpx
 
+from cues_util import with_identity
+
 from adapters.http_client import get_sync_client
 from models import DoResult, MiseError
 from retry import with_retry
@@ -100,7 +102,6 @@ def _share_file(
     email_list = ", ".join(emails)
 
     if not confirm:
-        from cues_util import with_identity
         return {
             "preview": True,
             "operation": "share",
