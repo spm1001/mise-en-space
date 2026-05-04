@@ -8,39 +8,23 @@ allowed-tools: [Bash, Read, "mcp__mise__*"]
 
 Content fetching for Google Drive and Gmail — via the mise-en-space MCP.
 
-## After Installing This Plugin
+## First Run (no token yet)
 
-**After installing, exit and relaunch Claude Code** (`/exit` then `claude`) to activate the setup hook. `/reload-plugins` loads skills and MCP servers but doesn't fire SessionStart hooks. The hook auto-installs dependencies and checks for OAuth tokens.
+If the MCP server returns an auth error, the user needs to authenticate with Google. **Do this for them — don't ask them to type CLI commands.**
 
-## OAuth Setup (if no token.json)
-
-If the MCP server can't connect, the user needs to authenticate with Google. **Do this for them, don't ask them to type commands.**
-
-Find the mise plugin directory:
-```bash
-MISE_DIR=$(find ~/.claude/plugins/cache -path "*/mise/*/server.py" -exec dirname {} \; 2>/dev/null | head -1)
+```python
+mise.do(operation="setup_oauth")
 ```
 
-### On a machine with a browser (Mac/desktop Linux):
-```bash
-cd "$MISE_DIR" && uv run python -m auth
-```
-This opens a browser automatically. The user consents, the callback lands on localhost, token.json is created. Then `/exit` and relaunch to reconnect the MCP server.
+This opens a browser at Google's consent screen on the user's Mac, runs a localhost listener, exchanges the auth code, and stashes the token in macOS Keychain. The MCP call returns immediately with the consent URL inline as a fallback (in case the browser didn't auto-open). Once the user sees "Authorization Successful" in the browser, retry the original mise call.
 
-### On a headless/remote machine (SSH, sandbox):
-Two-phase flow using `--remote` then `--code`:
-```bash
-# Phase 1: get the auth URL (saves PKCE state for later)
-cd "$MISE_DIR" && uv run python -m auth --remote
-```
-This prints the auth URL and saves PKCE state. Show the URL to the user — they open it in their browser, consent, get redirected to localhost (which fails — expected). They copy the full redirect URL or just the `code=` value and paste it back.
+If `setup_oauth` itself fails (e.g. port 3000 in use), the error message will name the remediation. The CLI fallback (`uv run python -m auth --auto` from the mise-en-space repo) exists for users running mise outside Cowork/Desktop, but `setup_oauth` is the path to default to.
 
-```bash
-# Phase 2: exchange the code (uses saved PKCE verifier)
-cd "$MISE_DIR" && uv run python -m auth --code "PASTE_URL_OR_CODE_HERE"
-```
+## Identity & multi-account
 
-After token.json is created, `/exit` and relaunch to reconnect the MCP server.
+When multiple Workspace connectors are loaded in the same session — Cowork's native Drive/Calendar bound to one Google account, mise bound to another — the connector names alone don't say which is which. **Mise responses self-disclose: `cues._identity.email` shows the authenticated email on every response.** Read it, especially when the user has both a personal and a work Workspace identity active.
+
+When in doubt about which account a question targets, prefer `mcp__plugin_mise_mise__*` (or whatever name your runtime gives mise's tools) over generic Drive/Gmail tools — mise's binding is explicit. If you've fetched data and the user reacts with "that's not the account I meant", check `cues._identity` in the response, then re-route or have them re-auth with the right account.
 
 **Iron Law: Files are artifacts. Emails are meaning.**
 
@@ -548,7 +532,7 @@ Draft-only — Claude composes, the user reviews and sends from Gmail. This is a
 
 | Error | Meaning | What to do |
 |-------|---------|------------|
-| `AUTH_EXPIRED` | OAuth token stale | Tell user to run `uv run python -m auth` in mise-en-space |
+| `AUTH_EXPIRED` | OAuth token stale | Call `mise.do(operation="setup_oauth")` to re-authenticate (see First Run above) |
 | `NOT_FOUND` | File/thread doesn't exist | Verify the ID; file may have been deleted or moved |
 | `PERMISSION_DENIED` | No access to resource | Tell user they need to request access |
 | `RATE_LIMITED` | Hit API quota | Wait 30s and retry once |
