@@ -34,13 +34,15 @@ Token refresh for long-running server requires: refresh the token file AND call 
 
 ## OAuth and credential architecture
 
-OAuth client is installed-app type — client secret is intentionally distributable. `credentials.json` ships with the repo. The real secret is the refresh token in the plugin data dir.
+OAuth client is installed-app type — client secret is intentionally distributable. `credentials.json` ships with the repo. The real secret is the refresh token.
 
-GCP project: `planetmodha-tools` (personal). Secret: `aby-hemimi-credentials`.
+**Two GCP projects, two OAuth clients:** mise's OAuth client lives in ITV's `mit-workspace-mcp-server` GCP project (the production path users hit). A second client in `planetmodha-tools` (secret `aby-hemimi-credentials`) backs aboyeur/daemon use under `claude@planetmodha.com`. The two-account split (`claude@planetmodha.com` daemon vs `sameer.modha@itv.com` stdio/plugin) shares a codebase but needs separate token paths; until mise-jatadu lands, only one can be active at a time.
 
-**Two-account architecture:** `claude@planetmodha.com` (daemon/aboyeur) and `sameer.modha@itv.com` (stdio/plugin). They share a codebase but need separate `token.json` paths. Until mise-jatadu is done, only one can be active at a time.
+**OAuth client User type matters and is invisible from `gcloud`.** The `mit-workspace-mcp-server` consent screen is set to **User type: Internal** — meaning any `@itv.com` Workspace user authenticates without verification or being on a test-user list. That bypasses Google's ~6-week verification process for sensitive scopes. External-test caps at 100 explicitly-added users; External-published shows a scary "Google hasn't verified this app" warning. The setting lives at `console.cloud.google.com/apis/credentials/consent?project=<project_id>` and isn't queryable from the `gcloud` CLI. For any future ITV-internal MCP, default to Internal mode.
 
-Token storage: `~/.claude/plugins/data/mise-batterie-de-savoir/` (version-stable) with auto-migration from versioned cache dirs.
+**Token storage hierarchy:** macOS Keychain (`mise-oauth-token`) is the source of truth. `~/.claude/plugins/data/mise-batterie-de-savoir/token.json` is the persistent fallback. The plugin-staging-dir token path is ephemeral on Cowork and should never be relied on. `resolve_token_path` materialises Keychain → file on each call, then `save_token` deletes the file again — visible churn under mise-zozewa, cosmetic but real.
+
+**In-app bootstrap is the canonical install path:** `mise.do(operation="setup_oauth")` opens a Mac browser, runs a detached `python -m auth --auto` listener on `localhost:3000`, exchanges the code, saves to Keychain. The friendly error in `adapters/http_client.py` points users at this tool by name when the token is missing — Claude reads the error, finds the remedy verbatim, calls it.
 
 ## Google Sheets: the merged-cell trap
 
@@ -106,9 +108,9 @@ Survivor design after pushback: central cache + cwd hardlinks + manifest index. 
 
 **Sequencing risks:** if rocume ships before diwosi, fetch keeps round-tripping during the gap (decide deliberately). If rocume + diwosi ship before gotace, the cache accumulates without bound — ship gotace concurrently or document the manual cleanup path. Hardlinks need cross-filesystem fallback to symlinks (Taildrive mounts, external drives) — verify `os.link` failure handling actually triggers fallback. Before implementing rocume, verify Drive's web URL is the right human-facing handle to carry in the manifest.
 
-## Current state (Apr 2026)
+## Current state (May 2026)
 
-Core MCP server stable and in daily use via stdio (v0.5.16). Remote mode transport done. Merged-cell resolution, pageless doc creation, folder creation, token diagnostics, and heading extraction all shipped. MCP description length fixed (property drop bug resolved). Apps Script email extractor ported from archived repo.
+Core MCP server stable and in daily use via stdio (v0.5.16). Cowork plugin v0.6.0 validated end-to-end (2026-05-04 field test). Remote mode transport done. Merged-cell resolution, pageless doc creation, folder creation, token diagnostics, and heading extraction all shipped. MCP description length fixed (property drop bug resolved). Apps Script email extractor ported from archived repo.
 
 **Google Forms — read side shipped (v0.5.14).** Adapter calls Forms API v1 (`forms.googleapis.com`), extractor renders all question types (choice, text, scale, date, grid, rating) as markdown, deposits `structure.json` (raw API response) for programmatic use alongside `content.md`. Forms are Drive files (`application/vnd.google-apps.form`) — they appear in search and the existing URL detection handles `docs.google.com/forms/d/...` because the router does MIME-based dispatch, not URL-based. The `forms.body.readonly` scope was added for read. Three MCP resource strings (`docs/fetch`, `docs/overview`, `docs/workspace`) plus understanding.md need updating for any new content type — this is easy to forget because omission doesn't cause test failures, just leaves future Claudes unaware of the capability.
 
@@ -120,30 +122,43 @@ Core MCP server stable and in daily use via stdio (v0.5.16). Remote mode transpo
 
 Gmail capabilities: search operators exposed as MCP resource, label IDs in data model, live labels directory resource (`mise://gmail/labels`), `list_labels()` in gmail adapter. Write operations (draft, reply_draft, archive, star, label) shipped Feb 2026. Triage docs updated to show `label` covers mark_read/unread/unstar — no separate ops needed (see "generic primitive" principle above). Batch ops (archive/star/label accept `file_id` as `str | list[str]`) and search pagination (follows `nextPageToken`, surfaces `truncated` flag as cue warning) both shipped Apr 2026. Workspace skill updated with full Gmail coverage (dobida). `is_unread` bug fixed — search fields mask was missing `labelIds` (daduti). mise-wiboka outcome complete.
 
-## Claude Desktop integration (Apr 2026, mise-hohoku)
+## Cowork & Desktop integration (May 2026)
 
-**Mise works in all Desktop modes (Chat, Cowork, Code) via two paths:**
+**Cowork is Claude Code in a VM with `~/.claude/` swapped for a session-scoped temp dir.** When a user uploads a plugin via Customize → Browse plugins → upload, Cowork stages the bundle into `CLAUDE_CONFIG_DIR=/var/folders/.../<id>` for that session. CC's standard plugin loader walks that dir, reads `.claude-plugin/plugin.json`, fires `SessionStart` hooks, launches stdio MCP servers via `mcpServers.*` — all on the **Mac side**, all unchanged from native CC behaviour. Skills, MCP, hooks, and commands all reuse CC's existing machinery.
 
-1. **`claude_desktop_config.json` → `mcpServers`** — Desktop runs the stdio server on the Mac and bridges it as a "connector" into Cowork's VM. The VM never connects directly; Desktop proxies. This is the simplest path for personal use.
+**The 4-month plugin-MCP gap is closed (2026-05-04).** Earlier handoffs (2026-04-08/09/10/27) framed this as "three extension systems with no shared plumbing" — that framing is now historical. Anthropic stopped trying to parallel-implement plugin loading inside Cowork's runtime; uploaded plugins are now staged into `CLAUDE_CONFIG_DIR` and CC's existing machinery does the work. A single `.claude-plugin/plugin.json`-shaped bundle works for both CC and Cowork; nothing Cowork-specific is needed in the plugin itself. **Diagnostic implication:** when something doesn't land, the failure is in the Mac-side spawn, not in the VM. Don't conclude failure from one early snapshot — stdio handshake takes seconds; check again.
 
-2. **MCPB extension (`.mcpb` file)** — the packaging format for distributing MCP servers. `manifest.json` with `"server.type": "uv"` lets Desktop auto-install Python + deps. Zero CLI for end users. Validated and tested: `mise-en-space-0.5.13.mcpb` (355KB). New extension install requires a full Desktop restart (not just new session).
+**Mise install paths (all working as of 2026-05-04):**
 
-**What doesn't work in Cowork (yet):**
-- **Uploaded plugin MCP servers** — Desktop reads `.mcp.json`, shows the connector in UI, registers permissions, but `LocalPluginsReader` returns 0 and the server never starts. The plugin spec (`cowork-plugin-management/create-cowork-plugin`) documents this as supported. 90% of the plumbing is there. Likely a "not yet" or a missing toggle — don't accept "can't work" without re-investigating.
+1. **Cowork uploaded plugin** (the validated path) — `mise-cowork-plugin-v3.zip` built from the repo, uploaded via Customize → upload custom plugin. Validator accepts inline `mcpServers` without `type`; runtime spawns the stdio server on Mac side; tools surface as `plugin:mise:mise/<tool>`. Plugin version 0.6.0.
+2. **`claude_desktop_config.json` → `mcpServers`** — Desktop runs stdio on Mac, bridges as a "connector" into Cowork's VM. Desktop proxies; the VM never connects directly.
+3. **MCPB extension (`.mcpb` file)** — `manifest.json` with `"server.type": "uv"` for auto-install. Validated `mise-en-space-0.5.13.mcpb` (355KB). New install needs a full Desktop restart.
+
+**What still doesn't work:**
 - HTTP MCP from `.mcp.json` pointing at local IPs — gvisor networking blocks host access (`172.16.10.1` unreachable), `allowedDomains=1` restricts egress. Connectors route through Anthropic's cloud, not local network.
-- The Cowork VM is Linux ARM64, Python 3.10, ephemeral, with a MITM proxy for all outbound.
+- The Cowork VM (Linux ARM64, Python 3.10, ephemeral, MITM proxy) can't run mise stdio server itself — but it doesn't need to; everything is Mac-side.
 
-**Three separate extension systems in Desktop (they don't share plumbing):**
+**Open Cowork-shaped polish (filed in `.bon/quickfile-2026-05-04-cowork-polish.md` because Dolt was offline at filing time):**
+- `cues._identity` self-disclosure on every mise response — multi-account Workspace ambiguity (Cowork's native Drive/Calendar connector vs mise) is the highest-leverage fix.
+- Workspace SKILL.md still has CC-specific reactivation chatter visible in Cowork's Customize UI.
+- Field report: connector disambiguation in Cowork (broader than mise — affects all multi-account users).
+- `setup_oauth` unit tests; `auth.py --auto` port-3000 pre-check parity; Cowork plugin platform gating (Windows install would silently fail).
+
+## UX patterns: friendly error wrapper
+
+When an external dependency (OAuth token) is missing, the tool's error response includes a *concrete in-app remediation pointer* — not a CLI command, but the name of another tool the same Claude can invoke. The remediation tool spawns a detached subprocess so the MCP call returns immediately with a URL inline as fallback. The data self-discloses; Claude reads the error, finds the remedy verbatim, calls it.
+
+This pattern showed up twice in the 2026-05-04 install sweep: (1) `mise.do(operation="setup_oauth")` invoked because the error message named it, and (2) the multi-Workspace-connector ambiguity that became the `cues._identity` polish bon. **General principle:** prefer self-disclosing data over instructional copy. Skill copy may not be read; data attached to a response always is.
+
+**Three separate extension systems in Desktop still don't share plumbing** (this part of the older mental model survives):
 1. **MCPB extensions** (`Claude Extensions/`) → `LocalMcpServerManager` → MCP tools work, skills ignored
-2. **Uploaded plugins** (`rpm/`) → `RemotePluginManager` → skills work, MCP servers not launched
+2. **Uploaded plugins** (Cowork-side) → CC's plugin loader → MCP + skills + hooks + commands all work
 3. **`claude_desktop_config.json`** → `mcpServers` → MCP tools work, no skills mechanism
 
-**MCPB packaging:** `manifest.json` + `pyproject.toml` + source code. `"server.type": "uv"` makes Desktop auto-install Python + deps. `mcpb validate` and `mcpb pack` via `@anthropic-ai/mcpb` CLI. `.mcpbignore` excludes dev artifacts. `${__dirname}` for portable paths. Resources listed but not bridged into Cowork (tools are bridged).
+**MCPB packaging reference:** `manifest.json` + `pyproject.toml` + source code. `"server.type": "uv"` for auto-install. `mcpb validate` / `mcpb pack` via `@anthropic-ai/mcpb` CLI. `.mcpbignore` excludes dev artifacts. `${__dirname}` for portable paths.
 
-**Full-fat plugin built:** `/tmp/mise-full-plugin.zip` (308KB, 74 files) — bundled source, `${CLAUDE_PLUGIN_ROOT}` paths, `.mcp.json` at root, workspace skill. Ready to become the one-zip solution when the MCP launch gap is fixed.
+**Cowork plugin architecture (deeper):** `cowork-plugin-shim.sh` (in app bundle) reveals compiled-binary plugins with `cowork_require_token` for credential injection and `cowork_gate` for permission bridging via filesystem IPC. First-party Gmail/Calendar MCPs (`gmail.mcp.claude.com`) are Anthropic-hosted HTTP services.
 
-**Cowork plugin architecture:** `cowork-plugin-shim.sh` (in app bundle) reveals compiled-binary plugins with `cowork_require_token` for credential injection and `cowork_gate` for permission bridging via filesystem IPC. First-party Gmail/Calendar MCPs (`gmail.mcp.claude.com`) are Anthropic-hosted HTTP services.
-
-**Strategic outcome:** Remote deployment path (tokiju → winala → sefepo) parked as someday/maybe. Only needed for Claude.ai web without Desktop, or mobile.
+**Strategic outcome:** Remote deployment path (tokiju → winala → sefepo) parked as someday/maybe — only needed for Claude.ai web without Desktop, or mobile. Cowork-via-Mac is now the path users hit.
 
 Backlog: image/PDF edge cases (mise-heferu), Drive shortcuts (mise-nitaco), keychain token materialisation (mise-zozewa), image embedding privacy (mise-hagaru), calendar forward-looking (mise-milizo), plugin MCP launch gap investigation.
