@@ -83,6 +83,29 @@ The call log (`~/.local/share/mise/calls.jsonl`) is the primary operational data
 
 Code health (same session): 92% test coverage, zero layer violations, dispatch table sync verified, tool descriptions within 2048 limit, no TODO/FIXME/HACK. Mypy errors 30→22 (remaining are upstream httpx/orjson noise — the right fix is a thin `_parse_json` wrapper centralising one ignore, not scattershot `type: ignore`).
 
+## MCP Resources: what they're for
+
+Mise ships eight Resources via FastMCP — six static docs (`mise://docs/*`), one live API call (`mise://gmail/labels` → `Gmail labels.list` rendered as markdown), and one parameterised template (`mise://tools/{tool_name}` for auto-generated tool docs). Empirical behaviour (Apr 2026, tested in a live CC session):
+
+- `ListMcpResourcesTool` returns the seven concrete URIs. **Parameterised templates are invisible to discovery** — `ReadMcpResourceTool` resolves them fine if you construct the URI yourself, but listing won't surface them.
+- `ReadMcpResourceTool` returns content **inline** in the tool result. Cold-fetching via Resource therefore dumps the whole payload into context — fine for tiny live state, architecturally wrong for content (a 50-page PDF would torch the window).
+
+**The right division of labour:** Resources for small live introspection (label lists, drafts, quota); the existing `fetch` verb (writing to disk) for content acquisition; native filesystem read for steady-state. The URI scheme is **not** load-bearing — `{type, id}` carries everything URIs were carrying. The web URL (`docs.google.com/document/d/abc`) is the human-facing handle if anyone needs one; nothing requires inventing a new scheme. Lesson worth generalising: when an architectural layer X exists "because of Y," and Y gets cut, audit X — it usually goes too.
+
+`mise://gmail/labels` is a model worth copying for other small live state (drafts list, recent activity, drive quota). All small, ambient, no cold-blob problem.
+
+## Workspace cache vision (mise-cuvusa)
+
+Background: 20 `mise/` folders are scattered across `~/Repos/`, ~250MB total — Drive content gets pulled per-cwd, never deduplicated, never grep-able as a corpus. Pre-Dolt history (mise-6bo, mise-fuSepi, three open cleanup bons that never shipped) shows this conversation has happened multiple times.
+
+Survivor design after pushback: central cache + cwd hardlinks + manifest index. Four sub-actions under **mise-cuvusa**:
+- **mise-rocume** — workspace manager writes to central cache (`~/.mise/cache/`), cwd `mise/` becomes hardlinks
+- **mise-diwosi** — cache has a discoverable index; fetch checks it before round-tripping
+- **mise-kaceta** — fetch input is pimuga-safe (explicit type, no silent misroute — e.g. `fetch('gmail:abc')` actually routing to gmail instead of silently going to Drive and 404-ing)
+- **mise-gotace** — cache cleanup in one place (TTL or LRU)
+
+**Sequencing risks:** if rocume ships before diwosi, fetch keeps round-tripping during the gap (decide deliberately). If rocume + diwosi ship before gotace, the cache accumulates without bound — ship gotace concurrently or document the manual cleanup path. Hardlinks need cross-filesystem fallback to symlinks (Taildrive mounts, external drives) — verify `os.link` failure handling actually triggers fallback. Before implementing rocume, verify Drive's web URL is the right human-facing handle to carry in the manifest.
+
 ## Current state (Apr 2026)
 
 Core MCP server stable and in daily use via stdio (v0.5.16). Remote mode transport done. Merged-cell resolution, pageless doc creation, folder creation, token diagnostics, and heading extraction all shipped. MCP description length fixed (property drop bug resolved). Apps Script email extractor ported from archived repo.
