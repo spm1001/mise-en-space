@@ -618,8 +618,8 @@ wheels = [
 
 [[package]]
 name = "jeton"
-version = "1.0.0"
-source = { git = "https://github.com/spm1001/jeton.git#9a5b7d6cffdeaadcf4d99792c84695f8c74a2369" }
+version = "1.3.0"
+source = { git = "https://github.com/spm1001/jeton.git#421abbb24b3feb634031eb9115850d9ac7781a4c" }
 dependencies = [
     { name = "google-auth" },
     { name = "google-auth-oauthlib" },
