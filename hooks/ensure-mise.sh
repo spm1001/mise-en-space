@@ -48,7 +48,7 @@ if [ "$HAS_TOKEN" = false ] && [ -f "$PLUGIN_ROOT/token.json" ]; then
     HAS_TOKEN=true
 fi
 if [ "$HAS_TOKEN" = false ]; then
-    ISSUES="${ISSUES}• No Google OAuth token (checked Keychain and token.json). Run: cd \"$PLUGIN_ROOT\" && uv run python -m auth\n"
+    ISSUES="${ISSUES}• No Google OAuth token (checked Keychain and token.json). Easiest fix: ask Claude to call mise.do(operation=\"setup_oauth\") — opens a browser and saves the token automatically. CLI alternative: cd \"$PLUGIN_ROOT\" && uv run python -m auth --auto\n"
 fi
 
 # If no issues, exit silently

@@ -71,6 +71,11 @@ def main() -> None:
         help='Auth code or redirect URL (from headless flow)'
     )
     parser.add_argument(
+        '--auto',
+        action='store_true',
+        help='Auto flow: open browser + run localhost callback listener + save token. Use this when running on a machine with a browser.'
+    )
+    parser.add_argument(
         '--project',
         type=str,
         default=GCP_PROJECT,
@@ -101,6 +106,18 @@ def main() -> None:
                 token_path=TOKEN_FILE,
                 scopes=SCOPES,
                 code=args.code,
+                port=OAUTH_PORT,
+            )
+            save_token(TOKEN_FILE)
+            print()
+            print("Authentication complete.")
+        elif args.auto:
+            # Auto flow: jeton.authenticate() opens browser, listens on localhost,
+            # exchanges code, writes token to TOKEN_FILE. We then move it to Keychain.
+            authenticate(
+                credentials_path=credentials_path,
+                token_path=TOKEN_FILE,
+                scopes=SCOPES,
                 port=OAUTH_PORT,
             )
             save_token(TOKEN_FILE)

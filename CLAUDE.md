@@ -172,12 +172,18 @@ grep '"ok": false' ~/.local/share/mise/calls.jsonl | tail -5
 
 ## OAuth
 
+**In-app bootstrap (canonical):** `mise.do(operation="setup_oauth")` — opens a Mac browser at the consent screen, runs a detached subprocess listener on `localhost:3000`, saves the token to macOS Keychain via `save_token`. Returns immediately with the URL inline as a fallback. This is the path Cowork users hit; it's also the path the friendly error wrapper in `adapters/http_client.py` points at when the token is missing.
+
+**CLI fallback:**
 ```bash
-uv run python -m auth                    # Auto (opens browser, or prints URL if headless)
-uv run python -m auth --code URL_OR_CODE # Exchange code from headless flow
+uv run python -m auth --auto              # Auto (opens browser, runs listener, saves token)
+uv run python -m auth                     # Headless — prints URL, paste back via --code
+uv run python -m auth --code URL_OR_CODE  # Exchange code from headless flow
 ```
 
-`credentials.json` (OAuth client config, not secret) ships with the repo. Token auto-refreshes; `clear_service_cache` handles revoked refresh tokens. Maintainer can also fetch credentials from GCP Secret Manager as fallback.
+`credentials.json` (OAuth client config, not secret) ships with the repo. The OAuth client lives in ITV's `mit-workspace-mcp-server` GCP project with **User type: Internal** — any `@itv.com` Workspace account can authenticate without verification or a test-user list. Token auto-refreshes; `clear_service_cache` handles revoked refresh tokens. Maintainer can also fetch credentials from GCP Secret Manager as fallback.
+
+Token storage: macOS Keychain (`mise-oauth-token`) is the source of truth. `~/.claude/plugins/data/mise-batterie-de-savoir/token.json` is the persistent fallback (auto-created since 2026-05). The plugin-staging-dir token path is ephemeral on Cowork and should never be relied on.
 
 ## How to Add a New Content Type
 

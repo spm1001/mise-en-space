@@ -53,15 +53,14 @@ LOCAL_CREDENTIALS_FILE = _PACKAGE_ROOT / 'credentials.json'
 GCP_PROJECT = 'planetmodha-tools'
 SECRET_NAME = 'aby-hemimi-credentials'
 
-# Plugin data directory — version-stable, survives plugin cache upgrades.
-# Claude Code creates ~/.claude/plugins/data/{name}-{publisher}/ automatically.
-# Falls back to _PACKAGE_ROOT if the data dir doesn't exist (e.g. running from repo).
+# Plugin data directory — version-stable, survives plugin cache upgrades AND
+# Cowork's session-scoped staging dir wipes. Path.home() on the Mac side resolves
+# to the real user home regardless of whether mise is running under Claude Code
+# or Cowork, so this is always persistent across sessions.
 _PLUGIN_DATA_DIR = Path.home() / '.claude' / 'plugins' / 'data' / 'mise-batterie-de-savoir'
+_PLUGIN_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# Local token storage (user's OAuth tokens, not shared)
-# Prefer plugin data dir (version-stable) over package root (version-specific)
-TOKEN_FILE = (
-    _PLUGIN_DATA_DIR / 'token.json'
-    if _PLUGIN_DATA_DIR.is_dir()
-    else _PACKAGE_ROOT / 'token.json'
-)
+# Local token storage (user's OAuth tokens, not shared).
+# Always uses the persistent data dir — the legacy fallback to _PACKAGE_ROOT
+# silently lost tokens on Cowork because the staging dir is wiped per session.
+TOKEN_FILE = _PLUGIN_DATA_DIR / 'token.json'

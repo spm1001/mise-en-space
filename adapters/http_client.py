@@ -59,10 +59,20 @@ def _load_and_diagnose_credentials(token_path: str) -> Any:
     from pathlib import Path
     token_path = Path(token_path)
 
+    # Bootstrap hint surfaced from inside an MCP session — points at the
+    # setup_oauth tool, which is what's reachable when running under Claude
+    # Desktop / Cowork. The CLI fallback (`uv run python -m auth --auto`)
+    # is mentioned only when the bootstrap tool can't be reached.
+    _BOOTSTRAP_HINT = (
+        "Call mise.do(operation=\"setup_oauth\") to authenticate "
+        "(opens a browser; saves token to Keychain). "
+        "CLI fallback: uv run python -m auth --auto"
+    )
+
     if not token_path.exists():
         raise FileNotFoundError(
             f"No OAuth token found at {token_path} (also checked Keychain). "
-            f"Run: uv run python -m auth"
+            f"{_BOOTSTRAP_HINT}"
         )
 
     # File exists — try to read it
@@ -71,7 +81,7 @@ def _load_and_diagnose_credentials(token_path: str) -> Any:
     except (json.JSONDecodeError, IOError) as e:
         raise FileNotFoundError(
             f"OAuth token at {token_path} is corrupt ({type(e).__name__}). "
-            f"Delete it and re-authenticate: uv run python -m auth"
+            f"Delete it and re-authenticate. {_BOOTSTRAP_HINT}"
         )
 
     # Try loading through jeton (handles refresh automatically)
@@ -86,13 +96,13 @@ def _load_and_diagnose_credentials(token_path: str) -> Any:
     if not has_refresh:
         raise FileNotFoundError(
             f"OAuth token at {token_path} has no refresh_token — cannot auto-refresh. "
-            f"Re-authenticate: uv run python -m auth"
+            f"{_BOOTSTRAP_HINT}"
         )
 
     # Has refresh_token but load_credentials still returned None — refresh must have failed
     raise FileNotFoundError(
         f"OAuth token at {token_path} is expired and refresh failed "
-        f"(refresh_token may be revoked). Re-authenticate: uv run python -m auth"
+        f"(refresh_token may be revoked). {_BOOTSTRAP_HINT}"
     )
 
 

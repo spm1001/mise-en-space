@@ -42,7 +42,7 @@ from starlette.responses import JSONResponse
 from adapters.conversion import cleanup_orphaned_temp_files
 from adapters.drive import get_file_metadata
 from logging_config import configure_call_logging, log_mcp_call
-from tools import do_search, do_fetch, do_create, do_move, do_rename, do_share, do_overwrite, do_prepend, do_append, do_replace_text, do_draft, do_reply_draft, do_archive, do_star, do_label, OPERATIONS
+from tools import do_search, do_fetch, do_create, do_move, do_rename, do_share, do_overwrite, do_prepend, do_append, do_replace_text, do_draft, do_reply_draft, do_archive, do_star, do_label, do_setup_oauth, OPERATIONS
 from tools.search import VALID_TYPE_FILTERS, CANONICAL_TYPE_NAMES
 from models import DoResult, FetchResult, MiseError
 from resources.tools import get_tool_registry
@@ -85,6 +85,7 @@ _REQUIRED_PARAMS: dict[str, set[str]] = {
     "archive": {"file_id"},
     "star": {"file_id"},
     "label": {"file_id", "label"},
+    "setup_oauth": set(),  # no required params — force=true is optional
 }
 
 # Content operations that need mime-type routing (metadata pre-fetched at dispatch)
@@ -143,6 +144,7 @@ _DISPATCH: dict[str, Any] = {
         file_id=p["file_id"], label=p.get("label"),
         remove=p.get("remove", False),
     ),
+    "setup_oauth": lambda p: do_setup_oauth(force=p.get("force", False)),
 }
 
 # Initialize MCP server
@@ -355,12 +357,13 @@ def _fetch_remote(file_id: str, base_path: str, attachment: str | None, *, recur
 _DO_DESCRIPTION_FULL = """\
 Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail.
 
-Operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label.
+Operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, setup_oauth.
 Create: content + title + doc_type (doc/sheet/slides/file/folder/form). page_setup='pageless' for pageless docs. file_path= to read from disk. folder: title only, no content needed. form: content is YAML/JSON spec with title, description, questions.
 Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content).
 Email: draft (to + subject + content), reply_draft (file_id + content), archive/star/label.
 Share: file_id + to + role (reader/writer/commenter), confirm=True to execute.
-Move: file_id (single or list) + destination_folder_id."""
+Move: file_id (single or list) + destination_folder_id.
+setup_oauth: bootstrap Google credentials when none exist. Opens a browser for consent; saves token to Keychain. force=true to re-auth."""
 
 _DO_DESCRIPTION_REMOTE = """\
 Act on Google Workspace (remote mode — safe operations only).
@@ -878,6 +881,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `archive` | Remove thread(s) from Inbox | `file_id` (thread ID or list) |
 | `star` | Star thread(s) | `file_id` (thread ID or list) |
 | `label` | Add/remove a label on thread(s) | `file_id` (thread ID or list), `label` |
+| `setup_oauth` | Bootstrap Google credentials (opens browser) | none (`force=true` to re-auth over existing token) |
 
 **Overwrite** destroys existing content (images, tables, formatting). Use `prepend`/`append`/`replace_text` when existing content matters.
 
@@ -888,6 +892,8 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 **Share** is a two-step operation (confirm gate). First call returns a preview showing what would happen. Second call with `confirm=True` executes. This ensures the user approves before files become visible to others. Default role is `reader` (least privilege). Notification emails are suppressed.
 
 **Archive/star/label** modify Gmail thread labels. Label names are resolved to IDs automatically (case-insensitive). Use `remove=True` with label to remove instead of add. All three accept `file_id` as a list for batch operations — returns per-thread results (like `move`).
+
+**Setup_oauth** is the bootstrap path for users who haven't authenticated yet. It opens Google's consent screen in their default browser and runs a localhost callback listener; once they approve, the token is saved to macOS Keychain. Returns immediately with the auth URL inline (so the user can paste it manually if browser auto-open fails). If a token already exists, returns `status: already_authenticated`. Use `force=true` to re-auth (e.g. after revoking access). Only available in stdio mode — not exposed in remote mode.
 
 ## Parameters
 
