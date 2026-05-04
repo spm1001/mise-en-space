@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     # MCP SDK with structured returns and tasks support
-    "mcp[cli]>=1.23.0,<2.0.0",
+    "mcp[cli]>=1.27.0,<2.0.0",
     # Google APIs (httpx + REST, OAuth via jeton)
     "httpx[http2]>=0.27.0",
     "orjson>=3.10.0",
