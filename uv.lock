@@ -870,7 +870,7 @@ dev = [
 requires-dist = [
     { name = "httpx", extras = ["http2"], specifier = ">=0.27.0" },
     { name = "jeton", git = "https://github.com/spm1001/jeton.git" },
-    { name = "markitdown", extras = ["pdf"], specifier = ">=0.1.4" },
+    { name = "markitdown", extras = ["pdf"], specifier = ">=0.1.5" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.23.0,<2.0.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8.0" },
     { name = "orjson", specifier = ">=3.10.0" },
