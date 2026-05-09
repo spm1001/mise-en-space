@@ -88,3 +88,31 @@ def test_invalid_document_id() -> None:
 
     # Should be NOT_FOUND or PERMISSION_DENIED
     assert exc_info.value.kind in (ErrorKind.NOT_FOUND, ErrorKind.PERMISSION_DENIED)
+
+
+@pytest.mark.integration
+def test_create_then_fetch_roundtrip() -> None:
+    """
+    Smoke test: create a fresh doc, fetch it back, tear down.
+
+    Catches Docs API field-mask regressions that fixture-based tests miss —
+    fixture tests pre-date the regression that triggered them. This exercises
+    the live API call path that broke in May 2026 (jimaje), so any future
+    field-mask quirk fails fast in CI rather than in production.
+    """
+    from tools.create import _create_doc
+    from adapters.conversion import delete_temp_file
+
+    created = _create_doc(content="hello mise smoke test", title="mise integration smoke")
+    file_id = created.file_id
+    try:
+        result = fetch_document(file_id)
+        assert isinstance(result, DocData)
+        assert result.document_id == file_id
+        assert result.title  # title round-trips
+        assert len(result.tabs) > 0
+        # Body content should round-trip too
+        has_content = any(tab.body.get("content") for tab in result.tabs)
+        assert has_content, "Expected non-empty body content"
+    finally:
+        delete_temp_file(file_id, file_name="mise integration smoke")

@@ -20,10 +20,12 @@ _DOCS_API = "https://docs.googleapis.com/v1/documents"
 # Fields to request — only what we need for extraction
 # includeTabsContent gives us all tabs + body content in one call
 # NOTE: Cannot mix tabs() with legacy document-level fields (body, revisionId)
+# NOTE: documentTab must list explicit subfields — Google's field-mask parser
+# rejects bare `documentTab` as a non-leaf message ("Invalid field selection").
 DOCUMENT_FIELDS = (
     "documentId,"
     "title,"
-    "tabs(tabProperties,documentTab)"  # Modern multi-tab format
+    "tabs(tabProperties,documentTab(body,inlineObjects,lists,footnotes))"
 )
 
 

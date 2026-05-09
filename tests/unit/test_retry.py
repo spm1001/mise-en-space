@@ -17,11 +17,30 @@ from retry import (
     _get_http_status,
     _should_retry,
     _convert_to_mise_error,
+    _format_http_error,
     _calculate_wait_with_jitter,
     with_retry,
     RETRYABLE_STATUS_CODES,
 )
 from models import MiseError, ErrorKind
+
+
+def _http_exc(status: int, body: object = None, text: str = "") -> Exception:
+    """Build an exception with an httpx-shaped response (no body by default).
+
+    Real httpx.Response.json() raises on non-JSON; .text is "" for empty bodies.
+    A bare Mock() auto-magics both, which silently exercises the body-extraction
+    helper in unintended ways. Use this builder to opt into realistic shape.
+    """
+    exc = Exception(f"HTTP {status}")
+    response = Mock(status_code=status)
+    if body is None:
+        response.json.side_effect = ValueError("no body")
+    else:
+        response.json.return_value = body
+    response.text = text
+    exc.response = response
+    return exc
 
 
 class TestGetHttpStatus:
@@ -111,41 +130,36 @@ class TestConvertToMiseError:
 
     def test_401_becomes_auth_expired(self) -> None:
         """HTTP 401 converts to AUTH_EXPIRED."""
-        exc = Exception("Unauthorized")
-        exc.response = Mock(status_code=401)
-        result = _convert_to_mise_error(exc)
+        result = _convert_to_mise_error(_http_exc(401))
         assert result.kind == ErrorKind.AUTH_EXPIRED
 
     def test_403_becomes_permission_denied(self) -> None:
         """HTTP 403 converts to PERMISSION_DENIED."""
-        exc = Exception("Forbidden")
-        exc.response = Mock(status_code=403)
-        result = _convert_to_mise_error(exc)
+        result = _convert_to_mise_error(_http_exc(403))
         assert result.kind == ErrorKind.PERMISSION_DENIED
 
     def test_404_becomes_not_found(self) -> None:
         """HTTP 404 converts to NOT_FOUND."""
-        exc = Exception("Not found")
-        exc.response = Mock(status_code=404)
-        result = _convert_to_mise_error(exc)
+        result = _convert_to_mise_error(_http_exc(404))
         assert result.kind == ErrorKind.NOT_FOUND
 
     def test_429_becomes_rate_limited(self) -> None:
         """HTTP 429 converts to RATE_LIMITED with retryable flag."""
-        exc = Exception("Rate limited")
-        exc.response = Mock(status_code=429)
-        result = _convert_to_mise_error(exc)
+        result = _convert_to_mise_error(_http_exc(429))
         assert result.kind == ErrorKind.RATE_LIMITED
         assert result.retryable
 
     def test_5xx_becomes_network_error(self) -> None:
         """HTTP 5xx converts to NETWORK_ERROR with retryable flag."""
         for status in [500, 502, 503, 504]:
-            exc = Exception("Server error")
-            exc.response = Mock(status_code=status)
-            result = _convert_to_mise_error(exc)
+            result = _convert_to_mise_error(_http_exc(status))
             assert result.kind == ErrorKind.NETWORK_ERROR
             assert result.retryable
+
+    def test_400_becomes_unknown_with_status(self) -> None:
+        """HTTP 400 converts to UNKNOWN (not silently dropped on the floor)."""
+        result = _convert_to_mise_error(_http_exc(400))
+        assert result.kind == ErrorKind.UNKNOWN
 
     def test_connection_error_becomes_network_error(self) -> None:
         """ConnectionError converts to NETWORK_ERROR."""
@@ -172,10 +186,51 @@ class TestConvertToMiseError:
     @patch("retry.clear_sync_client")
     def test_401_clears_sync_client(self, mock_clear: MagicMock) -> None:
         """HTTP 401 should clear cached httpx client."""
-        exc = Exception("Unauthorized")
-        exc.response = Mock(status_code=401)
-        _convert_to_mise_error(exc)
+        _convert_to_mise_error(_http_exc(401))
         mock_clear.assert_called_once()
+
+
+class TestFormatHttpError:
+    """Tests for _format_http_error — surfaces response body in error messages."""
+
+    def test_no_response_returns_base_message(self) -> None:
+        """Plain exception with no response → just str(exception)."""
+        result = _format_http_error(ValueError("plain"))
+        assert result == "plain"
+
+    def test_google_error_body_extracted(self) -> None:
+        """Google's {'error': {'message', 'status'}} shape → 'API: <msg> (<status>)'."""
+        body = {"error": {"message": "Invalid field selection: documentTab", "status": "INVALID_ARGUMENT"}}
+        exc = _http_exc(400, body=body)
+        result = _format_http_error(exc)
+        assert "Invalid field selection: documentTab" in result
+        assert "INVALID_ARGUMENT" in result
+        assert "API:" in result
+
+    def test_google_error_without_status(self) -> None:
+        """Google error with no status → message only, no parens."""
+        body = {"error": {"message": "Bad request"}}
+        result = _format_http_error(_http_exc(400, body=body))
+        assert "Bad request" in result
+        assert "()" not in result
+
+    def test_non_json_body_uses_text(self) -> None:
+        """Plain text body falls through and is appended as 'Body: <text>'."""
+        result = _format_http_error(_http_exc(500, text="upstream timeout"))
+        assert "Body: upstream timeout" in result
+
+    def test_long_text_body_truncated(self) -> None:
+        """Text bodies over 500 chars are truncated with ellipsis marker."""
+        result = _format_http_error(_http_exc(500, text="x" * 1000))
+        assert "…" in result
+        # Base message + ' | Body: ' + 500x + '…' — should be well under 1000
+        assert len(result) < 700
+
+    def test_empty_body_returns_base(self) -> None:
+        """Empty body falls through to base message — no trailing 'Body: '."""
+        result = _format_http_error(_http_exc(404))
+        assert "Body:" not in result
+        assert "API:" not in result
 
 
 class TestCalculateWaitWithJitter:
@@ -253,9 +308,7 @@ class TestWithRetrySync:
         @with_retry(max_attempts=3, delay_ms=1)
         def fail_not_found() -> str:
             attempts[0] += 1
-            exc = Exception("Not found")
-            exc.response = Mock(status_code=404)
-            raise exc
+            raise _http_exc(404)
 
         with pytest.raises(MiseError) as exc_info:
             fail_not_found()
@@ -328,9 +381,7 @@ class TestWithRetryAsync:
         """Async non-retryable errors are raised immediately."""
         @with_retry(max_attempts=3, delay_ms=1)
         async def async_fail_forbidden() -> str:
-            exc = Exception("Forbidden")
-            exc.response = Mock(status_code=403)
-            raise exc
+            raise _http_exc(403)
 
         with pytest.raises(MiseError) as exc_info:
             await async_fail_forbidden()

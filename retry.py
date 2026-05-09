@@ -48,6 +48,51 @@ def _get_http_status(exception: Exception) -> int | None:
     return None
 
 
+_BODY_TRUNCATE_AT = 500
+
+
+def _format_http_error(exception: Exception) -> str:
+    """
+    Build error message including the response body when available.
+
+    httpx.HTTPStatusError stringifies to URL + status only, dropping the body
+    that carries the actual reason (e.g. Google's "Invalid field selection: …").
+    Surface the body so failures are diagnosable without a debugger.
+    """
+    base = str(exception)
+    response = getattr(exception, "response", None)
+    if response is None:
+        return base
+
+    # Prefer Google-style structured error: {"error": {"message": "...", "status": "..."}}
+    try:
+        body = response.json()
+    except Exception:
+        body = None
+
+    if isinstance(body, dict) and isinstance(body.get("error"), dict):
+        err = body["error"]
+        msg = err.get("message")
+        status_text = err.get("status")
+        if msg:
+            detail = msg + (f" ({status_text})" if status_text else "")
+            return f"{base} | API: {detail}"
+
+    # Fall back to raw text body
+    try:
+        text = response.text
+    except Exception:
+        text = ""
+    # isinstance check guards against Mock auto-magic in tests and any
+    # response stand-ins where .text isn't a real string
+    if isinstance(text, str) and text:
+        if len(text) > _BODY_TRUNCATE_AT:
+            text = text[:_BODY_TRUNCATE_AT] + "…"
+        return f"{base} | Body: {text}"
+
+    return base
+
+
 def _should_retry(exception: Exception) -> bool:
     """Determine if an exception is retryable."""
     # Check if it's a known retryable exception type
@@ -70,18 +115,21 @@ def _convert_to_mise_error(exception: Exception) -> MiseError:
     # Check HTTP status first (more reliable than string matching)
     status = _get_http_status(exception)
     if status is not None:
+        message = _format_http_error(exception)
         if status == 401:
             # Invalidate cached client so next call gets fresh credentials
             clear_sync_client()
-            return MiseError(ErrorKind.AUTH_EXPIRED, str(exception))
+            return MiseError(ErrorKind.AUTH_EXPIRED, message)
         elif status == 403:
-            return MiseError(ErrorKind.PERMISSION_DENIED, str(exception))
+            return MiseError(ErrorKind.PERMISSION_DENIED, message)
         elif status == 404:
-            return MiseError(ErrorKind.NOT_FOUND, str(exception))
+            return MiseError(ErrorKind.NOT_FOUND, message)
         elif status == 429:
-            return MiseError(ErrorKind.RATE_LIMITED, str(exception), retryable=True)
+            return MiseError(ErrorKind.RATE_LIMITED, message, retryable=True)
         elif status >= 500:
-            return MiseError(ErrorKind.NETWORK_ERROR, str(exception), retryable=True)
+            return MiseError(ErrorKind.NETWORK_ERROR, message, retryable=True)
+        else:
+            return MiseError(ErrorKind.UNKNOWN, message)
 
     # Fall back to exception type
     if isinstance(exception, (ConnectionError, TimeoutError)):

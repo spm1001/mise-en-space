@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "mise-en-space",
   "display_name": "Google Workspace (mise)",
-  "version": "0.5.13",
+  "version": "0.7.2",
   "description": "Search Drive, fetch Gmail, act on documents — mise-en-place for knowledge work",
   "long_description": "Full Google Workspace MCP server: Drive search and file fetch (Docs, Sheets, Slides, PDFs, Office files, images), Gmail thread search and content extraction, and write operations (create, overwrite, draft, reply, archive, star, label). Content is extracted to clean markdown with comments, cues, and attachment handling.",
   "author": {
