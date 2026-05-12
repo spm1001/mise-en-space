@@ -14,7 +14,7 @@ dependencies = [
     # Form spec parsing
     "pyyaml>=6.0",
     # Extraction
-    "markitdown[pdf]>=0.1.4",
+    "markitdown[pdf]>=0.1.5",
     "regex>=2025.11.3",
     "websockets>=16.0",
     # PDF page thumbnails (requires poppler-utils system package)
