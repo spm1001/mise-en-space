@@ -8,12 +8,11 @@ server/lib/
 server/venv/
 .git/
 .bon/
-.claude-plugin/
 tests/
 fixtures/
 scripts/
 docs/
 apps-script/
-mise/
+/mise/
 token.json
 .env
