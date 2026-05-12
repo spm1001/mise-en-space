@@ -1,4 +1,6 @@
 # Python
+__pycache__/
+*.py[cod]
 *$py.class
 *.so
 .Python
@@ -53,5 +55,5 @@ apps-script/deploy.json
 # uv
 uv.lock
 
-# mcpb bundle output
-*.mcpb
+# macOS
+.DS_Store
