@@ -87,10 +87,20 @@ def _parse_address_list(value: str | None) -> list[str]:
 
 
 def _parse_date(date_str: str | None, internal_date: str | None) -> datetime | None:
-    """Parse date from header or internal timestamp."""
+    """Parse date from header or internal timestamp.
+
+    Always returns timezone-aware datetimes (UTC assumed for naive dates)
+    to avoid 'can't compare offset-naive and offset-aware datetimes' errors
+    when min()/max() is called on a list of dates from mixed sources.
+    """
     if date_str:
         try:
-            return parsedate_to_datetime(date_str)
+            dt = parsedate_to_datetime(date_str)
+            # Some Date headers lack timezone — make them UTC to avoid
+            # naive vs aware comparison errors downstream
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
         except (ValueError, TypeError):
             pass
 
