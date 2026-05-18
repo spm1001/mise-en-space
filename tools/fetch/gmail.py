@@ -14,7 +14,7 @@ from extractors.image import resize_image_bytes, SUPPORTED_IMAGE_MIME_TYPES
 from models import MiseError, FetchResult, FetchError, EmailAttachment
 from workspace import get_deposit_folder, write_content, write_manifest, write_image
 
-from .common import _build_cues, _deposit_pdf_thumbnails
+from .common import _build_cues, _deposit_pdf_thumbnails, is_text_file
 
 
 # MIME types for Office files that are too slow to extract eagerly (5-10s each)
@@ -26,6 +26,54 @@ OFFICE_MIME_TYPES = {
     "application/vnd.ms-excel",  # xls
     "application/vnd.ms-powerpoint",  # ppt
 }
+
+# Filename-extension → real MIME for fallback when sender mislabels the
+# attachment as application/octet-stream (Outlook/Exchange tags everything
+# it doesn't have a specific type for that way, including plain-text CSVs).
+# Without this fallback, fetch would reject CSVs/JSON/etc. from Outlook
+# clients — see mise-mugure field report.
+_EXTENSION_MIME_FALLBACK = {
+    ".csv": "text/csv",
+    ".tsv": "text/tab-separated-values",
+    ".txt": "text/plain",
+    ".log": "text/plain",
+    ".json": "application/json",
+    ".xml": "application/xml",
+    ".yaml": "application/x-yaml",
+    ".yml": "application/x-yaml",
+    ".md": "text/markdown",
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".svg": "image/svg+xml",
+}
+
+
+def _resolve_attachment_mime(declared_mime: str, filename: str) -> str:
+    """Resolve a declared MIME type, falling back to filename extension for
+    Outlook/Exchange-style octet-stream attachments.
+
+    Outlook tags many text formats (CSV, JSON, XML) as application/octet-stream
+    rather than text/csv etc. Without this resolver, fetch_attachment falls
+    through to "Cannot extract" on anything sent from such clients.
+
+    Returns the resolved MIME if filename has a known extension; otherwise
+    returns the declared MIME unchanged.
+    """
+    if declared_mime != "application/octet-stream":
+        return declared_mime
+    if "." not in filename:
+        return declared_mime
+    ext = "." + filename.rsplit(".", 1)[-1].lower()
+    return _EXTENSION_MIME_FALLBACK.get(ext, declared_mime)
 
 # NOTE: In conversations with >20 accumulated images the limit drops to 2000px.
 # We can't know conversation context at deposit time — note dimension in metadata
@@ -566,8 +614,15 @@ def fetch_attachment(
             message=f"No attachment named '{attachment_name}' in thread. Available: {available}",
         )
 
-    mime_type = target_att.mime_type
+    # Resolve declared MIME via filename extension when sender mislabels as
+    # application/octet-stream (Outlook/Exchange ships CSV/JSON/XML this way).
+    mime_type = _resolve_attachment_mime(target_att.mime_type, target_att.filename)
     warnings: list[str] = []
+    if mime_type != target_att.mime_type:
+        warnings.append(
+            f"Declared MIME 'application/octet-stream' resolved to "
+            f"'{mime_type}' via filename extension"
+        )
 
     # 3. Check pre-exfil Drive copy
     exfil_file_id: str | None = None
@@ -742,6 +797,55 @@ def fetch_attachment(
             format="image",
             type="image",
             metadata=image_meta,
+            cues=cues,
+        )
+
+    # Text formats — CSV, JSON, XML, plain text, etc. Deposit bytes as-is;
+    # no extraction needed (Claude reads the file directly). Also handles
+    # Outlook's octet-stream-tagged text attachments via the MIME resolver
+    # at the top of this function.
+    if is_text_file(mime_type):
+        content_bytes = None
+        if exfil_file_id:
+            try:
+                content_bytes = download_file(exfil_file_id)
+            except Exception as e:
+                warnings.append(f"Drive exfil download failed, falling back to Gmail: {e}")
+                source_label = "gmail"
+        if content_bytes is None:
+            content_bytes = _download_attachment_bytes(target_msg, target_att, mime_type)
+
+        content = content_bytes.decode("utf-8", errors="replace")
+        ext = attachment_name.rsplit(".", 1)[-1].lower() if "." in attachment_name else "txt"
+        content_filename = f"content.{ext}"
+
+        folder = get_deposit_folder("text", title, thread_id, base_path=base_path)
+        content_path = write_content(folder, content, filename=content_filename)
+
+        extra: dict[str, Any] = {
+            "source": source_label,
+            "gmail_thread_id": thread_id,
+            "mime_type": mime_type,
+            "char_count": len(content),
+        }
+        if warnings:
+            extra["warnings"] = warnings
+        write_manifest(folder, "text", title, thread_id, extra=extra)
+
+        cues = _build_cues(folder, warnings=warnings if warnings else None)
+
+        return FetchResult(
+            path=str(folder),
+            content_file=str(content_path),
+            format="text",
+            type="text",
+            metadata={
+                "title": attachment_name,
+                "source": source_label,
+                "gmail_thread_id": thread_id,
+                "mime_type": mime_type,
+                "char_count": len(content),
+            },
             cues=cues,
         )
 

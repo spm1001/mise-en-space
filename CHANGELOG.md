@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.7.3] - 2026-05-18
+
+Three Gmail trust fixes shipping together — all surfaced by a single BARB
+delivery thread where mise's extraction quietly returned wrong-by-omission
+data three different ways. Catalogued via field reports mise-zojoma,
+mise-vutato, mise-mugure.
+
+### Fixed
+- **Body truncation through quoted history** (mise-zojoma) — `_strip_trailing_contact_block` walked forward, matching benign short-line candidates (e.g. "Hope you are well.") and counting URL/phone density from the entire body below. Outlook-format reply preambles inline the previous message with its URL-rich signature, clearing the URL threshold from 60+ lines down and silently truncating the live reply. Now walks backwards from end-of-body, anchoring the cut to the actual signature start. Trade-off: Apple Mail style `FirstName\n\nFull Name\nTitle...` sigs keep the first-name line as a content boundary. Under-stripping is the safer trade for a research-workflow tool.
+- **Aggressive-strip silence** (mise-zojoma) — `strip_signature_and_quotes` now returns `(body, warnings)`; reductions >80% emit a warning so silent body-eating is detectable via thread cues. Existing tests updated for the new contract.
+- **CC/Bcc participants omitted** (mise-vutato) — thread cue's `participants` list read From-only, dropping CC and Bcc recipients. A multi-recipient thread with 3 hidden CCs returned 2 participants — a "Hi all" reply composed from that cue would silently drop the CC list. Added "Bcc" to `WANTED_HEADERS`, new `bcc_addresses` field on `EmailMessage`, extracted `_extract_participants()` helper walking From + To + Cc + Bcc across every message.
+- **Outlook-tagged octet-stream attachments refused** (mise-mugure) — Outlook/Exchange clients label CSVs, JSON, XML and other text formats as `application/octet-stream`. `fetch_attachment` rejected them with "Cannot extract attachment with MIME type: application/octet-stream" despite the filename extension being clear. New `_resolve_attachment_mime()` falls back to filename extension for a known-safe set (.csv, .tsv, .txt, .json, .xml, .yaml, .md, .html, .docx, .xlsx, .pptx, .pdf, image types) and surfaces the resolution as a warning in cues. New text-file branch in `fetch_attachment` deposits CSV/JSON/XML/etc. as text without conversion; Office-tagged octet-stream files route through the existing office extractor. Unknown extensions are still refused honestly — no silent guessing.
+
+### Added
+- `fixtures/gmail/outlook_reply_url_dense_quote.txt` and `fixtures/gmail/standalone_msg_with_url_sig.txt` — redacted real-world fixtures (anonymised) reproducing the truncation bug shapes.
+- 26 new unit tests across the three fixes covering: critical-paragraph survival, no-catastrophic-reduction, signature stripping, aggressive-strip warning, BARB participant scenario (5 expected), MIME resolver, octet-stream text/JSON/XLSX dispatch, unknown-extension still-refused.
+
 ## [0.7.1] - 2026-05-04
 
 ### Changed

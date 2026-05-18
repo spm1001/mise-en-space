@@ -12,7 +12,7 @@ from tools.fetch import (
     _extract_from_drive, _names_match, _match_exfil_for_message, _enrich_with_comments,
     _is_extractable_attachment, _deposit_attachment_content,
     _extract_attachment_content, _build_email_context_metadata,
-    _extract_participants,
+    _extract_participants, _resolve_attachment_mime,
     is_text_file, fetch_drive, fetch_doc, fetch_sheet, fetch_slides,
     fetch_video, fetch_pdf, fetch_office, fetch_text, fetch_image_file,
     fetch_form_file,
@@ -807,6 +807,134 @@ class TestFetchAttachment:
         assert "application/zip" in result.message
 
 
+class TestFetchAttachmentOctetStreamText:
+    """Regression: Outlook tags text formats (CSV/JSON/XML) as
+    application/octet-stream. fetch_attachment now resolves via filename
+    extension and deposits as text rather than refusing extraction.
+    See mise-mugure field report.
+    """
+
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
+    @patch("tools.fetch.gmail.download_attachment")
+    @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/test-deposit"))
+    @patch("tools.fetch.gmail.write_content", return_value="/tmp/test-deposit/content.csv")
+    @patch("tools.fetch.gmail.write_manifest")
+    def test_outlook_csv_octet_stream_deposited(
+        self, mock_manifest, mock_write, mock_folder,
+        mock_download, mock_lookup, mock_fetch
+    ):
+        """A CSV attachment mislabeled as octet-stream is deposited as text."""
+        att = EmailAttachment(
+            filename="es_metadata.csv",
+            mime_type="application/octet-stream",
+            size=181, attachment_id="att_csv_1",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+        mock_download.return_value = AttachmentDownload(
+            filename="es_metadata.csv",
+            mime_type="application/octet-stream",
+            size=181,
+            content=b"period,quarter,unweighted_hh,unique_sectors\nQ1,2024Q1,123,45\n",
+        )
+
+        result = fetch_attachment("thread_xyz", "es_metadata.csv")
+
+        assert isinstance(result, FetchResult), (
+            f"Expected FetchResult, got {type(result).__name__}: {result}"
+        )
+        assert result.type == "text"
+        assert result.metadata["mime_type"] == "text/csv"
+        # write_content called with decoded CSV text
+        written_content = mock_write.call_args.args[1]
+        assert "period,quarter,unweighted_hh,unique_sectors" in written_content
+        # The resolution is surfaced as a warning so it's discoverable in cues
+        assert any("octet-stream" in w for w in result.cues.get("warnings", []))
+
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
+    @patch("tools.fetch.gmail.download_attachment")
+    @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/test-deposit"))
+    @patch("tools.fetch.gmail.write_content", return_value="/tmp/test-deposit/content.json")
+    @patch("tools.fetch.gmail.write_manifest")
+    def test_outlook_json_octet_stream_deposited(
+        self, mock_manifest, mock_write, mock_folder,
+        mock_download, mock_lookup, mock_fetch
+    ):
+        """JSON attachment mislabeled as octet-stream is also recovered."""
+        att = EmailAttachment(
+            filename="config.json",
+            mime_type="application/octet-stream",
+            size=42, attachment_id="att_json_1",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+        mock_download.return_value = AttachmentDownload(
+            filename="config.json",
+            mime_type="application/octet-stream",
+            size=42,
+            content=b'{"key": "value"}',
+        )
+
+        result = fetch_attachment("thread_xyz", "config.json")
+
+        assert isinstance(result, FetchResult)
+        assert result.type == "text"
+        assert result.metadata["mime_type"] == "application/json"
+
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
+    def test_unknown_extension_still_refused(self, mock_lookup, mock_fetch):
+        """Truly-unknown octet-stream extensions are still refused honestly —
+        no silent guessing. The resolver only relaxes for the known-safe set."""
+        att = EmailAttachment(
+            filename="archive.weird",
+            mime_type="application/octet-stream",
+            size=99, attachment_id="att_weird",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+
+        result = fetch_attachment("thread_xyz", "archive.weird")
+
+        assert isinstance(result, FetchError)
+        assert "application/octet-stream" in result.message
+
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
+    @patch("tools.fetch.gmail.download_attachment")
+    @patch("tools.fetch.gmail.convert_office_content")
+    @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/test-deposit"))
+    @patch("tools.fetch.gmail.write_content", return_value="/tmp/test-deposit/content.csv")
+    @patch("tools.fetch.gmail.write_manifest")
+    def test_outlook_xlsx_octet_stream_routes_through_office(
+        self, mock_manifest, mock_write, mock_folder,
+        mock_office, mock_download, mock_lookup, mock_fetch
+    ):
+        """An XLSX mislabeled as octet-stream is routed through the office
+        extractor (resolver maps to the real XLSX MIME)."""
+        att = EmailAttachment(
+            filename="data.xlsx",
+            mime_type="application/octet-stream",
+            size=1234, attachment_id="att_xlsx_1",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+        mock_download.return_value = AttachmentDownload(
+            filename="data.xlsx",
+            mime_type="application/octet-stream",
+            size=1234,
+            content=b"PK fake xlsx bytes",
+        )
+        mock_office.return_value = OfficeConversionResult(
+            content="col1,col2\n1,2",
+            source_type="xlsx", export_format="csv", extension="csv",
+        )
+
+        result = fetch_attachment("thread_xyz", "data.xlsx")
+
+        assert isinstance(result, FetchResult)
+        assert result.type == "xlsx"
+        mock_office.assert_called_once()
+
+
 class TestIsTextFile:
     """Tests for is_text_file MIME type checker."""
 
@@ -852,6 +980,70 @@ class TestIsExtractableAttachment:
         """Non-PDF, non-image, non-Office types return False."""
         assert _is_extractable_attachment("application/zip") is False
         assert _is_extractable_attachment("video/mp4") is False
+
+
+class TestResolveAttachmentMime:
+    """Regression tests for _resolve_attachment_mime (mise-mugure).
+
+    Outlook/Exchange clients tag many text formats as application/octet-stream.
+    The resolver falls back to filename extension to recover the real MIME so
+    fetch_attachment doesn't refuse CSVs/JSON/XML with a misleading "Cannot
+    extract" error.
+    """
+
+    def test_octet_stream_csv_resolves(self) -> None:
+        assert _resolve_attachment_mime(
+            "application/octet-stream", "data.csv"
+        ) == "text/csv"
+
+    def test_octet_stream_json_resolves(self) -> None:
+        assert _resolve_attachment_mime(
+            "application/octet-stream", "config.json"
+        ) == "application/json"
+
+    def test_octet_stream_xml_resolves(self) -> None:
+        assert _resolve_attachment_mime(
+            "application/octet-stream", "feed.xml"
+        ) == "application/xml"
+
+    def test_octet_stream_docx_resolves(self) -> None:
+        """Outlook also mislabels Office files — resolver routes them through."""
+        result = _resolve_attachment_mime(
+            "application/octet-stream", "Report.docx"
+        )
+        assert "officedocument" in result
+
+    def test_octet_stream_pdf_resolves(self) -> None:
+        assert _resolve_attachment_mime(
+            "application/octet-stream", "report.pdf"
+        ) == "application/pdf"
+
+    def test_declared_mime_preserved_when_not_octet(self) -> None:
+        """When sender labels correctly, the declared MIME is kept verbatim."""
+        assert _resolve_attachment_mime(
+            "text/csv", "data.csv"
+        ) == "text/csv"
+        assert _resolve_attachment_mime(
+            "image/png", "photo.png"
+        ) == "image/png"
+
+    def test_unknown_extension_falls_through(self) -> None:
+        """Genuinely-unknown extensions stay as octet-stream — extraction
+        still refuses, but the failure is honest."""
+        assert _resolve_attachment_mime(
+            "application/octet-stream", "data.weird"
+        ) == "application/octet-stream"
+
+    def test_no_extension_falls_through(self) -> None:
+        assert _resolve_attachment_mime(
+            "application/octet-stream", "no_extension_at_all"
+        ) == "application/octet-stream"
+
+    def test_extension_case_insensitive(self) -> None:
+        """Outlook sometimes sends UPPER-case extensions; resolver is case-insensitive."""
+        assert _resolve_attachment_mime(
+            "application/octet-stream", "DATA.CSV"
+        ) == "text/csv"
 
 
 class TestBuildEmailContextMetadata:

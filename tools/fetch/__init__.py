@@ -23,6 +23,7 @@ from .drive import (
 from .gmail import (
     fetch_gmail, fetch_attachment, _is_extractable_attachment,
     _names_match, _match_exfil_for_message, _extract_participants,
+    _resolve_attachment_mime,
     _deposit_attachment_content, _extract_from_drive,
     _extract_attachment_content, _download_attachment_bytes,
     OFFICE_MIME_TYPES, MAX_EAGER_ATTACHMENTS,
