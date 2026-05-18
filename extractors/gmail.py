@@ -77,7 +77,8 @@ def extract_message_content(
 
     # Strip signatures and quoted replies if requested
     if strip_signature and body:
-        body = strip_signature_and_quotes(body)
+        body, strip_warnings = strip_signature_and_quotes(body)
+        warnings.extend(strip_warnings)
 
     # Append MIME-forwarded messages (message/rfc822 parts)
     # These are invisible to the plain text parser — they're binary MIME parts,

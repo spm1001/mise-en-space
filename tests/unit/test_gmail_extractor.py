@@ -6,6 +6,7 @@ Tests pure extraction functions with no API calls.
 
 import pytest
 from datetime import datetime, timezone
+from pathlib import Path
 
 from models import GmailThreadData, EmailMessage, EmailAttachment, ForwardedMessage
 from extractors.gmail import (
@@ -54,7 +55,7 @@ class TestSignatureStripping:
     def test_combined_signature_and_quotes(self):
         """Strip both signatures and quotes."""
         text = "I agree.\n\n> Previous discussion here\n> More quotes\n\nThanks,\nJohn"
-        result = strip_signature_and_quotes(text)
+        result, _ = strip_signature_and_quotes(text)
         assert result == "I agree."
 
     def test_preserves_short_messages(self):
@@ -71,7 +72,16 @@ class TestSignatureStripping:
         assert "Option B" in result
 
     def test_strips_corporate_contact_block(self):
-        """Strip URL-dense corporate signatures without explicit markers."""
+        """Strip URL-dense corporate signatures without explicit markers.
+
+        Boundary: the backwards-walking scan anchors the cut to the latest
+        name-block candidate. For Apple Mail style sigs with
+        ``FirstName\\n\\nFullName\\nTitle...`` the cut lands at "Title"
+        rather than at "FirstName" — preserving the salutation/name as a
+        content boundary. The URL+phone block below is still stripped;
+        this is an intentional under-strip vs. the prior forward scan
+        which caught short opener content above a real signature.
+        """
         text = (
             "Here's the document you asked for.\n\n"
             "Project plan\n"
@@ -86,14 +96,20 @@ class TestSignatureStripping:
             "<https://acme.com/innovation>\n"
             "Phone: +44 1234 567890 <http://+44+1234+567890>\n"
         )
-        result = strip_signature_and_quotes(text)
+        result, _ = strip_signature_and_quotes(text)
         assert "Here's the document" in result
         assert "Project plan" in result
-        assert "Alice Smith" not in result
+        # The URL+phone block is removed (the point of the heuristic)
         assert "Innovation Team" not in result
+        assert "calendly.com" not in result
+        assert "Phone:" not in result
 
     def test_strips_corporate_sig_with_phone_and_few_urls(self):
-        """Strip corporate signature with phone + fewer than 3 URLs."""
+        """Strip corporate signature with phone + fewer than 3 URLs.
+
+        Walking backwards anchors the cut at the title line, preserving
+        the bare-name boundary above (see test_strips_corporate_contact_block).
+        """
         text = (
             "Please see the attached report.\n\n"
             "Jane Smith\n\n"
@@ -102,14 +118,18 @@ class TestSignatureStripping:
             "https://www.example.com\n"
             "https://www.example.co.uk\n"
         )
-        result = strip_signature_and_quotes(text)
+        result, _ = strip_signature_and_quotes(text)
         assert "attached report" in result
-        assert "Jane Smith" not in result
         assert "Head of Research" not in result
-        assert "itv.com" not in result
+        assert "Phone:" not in result
+        assert "example.com" not in result
 
     def test_strips_corporate_sig_mobile_label(self):
-        """Strip sig where phone uses 'Mobile' or 'Direct' label."""
+        """Strip sig where phone uses 'Mobile' or 'Direct' label.
+
+        Walking backwards anchors the cut at the title line, preserving
+        the bare-name boundary above.
+        """
         text = (
             "Thanks for confirming.\n\n"
             "Jane Doe\n\n"
@@ -117,9 +137,11 @@ class TestSignatureStripping:
             "Mobile: 07700 900123\n"
             "https://www.company.com\n"
         )
-        result = strip_signature_and_quotes(text)
+        result, _ = strip_signature_and_quotes(text)
         assert "confirming" in result
-        assert "Jane Doe" not in result
+        assert "Senior Director" not in result
+        assert "Mobile:" not in result
+        assert "company.com" not in result
 
     def test_preserves_content_with_phone_no_name_block(self):
         """Don't strip content mentioning a phone without name-block pattern."""
@@ -128,7 +150,7 @@ class TestSignatureStripping:
             "Phone: +44 20 7157 3000\n"
             "See https://example.com for more info.\n"
         )
-        result = strip_signature_and_quotes(text)
+        result, _ = strip_signature_and_quotes(text)
         assert "Call the office" in result
         assert "Phone:" in result
         assert "example.com" in result
@@ -140,7 +162,7 @@ class TestSignatureStripping:
             "On Mon, 3 Feb 2026 at 09:15, Bob Jones <bob@example.com> wrote:\n\n"
             "> Original message here"
         )
-        result = strip_signature_and_quotes(text)
+        result, _ = strip_signature_and_quotes(text)
         assert "I agree" in result
         assert "wrote:" not in result
 
@@ -153,10 +175,144 @@ class TestSignatureStripping:
             "3. https://example.com/doc3\n\n"
             "Let me know what you think."
         )
-        result = strip_signature_and_quotes(text)
+        result, _ = strip_signature_and_quotes(text)
         assert "resources" in result
         assert "doc1" in result
         assert "Let me know" in result
+
+
+class TestStandaloneMessageWithUrlSig:
+    """Regression: short message with greeting + pleasantry + body + URL-rich
+    signature was truncated to just the greeting line.
+
+    Pattern (the brief's original case): an opener like "Hi X," followed by
+    "Hope you are well." matches the name-block pattern; the next text line
+    ("We ran the data as specified.") is short and URL-free. The trailing
+    URL-rich signature would then trigger truncation at i=2 ("Hope you are
+    well.") — leaving only "Hi X,".
+
+    Fix: scan walks backwards from end-of-body, anchoring the cut to the
+    actual signature boundary instead of the first benign opener.
+    """
+
+    FIXTURE = Path(__file__).parent.parent.parent / "fixtures/gmail/standalone_msg_with_url_sig.txt"
+
+    def test_critical_paragraph_survives(self):
+        """The methodology line must not be silently dropped."""
+        raw = self.FIXTURE.read_text()
+        result, _ = strip_signature_and_quotes(raw)
+        assert "For platforms to add up to 100%" in result
+
+    def test_greeting_and_body_preserved(self):
+        """All content paragraphs must survive — only the trailing URL-rich
+        signature should be stripped."""
+        raw = self.FIXTURE.read_text()
+        result, _ = strip_signature_and_quotes(raw)
+        assert "Hi Recipient," in result
+        assert "Hope you are well." in result
+        assert "We ran the platform postcode data as specified." in result
+        assert "Let us know." in result
+
+    def test_signature_is_stripped(self):
+        """The URL-rich signature block must be removed."""
+        raw = self.FIXTURE.read_text()
+        result, _ = strip_signature_and_quotes(raw)
+        assert "Audience Measurement" not in result
+        assert "Mobile:" not in result
+        assert "linkedin.example.com" not in result
+        assert "exampleresearch.com" not in result
+
+
+class TestAggressiveStripWarning:
+    """Aggressive (>80% reduction) signature strips must surface a warning so
+    silent body-eating becomes detectable upstream."""
+
+    def test_warning_emitted_on_large_reduction(self):
+        """A short content body with a long URL-rich signature triggers >80%
+        reduction → warning."""
+        text = (
+            "Hi.\n"
+            "\n"
+            "OK.\n"
+            "Yes.\n"
+            "\n"
+            "Senior Engineer, Acme\n"
+            "Mobile: 07700 900111\n"
+            "https://example.com/one\n"
+            "https://example.com/two\n"
+            "https://example.com/three\n"
+        )
+        result, warnings = strip_signature_and_quotes(text)
+        assert any("Aggressive signature strip" in w for w in warnings), (
+            f"Expected aggressive-strip warning. Got: {warnings}, "
+            f"result={result!r} ({len(result)}/{len(text)} chars)"
+        )
+
+    def test_no_warning_on_proportionate_strip(self):
+        """A normal message with normal-sized sig should not warn."""
+        text = (
+            "Thanks for the detailed update — I'll review this evening and "
+            "come back to you with any questions in the morning. The summary "
+            "section was particularly helpful.\n"
+            "\n"
+            "Best,\n"
+            "Person\n"
+            "\n"
+            "Title, Acme Corp\n"
+            "https://acme.example.com\n"
+            "https://docs.acme.example.com/handbook\n"
+            "Phone: 07700 900111\n"
+        )
+        result, warnings = strip_signature_and_quotes(text)
+        assert not any("Aggressive" in w for w in warnings), (
+            f"Did not expect aggressive-strip warning. Got: {warnings}"
+        )
+
+
+class TestOutlookReplyWithUrlDenseQuote:
+    """Regression: Outlook-format reply preamble + URL-dense quoted history
+    can fool _strip_trailing_contact_block into truncating the live reply.
+
+    Pattern: the live reply contains a short-text candidate (e.g. "Question 5:
+    File attached." → "Thank you."). The trailing slice from that point extends
+    through the entire Outlook "From: ... Sent: ..." preamble and the quoted
+    earlier message — which carries enough URLs and a phone number to clear
+    the URL-density threshold. The function then truncates the body at the
+    candidate, silently discarding multi-paragraph reply content.
+
+    Fixture is a redacted real-world thread (anonymised — no identifying tokens).
+    """
+
+    FIXTURE = Path(__file__).parent.parent.parent / "fixtures/gmail/outlook_reply_url_dense_quote.txt"
+
+    def test_critical_paragraph_survives(self):
+        """A line in the quoted earlier message that explains methodology
+        ('For platforms to add up to 100%...') must not be silently dropped."""
+        raw = self.FIXTURE.read_text()
+        result, _ = strip_signature_and_quotes(raw)
+        assert "For platforms to add up to 100%" in result, (
+            "Lost the methodology line — signature stripper truncated through "
+            "the quoted reply chain"
+        )
+
+    def test_no_catastrophic_reduction(self):
+        """Stripping should not remove the majority of a 6.5KB business reply."""
+        raw = self.FIXTURE.read_text()
+        result, _ = strip_signature_and_quotes(raw)
+        ratio = len(result) / len(raw)
+        assert ratio > 0.5, (
+            f"Body reduced to {ratio:.1%} of original "
+            f"({len(result)}/{len(raw)} chars) — silent truncation"
+        )
+
+    def test_reply_content_preserved(self):
+        """Dima's six-paragraph reply must survive intact."""
+        raw = self.FIXTURE.read_text()
+        result, _ = strip_signature_and_quotes(raw)
+        # Distinctive content from the live reply (top of message, NOT quoted)
+        assert "I’m resending the data_platform_by_region file" in result
+        assert "For your questions 1,2 and 3" in result
+        assert "Question 5: File attached." in result
 
 
 class TestHTMLCleaning:
@@ -514,7 +670,7 @@ class TestForwardDetection:
             "The key finding is that VOD numbers are up 15%.\n"
             "See the attached spreadsheet for details."
         )
-        result = strip_signature_and_quotes(text)
+        result, _ = strip_signature_and_quotes(text)
         # Own content stripped of quotes and signature
         assert "I agree" in result
         assert "> Earlier quoted" not in result
@@ -533,7 +689,7 @@ class TestForwardDetection:
             "> From: someone@example.com\n"
             "> This was forwarded content in the quoted reply"
         )
-        result = strip_signature_and_quotes(text)
+        result, _ = strip_signature_and_quotes(text)
         assert "My thoughts" in result
         # The quoted forward is stripped — it's part of the reply chain
         assert "someone@example.com" not in result

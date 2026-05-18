@@ -1,0 +1,123 @@
+Good morning Recipient,
+
+Hope you are well.
+
+I’m resending the data_platform_by_region file as it was missing the online survey data (now you have full 3 years of data), I’m also sending the data_metadata which includes hard coded period & quarters includes the unweight hh count and count of unique postal sectors
+
+For your questions 1,2 and 3 I’m going to explain how we ask about platforms on the ES.
+
+First of all, we ask separately (in rotation mode) about the main platforms kinds X, Y and Z as below:
+
+[cid:image006.png@01000001.00000000]
+
+[cid:image007.png@01000002.00000000]
+
+[cid:image008.png@01000002.00000000]
+
+Then we ask about Type A in one question among other ways to view TV as below (This is a multi punch question)
+
+[cid:image009.png@01000003.00000000]
+
+
+
+
+For Type C it was added to the questionnaire in 2024, its penetration is only 3% and is asked only to households who claim having Type A and said that their Type A is NOT a Type B.
+
+For Question 4 this is the sum of the weighted hh base for the 3 years, if you want us to divide this by 3 we can do it.
+
+Question 5: File attached.
+
+Thank you.
+Sender.
+
+
+
+
+From: Recipient Name <recipient@acme.example.com>
+Sent: 05 May 2026 14:31
+To: External Sender <sender@example.com>
+Cc: Cc One <cc1@acme.example.com>; Cc Two <cc2@example.com>; Cc Three <cc3@example.com>
+Subject: Re: Survey Platform Postcode Data
+
+Super thanks all. Looking good. A few quick questions 1. I know we said not to worry about Freely, but looking at it in this context, I'm wondering if that was wise. What do you think? Where do Type Cs end up in this classification? 2. 
+ExternalBannerStart
+External Sender Notice
+Message originated outside your organisation.
+ExternalBannerEnd
+Super thanks all. Looking good.
+
+A few quick questions
+
+1. I know we said not to worry about Freely, but looking at it in this context, I'm wondering if that was wise. What do you think? Where do Type Cs end up in this classification?
+
+2. The 'Type A' block is growing (almost doubling in 2 years), and it's interesting - can you help me understand a bit more how someone ends up classified there? eg if I have a Samsung TV connected to an kind X and the internet, receiving Freeview, but I just watch Apps - where do I end up in the bucketing? Is there a way you can illustrate the classification flow here?
+
+3. Specifically, do we capture something on presence of (and connection of) an kind X?
+
+4. hh_count - what's that? not respondents I'm guessing but doesn't seem to be weighted pop either?
+
+5. Will you be OK to do the  data_metadata.csv file as well?
+
+
+Recipient
+
+Recipient Name (he/him)
+
+Innovation Team @ Acme
+Visit us at Broadcast Centre - Acme, 123 Example Street EX1 1ER<https://example-defense.com/proxy/__https:/example-maps.com/abc__;!!HEtReXZgYQ!TfiUPtQnHuQFVcloJbZ4gPLIMPAis0HrqoqpnKxV--R8N2qkR6d7wZvEP1M0c1VD_qPZkUclOxyZe2cUySX7$>
+Make sure you walk this way if you're coming in person<https://example-defense.com/proxy/__https:/drive.examplele.com/file/d/13FQ18oZFg49BR-Ewl3_Sp_RpuoishGQ9/view__;!!HEtReXZgYQ!TfiUPtQnHuQFVcloJbZ4gPLIMPAis0HrqoqpnKxV--R8N2qkR6d7wZvEP1M0c1VD_qPZkUclOxyZe4qTAuvk$>
+Book time at https://example-bit.ly/short<https://example-defense.com/proxy/__https:/example-bit.ly/short__;!!HEtReXZgYQ!TfiUPtQnHuQFVcloJbZ4gPLIMPAis0HrqoqpnKxV--R8N2qkR6d7wZvEP1M0c1VD_qPZkUclOxyZe6ei0wJd$>
+Feel free to ask me about ADHD<https://example-defense.com/proxy/__https:/www.example.com/conditions/attention-deficit-hyperactivity-disorder-adhd/symptoms/__;!!HEtReXZgYQ!TfiUPtQnHuQFVcloJbZ4gPLIMPAis0HrqoqpnKxV--R8N2qkR6d7wZvEP1M0c1VD_qPZkUclOxyZe3n3Gfgr$>
+FaceTime/WhatsApp Audio +44 7700 900222<https://example-defense.com/proxy/__http:/*44*7700*900222__;Kysr!!HEtReXZgYQ!TfiUPtQnHuQFVcloJbZ4gPLIMPAis0HrqoqpnKxV--R8N2qkR6d7wZvEP1M0c1VD_qPZkUclOxyZe5iTF83B$>
+
+
+
+On Tue, 5 May 2026 at 12:57, External Sender <sender@example.com<mailto:sender@example.com>> wrote:
+Hi Recipient,
+
+Hope you are well.
+
+We ran the platform postcode data as specified.
+
+Can you please check and confirm that this is what you need?
+
+For platforms to add up to 100% we added Type A, Type D and others.
+
+Let us know.
+
+Thanks.
+Sender.
+
+
+External Sender, Associate Director, UK
+Audience Measurement
+
+[cid:image001.png@01000004.00000000]<https://example-defense.com/proxy/__https:/twitter.com/ExampleResearch__;!!HEtReXZgYQ!TfiUPtQnHuQFVcloJbZ4gPLIMPAis0HrqoqpnKxV--R8N2qkR6d7wZvEP1M0c1VD_qPZkUclOxyZe4YSRK_X$>[cid:image002.png@01000004.00000000]<https://example-defense.com/proxy/__https:/www.linkedin.example.com/company/exampleresearch/__;!!HEtReXZgYQ!TfiUPtQnHuQFVcloJbZ4gPLIMPAis0HrqoqpnKxV--R8N2qkR6d7wZvEP1M0c1VD_qPZkUclOxyZe2R62fjx$> [cid:image003.png@01000004.00000000] <https://example-defense.com/proxy/__https:/www.youtube.com/user/ExampleResearchTV__;!!HEtReXZgYQ!TfiUPtQnHuQFVcloJbZ4gPLIMPAis0HrqoqpnKxV--R8N2qkR6d7wZvEP1M0c1VD_qPZkUclOxyZeyo4rZII$>
+ExampleResearch
+Example House, Example Road
+EX1 1ER – Example Country
+Mobile: +44 7700 900111
+sender@example.com<mailto:sender@example.com>
+www.exampleresearch.com/en-uk<http://www.exampleresearch.com/en-uk>
+
+
+
+[cid:image004.png@01000004.00000000]
+[cid:image005.png@01000004.00000000]
+
+
+
+
+
+[https://example-cdn.com/images/AcmeLogo_90x45.png]
+
+
+Acme Broadcasting Limited (Registration No. 000001) (“Acme”) is incorporated in England and Wales with its registered office at Acme Example Site, 123 Example Street, Example City EX1 1ER. Please visit www.acme.example.com<https://example-defense.com/proxy/__http:/www.acme.example.com/__;!!HEtReXZgYQ!TfiUPtQnHuQFVcloJbZ4gPLIMPAis0HrqoqpnKxV--R8N2qkR6d7wZvEP1M0c1VD_qPZkUclOxyZe_QpQ1MK$> for further information.
+
+This email and any attachments are intended solely for the addressee and may contain confidential, copyrighted and/or privileged information.  If you have received this message in error, please notify us and delete it.  Recipients should scan the email and any attachments for their own protection.
+
+This email does not conclude a binding agreement.  The views or opinions presented in this email do not necessarily represent those of Acme.
+
+We reserve the right to monitor all e-mail communications, as permitted by applicable law and regulations.
+
+For details of how we process personal data, please see the privacy notices for each of Acme's business areas at http://www.acme.example.com/groupprivacy<https://example-defense.com/proxy/__http:/www.acme.example.com/groupprivacy__;!!HEtReXZgYQ!TfiUPtQnHuQFVcloJbZ4gPLIMPAis0HrqoqpnKxV--R8N2qkR6d7wZvEP1M0c1VD_qPZkUclOxyZe7z4olUt$>

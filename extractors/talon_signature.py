@@ -353,7 +353,14 @@ _RE_PHONE = re.compile(
 )
 
 
-def _strip_trailing_contact_block(body: str) -> str:
+# Threshold below which an aggressive strip emits a warning. A signature
+# is typically a small fraction of the message; if stripping removes >80%
+# the heuristic likely truncated through real content (the Outlook-reply
+# bug fixed in 2026-05).
+_AGGRESSIVE_STRIP_RATIO = 0.20
+
+
+def _strip_trailing_contact_block(body: str) -> tuple[str, list[str]]:
     """
     Strip trailing URL-dense blocks that look like contact signatures.
 
@@ -362,21 +369,39 @@ def _strip_trailing_contact_block(body: str) -> str:
 
     Detection: finds a "name block" pattern — a short line (bare name)
     preceded by a blank line, followed by another short text line
-    (full name/title). Then checks two signals in the trailing text:
-      - 3+ URLs (URL-dense block, original heuristic)
-      - 1+ URL and a phone number (corporate sig with fewer links)
+    (full name/title). Then checks the trailing slice for URL/phone
+    density. Two signals fire the strip:
+      - 3+ URLs in the trailing slice
+      - 1+ URL and a phone number in the trailing slice
+
+    Scan walks BACKWARDS from end-of-body. The first valid candidate
+    (i.e. the latest in the message) wins. Walking forward picks the
+    earliest candidate, which would false-positive on benign openers
+    like "Hope you are well." followed by short reply content while
+    a real signature lurks below — the trailing URL count would still
+    clear the threshold from arbitrarily deep. Walking backwards
+    anchors the cut to the actual signature start. Trade-off: an
+    Apple Mail-style sig with "FirstName\n\nFull Name" pattern will
+    keep the first-name line as a content boundary (acceptable —
+    under-stripping is safer than over-stripping content).
 
     Also strips orphaned reply preambles ("On ... wrote:").
+
+    Returns (stripped_body, warnings). A warning is emitted when the
+    strip removes >80% of the body — silent body-eating must be visible.
     """
+    warnings: list[str] = []
+    original_len = len(body)
+
     # First: strip orphaned reply preamble left after quote removal
     body = _RE_REPLY_PREAMBLE.sub('', body).rstrip()
 
     lines = body.split('\n')
     if len(lines) < 5:
-        return body
+        return body, warnings
 
-    # Look for name-block signature start: blank → short name → text
-    for i in range(1, len(lines) - 2):
+    # Walk BACKWARDS — find the latest name-block signature start.
+    for i in range(len(lines) - 3, 0, -1):
         if lines[i - 1].strip():
             continue  # Need a blank line before
 
@@ -394,18 +419,26 @@ def _strip_trailing_contact_block(body: str) -> str:
         if not next_text or _RE_URL.search(next_text) or len(next_text) >= 60:
             continue  # Next line is a URL or too long — not a name block
 
-        # Check signals below this point
+        # Check URL/phone density below this point
         trailing = '\n'.join(lines[i:])
         url_count = len(_RE_URL.findall(trailing))
         has_phone = bool(_RE_PHONE.search(trailing))
 
         if url_count >= 3 or (url_count >= 1 and has_phone):
-            return '\n'.join(lines[:i]).rstrip()
+            stripped = '\n'.join(lines[:i]).rstrip()
+            if original_len > 0 and len(stripped) / original_len < _AGGRESSIVE_STRIP_RATIO:
+                warnings.append(
+                    f"Aggressive signature strip: kept "
+                    f"{len(stripped)}/{original_len} chars "
+                    f"({100 * len(stripped) / original_len:.0f}%) — "
+                    f"truncated at line {i} (\"{line[:40]}\")"
+                )
+            return stripped, warnings
 
-    return body
+    return body, warnings
 
 
-def strip_signature_and_quotes(msg_body: str) -> str:
+def strip_signature_and_quotes(msg_body: str) -> tuple[str, list[str]]:
     """
     Strip signatures and quoted replies, preserving forwarded messages.
 
@@ -424,6 +457,9 @@ def strip_signature_and_quotes(msg_body: str) -> str:
     Edge case: reply-to-forward (> ---------- Forwarded message) inside
     reply quotes won't match the regex (anchored to ^, quote-prefixed lines
     stripped first), so it's correctly removed as part of the reply chain.
+
+    Returns (cleaned_body, warnings). Warnings surface aggressive strips
+    (>80% reduction) so silent body-eating is detectable upstream.
     """
     # Step 0: split off forwarded sections before any stripping
     own_content, forwarded = split_forward_sections(msg_body)
@@ -431,7 +467,7 @@ def strip_signature_and_quotes(msg_body: str) -> str:
     # Steps 1-3: strip own content only
     without_quotes = strip_quoted_lines(own_content)
     body, _ = extract_signature(without_quotes)
-    body = _strip_trailing_contact_block(body)
+    body, warnings = _strip_trailing_contact_block(body)
 
     # Step 4: reassemble with forwarded sections
     if forwarded:
@@ -445,4 +481,4 @@ def strip_signature_and_quotes(msg_body: str) -> str:
                 parts.append(section.body)
         body = '\n'.join(parts)
 
-    return body
+    return body, warnings
