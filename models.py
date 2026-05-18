@@ -212,6 +212,7 @@ class EmailMessage:
     from_address: str
     to_addresses: list[str]
     cc_addresses: list[str] = field(default_factory=list)
+    bcc_addresses: list[str] = field(default_factory=list)
     subject: str = ""
     date: datetime | None = None
 

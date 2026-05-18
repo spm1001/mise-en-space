@@ -382,6 +382,35 @@ class TestBuildMessage:
         result = _build_message(msg)
         assert result.from_address == ""
         assert result.subject == ""
+        assert result.cc_addresses == []
+        assert result.bcc_addresses == []
+
+    def test_cc_and_bcc_parsed(self) -> None:
+        """Cc and Bcc headers are parsed into their respective address lists.
+
+        Bcc shows up only on the sender's own sent-folder copy — Gmail never
+        returns the Bcc header to recipients. mise-vutato regression.
+        """
+        msg = {
+            "id": "m1",
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "Alice <alice@example.com>"},
+                    {"name": "To", "value": "Bob <bob@example.com>"},
+                    {"name": "Cc", "value": "Cathy <cathy@example.com>, Dave <dave@example.com>"},
+                    {"name": "Bcc", "value": "Eve <eve@example.com>"},
+                    {"name": "Subject", "value": "Multi-recipient"},
+                ],
+                "mimeType": "text/plain",
+                "body": {},
+            },
+        }
+        result = _build_message(msg)
+        assert len(result.cc_addresses) == 2
+        assert any("cathy@example.com" in a for a in result.cc_addresses)
+        assert any("dave@example.com" in a for a in result.cc_addresses)
+        assert len(result.bcc_addresses) == 1
+        assert "eve@example.com" in result.bcc_addresses[0]
 
     def test_label_ids_captured(self) -> None:
         """Message labelIds from API response are captured."""

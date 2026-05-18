@@ -36,6 +36,35 @@ OFFICE_MIME_TYPES = {
 MAX_EAGER_ATTACHMENTS = 10
 
 
+def _extract_participants(thread_data: Any) -> list[str]:
+    """Build participants list from a GmailThreadData (unique, ordered by
+    first appearance).
+
+    Includes From + To + Cc + Bcc across every message. Reading From-only
+    misses silent CC list members — a "Hi all" reply built from such data
+    would lose the CCs entirely (see mise-vutato field report). Bcc shows
+    up only on the user's own sent-folder copies (Gmail returns the Bcc
+    header back to the sender, never to other recipients).
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+
+    def _add(address: str) -> None:
+        if address and address not in seen:
+            seen.add(address)
+            out.append(address)
+
+    for msg in thread_data.messages:
+        _add(msg.from_address)
+        for addr in msg.to_addresses:
+            _add(addr)
+        for addr in msg.cc_addresses:
+            _add(addr)
+        for addr in msg.bcc_addresses:
+            _add(addr)
+    return out
+
+
 def _is_extractable_attachment(mime_type: str) -> bool:
     """
     Check if attachment MIME type is extractable.
@@ -446,13 +475,7 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
     if all_label_ids:
         metadata["labels"] = sorted(all_label_ids)
 
-    # Build participants list (unique, ordered by first appearance)
-    seen_participants: set[str] = set()
-    participants: list[str] = []
-    for msg in thread_data.messages:
-        if msg.from_address and msg.from_address not in seen_participants:
-            seen_participants.add(msg.from_address)
-            participants.append(msg.from_address)
+    participants = _extract_participants(thread_data)
 
     # Date range
     all_warnings = (thread_data.warnings or []) + extraction_warnings

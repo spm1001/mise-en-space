@@ -12,6 +12,7 @@ from tools.fetch import (
     _extract_from_drive, _names_match, _match_exfil_for_message, _enrich_with_comments,
     _is_extractable_attachment, _deposit_attachment_content,
     _extract_attachment_content, _build_email_context_metadata,
+    _extract_participants,
     is_text_file, fetch_drive, fetch_doc, fetch_sheet, fetch_slides,
     fetch_video, fetch_pdf, fetch_office, fetch_text, fetch_image_file,
     fetch_form_file,
@@ -1817,6 +1818,151 @@ class TestDoFetchRouting:
         mock_drive.return_value = FetchResult(path="/p", content_file="/p/c.md", format="markdown", type="doc", metadata={})
         do_fetch("f1", base_path=Path("/custom"))
         mock_drive.assert_called_once_with("f1", base_path=Path("/custom"), recursive=False, tabs=None)
+
+
+class TestExtractParticipants:
+    """Regression tests for participants extraction (mise-vutato).
+
+    Reading From-only misses silent CC list members. A "Hi all" reply
+    composed from such data would lose the CCs entirely — see the field
+    report. The fix includes To + Cc + Bcc across every message.
+    """
+
+    def _make_msg(self, from_addr: str, to=None, cc=None, bcc=None):
+        return EmailMessage(
+            message_id=f"m_{from_addr}",
+            from_address=from_addr,
+            to_addresses=to or [],
+            cc_addresses=cc or [],
+            bcc_addresses=bcc or [],
+            body_text="",
+        )
+
+    def test_from_only_thread(self):
+        """No To/Cc/Bcc — participants reflect From addresses."""
+        thread = GmailThreadData(
+            thread_id="t1", subject="s",
+            messages=[
+                self._make_msg("alice@example.com"),
+                self._make_msg("bob@example.com"),
+            ],
+        )
+        assert _extract_participants(thread) == [
+            "alice@example.com", "bob@example.com",
+        ]
+
+    def test_cc_recipients_included(self):
+        """Cc addresses across all messages appear in participants list."""
+        thread = GmailThreadData(
+            thread_id="t1", subject="s",
+            messages=[
+                self._make_msg(
+                    "Alice <alice@example.com>",
+                    to=["Bob <bob@example.com>"],
+                    cc=["Cathy <cathy@example.com>", "Dave <dave@example.com>"],
+                ),
+            ],
+        )
+        result = _extract_participants(thread)
+        assert any("alice@example.com" in p for p in result)
+        assert any("bob@example.com" in p for p in result)
+        assert any("cathy@example.com" in p for p in result)
+        assert any("dave@example.com" in p for p in result)
+
+    def test_bcc_from_sent_folder_included(self):
+        """Bcc recipients (only visible on sender's own sent copy) appear."""
+        thread = GmailThreadData(
+            thread_id="t1", subject="s",
+            messages=[
+                self._make_msg(
+                    "me@example.com",
+                    to=["target@example.com"],
+                    bcc=["hidden@example.com"],
+                ),
+            ],
+        )
+        result = _extract_participants(thread)
+        assert any("hidden@example.com" in p for p in result)
+
+    def test_dedupes_across_messages(self):
+        """Same address appearing on multiple messages is listed once."""
+        thread = GmailThreadData(
+            thread_id="t1", subject="s",
+            messages=[
+                self._make_msg(
+                    "alice@example.com",
+                    to=["bob@example.com"], cc=["cathy@example.com"],
+                ),
+                self._make_msg(
+                    "bob@example.com",
+                    to=["alice@example.com"], cc=["cathy@example.com"],
+                ),
+            ],
+        )
+        result = _extract_participants(thread)
+        assert result.count("alice@example.com") == 1
+        assert result.count("bob@example.com") == 1
+        assert result.count("cathy@example.com") == 1
+        assert len(result) == 3
+
+    def test_first_appearance_order_preserved(self):
+        """Output order reflects first appearance, not header position."""
+        thread = GmailThreadData(
+            thread_id="t1", subject="s",
+            messages=[
+                self._make_msg(
+                    "first@example.com",
+                    to=["second@example.com"],
+                    cc=["third@example.com"],
+                ),
+                self._make_msg(
+                    "fourth@example.com",
+                    to=["first@example.com"],  # already seen
+                ),
+            ],
+        )
+        result = _extract_participants(thread)
+        assert result == [
+            "first@example.com", "second@example.com",
+            "third@example.com", "fourth@example.com",
+        ]
+
+    def test_field_report_scenario(self):
+        """The mise-vutato BARB thread shape: 2 From + 3 hidden CC = 5 total.
+
+        Real failure mode: thread fetch returned 2 participants (sender +
+        recipient) while messages 2/5/6 carried 3 CCs that were silently
+        dropped.
+        """
+        thread = GmailThreadData(
+            thread_id="t1", subject="s",
+            messages=[
+                self._make_msg(
+                    "External Sender <sender@example.com>",
+                    to=["Recipient <recipient@acme.example.com>"],
+                ),
+                self._make_msg(
+                    "Recipient <recipient@acme.example.com>",
+                    to=["External Sender <sender@example.com>"],
+                    cc=[
+                        "Cc One <cc1@acme.example.com>",
+                        "Cc Two <cc2@example.com>",
+                        "Cc Three <cc3@example.com>",
+                    ],
+                ),
+                self._make_msg(
+                    "External Sender <sender@example.com>",
+                    to=["Recipient <recipient@acme.example.com>"],
+                    cc=[
+                        "Cc One <cc1@acme.example.com>",
+                        "Cc Two <cc2@example.com>",
+                        "Cc Three <cc3@example.com>",
+                    ],
+                ),
+            ],
+        )
+        result = _extract_participants(thread)
+        assert len(result) == 5, f"Expected 5 participants, got {len(result)}: {result}"
 
 
 class TestFetchGmailEdgeCases:

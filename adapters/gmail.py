@@ -46,9 +46,12 @@ THREAD_FIELDS = (
     ")"
 )
 
-# Headers we care about
+# Headers we care about. Bcc appears only on outgoing sent-folder copies
+# of the authenticated user's own messages — Gmail's API does not expose
+# the Bcc list to recipients. Keeping it here ensures it's available
+# when present (own sent messages) for participant enumeration.
 WANTED_HEADERS = frozenset({
-    "From", "To", "Cc", "Subject", "Date",
+    "From", "To", "Cc", "Bcc", "Subject", "Date",
     "Message-ID", "In-Reply-To", "References",
 })
 
@@ -171,6 +174,7 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
         from_address=headers.get("From", ""),
         to_addresses=_parse_address_list(headers.get("To")),
         cc_addresses=_parse_address_list(headers.get("Cc")),
+        bcc_addresses=_parse_address_list(headers.get("Bcc")),
         subject=headers.get("Subject", ""),
         date=_parse_date(headers.get("Date"), msg.get("internalDate")),
         body_text=body_text,
