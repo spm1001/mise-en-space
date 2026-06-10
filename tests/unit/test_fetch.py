@@ -2156,6 +2156,70 @@ class TestExtractParticipants:
         result = _extract_participants(thread)
         assert len(result) == 5, f"Expected 5 participants, got {len(result)}: {result}"
 
+    def test_dedupes_header_format_variants(self):
+        """The mise-nucupi shape: same email under two header serialisations.
+
+        Gmail surfaces the same recipient as '"a@x.com" <a@x.com>' on some
+        messages and 'Alice <a@x.com>' on others. Exact-string dedup keeps
+        both; canonical-email dedup keeps one, preferring the display-named
+        form (a display name repeating the address is no display name).
+        """
+        thread = GmailThreadData(
+            thread_id="t1", subject="s",
+            messages=[
+                self._make_msg(
+                    '"sameer@example.com" <sameer@example.com>',
+                    to=["other@example.com"],
+                ),
+                self._make_msg(
+                    "Sameer Modha <sameer@example.com>",
+                    to=["other@example.com"],
+                ),
+            ],
+        )
+        result = _extract_participants(thread)
+        assert len(result) == 2, f"Expected 2 participants, got {len(result)}: {result}"
+        assert "Sameer Modha <sameer@example.com>" in result
+
+    def test_bare_email_upgraded_by_display_name(self):
+        """A bare address from one message + display-named form from another
+        dedup to one entry carrying the display name."""
+        thread = GmailThreadData(
+            thread_id="t1", subject="s",
+            messages=[
+                self._make_msg("alice@example.com"),
+                self._make_msg("Alice Smith <alice@example.com>"),
+            ],
+        )
+        result = _extract_participants(thread)
+        assert result == ["Alice Smith <alice@example.com>"]
+
+    def test_dedupes_email_casing_variation(self):
+        """Email-part casing differences are the same participant; the
+        first-seen casing of the address is preserved."""
+        thread = GmailThreadData(
+            thread_id="t1", subject="s",
+            messages=[
+                self._make_msg("Alice.Smith@Example.com"),
+                self._make_msg("alice.smith@example.com"),
+            ],
+        )
+        result = _extract_participants(thread)
+        assert result == ["Alice.Smith@Example.com"]
+
+    def test_unparseable_address_kept_verbatim(self):
+        """A header with no addr-spec (e.g. undisclosed recipients) is kept
+        verbatim rather than dropped, deduped exact-string."""
+        thread = GmailThreadData(
+            thread_id="t1", subject="s",
+            messages=[
+                self._make_msg("undisclosed-recipients:;"),
+                self._make_msg("undisclosed-recipients:;"),
+            ],
+        )
+        result = _extract_participants(thread)
+        assert result == ["undisclosed-recipients:;"]
+
 
 class TestFetchGmailEdgeCases:
     """Edge cases in fetch_gmail for remaining uncovered lines."""
