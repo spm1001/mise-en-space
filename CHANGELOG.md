@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.6] - 2026-06-10
+
+Packaging only — no code change. The corrected marketplace assembly
+(no repo-local .claude/, vendored uv.lock actually committed) needs a
+version clients will re-resolve; 0.7.5's marketplace package was briefly
+published with both flaws.
+
 ## [0.7.5] - 2026-06-10
 
 Field-report fixes (reply_all cc, .docx flattening warnings), the gmail.py
