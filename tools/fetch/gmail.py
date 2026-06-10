@@ -326,18 +326,23 @@ def _extract_attachment_content(
     att: EmailAttachment,
     folder: Path,
     warnings: list[str],
+    mime_type: str | None = None,
 ) -> dict[str, Any] | None:
     """
     Download and extract content from a single Gmail attachment.
 
+    mime_type is the resolved MIME for dispatch (see _resolve_attachment_mime);
+    defaults to the declared att.mime_type when not given.
+
     Returns extraction result dict or None on failure.
     """
+    mime = mime_type or att.mime_type
     try:
         download = download_attachment(
             message_id=message_id,
             attachment_id=att.attachment_id,
             filename=att.filename,
-            mime_type=att.mime_type,
+            mime_type=mime,
         )
 
         # Prefer temp_path for large files (content is cleared to save memory)
@@ -347,7 +352,7 @@ def _extract_attachment_content(
             content_bytes = download.content
 
         result = _deposit_attachment_content(
-            content_bytes, att.filename, att.mime_type, att.attachment_id, folder
+            content_bytes, att.filename, mime, att.attachment_id, folder
         )
 
         # Clean up temp file if created
@@ -414,18 +419,29 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
             }
             all_attachments.append(att_info)
 
+            # Resolve Outlook-style octet-stream mis-tagging by filename
+            # extension; dispatch on the resolved MIME, keep att.mime_type
+            # as declared (see mise-dazode — fetch_attachment already does this).
+            resolved_mime = _resolve_attachment_mime(att.mime_type, att.filename)
+            if resolved_mime != att.mime_type:
+                extraction_warnings.append(
+                    f"Attachment '{att.filename}' declared "
+                    f"application/octet-stream; treating as '{resolved_mime}' "
+                    f"via filename extension"
+                )
+
             # Skip Office files (note for manifest)
-            if att.mime_type in OFFICE_MIME_TYPES:
+            if resolved_mime in OFFICE_MIME_TYPES:
                 skipped_office.append(att.filename)
                 continue
 
             # Pre-download image format check (size is no longer a skip criterion —
             # oversized images are resized post-download rather than skipped).
-            if att.mime_type.startswith("image/"):
-                if att.mime_type not in SUPPORTED_IMAGE_MIME_TYPES:
+            if resolved_mime.startswith("image/"):
+                if resolved_mime not in SUPPORTED_IMAGE_MIME_TYPES:
                     skipped_images.append({
                         "filename": att.filename,
-                        "mime_type": att.mime_type,
+                        "mime_type": resolved_mime,
                         "reason": "unsupported format (API supports: jpeg, png, gif, webp)",
                     })
                     continue
@@ -440,11 +456,11 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
 
             # Try pre-exfil'd Drive copy first (faster, already indexed)
             exfil_match = exfil_matches.get(att.attachment_id)
-            if exfil_match and _is_extractable_attachment(att.mime_type):
+            if exfil_match and _is_extractable_attachment(resolved_mime):
                 result = _extract_from_drive(
                     file_id=exfil_match["file_id"],
                     filename=att.filename,
-                    mime_type=att.mime_type,
+                    mime_type=resolved_mime,
                     folder=folder,
                     warnings=extraction_warnings,
                 )
@@ -458,12 +474,13 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
                     continue
 
             # Fall back to Gmail download
-            if _is_extractable_attachment(att.mime_type):
+            if _is_extractable_attachment(resolved_mime):
                 result = _extract_attachment_content(
                     message_id=msg.message_id,
                     att=att,
                     folder=folder,
                     warnings=extraction_warnings,
+                    mime_type=resolved_mime,
                 )
                 if result and result.get("skipped"):
                     skipped_images.append(result)

@@ -935,6 +935,121 @@ class TestFetchAttachmentOctetStreamText:
         mock_office.assert_called_once()
 
 
+class TestEagerOctetStreamResolution:
+    """Regression: the eager-extraction loop in fetch_gmail dispatched on the
+    declared MIME, so Outlook-tagged octet-stream PDFs/images were silently
+    skipped from inline preview even though fetch_attachment could recover
+    them. The loop now resolves via filename extension first.
+    See mise-dazode field report (symmetric coverage with mise-mugure).
+    """
+
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
+    @patch("tools.fetch.gmail._extract_attachment_content")
+    @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/test-deposit"))
+    @patch("tools.fetch.gmail.write_content")
+    @patch("tools.fetch.gmail.write_manifest")
+    @patch("tools.fetch.gmail.extract_thread_content", return_value="Thread content")
+    def test_octet_stream_pdf_eagerly_extracted(
+        self, mock_extract, mock_manifest, mock_write, mock_folder,
+        mock_gmail_extract, mock_lookup, mock_fetch
+    ):
+        """An Outlook-tagged PDF is eagerly extracted, dispatched on the
+        resolved MIME, with the resolution surfaced as a warning."""
+        att = EmailAttachment(
+            filename="report.pdf",
+            mime_type="application/octet-stream",
+            size=1000, attachment_id="att_pdf_1",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+        mock_gmail_extract.return_value = {"filename": "report.pdf", "extracted": True}
+
+        fetch_gmail("thread_xyz")
+
+        mock_gmail_extract.assert_called_once()
+        assert mock_gmail_extract.call_args.kwargs["mime_type"] == "application/pdf"
+        manifest_extra = mock_manifest.call_args.kwargs["extra"]
+        assert any("octet-stream" in w for w in manifest_extra["warnings"])
+
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
+    @patch("tools.fetch.gmail._extract_attachment_content")
+    @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/test-deposit"))
+    @patch("tools.fetch.gmail.write_content")
+    @patch("tools.fetch.gmail.write_manifest")
+    @patch("tools.fetch.gmail.extract_thread_content", return_value="Thread content")
+    def test_octet_stream_image_eagerly_extracted(
+        self, mock_extract, mock_manifest, mock_write, mock_folder,
+        mock_gmail_extract, mock_lookup, mock_fetch
+    ):
+        """An Outlook-tagged PNG passes the image-format gate and is
+        eagerly extracted under its resolved MIME."""
+        att = EmailAttachment(
+            filename="chart.png",
+            mime_type="application/octet-stream",
+            size=2000, attachment_id="att_png_1",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+        mock_gmail_extract.return_value = {"filename": "chart.png", "extracted": True}
+
+        fetch_gmail("thread_xyz")
+
+        mock_gmail_extract.assert_called_once()
+        assert mock_gmail_extract.call_args.kwargs["mime_type"] == "image/png"
+
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
+    @patch("tools.fetch.gmail._extract_attachment_content")
+    @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/test-deposit"))
+    @patch("tools.fetch.gmail.write_content")
+    @patch("tools.fetch.gmail.write_manifest")
+    @patch("tools.fetch.gmail.extract_thread_content", return_value="Thread content")
+    def test_octet_stream_unknown_extension_still_skipped(
+        self, mock_extract, mock_manifest, mock_write, mock_folder,
+        mock_gmail_extract, mock_lookup, mock_fetch
+    ):
+        """Unknown-extension octet-stream stays unextractable — skipped
+        silently from eager preview, no resolution warning emitted."""
+        att = EmailAttachment(
+            filename="archive.weird",
+            mime_type="application/octet-stream",
+            size=99, attachment_id="att_weird_1",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+
+        fetch_gmail("thread_xyz")
+
+        mock_gmail_extract.assert_not_called()
+        manifest_extra = mock_manifest.call_args.kwargs["extra"]
+        assert "warnings" not in manifest_extra
+
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
+    @patch("tools.fetch.gmail._extract_attachment_content")
+    @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/test-deposit"))
+    @patch("tools.fetch.gmail.write_content")
+    @patch("tools.fetch.gmail.write_manifest")
+    @patch("tools.fetch.gmail.extract_thread_content", return_value="Thread content")
+    def test_octet_stream_xlsx_lands_in_skipped_office(
+        self, mock_extract, mock_manifest, mock_write, mock_folder,
+        mock_gmail_extract, mock_lookup, mock_fetch
+    ):
+        """An Outlook-tagged XLSX is now recognised as Office and lands in
+        skipped_office (with its fetch-individually hint) instead of being
+        silently invisible."""
+        att = EmailAttachment(
+            filename="workbook.xlsx",
+            mime_type="application/octet-stream",
+            size=5000, attachment_id="att_xlsx_2",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+
+        result = fetch_gmail("thread_xyz")
+
+        mock_gmail_extract.assert_not_called()
+        assert result.metadata["skipped_office"] == ["workbook.xlsx"]
+
+
 class TestIsTextFile:
     """Tests for is_text_file MIME type checker."""
 
