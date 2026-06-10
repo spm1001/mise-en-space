@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.7] - 2026-06-10
+
+Packaging only — restores the mise skill to the marketplace package.
+0.7.6's assembler excluded the deposit folder with an unanchored rsync
+pattern (`mise/`), which also matched `skills/mise/` and silently ate
+the skill; Desktop showed "this plugin doesn't have any skills". The
+exclude is now root-anchored and a parity guard fails the build if a
+source capability dir (skills/hooks/commands) goes missing from the
+vendored package.
+
 ## [0.7.6] - 2026-06-10
 
 Packaging only — no code change. The corrected marketplace assembly
