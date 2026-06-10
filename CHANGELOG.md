@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.7.4] - 2026-06-10
+
+Two Gmail trust follow-ups from the 0.7.3 BARB-thread verification, plus
+security dependency bumps. Field reports mise-nucupi, mise-dazode.
+
+### Fixed
+- **Duplicate participants under header-format variation** (mise-nucupi) — Gmail serialises the same recipient differently across messages (`"a@x.com" <a@x.com>` on some, `Alice <a@x.com>` on others), and exact-string dedup kept both, over-counting the thread cue's participants list. `_extract_participants` now parses via `email.utils.getaddresses`, dedups on the lowercased email part, and keeps the most informative display form (a display name that merely repeats the address counts as bare). Headers with no addr-spec (e.g. undisclosed-recipients) are kept verbatim. Verified live: the BARB thread returns 5 unique participants (was 6), all display-named.
+- **Outlook octet-stream attachments invisible to eager preview** (mise-dazode) — the 0.7.3 resolver covered `fetch_attachment` (explicit fetch) but the eager-extraction loop in `fetch_gmail` still dispatched on the declared MIME, so an Outlook-sent PDF or PNG tagged `application/octet-stream` was silently skipped from inline preview. The loop now resolves once per attachment (filename-extension fallback) and dispatches on the resolved value; `att.mime_type` stays declared. Resolution surfaces as a cue warning. Octet-stream Office files now land in `skipped_office` with their fetch-individually hint instead of vanishing. Verified live: an Outlook-tagged requisition PDF eagerly extracts with inline preview.
+
+### Security
+- Bumped transitive deps clearing 4 Dependabot alerts: urllib3 2.6.3 → 2.7.0 (high ×2: cross-origin header forwarding in proxied redirects, decompression-bomb safeguard bypass), starlette 0.52.1 → 1.2.1 (Host-header validation), idna 3.11 → 3.18 (encode bypass). Remote-mode StreamableHTTP stack smoke-tested live across starlette's 1.0 major.
+
+### Added
+- 8 new unit tests: header-format-variant dedup, bare-email upgraded by display name, email-casing variation, unparseable-header fallback, eager octet-stream PDF/image extraction, unknown-extension still skipped, octet-stream XLSX routed to skipped_office.
+
 ## [0.7.3] - 2026-05-18
 
 Three Gmail trust fixes shipping together — all surfaced by a single BARB
