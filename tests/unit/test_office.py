@@ -328,3 +328,105 @@ class TestFetchOffice:
         # No raw file for docx
         assert not (deposit_folder / "source.xlsx").exists()
         assert not (deposit_folder / "source.docx").exists()
+
+
+class TestDocxMarkupInspection:
+    """Flattened-markup warnings on the DOCX conversion path (mise-kecigu)."""
+
+    @staticmethod
+    def _make_docx(document_xml: bytes, comments_xml: bytes | None = None) -> bytes:
+        import io
+        import zipfile
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("word/document.xml", document_xml)
+            if comments_xml is not None:
+                zf.writestr("word/comments.xml", comments_xml)
+        return buf.getvalue()
+
+    @patch("adapters.office.convert_via_drive")
+    def test_tracked_changes_warn_through_conversion(self, mock_convert: MagicMock) -> None:
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="clean-looking text", temp_file_deleted=True, warnings=[]
+        )
+        docx = self._make_docx(
+            b'<w:document><w:body>'
+            b'<w:del w:id="1" w:author="Jaclyn Wilkins"><w:r/></w:del>'
+            b'</w:body></w:document>',
+            comments_xml=b'<w:comments><w:comment w:id="0"/></w:comments>',
+        )
+
+        result = convert_office_content("docx", file_bytes=docx, file_id="f1")
+
+        assert any("FLATTENED" in w for w in result.warnings)
+        assert any("Jaclyn Wilkins" in w for w in result.warnings)
+        assert any("Word comment(s)" in w for w in result.warnings)
+
+    @patch("adapters.office.convert_via_drive")
+    def test_clean_docx_adds_no_warnings(self, mock_convert: MagicMock) -> None:
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="text", temp_file_deleted=True, warnings=[]
+        )
+        docx = self._make_docx(b"<w:document><w:body><w:r/></w:body></w:document>")
+
+        result = convert_office_content("docx", file_bytes=docx, file_id="f1")
+
+        assert result.warnings == []
+
+    @patch("adapters.office.convert_via_drive")
+    def test_non_zip_bytes_do_not_crash(self, mock_convert: MagicMock) -> None:
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="text", temp_file_deleted=True, warnings=["upstream warning"]
+        )
+
+        result = convert_office_content("docx", file_bytes=b"not a zip at all", file_id="f1")
+
+        assert result.warnings == ["upstream warning"]
+
+    @patch("adapters.office.convert_via_drive")
+    def test_zip_without_document_xml_skipped(self, mock_convert: MagicMock) -> None:
+        import io
+        import zipfile
+
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="text", temp_file_deleted=True, warnings=[]
+        )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("unrelated.txt", b"hello")
+
+        result = convert_office_content("docx", file_bytes=buf.getvalue(), file_id="f1")
+
+        assert result.warnings == []
+
+    @patch("adapters.office.convert_via_drive")
+    def test_source_file_id_path_skips_inspection(self, mock_convert: MagicMock) -> None:
+        # Server-side copy+convert: no local bytes — accepted MVP gap (mise-kecigu)
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="text", temp_file_deleted=True, warnings=[]
+        )
+
+        result = convert_office_content("docx", source_file_id="drive123")
+
+        assert result.warnings == []
+
+    @patch("adapters.office.convert_via_drive")
+    def test_file_path_input_inspected(self, mock_convert: MagicMock, tmp_path: Path) -> None:
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="text", temp_file_deleted=True, warnings=[]
+        )
+        docx_path = tmp_path / "tracked.docx"
+        docx_path.write_bytes(self._make_docx(
+            b'<w:document><w:body><w:ins w:id="1" w:author="A"><w:r/></w:ins></w:body></w:document>'
+        ))
+
+        result = convert_office_content("docx", file_path=docx_path, file_id="f1")
+
+        assert any("FLATTENED" in w for w in result.warnings)

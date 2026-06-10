@@ -7,6 +7,9 @@ This produces cleaner output than local conversion tools, especially for XLSX.
 
 from __future__ import annotations
 
+import io
+import logging
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, TYPE_CHECKING, cast
@@ -14,7 +17,10 @@ from typing import Literal, TYPE_CHECKING, cast
 from adapters.conversion import convert_via_drive, drive_temp_file
 from adapters.drive import download_file, download_file_to_temp, get_file_size, STREAMING_THRESHOLD_BYTES
 from adapters.sheets import fetch_spreadsheet
+from extractors.docx_markup import count_docx_markup, format_markup_warnings
 from extractors.sheets import extract_sheets_content
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from models import SpreadsheetData
@@ -108,13 +114,51 @@ def convert_office_content(
         source_file_id=source_file_id,
     )
 
+    warnings = list(conversion_result.warnings)
+    # Drive export flattens tracked changes, comments, and inline images
+    # silently — a tracked-DELETED clause reads as present text. Warn so
+    # the reader knows to go to source. Needs the raw bytes, so the
+    # source_file_id path (server-side copy, nothing downloaded) is not
+    # inspected — accepted MVP gap, see mise-kecigu.
+    if office_type == "docx" and (file_bytes is not None or file_path is not None):
+        warnings.extend(_inspect_docx_markup(file_bytes, file_path))
+
     return OfficeConversionResult(
         content=conversion_result.content,
         source_type=office_type,
         export_format=export_format,
         extension=extension,
-        warnings=conversion_result.warnings,
+        warnings=warnings,
     )
+
+
+def _inspect_docx_markup(
+    file_bytes: bytes | None,
+    file_path: Path | None,
+) -> list[str]:
+    """
+    Best-effort markup inspection of the original .docx archive.
+
+    Never raises — a corrupt zip or unexpected layout must not fail the
+    fetch; the warning layer is advisory.
+    """
+    try:
+        source: io.BytesIO | Path
+        source = io.BytesIO(file_bytes) if file_bytes is not None else cast(Path, file_path)
+        with zipfile.ZipFile(source) as archive:
+            names = set(archive.namelist())
+            if "word/document.xml" not in names:
+                return []
+            document_xml = archive.read("word/document.xml")
+            comments_xml = (
+                archive.read("word/comments.xml")
+                if "word/comments.xml" in names
+                else None
+            )
+        return format_markup_warnings(count_docx_markup(document_xml, comments_xml))
+    except Exception:
+        logger.debug("docx markup inspection failed; skipping warnings", exc_info=True)
+        return []
 
 
 def _convert_xlsx_via_sheets_api(

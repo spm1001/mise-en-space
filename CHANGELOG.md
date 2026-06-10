@@ -13,6 +13,9 @@
 - `setup_oauth` leaked the parent's log file handle after spawning the detached auth subprocess.
 - **reply_all built a wrong cc list** (mise-lurumu) — two stacked bugs. `_parse_headers` matched header names case-sensitively, so Outlook's `CC:` (uppercase) was silently dropped and externally-sent messages lost their cc list (also affected participants extraction); header names now canonicalise case-insensitively per RFC 5322. And `do_reply_draft` never passed the authenticated email into `_infer_recipients_all`, so self-exclusion was dead code and the user's own address landed in cc. Verified live against the field-report thread: To: sender, Cc: original cc only.
 
+### Added
+- **Fetched .docx warns when Word markup was flattened** (mise-kecigu MVP) — Drive's markdown export silently drops tracked changes (a tracked-DELETED clause reads as ordinary present text), Word comments, and inline images. The docx conversion path now inspects the original archive (pure regex-on-bytes counter in `extractors/docx_markup.py` — no XML parse, untrusted input can't entity-bomb it) and emits cue warnings naming counts, authors, and the remedy. Verified against the field-report document: 381 tracked changes by 3 authors + 25 comments now announced instead of silent. Known gap: the Gmail pre-exfil path (server-side copy, no local bytes) skips inspection.
+
 ## [0.7.4] - 2026-06-10
 
 Two Gmail trust follow-ups from the 0.7.3 BARB-thread verification, plus
