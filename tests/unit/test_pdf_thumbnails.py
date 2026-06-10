@@ -502,7 +502,7 @@ class TestGmailAttachmentThumbnails:
     @patch("tools.fetch.gmail.write_manifest")
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated")
-    @patch("tools.fetch.gmail.download_attachment")
+    @patch("tools.fetch.gmail_attachments.download_attachment")
     def test_gmail_attachment_pdf_renders_thumbnails(
         self,
         mock_download_att: MagicMock,

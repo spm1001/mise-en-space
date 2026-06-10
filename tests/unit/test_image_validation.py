@@ -345,7 +345,7 @@ class TestDepositAttachmentContentResize:
     """
 
     def _call(self, content_bytes: bytes, mime_type: str, filename: str = "img.png"):
-        from tools.fetch.gmail import _deposit_attachment_content
+        from tools.fetch.gmail_attachments import _deposit_attachment_content
         return _deposit_attachment_content(
             content_bytes=content_bytes,
             filename=filename,
@@ -354,7 +354,7 @@ class TestDepositAttachmentContentResize:
             folder=Path("/tmp/fake"),
         )
 
-    @patch("tools.fetch.gmail.write_image")
+    @patch("tools.fetch.gmail_attachments.write_image")
     def test_small_image_deposited_without_resize_metadata(self, mock_write):
         """Small image (within limit) deposits without resize fields."""
         mock_write.return_value = Path("/tmp/fake/img.png")
@@ -364,7 +364,7 @@ class TestDepositAttachmentContentResize:
         assert result["dimensions"] == "100×80"
         assert "original_dimensions" not in result
 
-    @patch("tools.fetch.gmail.write_image")
+    @patch("tools.fetch.gmail_attachments.write_image")
     def test_oversized_image_deposits_with_resize_metadata(self, mock_write):
         """2746×1908 PNG → deposited; result has original_dimensions and scaled_to."""
         mock_write.return_value = Path("/tmp/fake/img.png")
@@ -376,7 +376,7 @@ class TestDepositAttachmentContentResize:
         assert result["scale_factor"] is not None
         mock_write.assert_called_once()
 
-    @patch("tools.fetch.gmail.write_image")
+    @patch("tools.fetch.gmail_attachments.write_image")
     def test_mime_mismatch_produces_skip_dict(self, mock_write):
         """DOCX bytes declared as image/png → skip dict, nothing written."""
         result = self._call(b"PK\x03\x04", "image/png", "doc.png")

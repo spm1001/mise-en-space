@@ -584,7 +584,7 @@ class TestFetchAttachment:
 
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
-    @patch("tools.fetch.gmail.download_attachment")
+    @patch("tools.fetch.gmail_attachments.download_attachment")
     @patch("tools.fetch.gmail.convert_office_content")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value="/tmp/test-deposit")
     @patch("tools.fetch.gmail.write_content", return_value="/tmp/test-deposit/content.csv")
@@ -625,7 +625,7 @@ class TestFetchAttachment:
 
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
-    @patch("tools.fetch.gmail.download_attachment")
+    @patch("tools.fetch.gmail_attachments.download_attachment")
     @patch("tools.fetch.gmail.convert_office_content")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value="/tmp/test-deposit")
     @patch("tools.fetch.gmail.write_content", return_value="/tmp/test-deposit/content.csv")
@@ -661,7 +661,7 @@ class TestFetchAttachment:
 
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
-    @patch("tools.fetch.gmail.download_attachment")
+    @patch("tools.fetch.gmail_attachments.download_attachment")
     @patch("tools.fetch.gmail.convert_pdf_content")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value="/tmp/test-deposit")
     @patch("tools.fetch.gmail.write_content", return_value="/tmp/test-deposit/content.md")
@@ -725,7 +725,7 @@ class TestFetchAttachment:
 
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated")
-    @patch("tools.fetch.gmail.download_attachment")
+    @patch("tools.fetch.gmail_attachments.download_attachment")
     @patch("tools.fetch.gmail.convert_office_content")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value="/tmp/test-deposit")
     @patch("tools.fetch.gmail.write_content", return_value="/tmp/test-deposit/content.csv")
@@ -764,7 +764,7 @@ class TestFetchAttachment:
 
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
-    @patch("tools.fetch.gmail.download_attachment")
+    @patch("tools.fetch.gmail_attachments.download_attachment")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value="/tmp/test-deposit")
     @patch("tools.fetch.gmail.write_image", return_value="/tmp/test-deposit/logo.png")
     @patch("tools.fetch.gmail.write_manifest")
@@ -816,7 +816,7 @@ class TestFetchAttachmentOctetStreamText:
 
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
-    @patch("tools.fetch.gmail.download_attachment")
+    @patch("tools.fetch.gmail_attachments.download_attachment")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/test-deposit"))
     @patch("tools.fetch.gmail.write_content", return_value="/tmp/test-deposit/content.csv")
     @patch("tools.fetch.gmail.write_manifest")
@@ -853,7 +853,7 @@ class TestFetchAttachmentOctetStreamText:
 
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
-    @patch("tools.fetch.gmail.download_attachment")
+    @patch("tools.fetch.gmail_attachments.download_attachment")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/test-deposit"))
     @patch("tools.fetch.gmail.write_content", return_value="/tmp/test-deposit/content.json")
     @patch("tools.fetch.gmail.write_manifest")
@@ -900,7 +900,7 @@ class TestFetchAttachmentOctetStreamText:
 
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
-    @patch("tools.fetch.gmail.download_attachment")
+    @patch("tools.fetch.gmail_attachments.download_attachment")
     @patch("tools.fetch.gmail.convert_office_content")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/test-deposit"))
     @patch("tools.fetch.gmail.write_content", return_value="/tmp/test-deposit/content.csv")
@@ -1230,9 +1230,9 @@ class TestEnrichWithComments:
 class TestDepositAttachmentContent:
     """Tests for _deposit_attachment_content."""
 
-    @patch("tools.fetch.gmail.convert_pdf_content")
-    @patch("tools.fetch.gmail.write_content")
-    @patch("tools.fetch.gmail.write_image")
+    @patch("tools.fetch.gmail_attachments.convert_pdf_content")
+    @patch("tools.fetch.gmail_attachments.write_content")
+    @patch("tools.fetch.gmail_attachments.write_image")
     def test_pdf_extracted_and_deposited(self, mock_img, mock_write, mock_pdf):
         """PDF bytes are extracted and both .md and raw file deposited."""
         mock_pdf.return_value = PdfConversionResult(
@@ -1249,7 +1249,7 @@ class TestDepositAttachmentContent:
         mock_write.assert_called_once()
         mock_img.assert_called_once()
 
-    @patch("tools.fetch.gmail.write_image")
+    @patch("tools.fetch.gmail_attachments.write_image")
     def test_image_deposited(self, mock_img):
         """Valid image bytes are deposited as file."""
         buf = io.BytesIO()
@@ -1277,7 +1277,7 @@ class TestDepositAttachmentContent:
         assert result["skipped"] is True
         assert "doesn't match" in result["reason"]
 
-    @patch("tools.fetch.gmail.write_image")
+    @patch("tools.fetch.gmail_attachments.write_image")
     def test_image_with_valid_dimensions_includes_dimension_info(self, mock_img):
         """Valid image bytes: deposited and dimensions noted in result."""
         buf = io.BytesIO()
@@ -1291,7 +1291,7 @@ class TestDepositAttachmentContent:
         assert result["dimensions"] == "100×200"
         mock_img.assert_called_once()
 
-    @patch("tools.fetch.gmail.write_image")
+    @patch("tools.fetch.gmail_attachments.write_image")
     def test_image_exceeding_dimension_limit_is_resized(self, mock_img):
         """Image with long edge > 1568px is resized and deposited (not skipped)."""
         buf = io.BytesIO()
@@ -1317,8 +1317,8 @@ class TestDepositAttachmentContent:
 class TestExtractFromDrive:
     """Tests for _extract_from_drive."""
 
-    @patch("tools.fetch.gmail.download_file", return_value=b"pdf bytes")
-    @patch("tools.fetch.gmail._deposit_attachment_content")
+    @patch("tools.fetch.gmail_attachments.download_file", return_value=b"pdf bytes")
+    @patch("tools.fetch.gmail_attachments._deposit_attachment_content")
     def test_downloads_and_deposits(self, mock_deposit, mock_dl):
         """Downloads file from Drive and routes to deposit."""
         mock_deposit.return_value = {"filename": "r.pdf", "extracted": True}
@@ -1328,7 +1328,7 @@ class TestExtractFromDrive:
         assert result["extracted"] is True
         assert warnings == []
 
-    @patch("tools.fetch.gmail.download_file", side_effect=RuntimeError("download failed"))
+    @patch("tools.fetch.gmail_attachments.download_file", side_effect=RuntimeError("download failed"))
     def test_failure_appends_warning(self, mock_dl):
         """Download failure appends warning and returns None."""
         warnings: list[str] = []
@@ -1341,8 +1341,8 @@ class TestExtractFromDrive:
 class TestExtractAttachmentContent:
     """Tests for _extract_attachment_content."""
 
-    @patch("tools.fetch.gmail.download_attachment")
-    @patch("tools.fetch.gmail._deposit_attachment_content")
+    @patch("tools.fetch.gmail_attachments.download_attachment")
+    @patch("tools.fetch.gmail_attachments._deposit_attachment_content")
     def test_downloads_and_deposits(self, mock_deposit, mock_dl):
         """Downloads from Gmail and deposits."""
         mock_dl.return_value = AttachmentDownload(
@@ -1358,8 +1358,8 @@ class TestExtractAttachmentContent:
         result = _extract_attachment_content("msg1", att, Path("/tmp"), warnings)
         assert result is not None
 
-    @patch("tools.fetch.gmail.download_attachment")
-    @patch("tools.fetch.gmail._deposit_attachment_content", return_value=None)
+    @patch("tools.fetch.gmail_attachments.download_attachment")
+    @patch("tools.fetch.gmail_attachments._deposit_attachment_content", return_value=None)
     def test_unhandled_type_cleans_temp(self, mock_deposit, mock_dl):
         """When deposit returns None and temp_path exists, it's cleaned up."""
         mock_dl.return_value = AttachmentDownload(
@@ -1376,7 +1376,7 @@ class TestExtractAttachmentContent:
             result = _extract_attachment_content("msg1", att, Path("/tmp"), warnings)
         assert result is None
 
-    @patch("tools.fetch.gmail.download_attachment", side_effect=RuntimeError("api error"))
+    @patch("tools.fetch.gmail_attachments.download_attachment", side_effect=RuntimeError("api error"))
     def test_failure_appends_warning(self, mock_dl):
         """Download failure appends warning."""
         att = MagicMock()
@@ -2600,7 +2600,7 @@ class TestFetchAttachmentExfilEdgeCases:
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated")
     @patch("tools.fetch.gmail.download_file", side_effect=RuntimeError("Drive error"))
-    @patch("tools.fetch.gmail.download_attachment")
+    @patch("tools.fetch.gmail_attachments.download_attachment")
     @patch("tools.fetch.gmail.convert_pdf_content")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/pdf"))
     @patch("tools.fetch.gmail.write_content", return_value=Path("/tmp/pdf/content.md"))
@@ -2815,7 +2815,7 @@ class TestFetchAttachmentLookupFailure:
 
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated", side_effect=RuntimeError("API down"))
-    @patch("tools.fetch.gmail.download_attachment")
+    @patch("tools.fetch.gmail_attachments.download_attachment")
     @patch("tools.fetch.gmail.convert_pdf_content")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/pdf"))
     @patch("tools.fetch.gmail.write_content", return_value=Path("/tmp/pdf/content.md"))
@@ -2846,7 +2846,7 @@ class TestFetchAttachmentLookupFailure:
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated")
     @patch("tools.fetch.gmail.download_file", side_effect=RuntimeError("Drive error"))
-    @patch("tools.fetch.gmail.download_attachment")
+    @patch("tools.fetch.gmail_attachments.download_attachment")
     @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/image"))
     @patch("tools.fetch.gmail.write_image", return_value=Path("/tmp/image/logo.png"))
     @patch("tools.fetch.gmail.write_manifest")

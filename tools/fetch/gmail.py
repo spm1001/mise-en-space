@@ -2,368 +2,29 @@
 Gmail fetch — thread extraction, attachment handling, pre-exfil routing.
 """
 
-from email.utils import formataddr, getaddresses
 from pathlib import Path
 from typing import Any
 
 from adapters.drive import download_file, lookup_exfiltrated
-from adapters.gmail import fetch_thread, download_attachment
+from adapters.gmail import fetch_thread
 from adapters.office import convert_office_content, get_office_type_from_mime
 from adapters.pdf import convert_pdf_content, render_pdf_pages
 from extractors.gmail import extract_thread_content
-from extractors.image import resize_image_bytes, SUPPORTED_IMAGE_MIME_TYPES
-from models import MiseError, FetchResult, FetchError, EmailAttachment
+from extractors.image import resize_image_bytes
+from models import FetchResult, FetchError
 from workspace import get_deposit_folder, write_content, write_manifest, write_image
 
-from .common import _build_cues, _deposit_pdf_thumbnails, is_text_file
-
-
-# MIME types for Office files that are too slow to extract eagerly (5-10s each)
-OFFICE_MIME_TYPES = {
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # docx
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # xlsx
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",  # pptx
-    "application/msword",  # doc
-    "application/vnd.ms-excel",  # xls
-    "application/vnd.ms-powerpoint",  # ppt
-}
-
-# Filename-extension → real MIME for fallback when sender mislabels the
-# attachment as application/octet-stream (Outlook/Exchange tags everything
-# it doesn't have a specific type for that way, including plain-text CSVs).
-# Without this fallback, fetch would reject CSVs/JSON/etc. from Outlook
-# clients — see mise-mugure field report.
-_EXTENSION_MIME_FALLBACK = {
-    ".csv": "text/csv",
-    ".tsv": "text/tab-separated-values",
-    ".txt": "text/plain",
-    ".log": "text/plain",
-    ".json": "application/json",
-    ".xml": "application/xml",
-    ".yaml": "application/x-yaml",
-    ".yml": "application/x-yaml",
-    ".md": "text/markdown",
-    ".html": "text/html",
-    ".htm": "text/html",
-    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    ".pdf": "application/pdf",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".svg": "image/svg+xml",
-}
-
-
-def _resolve_attachment_mime(declared_mime: str, filename: str) -> str:
-    """Resolve a declared MIME type, falling back to filename extension for
-    Outlook/Exchange-style octet-stream attachments.
-
-    Outlook tags many text formats (CSV, JSON, XML) as application/octet-stream
-    rather than text/csv etc. Without this resolver, fetch_attachment falls
-    through to "Cannot extract" on anything sent from such clients.
-
-    Returns the resolved MIME if filename has a known extension; otherwise
-    returns the declared MIME unchanged.
-    """
-    if declared_mime != "application/octet-stream":
-        return declared_mime
-    if "." not in filename:
-        return declared_mime
-    ext = "." + filename.rsplit(".", 1)[-1].lower()
-    return _EXTENSION_MIME_FALLBACK.get(ext, declared_mime)
-
-# NOTE: In conversations with >20 accumulated images the limit drops to 2000px.
-# We can't know conversation context at deposit time — note dimension in metadata
-# so Claude can judge risk in long conversations.
-# SUPPORTED_IMAGE_MIME_TYPES imported from extractors.image (single source of truth)
-
-# Maximum attachments to extract eagerly (prevent runaway extraction)
-MAX_EAGER_ATTACHMENTS = 10
-
-
-def _extract_participants(thread_data: Any) -> list[str]:
-    """Build participants list from a GmailThreadData (unique by canonical
-    email, ordered by first appearance).
-
-    Includes From + To + Cc + Bcc across every message. Reading From-only
-    misses silent CC list members — a "Hi all" reply built from such data
-    would lose the CCs entirely (see mise-vutato field report). Bcc shows
-    up only on the user's own sent-folder copies (Gmail returns the Bcc
-    header back to the sender, never to other recipients).
-
-    Dedup is on the lowercased email part, not the raw header string —
-    Gmail serialises the same person as '"a@x.com" <a@x.com>' on one
-    message and 'Alice <a@x.com>' on another, so exact-string dedup
-    over-counts (see mise-nucupi field report). The most informative
-    display form wins: a real name beats a bare address, and a display
-    name that merely repeats the address counts as bare.
-    """
-    # email-part key -> (address as first seen, best display name so far)
-    entries: dict[str, tuple[str, str]] = {}
-    order: list[str] = []
-
-    def _add(raw: str) -> None:
-        if not raw:
-            return
-        parsed = [(d, a) for d, a in getaddresses([raw]) if a]
-        if not parsed:
-            # No addr-spec found (e.g. "Undisclosed recipients:;") —
-            # fall back to exact-string dedup on the raw value.
-            if raw not in entries:
-                entries[raw] = (raw, "")
-                order.append(raw)
-            return
-        for display, addr in parsed:
-            if display.strip().lower() == addr.lower():
-                display = ""
-            key = addr.lower()
-            if key not in entries:
-                entries[key] = (addr, display)
-                order.append(key)
-            elif len(display) > len(entries[key][1]):
-                entries[key] = (entries[key][0], display)
-
-    for msg in thread_data.messages:
-        _add(msg.from_address)
-        for addr in msg.to_addresses:
-            _add(addr)
-        for addr in msg.cc_addresses:
-            _add(addr)
-        for addr in msg.bcc_addresses:
-            _add(addr)
-
-    out: list[str] = []
-    for key in order:
-        addr, display = entries[key]
-        out.append(formataddr((display, addr)) if display else addr)
-    return out
-
-
-def _is_extractable_attachment(mime_type: str) -> bool:
-    """
-    Check if attachment MIME type is extractable.
-
-    Office files are skipped (too slow for eager extraction).
-    PDFs and images are extracted.
-    """
-    # Skip Office files - they take 5-10s each
-    if mime_type in OFFICE_MIME_TYPES:
-        return False
-
-    # Extract PDFs
-    if mime_type == "application/pdf":
-        return True
-
-    # Extract supported images only — the pre-download size/format check in
-    # fetch_gmail handles the finer filtering; this gates the drive-exfil path too.
-    if mime_type in SUPPORTED_IMAGE_MIME_TYPES:
-        return True
-
-    return False
-
-
-def _names_match(att_filename: str, drive_filename: str) -> bool:
-    """
-    Exact or stem match between an attachment filename and a Drive filename.
-
-    The exfil script may modify filenames:
-    - ensureExtension: "report" → "report.pdf"  (stem match catches this)
-    - smartFilename: UUID names get date+sender prefix  (no match — falls to fallback)
-    """
-    if att_filename == drive_filename:
-        return True
-    att_stem = att_filename.rsplit(".", 1)[0] if "." in att_filename else att_filename
-    drive_stem = drive_filename.rsplit(".", 1)[0] if "." in drive_filename else drive_filename
-    return att_stem == drive_stem
-
-
-def _match_exfil_for_message(
-    attachments: list[EmailAttachment],
-    exfil_files: list[dict[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    """
-    Match all attachments for a message to pre-exfil'd Drive files.
-
-    Uses a consumed pool so each exfil file is assigned at most once.
-    This prevents the same Drive file matching multiple attachments — the
-    original bug that deposited DOCX bytes under PNG filenames.
-
-    Two-pass algorithm:
-    1. Name/stem matches consume from pool greedily (deterministic, unambiguous).
-    2. 1:1 fallback: if exactly one attachment is still unmatched AND exactly one
-       exfil file remains AND their MIME categories agree → assign it.
-       This handles UUID-renamed files where name matching fails entirely.
-
-    Returns dict mapping attachment_id → exfil file dict.
-    """
-    if not exfil_files or not attachments:
-        return {}
-
-    pool = list(exfil_files)  # mutable copy — consumed as matches are made
-    matched: dict[str, dict[str, Any]] = {}
-
-    # Pass 1: exact and stem matches, consuming from pool
-    for att in attachments:
-        for i, f in enumerate(pool):
-            if _names_match(att.filename, f["name"]):
-                matched[att.attachment_id] = f
-                pool.pop(i)
-                break
-
-    # Pass 2: 1:1 fallback — only when certainty is absolute
-    unmatched = [a for a in attachments if a.attachment_id not in matched]
-    if len(unmatched) == 1 and len(pool) == 1:
-        att, exfil = unmatched[0], pool[0]
-        exfil_cat = exfil.get("mimeType", "").split("/")[0]
-        att_cat = att.mime_type.split("/")[0]
-        if exfil_cat and exfil_cat == att_cat:
-            matched[att.attachment_id] = exfil
-
-    return matched
-
-
-def _deposit_attachment_content(
-    content_bytes: bytes,
-    filename: str,
-    mime_type: str,
-    file_id: str,
-    folder: Path,
-) -> dict[str, Any] | None:
-    """
-    Route attachment bytes by MIME type and deposit to folder.
-
-    Shared by both Drive (pre-exfil) and Gmail download paths.
-    Returns extraction result dict or None if type not handled.
-    """
-    if mime_type == "application/pdf":
-        # No thumbnails here — this deposits into the shared thread folder.
-        # Multiple PDF attachments would collide on page_01.png filenames.
-        # The raw PDF is deposited alongside for Claude to view directly.
-        # Single-attachment fetch (fetch_attachment) gets its own folder and does render thumbnails.
-        result = convert_pdf_content(content_bytes, file_id=file_id)
-
-        content_filename = f"{filename}.md"
-        write_content(folder, result.content, filename=content_filename)
-        write_image(folder, content_bytes, filename)
-
-        return {
-            "filename": filename,
-            "mime_type": mime_type,
-            "extracted": True,
-            "extraction_method": result.method,
-            "content_file": content_filename,
-            "char_count": result.char_count,
-        }
-
-    elif mime_type.startswith("image/"):
-        # Open with PIL, resize if needed, deposit.
-        # Oversized images (long edge > MAX_LONG_EDGE_PX) are scaled down rather
-        # than skipped — the API downscales internally above 1568px anyway.
-        # Only PIL failures (genuine MIME mismatch, e.g. DOCX renamed .png) cause
-        # a skip — depositing non-image bytes as image/png causes a hard 400 that
-        # poisons the session and cannot be fixed by resizing.
-        try:
-            resized = resize_image_bytes(content_bytes, mime_type)
-        except ValueError as e:
-            return {
-                "filename": filename,
-                "mime_type": mime_type,
-                "skipped": True,
-                "reason": str(e),
-            }
-
-        deposited_filename = filename
-        if resized.jpeg_fallback:
-            # PNG was still > 4.5MB after resize — converted to JPEG.
-            deposited_filename = filename.rsplit(".", 1)[0] + ".jpg"
-
-        write_image(folder, resized.content_bytes, deposited_filename)
-
-        result: dict[str, Any] = {
-            "filename": filename,
-            "mime_type": resized.mime_type,
-            "extracted": True,
-            "deposited_as": deposited_filename,
-            "dimensions": resized.dimensions,
-        }
-        if resized.original_dimensions:
-            result["original_dimensions"] = resized.original_dimensions
-            result["scaled_to"] = resized.dimensions
-            result["scale_factor"] = resized.scale_factor
-        if resized.jpeg_fallback:
-            result["jpeg_fallback"] = True
-        return result
-
-    return None
-
-
-def _extract_from_drive(
-    file_id: str,
-    filename: str,
-    mime_type: str,
-    folder: Path,
-    warnings: list[str],
-) -> dict[str, Any] | None:
-    """
-    Extract content from a pre-exfiltrated Drive file.
-
-    Faster when the file is already in Drive (background exfiltration).
-    """
-    try:
-        content_bytes = download_file(file_id)
-        return _deposit_attachment_content(content_bytes, filename, mime_type, file_id, folder)
-    except Exception as e:
-        warnings.append(f"Drive exfil fallback failed for {filename}: {str(e)}")
-        return None
-
-
-def _extract_attachment_content(
-    message_id: str,
-    att: EmailAttachment,
-    folder: Path,
-    warnings: list[str],
-    mime_type: str | None = None,
-) -> dict[str, Any] | None:
-    """
-    Download and extract content from a single Gmail attachment.
-
-    mime_type is the resolved MIME for dispatch (see _resolve_attachment_mime);
-    defaults to the declared att.mime_type when not given.
-
-    Returns extraction result dict or None on failure.
-    """
-    mime = mime_type or att.mime_type
-    try:
-        download = download_attachment(
-            message_id=message_id,
-            attachment_id=att.attachment_id,
-            filename=att.filename,
-            mime_type=mime,
-        )
-
-        # Prefer temp_path for large files (content is cleared to save memory)
-        if download.temp_path:
-            content_bytes = download.temp_path.read_bytes()
-        else:
-            content_bytes = download.content
-
-        result = _deposit_attachment_content(
-            content_bytes, att.filename, mime, att.attachment_id, folder
-        )
-
-        # Clean up temp file if created
-        if download.temp_path:
-            download.temp_path.unlink(missing_ok=True)
-
-        return result
-
-    except Exception as e:
-        warnings.append(f"Failed to extract {att.filename}: {str(e)}")
-        return None
+from .common import _build_cues, _deposit_pdf_thumbnails
+from .gmail_attachments import (
+    MAX_EAGER_ATTACHMENTS,
+    _download_attachment_bytes,
+    _extract_attachment_content,
+    _extract_from_drive,
+    _resolve_attachment_mime,
+    classify_attachment,
+)
+from .gmail_exfil import _match_exfil_for_message
+from .gmail_participants import _extract_participants
 
 
 def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
@@ -430,21 +91,22 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
                     f"via filename extension"
                 )
 
+            category = classify_attachment(resolved_mime)
+
             # Skip Office files (note for manifest)
-            if resolved_mime in OFFICE_MIME_TYPES:
+            if category == "office":
                 skipped_office.append(att.filename)
                 continue
 
             # Pre-download image format check (size is no longer a skip criterion —
             # oversized images are resized post-download rather than skipped).
-            if resolved_mime.startswith("image/"):
-                if resolved_mime not in SUPPORTED_IMAGE_MIME_TYPES:
-                    skipped_images.append({
-                        "filename": att.filename,
-                        "mime_type": resolved_mime,
-                        "reason": "unsupported format (API supports: jpeg, png, gif, webp)",
-                    })
-                    continue
+            if category == "image_unsupported":
+                skipped_images.append({
+                    "filename": att.filename,
+                    "mime_type": resolved_mime,
+                    "reason": "unsupported format (API supports: jpeg, png, gif, webp)",
+                })
+                continue
 
             # Limit eager extraction
             if extracted_count >= MAX_EAGER_ATTACHMENTS:
@@ -454,9 +116,11 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
                 )
                 continue
 
+            eager = category in ("pdf", "image")
+
             # Try pre-exfil'd Drive copy first (faster, already indexed)
             exfil_match = exfil_matches.get(att.attachment_id)
-            if exfil_match and _is_extractable_attachment(resolved_mime):
+            if exfil_match and eager:
                 result = _extract_from_drive(
                     file_id=exfil_match["file_id"],
                     filename=att.filename,
@@ -474,7 +138,7 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
                     continue
 
             # Fall back to Gmail download
-            if _is_extractable_attachment(resolved_mime):
+            if eager:
                 result = _extract_attachment_content(
                     message_id=msg.message_id,
                     att=att,
@@ -609,22 +273,6 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
     )
 
 
-def _download_attachment_bytes(msg: Any, att: Any, mime_type: str) -> bytes:
-    """Download attachment bytes from Gmail."""
-    dl = download_attachment(
-        message_id=msg.message_id,
-        attachment_id=att.attachment_id,
-        filename=att.filename,
-        mime_type=mime_type,
-    )
-    # Prefer temp_path for large files (content is cleared to save memory)
-    if dl.temp_path:
-        data = dl.temp_path.read_bytes()
-        dl.temp_path.unlink(missing_ok=True)
-        return data
-    return dl.content
-
-
 def fetch_attachment(
     thread_id: str,
     attachment_name: str,
@@ -664,6 +312,8 @@ def fetch_attachment(
     # Resolve declared MIME via filename extension when sender mislabels as
     # application/octet-stream (Outlook/Exchange ships CSV/JSON/XML this way).
     mime_type = _resolve_attachment_mime(target_att.mime_type, target_att.filename)
+    category = classify_attachment(mime_type)
+    content_bytes: bytes | None
     warnings: list[str] = []
     if mime_type != target_att.mime_type:
         warnings.append(
@@ -743,7 +393,9 @@ def fetch_attachment(
     # PDF: markitdown runs locally first (needs bytes), Drive is fallback only
     # Images: deposited as files for Claude to view (need bytes on disk)
     # Download from pre-exfil Drive or Gmail as appropriate
-    if mime_type == "application/pdf" or mime_type.startswith("image/"):
+    # (image_unsupported included: the deposit attempt produces the precise
+    # "Image validation failed" error rather than a generic cannot-extract)
+    if category in ("pdf", "image", "image_unsupported"):
         content_bytes = None
         if exfil_file_id:
             try:
@@ -757,7 +409,7 @@ def fetch_attachment(
             source_label = "gmail"
 
     # PDF
-    if mime_type == "application/pdf":
+    if category == "pdf":
         pdf_result = convert_pdf_content(file_bytes=content_bytes, file_id=thread_id)
 
         # Render thumbnails (own folder, no collision risk)
@@ -800,8 +452,10 @@ def fetch_attachment(
             cues=cues,
         )
 
-    # Images
-    if mime_type.startswith("image/"):
+    # Images (image_unsupported deliberately enters here: resize_image_bytes
+    # raises ValueError with the precise unsupported-format message)
+    if category in ("image", "image_unsupported"):
+        assert content_bytes is not None  # filled by the bytes-fetch block above
         try:
             resized = resize_image_bytes(content_bytes, mime_type)
         except ValueError as e:
@@ -831,7 +485,7 @@ def fetch_attachment(
         if resized.jpeg_fallback:
             image_meta["jpeg_fallback"] = True
 
-        extra: dict[str, Any] = {"source": source_label, "gmail_thread_id": thread_id, **image_meta}
+        extra = {"source": source_label, "gmail_thread_id": thread_id, **image_meta}
         if warnings:
             extra["warnings"] = warnings
         write_manifest(folder, "image", title, thread_id, extra=extra)
@@ -851,7 +505,7 @@ def fetch_attachment(
     # no extraction needed (Claude reads the file directly). Also handles
     # Outlook's octet-stream-tagged text attachments via the MIME resolver
     # at the top of this function.
-    if is_text_file(mime_type):
+    if category == "text":
         content_bytes = None
         if exfil_file_id:
             try:
@@ -869,7 +523,7 @@ def fetch_attachment(
         folder = get_deposit_folder("text", title, thread_id, base_path=base_path)
         content_path = write_content(folder, content, filename=content_filename)
 
-        extra: dict[str, Any] = {
+        extra = {
             "source": source_label,
             "gmail_thread_id": thread_id,
             "mime_type": mime_type,
