@@ -103,6 +103,19 @@ search("label:project-alpha is:unread", sources=["gmail"], base_path="...")
 search("in:sent subject:data governance after:2026/01/01", sources=["gmail"], base_path="...")
 ```
 
+## Search asymmetry: people-shaped questions and short tokens
+
+Two field-tested traps (2026-05-21: a press release "shared by Owen" went unfound for 10 minutes, then surfaced in the Gmail UI in seconds):
+
+**1. "Find what X sent/shared" is a participants question, not a `from:` question.** The artefact often lives in a thread someone *else* opened — X was on To: or Cc: (e.g. a colleague circulating a draft on X's behalf). A `from:`-only filter structurally misses it.
+
+```
+# Material about/with a person — cover all roles:
+(from:owen@example.com OR to:owen@example.com OR cc:owen@example.com)
+```
+
+**2. The API matches free text more strictly than the Gmail UI.** Short tokens (`PR`, `AI`, `ML`, `KPI`) that work in the browser can return near-zero hits through mise — the UI applies fuzzier matching and different ranking; the API does not. When a query that "should" work returns suspiciously little: drop the short token and narrow with participant + date operators instead. Once a filter has results down to 5–20 hits, open each one — reading ten results beats trusting one brittle token. Before reporting an email as not findable, confirm in the Gmail UI.
+
 ## Drive uses a different syntax
 
 Drive search uses SQL-like queries, not Gmail operators. `from:`, `is:starred`, `subject:` return 400 errors on Drive — use plain keywords for Drive, operators for Gmail. When searching both sources (the default), the query string applies as keywords to Drive and as operators to Gmail.

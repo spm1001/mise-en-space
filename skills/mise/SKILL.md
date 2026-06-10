@@ -94,6 +94,8 @@ fetch("folder_id", base_path="...", recursive=True)        # Full folder tree (d
 
 **Gmail URL gotcha:** Browser URLs contain web-format IDs (`FMfcgz...`), not API IDs. The MCP converts automatically, but conversion fails for self-sent emails (~2018+). If fetch errors on a Gmail URL, ask the user for the thread ID.
 
+**What fetch can't take:** Only Workspace content is fetchable — `mail.google.com/#search/...` URLs and non-Google URLs (GitHub, docs sites) will 404. Run the query through `search` instead. And the 12-char ID fragment in a deposit folder name (`doc--title--1jinlqdtqLpw`) is a prefix, not a fetchable ID — the full ID is in that folder's `manifest.json`.
+
 Then follow the **After Every Fetch** checklist above.
 
 ## Workflow 2: Research
@@ -135,7 +137,12 @@ search("has:attachment subject:lantern after:2025/12/01", sources=["gmail"])
 
 Key operators: `from:`, `to:`, `filename:`, `has:attachment`, `after:`, `before:`, `subject:`, `in:sent`
 
-See `references/gmail-operators.md` for the full set.
+**Two asymmetries that waste sessions:**
+
+- **"What did X send/share?" needs `(from:X OR to:X OR cc:X)`** — the thing X "shared" often arrives in a thread someone else started, with X on To: or Cc:. `from:X` alone structurally misses it.
+- **Short free-text tokens (`PR`, `AI`, `KPI`) are brittle through the API** — the Gmail UI fuzzy-matches them; the API doesn't. If a short-token query returns suspiciously little, drop the token and narrow by participants + date instead, then open each of the 5–20 hits. Before reporting an email "not findable", confirm in the Gmail UI.
+
+See `references/gmail-operators.md` for the full set and the search-asymmetry detail.
 
 ### Drive: Keywords Only (Different Syntax!)
 
@@ -544,6 +551,8 @@ Draft-only — Claude composes, the user reviews and sends from Gmail. This is a
 |---------|---------|-----|
 | Keyword soup in Gmail | Noisy, imprecise results | Use `from:`, `filename:`, `after:` operators |
 | Gmail operators in Drive search | 400 error from API | Drive uses plain keywords, not `from:`/`is:` |
+| `from:X` for "what did X share" | Misses threads where X is recipient | `(from:X OR to:X OR cc:X)` |
+| Trusting short tokens (`PR`, `AI`) | API stricter than UI — false "not found" | Participants + date filters; confirm in Gmail UI |
 | Skip comments.md | Miss the real discussion | Check after every doc/sheet/slides fetch |
 | Ignore email_context | Miss the story behind the file | Follow the exploration loop |
 | Read full search JSON | Token waste on 35 results | Filter with jq first |
