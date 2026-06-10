@@ -17,7 +17,8 @@ from adapters.gmail import (
     _build_references,
     _ensure_re_prefix,
 )
-from models import DoResult, MiseError
+from cues_util import current_user_email
+from models import DoResult, EmailMessage, MiseError
 from tools.draft import (
     _content_to_html,
     _format_links_text,
@@ -141,7 +142,7 @@ def do_reply_draft(
 
     # Infer recipients
     if reply_all:
-        to, inferred_cc = _infer_recipients_all(last_message)
+        to, inferred_cc = _infer_recipients_all(last_message, current_user_email())
     else:
         to, inferred_cc = _infer_recipients(last_message)
 

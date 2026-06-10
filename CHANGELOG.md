@@ -11,6 +11,7 @@
 - `ContentType` Literal missing `"form"` (workspace/manager.py) — toise finding.
 - Path containment in `do(create)` used `str.startswith` (prefix-collision admits `/repo-evil` siblings) — now `Path.is_relative_to`.
 - `setup_oauth` leaked the parent's log file handle after spawning the detached auth subprocess.
+- **reply_all built a wrong cc list** (mise-lurumu) — two stacked bugs. `_parse_headers` matched header names case-sensitively, so Outlook's `CC:` (uppercase) was silently dropped and externally-sent messages lost their cc list (also affected participants extraction); header names now canonicalise case-insensitively per RFC 5322. And `do_reply_draft` never passed the authenticated email into `_infer_recipients_all`, so self-exclusion was dead code and the user's own address landed in cc. Verified live against the field-report thread: To: sender, Cc: original cc only.
 
 ## [0.7.4] - 2026-06-10
 

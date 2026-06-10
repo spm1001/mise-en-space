@@ -355,9 +355,10 @@ class TestDoReplyDraftSuccess:
         assert call_kwargs["references"] == "<abc@example.com> <xyz@example.com>"
 
     @patch("retry.time.sleep")
+    @patch("tools.reply_draft.current_user_email", return_value="me@example.com")
     @patch("tools.reply_draft.create_reply_draft")
     @patch("tools.reply_draft.fetch_thread")
-    def test_reply_all_infers_cc(self, mock_fetch, mock_create, _sleep) -> None:
+    def test_reply_all_infers_cc(self, mock_fetch, mock_create, _email, _sleep) -> None:
         msg = _make_message(
             from_address="alice@example.com",
             to_addresses=["me@example.com", "bob@example.com"],
@@ -380,6 +381,37 @@ class TestDoReplyDraftSuccess:
         assert cc_value is not None
         assert "bob@example.com" in cc_value
         assert "carol@example.com" in cc_value
+        assert "alice@example.com" not in cc_value
+        assert "me@example.com" not in cc_value
+
+    @patch("retry.time.sleep")
+    @patch("tools.reply_draft.current_user_email", return_value="me@example.com")
+    @patch("tools.reply_draft.create_reply_draft")
+    @patch("tools.reply_draft.fetch_thread")
+    def test_reply_all_excludes_self_repro_shape(
+        self, mock_fetch, mock_create, _email, _sleep
+    ) -> None:
+        # Field repro 2026-06-05 (thread 19e8e2fedd24cf5a): last message
+        # From: external, To: me, Cc: second-external. reply_all must
+        # produce To: sender, Cc: second-external only — not me.
+        msg = _make_message(
+            from_address="todd@external.example.com",
+            to_addresses=["me@example.com"],
+            cc_addresses=["robert@external.example.com"],
+        )
+        mock_fetch.return_value = _make_thread(messages=[msg])
+        mock_create.return_value = ReplyDraftResult(
+            draft_id="d1", message_id="m1", thread_id="a1b2c3d4e5f6a7b8",
+            web_link="https://mail.google.com/mail/#drafts/d1",
+            to="todd@external.example.com", subject="Re: Original Subject",
+            cc="robert@external.example.com",
+        )
+
+        do_reply_draft(file_id="a1b2c3d4e5f6a7b8", content="Reply.", reply_all=True)
+
+        call_kwargs = mock_create.call_args[1]
+        assert call_kwargs["to"] == "todd@external.example.com"
+        assert call_kwargs["cc"] == "robert@external.example.com"
 
     @patch("retry.time.sleep")
     @patch("tools.reply_draft.create_reply_draft")

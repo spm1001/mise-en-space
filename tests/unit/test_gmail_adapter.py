@@ -60,6 +60,20 @@ class TestParseHeaders:
         headers = [{"value": "orphan"}]
         assert _parse_headers(headers) == {}
 
+    def test_header_name_case_insensitive(self) -> None:
+        # RFC 5322 header names are case-insensitive; Outlook emits "CC:".
+        # Field repro: thread 19e8e2fedd24cf5a dropped a real cc this way.
+        headers = [
+            {"name": "CC", "value": "robert@example.com"},
+            {"name": "from", "value": "todd@example.com"},
+            {"name": "MESSAGE-ID", "value": "<x@mail.example.com>"},
+        ]
+        result = _parse_headers(headers)
+
+        assert result["Cc"] == "robert@example.com"
+        assert result["From"] == "todd@example.com"
+        assert result["Message-ID"] == "<x@mail.example.com>"
+
 
 class TestParseAddressList:
     """Test comma-separated email address parsing."""

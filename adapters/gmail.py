@@ -63,12 +63,18 @@ DRIVE_LINK_PATTERN = re.compile(
 )
 
 
+# RFC 5322 header names are case-insensitive and clients vary in practice
+# (Outlook emits "CC:", some emit "Message-Id"). Match case-insensitively
+# but key the result by canonical name so headers.get("Cc") works downstream.
+_CANONICAL_HEADERS = {h.lower(): h for h in WANTED_HEADERS}
+
+
 def _parse_headers(headers: list[dict[str, str]]) -> dict[str, str]:
-    """Extract wanted headers into a dict."""
+    """Extract wanted headers into a dict keyed by canonical header name."""
     return {
-        h["name"]: h["value"]
+        _CANONICAL_HEADERS[name]: h["value"]
         for h in headers
-        if h.get("name") in WANTED_HEADERS
+        if (name := h.get("name", "").lower()) in _CANONICAL_HEADERS
     }
 
 
