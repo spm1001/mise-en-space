@@ -57,22 +57,32 @@ def _load_and_diagnose_credentials(token_path: str) -> Any:
     - Token expired and refresh failed
     """
     from pathlib import Path
+    from token_store import override_path
     token_path = Path(token_path)
+    guest_mode = override_path() is not None
 
     # Bootstrap hint surfaced from inside an MCP session — points at the
     # setup_oauth tool, which is what's reachable when running under Claude
     # Desktop / Cowork. The CLI fallback (`uv run python -m auth --auto`)
     # is mentioned only when the bootstrap tool can't be reached.
+    # In guest mode (MISE_TOKEN_PATH) neither applies — the credential belongs
+    # to the embedding app, and an agent reading this error must be pointed
+    # AWAY from self-service re-auth (observed live: an agent followed the CLI
+    # hint into a PATH-probing expedition inside a sealed sandbox).
     _BOOTSTRAP_HINT = (
-        "Call mise.do(operation=\"setup_oauth\") to authenticate "
+        "This credential file belongs to the embedding application — "
+        "re-authenticate there. Do not attempt setup_oauth or CLI auth."
+        if guest_mode
+        else "Call mise.do(operation=\"setup_oauth\") to authenticate "
         "(opens a browser; saves token to Keychain). "
         "CLI fallback: uv run python -m auth --auto"
     )
 
     if not token_path.exists():
         raise FileNotFoundError(
-            f"No OAuth token found at {token_path} (also checked Keychain). "
-            f"{_BOOTSTRAP_HINT}"
+            f"No OAuth token found at {token_path}"
+            + (" (also checked Keychain)" if not guest_mode else "")
+            + f". {_BOOTSTRAP_HINT}"
         )
 
     # File exists — try to read it
@@ -81,8 +91,27 @@ def _load_and_diagnose_credentials(token_path: str) -> Any:
     except (json.JSONDecodeError, IOError) as e:
         raise FileNotFoundError(
             f"OAuth token at {token_path} is corrupt ({type(e).__name__}). "
-            f"Delete it and re-authenticate. {_BOOTSTRAP_HINT}"
+            f"{_BOOTSTRAP_HINT}"
         )
+
+    if guest_mode:
+        # ADC-shaped authorized_user file: typically NO access token and NO
+        # expiry. google-auth treats that as not-yet-valid rather than expired
+        # (expired=False when expiry is absent), so jeton's expired-gated
+        # refresh never fires and it returns None — misdiagnosed as a revoked
+        # token while the very same file serves the embedding app fine.
+        # Build credentials directly and let _ensure_valid_token refresh
+        # lazily IN MEMORY. Never write back: the file is the caller's, and
+        # jeton's save shape would drop fields the embedding app's ADC loader
+        # requires (`type`, `quota_project_id`, `universe_domain`).
+        from google.oauth2.credentials import Credentials as GoogleUserCredentials
+        try:
+            return GoogleUserCredentials.from_authorized_user_info(token_data)
+        except ValueError as e:
+            raise FileNotFoundError(
+                f"Credential file at {token_path} is not a valid "
+                f"authorized_user file ({e}). {_BOOTSTRAP_HINT}"
+            )
 
     # Try loading through jeton (handles refresh automatically)
     creds = load_credentials(token_path, scopes=SCOPES)

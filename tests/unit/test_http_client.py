@@ -10,7 +10,9 @@ from unittest.mock import patch, MagicMock, PropertyMock
 from adapters.http_client import (
     MiseHttpClient, get_http_client, clear_http_client,
     MiseSyncClient, get_sync_client, clear_sync_client,
+    _load_and_diagnose_credentials,
 )
+import json
 
 
 # Fake credentials for testing
@@ -418,3 +420,67 @@ class TestSyncSingleton:
             b = get_sync_client()
         assert a is not b
         clear_sync_client()
+
+
+# =============================================================================
+# Guest mode (MISE_TOKEN_PATH) credential loading
+# =============================================================================
+
+
+class TestGuestModeCredentials:
+    """ADC-shaped caller-owned credential files (e.g. Cornichon's adc.json)."""
+
+    ADC = {
+        "type": "authorized_user",
+        "client_id": "c.apps.googleusercontent.com",
+        "client_secret": "s",
+        "refresh_token": "1//r",
+        "quota_project_id": "proj",
+        "universe_domain": "googleapis.com",
+    }
+
+    def test_adc_file_loads_without_jeton_and_without_writeback(
+        self, tmp_path, monkeypatch
+    ):
+        """No token/expiry fields → loads as not-yet-valid creds for lazy
+        in-memory refresh. jeton must NOT be consulted (its expired-gated
+        refresh misdiagnoses ADC files) and the file must remain untouched."""
+        adc = tmp_path / "adc.json"
+        adc.write_text(json.dumps(self.ADC))
+        before = adc.read_text()
+        monkeypatch.setenv("MISE_TOKEN_PATH", str(adc))
+        with patch("adapters.http_client.load_credentials") as jeton_load:
+            creds = _load_and_diagnose_credentials(adc)
+        jeton_load.assert_not_called()
+        assert creds.refresh_token == "1//r"
+        assert creds.token is None
+        assert adc.read_text() == before
+
+    def test_guest_errors_point_at_embedding_app_not_self_service(
+        self, tmp_path, monkeypatch
+    ):
+        """An agent reading this error must not be sent down the CLI-auth path."""
+        monkeypatch.setenv("MISE_TOKEN_PATH", str(tmp_path / "absent.json"))
+        with pytest.raises(FileNotFoundError) as exc:
+            _load_and_diagnose_credentials(tmp_path / "absent.json")
+        msg = str(exc.value)
+        assert "embedding application" in msg
+        assert "uv run" not in msg
+
+    def test_guest_invalid_file_shape_fails_loudly(self, tmp_path, monkeypatch):
+        """authorized_user requires refresh_token/client_id/client_secret."""
+        bad = tmp_path / "adc.json"
+        bad.write_text(json.dumps({"type": "authorized_user"}))
+        monkeypatch.setenv("MISE_TOKEN_PATH", str(bad))
+        with pytest.raises(FileNotFoundError) as exc:
+            _load_and_diagnose_credentials(bad)
+        assert "authorized_user" in str(exc.value)
+
+    def test_personal_mode_still_rides_jeton(self, tmp_path, monkeypatch):
+        """No override → the jeton path runs exactly as before."""
+        monkeypatch.delenv("MISE_TOKEN_PATH", raising=False)
+        tok = tmp_path / "token.json"
+        tok.write_text(json.dumps({"refresh_token": "r"}))
+        sentinel = MagicMock()
+        with patch("adapters.http_client.load_credentials", return_value=sentinel):
+            assert _load_and_diagnose_credentials(tok) is sentinel
