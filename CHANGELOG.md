@@ -1,6 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [0.7.5] - 2026-06-10
+
+Field-report fixes (reply_all cc, .docx flattening warnings), the gmail.py
+structural split, and skill search guidance. Released same-day to carry the
+marketplace husk fix: the Desktop/org assembler now vendors full MCP runtime
+source, so this version is the first to arrive in Cowork *with its server*
+(see notes/raw/2026-06-10-mise-cowork-husk-diagnosis.md).
 
 ### Changed
 - **server.py refactored to the registration shim it always claimed to be** (mise-jimohe, 1,318 → 344 lines). No behaviour change. Resource text moved to `resources/docs.py`; remote orchestration (`search_remote`/`fetch_remote`, `REMOTE_ALLOWED_OPS`) to `tools/remote.py`; dispatch machinery (`DISPATCH`, `REQUIRED_PARAMS`, `run_operation()`, do() descriptions) to `tools/dispatch.py`. `_REMOTE_MODE` stays in server.py at module load (decoration-time constraint).
