@@ -301,10 +301,12 @@ def do_create(
             resolved_file_path = Path(base_path) / resolved_file_path
         resolved_file_path = resolved_file_path.resolve()
 
-        # Containment check — file_path must be under base_path
+        # Containment check — file_path must be under base_path.
+        # is_relative_to, not str.startswith: a prefix check admits sibling
+        # dirs that share the prefix (/home/x/repo matches /home/x/repo-evil).
         if base_path:
             base_resolved = Path(base_path).resolve()
-            if not str(resolved_file_path).startswith(str(base_resolved)):
+            if not resolved_file_path.is_relative_to(base_resolved):
                 return _create_error("invalid_input", "file_path must be within the working directory.")
 
         if not resolved_file_path.exists():

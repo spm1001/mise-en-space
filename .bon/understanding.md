@@ -52,7 +52,7 @@ The fix: request `sheets.merges` in the metadata fields, `_resolve_merges` propa
 
 ## httpx migration — complete (Mar 2026)
 
-All adapters and tools use sync httpx. Phase 2 (async) is future work. Key patterns: `MiseSyncClient` and `MiseHttpClient` are intentional near-duplicates (MiseSyncClient dies in Phase 2). Google API URLs are hardcoded constants. `services.py` is dead code kept only for integration test scaffolding.
+All adapters and tools use sync httpx. Phase 2 (async) is future work. Key patterns: `MiseSyncClient` and `MiseHttpClient` are intentional near-duplicates (MiseSyncClient dies in Phase 2). Google API URLs are hardcoded constants. (`services.py`, once kept as dead code for integration test scaffolding, has since been deleted entirely.)
 
 ## Image embedding architecture
 
@@ -78,6 +78,14 @@ Three Workspace MCP servers were evaluated (repos cloned to `~/Repos/third-party
 - **Token error diagnostics** — `_load_and_diagnose_credentials` in `adapters/http_client.py` distinguishes missing file, corrupt JSON, no refresh_token, and failed refresh. Clear error messages for each case.
 - **Heading extraction** — blockquote prefix suppressed when a heading prefix is already present (`extractors/docs.py`), preventing `> ##` output for indented headings.
 - **Shadow field masks** — When an adapter defines a constant for API field selection but the call site uses a locally-defined string, mocked tests pass because mocks return whatever you tell them regardless of which fields were requested. The `is_unread` bug was this: `SEARCH_THREAD_FIELDS` had `labelIds` but `search_threads()` used a local `search_fields` that didn't. Guard by testing the mask itself (`assert "labelIds" in fields`), not just downstream logic. Any time you see a fields/projection/select mask in an API adapter, verify the call site actually uses the constant.
+
+## Field reports outrank synthetic tests
+
+When a field report names the file, the lines, the root cause, and a fix sketch, it is grounded in real-world reproduction. Existing unit tests are often snapshots of synthetic shapes from one fixture. If the brief's recommended fix breaks a test, read the test before hunting for an alternative fix — usually the test asserts a *more aggressive* version of "correct" behaviour, and the field report has just shown that aggression eats real content. The right move is to update the test to the new contract, not to find a clever fix that preserves the test's shape.
+
+Concrete case (May 2026, zojoma): the brief said "walk backwards" for signature stripping. That broke `test_strips_corporate_contact_block`, so a proximity-window alternative was tried instead — it preserved the test but didn't fix the standalone-message case the brief also described. Walking backwards + updating the test was right all along. The test was a captured snapshot; the field report is the contract.
+
+**Operational corollary for multi-commit sessions:** this repo is public and Sameer commits to it directly — `git fetch && git log HEAD..origin/main` before starting. The MCPB drop once landed upstream mid-session and a version bump on the deleted `manifest.json` nearly shipped; it was caught only by a rejected push.
 
 ## Observability and stock-taking
 
@@ -108,9 +116,11 @@ Survivor design after pushback: central cache + cwd hardlinks + manifest index. 
 
 **Sequencing risks:** if rocume ships before diwosi, fetch keeps round-tripping during the gap (decide deliberately). If rocume + diwosi ship before gotace, the cache accumulates without bound — ship gotace concurrently or document the manual cleanup path. Hardlinks need cross-filesystem fallback to symlinks (Taildrive mounts, external drives) — verify `os.link` failure handling actually triggers fallback. Before implementing rocume, verify Drive's web URL is the right human-facing handle to carry in the manifest.
 
-## Current state (May 2026)
+## Current state (June 2026)
 
-Core MCP server stable and in daily use via stdio (v0.5.16). Cowork plugin v0.6.0 validated end-to-end (2026-05-04 field test). Remote mode transport done. Merged-cell resolution, pageless doc creation, folder creation, token diagnostics, and heading extraction all shipped. MCP description length fixed (property drop bug resolved). Apps Script email extractor ported from archived repo.
+Core MCP server stable and in daily use via stdio (v0.7.4). Cowork plugin validated end-to-end (2026-05-04 field test). **MCPB packaging retired** (May 2026 — `manifest.json` deleted; the Claude Code plugin format is the only bundle now). Remote mode transport done. Merged-cell resolution, pageless doc creation, folder creation, token diagnostics, and heading extraction all shipped. MCP description length fixed (property drop bug resolved). Apps Script email extractor ported from archived repo.
+
+**Gmail trust fixes (v0.7.3, May 18):** signature stripping now walks *backwards* from end-of-body (forward-walking false-positived on benign short text with URL density bleeding from quoted Outlook replies below); `strip_signature_and_quotes` returns `(body, warnings)` and >80% reductions emit a warning. That warning fires on legitimately-short replies with long corporate sigs — semantically correct, but watch for warning fatigue; don't tune the threshold without usage data. Apple-Mail-style bare-name lines survive stripping *by design* (under-stripping is safer than eating content) — "mise didn't strip Alice's name" is the trade, not a bug. Participants now walk From+To+Cc+Bcc across all messages (`_extract_participants`), and Outlook's `application/octet-stream` mis-tagging is recovered by filename extension (`_resolve_attachment_mime`). v0.7.4 (June 10) closed the two follow-ups: participants dedup on canonical email with best display form (mise-nucupi), and the eager thread-fetch path resolves octet-stream MIME the same way fetch_attachment does (mise-dazode).
 
 **Google Forms — read side shipped (v0.5.14).** Adapter calls Forms API v1 (`forms.googleapis.com`), extractor renders all question types (choice, text, scale, date, grid, rating) as markdown, deposits `structure.json` (raw API response) for programmatic use alongside `content.md`. Forms are Drive files (`application/vnd.google-apps.form`) — they appear in search and the existing URL detection handles `docs.google.com/forms/d/...` because the router does MIME-based dispatch, not URL-based. The `forms.body.readonly` scope was added for read. Three MCP resource strings (`docs/fetch`, `docs/overview`, `docs/workspace`) plus understanding.md need updating for any new content type — this is easy to forget because omission doesn't cause test failures, just leaves future Claudes unaware of the capability.
 
@@ -161,4 +171,4 @@ This pattern showed up twice in the 2026-05-04 install sweep: (1) `mise.do(opera
 
 **Strategic outcome:** Remote deployment path (tokiju → winala → sefepo) parked as someday/maybe — only needed for Claude.ai web without Desktop, or mobile. Cowork-via-Mac is now the path users hit.
 
-Backlog: image/PDF edge cases (mise-heferu), Drive shortcuts (mise-nitaco), keychain token materialisation (mise-zozewa), image embedding privacy (mise-hagaru), calendar forward-looking (mise-milizo), plugin MCP launch gap investigation.
+**Backlog shape (post estate audit, 2026-06-09/10):** the whole board was verified against code and consciously triaged during the 586-item estate audit — don't re-triage it. Three fronts: **mise-novanu** (structural sweep — /toise with the 2026-06-09 review findings as priors, plus 5 hardening actions) is the engineering front; four field-report outcomes await fixes (zolowa: draft/reply_draft markdown tables+bold; kecigu: .docx tracked-changes flattening; lurumu: reply_all cc list; nucupi: participant dedup); **mise-jukalo** holds Cowork rollout polish (5 open actions). (The Dependabot alerts flagged at the May 18 push were cleared by the 0.7.4 security bumps, June 10.)
