@@ -2,11 +2,20 @@
 Token storage for mise-en-space OAuth tokens.
 
 Storage priority:
+0. MISE_TOKEN_PATH env override — caller-owned credential file (see below)
 1. macOS Keychain (service: mise-oauth-token) — persistent across installs
 2. File (token.json in package root) — fallback for non-macOS
 
 The token is a JSON blob (access_token, refresh_token, client_id, etc.).
 Keychain stores it as the password field of a generic password entry.
+
+MISE_TOKEN_PATH override: when set, mise runs as a guest on a credential
+file owned by the embedding caller (e.g. Cornichon's ADC file). The path
+is authoritative — no Keychain fallback, even if the file is missing
+(falling through would silently switch identity to the personal token).
+Guest mode also means persist-nothing: store_to_keychain is a no-op, so
+neither auth flows nor identity enrichment can clobber the user's own
+mise Keychain entry with the caller's (differently-scoped) token.
 """
 
 import json
@@ -20,6 +29,16 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 KEYCHAIN_SERVICE = "mise-oauth-token"
+
+# Env var naming a caller-owned token file (guest mode). Authoritative
+# when set: no Keychain reads, no Keychain writes, no migration.
+OVERRIDE_ENV = "MISE_TOKEN_PATH"
+
+
+def override_path() -> Path | None:
+    """Return the caller-supplied token path, or None when not in guest mode."""
+    raw = os.environ.get(OVERRIDE_ENV)
+    return Path(raw) if raw else None
 
 # Legacy token location (package root). Used for migration from
 # versioned plugin cache dirs to stable data dir.
@@ -64,7 +83,15 @@ def get_from_keychain() -> str | None:
 
 
 def store_to_keychain(token_json: str) -> bool:
-    """Store token JSON in macOS Keychain."""
+    """Store token JSON in macOS Keychain.
+
+    No-op in guest mode (MISE_TOKEN_PATH set): the credential belongs to
+    the embedding caller, and persisting it here would overwrite the
+    user's own mise token with one of different scope/identity.
+    """
+    if override_path() is not None:
+        logger.debug("Keychain write skipped: %s is set (guest mode)", OVERRIDE_ENV)
+        return False
     if not _has_keychain():
         return False
     user = os.environ.get("USER", "")
@@ -102,6 +129,10 @@ def resolve_token_path(fallback_path: Path) -> Path:
     """Return a path to a token.json file, materializing from Keychain if needed.
 
     Search order:
+    0. MISE_TOKEN_PATH env override — returned unconditionally when set,
+       even if the file is missing (the credential loader's diagnostics
+       fire on the override path; falling through to Keychain would be a
+       silent identity switch to the user's personal token)
     1. macOS Keychain → materialize to fallback_path
     2. fallback_path (typically plugin data dir or package root)
     3. _PACKAGE_ROOT/token.json (legacy — versioned plugin cache)
@@ -109,6 +140,10 @@ def resolve_token_path(fallback_path: Path) -> Path:
     If a token is found at a legacy location but not at fallback_path,
     it is copied forward (migration from versioned cache to stable data dir).
     """
+    override = override_path()
+    if override is not None:
+        return override
+
     token_json = get_from_keychain()
     if token_json:
         fallback_path.parent.mkdir(parents=True, exist_ok=True)
@@ -191,6 +226,9 @@ def save_token(token_path: Path) -> None:
 
 def has_token(fallback_path: Path) -> bool:
     """Check if a valid token exists anywhere."""
+    override = override_path()
+    if override is not None:
+        return override.exists()
     if get_from_keychain():
         return True
     if fallback_path.exists():

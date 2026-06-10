@@ -348,3 +348,59 @@ class TestHasToken:
         """No Keychain, no file, no legacy → False."""
         token_file = tmp_path / "token.json"
         assert has_token(token_file) is False
+
+
+# =============================================================================
+# MISE_TOKEN_PATH override (guest mode)
+# =============================================================================
+
+
+class TestTokenPathOverride:
+    """Guest mode: a caller-owned credential file named by MISE_TOKEN_PATH."""
+
+    def test_override_wins_over_keychain(self, tmp_path, monkeypatch):
+        """Override set + file exists → returned directly, Keychain never consulted."""
+        override_file = tmp_path / "adc.json"
+        override_file.write_text(SAMPLE_TOKEN)
+        monkeypatch.setenv("MISE_TOKEN_PATH", str(override_file))
+        with patch("token_store.get_from_keychain") as kc:
+            result = resolve_token_path(tmp_path / "fallback.json")
+        assert result == override_file
+        kc.assert_not_called()
+
+    def test_override_missing_is_still_authoritative(self, tmp_path, monkeypatch):
+        """Override set + file MISSING → still returned (no silent fall-through
+        to the personal Keychain token; the credential loader fails loudly)."""
+        override_file = tmp_path / "absent.json"
+        monkeypatch.setenv("MISE_TOKEN_PATH", str(override_file))
+        with patch("token_store.get_from_keychain") as kc:
+            result = resolve_token_path(tmp_path / "fallback.json")
+        assert result == override_file
+        kc.assert_not_called()
+
+    def test_guest_mode_blocks_keychain_write(self, tmp_path, monkeypatch):
+        """store_to_keychain is a no-op in guest mode — the user's own mise
+        Keychain entry must never be clobbered by a caller-scoped token."""
+        monkeypatch.setenv("MISE_TOKEN_PATH", str(tmp_path / "adc.json"))
+        with patch("token_store.subprocess.run") as run:
+            assert store_to_keychain(SAMPLE_TOKEN) is False
+        run.assert_not_called()
+
+    def test_has_token_honors_override(self, tmp_path, monkeypatch):
+        """has_token reflects the override file's existence, nothing else."""
+        override_file = tmp_path / "adc.json"
+        monkeypatch.setenv("MISE_TOKEN_PATH", str(override_file))
+        with patch("token_store.get_from_keychain") as kc:
+            assert has_token(tmp_path / "fallback.json") is False
+            override_file.write_text(SAMPLE_TOKEN)
+            assert has_token(tmp_path / "fallback.json") is True
+        kc.assert_not_called()
+
+    def test_unset_behaviour_unchanged(self, tmp_path, monkeypatch):
+        """No override → the existing Keychain-first chain runs untouched."""
+        monkeypatch.delenv("MISE_TOKEN_PATH", raising=False)
+        fallback = tmp_path / "token.json"
+        with patch("token_store.get_from_keychain", return_value=SAMPLE_TOKEN):
+            result = resolve_token_path(fallback)
+        assert result == fallback
+        assert fallback.read_text() == SAMPLE_TOKEN
