@@ -484,3 +484,24 @@ class TestGuestModeCredentials:
         sentinel = MagicMock()
         with patch("adapters.http_client.load_credentials", return_value=sentinel):
             assert _load_and_diagnose_credentials(tok) is sentinel
+
+
+class TestQuotaProjectHeader:
+    """x-goog-user-project rides along when credentials carry a quota project."""
+
+    def _client_with(self, quota_project):
+        client = MiseSyncClient.__new__(MiseSyncClient)
+        creds = MagicMock()
+        creds.valid = True
+        creds.token = "t"
+        creds.quota_project_id = quota_project
+        client._credentials = creds
+        return client
+
+    def test_header_present_for_guest_adc_creds(self):
+        h = self._client_with("mit-cornichon")._auth_headers()
+        assert h["x-goog-user-project"] == "mit-cornichon"
+
+    def test_header_absent_for_personal_creds(self):
+        h = self._client_with(None)._auth_headers()
+        assert "x-goog-user-project" not in h

@@ -164,9 +164,19 @@ class MiseHttpClient:
             self._credentials.refresh(GoogleAuthRequest())
 
     def _auth_headers(self) -> dict[str, str]:
-        """Get Authorization header with current token."""
+        """Get Authorization header with current token.
+
+        Includes x-goog-user-project when the credentials carry a quota
+        project (ADC-shaped guest-mode files do): user-credential calls to
+        drive.googleapis.com 403 without it. Personal-mode jeton tokens have
+        no quota project, so the header is absent and behaviour unchanged.
+        """
         self._ensure_valid_token()
-        return {"Authorization": f"Bearer {self._credentials.token}"}
+        headers = {"Authorization": f"Bearer {self._credentials.token}"}
+        quota_project = getattr(self._credentials, "quota_project_id", None)
+        if quota_project:
+            headers["x-goog-user-project"] = quota_project
+        return headers
 
     async def request(
         self,
@@ -346,9 +356,19 @@ class MiseSyncClient:
             self._credentials.refresh(GoogleAuthRequest())
 
     def _auth_headers(self) -> dict[str, str]:
-        """Get Authorization header with current token."""
+        """Get Authorization header with current token.
+
+        Includes x-goog-user-project when the credentials carry a quota
+        project (ADC-shaped guest-mode files do): user-credential calls to
+        drive.googleapis.com 403 without it. Personal-mode jeton tokens have
+        no quota project, so the header is absent and behaviour unchanged.
+        """
         self._ensure_valid_token()
-        return {"Authorization": f"Bearer {self._credentials.token}"}
+        headers = {"Authorization": f"Bearer {self._credentials.token}"}
+        quota_project = getattr(self._credentials, "quota_project_id", None)
+        if quota_project:
+            headers["x-goog-user-project"] = quota_project
+        return headers
 
     def request(
         self,
