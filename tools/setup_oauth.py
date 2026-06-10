@@ -115,16 +115,18 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
     # stdin/out/err to DEVNULL so we don't hold pipes open.
     log_path = TOKEN_FILE.parent / "setup_oauth.log"
     try:
-        log_fh = open(log_path, "w")
-        subprocess.Popen(
-            [sys.executable, "-m", "auth", "--auto"],
-            cwd=str(_PACKAGE_ROOT),
-            stdin=subprocess.DEVNULL,
-            stdout=log_fh,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-            close_fds=True,
-        )
+        # Child inherits a duplicate of the fd at spawn; the parent's copy
+        # closes in the finally so it doesn't leak in the long-running server.
+        with open(log_path, "w") as log_fh:
+            subprocess.Popen(
+                [sys.executable, "-m", "auth", "--auto"],
+                cwd=str(_PACKAGE_ROOT),
+                stdin=subprocess.DEVNULL,
+                stdout=log_fh,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                close_fds=True,
+            )
     except Exception as e:
         return {
             "error": True,

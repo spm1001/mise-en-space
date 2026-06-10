@@ -2,7 +2,7 @@
 
 ## Status
 
-**Robustness:** Beta — actively developed
+**Robustness:** Stable — in daily use, regular releases (currently v0.7.4)
 **Works with:** Claude Code, Amp, Gemini CLI (any MCP client)
 **Install:** Configure as MCP server (see below)
 **Requires:** Python 3.11+, Google OAuth credentials
@@ -25,7 +25,7 @@ I wanted something that had the best of all these ideas:
 
 - **Sous-chef philosophy.** Fetch a doc and get the comments too. Fetch an email and get the attachments extracted. Don't make the chef ask for every ingredient separately.
 - **Clean extraction.** PDFs use hybrid extraction ([markitdown](https://github.com/microsoft/markitdown) → Drive OCR fallback). Office files convert automatically.
-- **Opinionated, LLM-first control surface** 3 tools not 50 - search, fetch, create. ~3k tokens of tool definitions and everything routes through the same three verbs.
+- **Opinionated, LLM-first control surface** 3 tools not 50 - search, fetch, do. ~3k tokens of tool definitions and everything routes through the same three verbs.
 - **One call, rich results.** Gmail search returns subjects, senders, snippets, and attachment names — not a bag of IDs requiring N+1 follow-ups.
 - **Filesystem-deposits.** Content goes to disk as markdown/CSV, not into the context window. Claude reads (and greps) what it needs.
 - **Companion Skill.** I like the pattern where we provide a tool and a companion [Skill](https://docs.anthropic.com/en/docs/claude-code/skills) that acts as the instruction manual on how to use it.
@@ -35,13 +35,13 @@ I wanted something that had the best of all these ideas:
 
 | Verb | Purpose | Deposits files? |
 |------|---------|-----------------|
-| `search` | Find files and emails across Drive and Gmail | Yes — results JSON |
+| `search` | Find files and emails across Drive and Gmail (plus activity and calendar) | Yes — results JSON |
 | `fetch` | Extract content to `mise/` as markdown/CSV | Yes — content folder |
-| `create` | Make a new Doc/Sheet/Slides from markdown | No |
+| `do` | Act on Workspace — 14 operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, setup_oauth | Varies |
 
 ## CLI
 
-Same 3 verbs, for agents without MCP support:
+For agents without MCP support — search and fetch in full, plus `create` (the most common `do` operation):
 
 ```bash
 mise search "quarterly reports"
@@ -60,25 +60,27 @@ mise create "Title" --content "# Markdown content"
 | Gmail threads | Markdown with signature stripping via [talon](https://github.com/mailgun/talon), attachment extraction |
 | PDFs | Markdown ([markitdown](https://github.com/microsoft/markitdown) → Drive OCR fallback) |
 | Office files (DOCX/XLSX/PPTX) | Markdown or CSV via Drive conversion |
-| Video/Audio | AI summary + metadata (requires claude-suite) |
+| Video/Audio | AI summary + metadata (requires a chrome-debug browser session) |
 | Images | Deposited as-is; SVG rendered to PNG |
 
 ## Architecture
 
 ```
-server.py       MCP server (thin wrappers around tools)
-cli.py          CLI interface (same verbs, same tools)
-tools/          Business logic — routing, orchestration
+server.py       MCP server (thin wrappers around tools; ≤500 lines, enforced)
+cli.py          CLI interface (same tools, no MCP)
+tools/          Business logic — routing, orchestration, do() dispatch, remote mode
 adapters/       Thin Google API wrappers (one per service)
-extractors/     Pure functions, no I/O (testable without APIs)
+extractors/     Pure functions — no I/O, no MCP awareness (testable without APIs)
 workspace/      File deposit management
+resources/      MCP resource text (mise://docs/*)
 skills/         Claude skill (auto-discovered by plugin system)
 ```
 
 **Layer rules:**
-- Extractors never import from adapters (no I/O)
+- Extractors never import from adapters or tools (no I/O)
 - Tools wire adapters → extractors → workspace
 - Server and CLI are both thin wrappers around tools
+- All of it mechanically enforced by `tests/unit/test_architecture.py` — including the root-level utility files, by discovery
 
 Adding a new content type means: adapter (API call), extractor (parse), tool (wire + deposit). The layers are independent.
 
@@ -96,14 +98,15 @@ uv sync    # requires uv — https://docs.astral.sh/uv/
 
 mise-en-space uses [jeton](https://github.com/spm1001/jeton) for OAuth.
 
-**Quick version:** `credentials.json` ships with the repo. Just run `uv run python -m auth`.
+**Quick version:** `credentials.json` ships with the repo. Just run `uv run python -m auth --auto`.
 
 ```bash
-uv run python -m auth              # Opens browser automatically (macOS/Linux desktop)
-uv run python -m auth --manual     # For SSH/remote/Claude (paste URL back)
+uv run python -m auth --auto             # Opens browser + localhost listener (machine with a browser)
+uv run python -m auth                    # Headless — prints the consent URL to paste into any browser
+uv run python -m auth --code URL_OR_CODE # Exchange the code from the headless flow
 ```
 
-On macOS, the browser opens automatically. Grant permissions and you're done.
+With `--auto`, grant permissions in the browser and you're done.
 
 **Scopes requested:** Drive (read+write), Gmail (read+write), Contacts (read), Docs/Sheets/Slides (read+write), Drive Activity, Drive Labels, Calendar. See [`oauth_config.py`](oauth_config.py) for the full list and rationale.
 
@@ -152,8 +155,9 @@ Add to `~/.claude.json`:
 
 The `skills/` directory contains a Claude skill that teaches Claude *how* to use mise effectively — Gmail operators, the exploration loop, comment checking patterns. The plugin system auto-discovers skills from `skills/*/SKILL.md`.
 
+```bash
 # For pi
-ln -s /path/to/mise-en-space/skill ~/.pi/agent/skills/mise
+ln -s /path/to/mise-en-space/skills/mise ~/.pi/agent/skills/mise
 ```
 
 Without the skill, Claude can call the tools but won't know the patterns that make them useful (like following `email_context` hints or filtering large results with jq).

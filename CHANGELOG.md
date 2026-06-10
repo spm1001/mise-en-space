@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **server.py refactored to the registration shim it always claimed to be** (mise-jimohe, 1,318 → 344 lines). No behaviour change. Resource text moved to `resources/docs.py`; remote orchestration (`search_remote`/`fetch_remote`, `REMOTE_ALLOWED_OPS`) to `tools/remote.py`; dispatch machinery (`DISPATCH`, `REQUIRED_PARAMS`, `run_operation()`, do() descriptions) to `tools/dispatch.py`. `_REMOTE_MODE` stays in server.py at module load (decoration-time constraint).
+- `tests/unit/test_architecture.py` jurisdiction extended: `LAYER_RULES` now covers `workspace/` and `resources/`; new discovery-based `FILE_RULES` police every root-level .py (entry-point and retry.py exceptions documented); server.py capped at 500 lines.
+- README/CLAUDE.md drift sweep (mise-lijogi): verb table now says do (14 ops, was create), status Stable (was Beta), auth flags corrected (`--auto`/`--code`; `--manual` never existed), adapter table gained calendar/forms/charts/cdp, caches enumerated, broken skill-section code fence fixed.
+
+### Fixed
+- `ContentType` Literal missing `"form"` (workspace/manager.py) — toise finding.
+- Path containment in `do(create)` used `str.startswith` (prefix-collision admits `/repo-evil` siblings) — now `Path.is_relative_to`.
+- `setup_oauth` leaked the parent's log file handle after spawning the detached auth subprocess.
+
 ## [0.7.4] - 2026-06-10
 
 Two Gmail trust follow-ups from the 0.7.3 BARB-thread verification, plus

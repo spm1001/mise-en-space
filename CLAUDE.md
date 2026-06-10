@@ -20,10 +20,13 @@ docs/           Design documents and references
 | File | Purpose | Used by |
 |------|---------|---------|
 | `html_convert.py` | HTML→markdown via markitdown (needs tempfile — why it's not in extractors) | adapters |
-| `filters.py` | Attachment filtering logic (`is_trivial_attachment`, `filter_attachments`) | adapters, tools |
+| `filters.py` | Attachment filtering logic (`is_trivial_attachment`, `filter_attachments`) — holds two `lru_cache`s | adapters, tools |
 | `validation.py` | ID/URL validation (`validate_drive_id`, `validate_gmail_id`, etc.) | tools, adapters |
 | `retry.py` | Retry decorator with exponential backoff and jitter | adapters |
 | `logging_config.py` | Structured logging setup (`logger`, `log_retry`) | everywhere |
+| `cues_util.py` | Identity cues (`with_identity`, `current_user_email`) — Protocol-typed, deliberately no adapter import | tools, models |
+
+**Caches, enumerated** (no single authority — know all three): manual client singletons in `adapters/http_client.py` (`get_http_client`/`get_sync_client`, one per mode), two `lru_cache`s in `filters.py`, and a manual metadata cache in `adapters/drive.py` (~L579).
 
 **Key references:** `docs/information-flow.md` (flow diagrams, timing data), `docs/decisions.md` (full design decision history with rationale).
 
@@ -47,6 +50,10 @@ docs/           Design documents and references
 | `slides.py` | Slides API + thumbnail fetching |
 | `gmail.py` | Gmail threads and messages |
 | `activity.py` | Drive Activity API v2 |
+| `calendar.py` | Calendar events with meeting context (attendees, attachments, Meet links) |
+| `forms.py` | Google Forms API v1 (structure: questions, sections, options) |
+| `charts.py` | Sheets chart export via temporary Slides embed (Sheets API has no direct export) |
+| `cdp.py` | Chrome DevTools Protocol cookie access (for genai.py; graceful fallback) |
 | `conversion.py` | **Shared** Drive upload→convert→export→delete pattern |
 | `pdf.py` | PDF conversion (hybrid: markitdown → Drive fallback) |
 | `office.py` | Office file conversion (DOCX/XLSX/PPTX via Drive) |
@@ -59,7 +66,7 @@ docs/           Design documents and references
 |------|---------|---------------|
 | `search` | Find files/emails/activity/calendar events, return metadata + inline preview | No |
 | `fetch` | Download content to `mise/` in cwd, return path + cues | Yes |
-| `do` | Act on Workspace (create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label) | Varies |
+| `do` | Act on Workspace — 14 ops (create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, setup_oauth) | Varies |
 
 **Key behaviors:**
 - `search` returns metadata only — Claude triages before fetching
@@ -87,7 +94,7 @@ docs/           Design documents and references
 | Aspect | stdio (default) | remote (`--remote`) |
 |--------|----------------|---------------------|
 | Transport | stdin/stdout | StreamableHTTP on `/mcp` |
-| `do()` operations | All 13 | 6 safe ops: create, draft, reply_draft, archive, star, label |
+| `do()` operations | All 14 | 6 safe ops: create, draft, reply_draft, archive, star, label |
 | Content delivery | Filesystem deposits | Inline in JSON-RPC response (`content` + `comments` fields) |
 | `base_path` | Required | Optional (temp dir) |
 | Tool description | Full | Restricted (only safe ops + relevant params) |

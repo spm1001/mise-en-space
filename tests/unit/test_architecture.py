@@ -26,22 +26,29 @@ LAYER_RULES = {
     "resources": {"extractors", "workspace", "tools"},  # resources may hit adapters (live state) but not business logic
 }
 
-# Files outside any layer directory, with their own forbidden imports.
-# These were the unpoliced tier the 2026-06-10 toise flagged: mass accumulates
-# exactly where LAYER_RULES can't see (server.py hit 1,318 lines before
-# mise-jimohe). server.py may import adapters (lifespan housekeeping) and
-# tools/resources (registration) but never extraction or workspace internals.
-# Root utilities sit BELOW the layers — they may not import upward. retry.py's
-# adapters.http_client import (clear_sync_client for auth-refresh) is the one
-# documented exception.
-FILE_RULES = {
+# Files outside any layer directory — the tier the 2026-06-10 toise flagged:
+# mass accumulates exactly where LAYER_RULES can't see (server.py hit 1,318
+# lines before mise-jimohe). Rules are DISCOVERED, not enumerated: every root
+# *.py gets the strict default automatically, so adding a file cannot quietly
+# open a new unpoliced tier. Root utilities sit BELOW the layers and may not
+# import upward (root→root imports like auth→token_store are fine).
+_ROOT_DEFAULT_FORBIDDEN = {"adapters", "tools", "workspace", "extractors", "server", "resources"}
+
+# Entry points and documented exceptions:
+# - server.py / cli.py reach DOWN into tools (registration/wiring) — never
+#   into extraction or workspace internals; server.py may also touch adapters
+#   (lifespan housekeeping).
+# - retry.py imports adapters.http_client (clear_sync_client for auth-refresh
+#   retry) — the one sanctioned root→adapters import.
+_ROOT_OVERRIDES = {
     "server.py": {"extractors", "workspace"},
-    "html_convert.py": {"adapters", "tools", "workspace", "extractors", "server"},
-    "filters.py": {"adapters", "tools", "workspace", "extractors", "server"},
-    "validation.py": {"adapters", "tools", "workspace", "extractors", "server"},
-    "retry.py": {"tools", "workspace", "extractors", "server"},  # adapters allowed (documented exception)
-    "logging_config.py": {"adapters", "tools", "workspace", "extractors", "server"},
-    "cues_util.py": {"adapters", "tools", "workspace", "extractors", "server"},
+    "cli.py": {"adapters", "extractors", "workspace", "server", "resources"},
+    "retry.py": {"tools", "workspace", "extractors", "server", "resources"},
+}
+
+FILE_RULES = {
+    path.name: _ROOT_OVERRIDES.get(path.name, _ROOT_DEFAULT_FORBIDDEN)
+    for path in sorted(PROJECT_ROOT.glob("*.py"))
 }
 
 # server.py is the registration shim — tools/resources own the logic. If this
@@ -167,7 +174,7 @@ class TestFileBoundaries:
         bad_imports = imports & forbidden
         assert not bad_imports, (
             f"{filename} imports {bad_imports} — it sits "
-            f"{'above tools (registration shim)' if filename == 'server.py' else 'below the layers (shared utility)'}; "
+            f"{'above tools (entry point)' if filename in ('server.py', 'cli.py') else 'below the layers (shared utility)'}; "
             f"move the logic, don't widen the rule"
         )
 
