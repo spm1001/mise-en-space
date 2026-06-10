@@ -195,7 +195,7 @@ class TestServerIntegration:
         assert mock_log.call_args.kwargs["ok"] is False
 
     @patch("server.log_mcp_call")
-    @patch("server.do_create")
+    @patch("tools.dispatch.do_create")
     def test_do_create_logs_title(self, mock_create: MagicMock, mock_log: MagicMock) -> None:
         from server import do
         mock_create.return_value = MagicMock(

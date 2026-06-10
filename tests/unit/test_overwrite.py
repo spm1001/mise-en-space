@@ -112,7 +112,7 @@ class TestDoOverwrite:
         assert result.title == "From API"
 
     @patch("retry.time.sleep")
-    @patch("server.get_file_metadata", return_value=_google_doc_metadata())
+    @patch("tools.dispatch.get_file_metadata", return_value=_google_doc_metadata())
     @patch("tools.overwrite.upload_file_content")
     def test_overwrite_routes_through_do(self, mock_upload, _meta, _sleep) -> None:
         mock_upload.return_value = {"name": "Test"}
@@ -128,7 +128,7 @@ class TestDoOverwrite:
 # =============================================================================
 
 class TestOverwriteErrorPaths:
-    @patch("server.get_file_metadata")
+    @patch("tools.dispatch.get_file_metadata")
     def test_overwrite_file_not_found_through_do(self, mock_meta) -> None:
         mock_meta.side_effect = MiseError(ErrorKind.NOT_FOUND, "File not found")
 
@@ -137,7 +137,7 @@ class TestOverwriteErrorPaths:
         assert result["error"] is True
         assert result["kind"] == "not_found"
 
-    @patch("server.get_file_metadata")
+    @patch("tools.dispatch.get_file_metadata")
     def test_overwrite_permission_denied_through_do(self, mock_meta) -> None:
         mock_meta.side_effect = MiseError(ErrorKind.PERMISSION_DENIED, "No access")
 

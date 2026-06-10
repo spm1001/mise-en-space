@@ -129,7 +129,7 @@ class TestDoPrepend:
         assert insert_req["text"] == "Executive Summary\n\n"
 
     @patch("retry.time.sleep")
-    @patch("server.get_file_metadata", return_value=_google_doc_metadata())
+    @patch("tools.dispatch.get_file_metadata", return_value=_google_doc_metadata())
     @patch("tools.edit.get_sync_client")
     def test_prepend_routes_through_do(self, mock_get_client, _meta, _sleep) -> None:
         mock_get_client.return_value = _mock_sync_client()
@@ -176,7 +176,7 @@ class TestDoAppend:
         assert requests[0]["insertText"]["location"]["index"] == 1
 
     @patch("retry.time.sleep")
-    @patch("server.get_file_metadata", return_value=_google_doc_metadata())
+    @patch("tools.dispatch.get_file_metadata", return_value=_google_doc_metadata())
     @patch("tools.edit.get_sync_client")
     def test_append_routes_through_do(self, mock_get_client, _meta, _sleep) -> None:
         mock_get_client.return_value = _mock_sync_client()
@@ -223,7 +223,7 @@ class TestDoReplaceText:
         assert result.cues["occurrences_changed"] == 2
 
     @patch("retry.time.sleep")
-    @patch("server.get_file_metadata", return_value=_google_doc_metadata())
+    @patch("tools.dispatch.get_file_metadata", return_value=_google_doc_metadata())
     @patch("tools.edit.get_sync_client")
     def test_replace_routes_through_do(self, mock_get_client, _meta, _sleep) -> None:
         mock_client = _mock_sync_client()
@@ -258,7 +258,7 @@ class TestDoReplaceText:
 class TestEditErrorPaths:
     """API errors surface cleanly via dispatch metadata pre-fetch."""
 
-    @patch("server.get_file_metadata")
+    @patch("tools.dispatch.get_file_metadata")
     def test_prepend_file_not_found_through_do(self, mock_meta) -> None:
         mock_meta.side_effect = MiseError(ErrorKind.NOT_FOUND, "File not found: nonexistent")
 
@@ -267,7 +267,7 @@ class TestEditErrorPaths:
         assert result["error"] is True
         assert result["kind"] == "not_found"
 
-    @patch("server.get_file_metadata")
+    @patch("tools.dispatch.get_file_metadata")
     def test_append_permission_denied_through_do(self, mock_meta) -> None:
         mock_meta.side_effect = MiseError(ErrorKind.PERMISSION_DENIED, "No access")
 
@@ -276,7 +276,7 @@ class TestEditErrorPaths:
         assert result["error"] is True
         assert result["kind"] == "permission_denied"
 
-    @patch("server.get_file_metadata")
+    @patch("tools.dispatch.get_file_metadata")
     def test_replace_text_file_not_found_through_do(self, mock_meta) -> None:
         mock_meta.side_effect = MiseError(ErrorKind.NOT_FOUND, "File not found")
 

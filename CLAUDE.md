@@ -7,9 +7,10 @@
 ```
 extractors/     Pure functions, no MCP awareness (testable without APIs)
 adapters/       Thin Google API wrappers (easily mocked)
-tools/          MCP tool definitions (thin wiring layer)
+tools/          MCP tool definitions + dispatch/remote orchestration (the wiring layer)
 workspace/      File deposit management (mise/ in cwd)
-server.py       FastMCP entry point (stdio default, --remote for StreamableHTTP)
+resources/      MCP resource text (mise://docs/*) + tool-doc registry
+server.py       FastMCP registration shim (stdio default, --remote for StreamableHTTP) — ≤500 lines, enforced
 apps-script/    Google Apps Script for email attachment extraction (runs in Google, not Python)
 docs/           Design documents and references
 ```
@@ -31,9 +32,10 @@ docs/           Design documents and references
 - Adapters NEVER import from tools
 - Adapters MAY import parsing utilities from extractors
 - Adapters use `convert_*` names, not `extract_*` (extract_* reserved for pure extractors/)
-- Tools wire adapters → extractors → workspace
-- server.py just registers tools
-- Shared utilities live at root level — don't add new ones without understanding the pattern above
+- Tools wire adapters → extractors → workspace. The do() machinery (`DISPATCH`, `REQUIRED_PARAMS`, `run_operation`) lives in `tools/dispatch.py`; remote orchestration in `tools/remote.py`
+- server.py registers tools/resources and holds the thin @mcp.tool wrappers — nothing else (capped at 500 lines)
+- Shared utilities live at root level — they sit BELOW the layers and never import upward (retry.py's `adapters.http_client` import is the one documented exception)
+- ALL of the above is mechanically enforced by `tests/unit/test_architecture.py` (`LAYER_RULES` for directories, `FILE_RULES` for server.py + root utilities). When adding a module tier, extend the rules — unpoliced tiers are where mass accumulates (server.py hit 1,318 lines before mise-jimohe)
 
 ### Adapter Specializations
 
@@ -93,7 +95,7 @@ docs/           Design documents and references
 
 **Architecture:** `_REMOTE_MODE` is determined at module load time (before `@mcp.tool()` decorators run) so tool descriptions adapt. This is intentional — argparse validates in `__main__` but the value must be available earlier for the conditional `description=` parameter on `@mcp.tool()`. Don't move this to argparse without understanding why it's early.
 
-**Operation gating:** `_REMOTE_ALLOWED_OPS` in server.py. Rejected ops get a generic "not available in remote mode" error listing only allowed ops — restricted op names are not leaked.
+**Operation gating:** `REMOTE_ALLOWED_OPS` in `tools/remote.py` (the gate itself fires in server.py's do() wrapper). Rejected ops get a generic "not available in remote mode" error listing only allowed ops — restricted op names are not leaked.
 
 **Binary content:** Image fetches in remote mode return metadata and cues but no inline content (binary can't be text-encoded). A cue warning explains this.
 
@@ -197,10 +199,10 @@ Token storage: macOS Keychain (`mise-oauth-token`) is the source of truth. `~/.c
 ## How to Add a New do() Operation
 
 1. **Implementation** — Create `tools/{op}.py` with `do_{op}()` that validates its own params (accepts `str | None`) and returns `DoResult` on success or error dict on failure
-2. **Dispatch** — Add handler to `_DISPATCH` dict in `server.py`
+2. **Dispatch** — Add handler to `DISPATCH` dict and required params to `REQUIRED_PARAMS` in `tools/dispatch.py`
 3. **Register** — Add name to `OPERATIONS` in `tools/__init__.py`
 4. **Export** — Add `do_{op}` to `tools/__init__.py` imports and `__all__`
-5. **Resource docs** — Update `docs_do()` resource in `server.py` with new operation
+5. **Resource docs** — Update `docs_do()` in `resources/docs.py` with new operation
 6. **Tests** — Unit test for the implementation + `test_dispatch.py` verifies OPERATIONS/DISPATCH sync automatically
 
 ## Field Reports

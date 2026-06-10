@@ -8,8 +8,10 @@ import orjson
 
 from models import DoResult, FetchResult, FetchError, SearchResult
 import server
-from server import _DISPATCH, _REQUIRED_PARAMS, _REMOTE_ALLOWED_OPS, do, fetch, search
+from server import do, fetch, search
 from tools import OPERATIONS
+from tools.dispatch import DISPATCH as _DISPATCH, REQUIRED_PARAMS as _REQUIRED_PARAMS
+from tools.remote import REMOTE_ALLOWED_OPS as _REMOTE_ALLOWED_OPS
 
 
 class TestDispatchConstant:
@@ -300,7 +302,7 @@ class TestRemoteFetch:
             result = self._make_fetch_result(Path(tmp), expected_content)
 
             with patch.object(server, "_REMOTE_MODE", True), \
-                 patch("server.do_fetch", return_value=result):
+                 patch("tools.remote.do_fetch", return_value=result):
                 d = fetch(file_id="abc123", base_path=tmp)
 
         assert d["content"] == expected_content
@@ -313,7 +315,7 @@ class TestRemoteFetch:
             )
 
             with patch.object(server, "_REMOTE_MODE", True), \
-                 patch("server.do_fetch", return_value=result):
+                 patch("tools.remote.do_fetch", return_value=result):
                 d = fetch(file_id="abc123", base_path=tmp)
 
         assert d["content"] == "# Doc"
@@ -325,7 +327,7 @@ class TestRemoteFetch:
             result = self._make_fetch_result(Path(tmp), "# Content")
 
             with patch.object(server, "_REMOTE_MODE", True), \
-                 patch("server.do_fetch", return_value=result) as mock_fetch:
+                 patch("tools.remote.do_fetch", return_value=result) as mock_fetch:
                 d = fetch(file_id="abc123")
 
             # do_fetch was called (base_path will be the temp dir)
@@ -336,7 +338,7 @@ class TestRemoteFetch:
         error = FetchError(kind="not_found", message="File not found")
 
         with patch.object(server, "_REMOTE_MODE", True), \
-             patch("server.do_fetch", return_value=error):
+             patch("tools.remote.do_fetch", return_value=error):
             d = fetch(file_id="abc123", base_path="/tmp")
 
         assert d["error"] is True
@@ -370,7 +372,7 @@ class TestRemoteFetch:
             )
 
             with patch.object(server, "_REMOTE_MODE", True), \
-                 patch("server.do_fetch", return_value=result):
+                 patch("tools.remote.do_fetch", return_value=result):
                 d = fetch(file_id="abc123", base_path=tmp)
 
         assert "content" not in d
@@ -393,7 +395,7 @@ class TestRemoteSearch:
         search_result.path = "/tmp/mise/search--q4-planning--2026.json"
 
         with patch.object(server, "_REMOTE_MODE", True), \
-             patch("server.do_search", return_value=search_result):
+             patch("tools.remote.do_search", return_value=search_result):
             d = search(query="Q4 planning", base_path="/tmp")
 
         # Remote mode strips path — full results returned inline
@@ -408,7 +410,7 @@ class TestRemoteSearch:
         search_result.path = "/tmp/mise/search--test.json"
 
         with patch.object(server, "_REMOTE_MODE", True), \
-             patch("server.do_search", return_value=search_result):
+             patch("tools.remote.do_search", return_value=search_result):
             d = search(query="test")
 
         assert d["query"] == "test"

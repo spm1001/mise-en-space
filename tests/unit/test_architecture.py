@@ -22,7 +22,32 @@ LAYER_RULES = {
     "extractors": {"adapters", "tools"},  # extractors can't import adapters or tools
     "adapters": {"tools"},                 # adapters can't import tools
     # tools can import anything (it's the wiring layer)
+    "workspace": {"adapters", "tools", "extractors", "server"},  # pure folder management
+    "resources": {"extractors", "workspace", "tools"},  # resources may hit adapters (live state) but not business logic
 }
+
+# Files outside any layer directory, with their own forbidden imports.
+# These were the unpoliced tier the 2026-06-10 toise flagged: mass accumulates
+# exactly where LAYER_RULES can't see (server.py hit 1,318 lines before
+# mise-jimohe). server.py may import adapters (lifespan housekeeping) and
+# tools/resources (registration) but never extraction or workspace internals.
+# Root utilities sit BELOW the layers — they may not import upward. retry.py's
+# adapters.http_client import (clear_sync_client for auth-refresh) is the one
+# documented exception.
+FILE_RULES = {
+    "server.py": {"extractors", "workspace"},
+    "html_convert.py": {"adapters", "tools", "workspace", "extractors", "server"},
+    "filters.py": {"adapters", "tools", "workspace", "extractors", "server"},
+    "validation.py": {"adapters", "tools", "workspace", "extractors", "server"},
+    "retry.py": {"tools", "workspace", "extractors", "server"},  # adapters allowed (documented exception)
+    "logging_config.py": {"adapters", "tools", "workspace", "extractors", "server"},
+    "cues_util.py": {"adapters", "tools", "workspace", "extractors", "server"},
+}
+
+# server.py is the registration shim — tools/resources own the logic. If this
+# trips, move the new code into tools/ or resources/ (see mise-jimohe; it was
+# 1,318 lines when CLAUDE.md still claimed it "just registers tools").
+SERVER_MAX_LINES = 500
 
 
 def get_imports_from_file(filepath: Path) -> set[str]:
@@ -123,6 +148,38 @@ class TestLayerBoundaries:
         assert not violations, (
             f"Extractors must be pure (stdlib only):\n" +
             "\n".join(f"  - {v}" for v in violations)
+        )
+
+
+class TestFileBoundaries:
+    """Layer discipline for files that live outside the layer directories.
+
+    Companion to TestLayerBoundaries — same AST mechanism, per-file rules.
+    Covers server.py and the shared root utilities, the tier the layered
+    rules cannot see.
+    """
+
+    @pytest.mark.parametrize("filename,forbidden", list(FILE_RULES.items()))
+    def test_file_does_not_import_forbidden(self, filename: str, forbidden: set[str]) -> None:
+        filepath = PROJECT_ROOT / filename
+        assert filepath.exists(), f"{filename} missing — update FILE_RULES if it moved"
+        imports = get_imports_from_file(filepath)
+        bad_imports = imports & forbidden
+        assert not bad_imports, (
+            f"{filename} imports {bad_imports} — it sits "
+            f"{'above tools (registration shim)' if filename == 'server.py' else 'below the layers (shared utility)'}; "
+            f"move the logic, don't widen the rule"
+        )
+
+    def test_server_stays_thin(self) -> None:
+        """server.py is registration + thin wrappers. Logic lives in tools/
+        and resources/. The cap exists because the entry point quietly grew
+        to 1,318 lines while CLAUDE.md said it 'just registers tools'."""
+        server_path = PROJECT_ROOT / "server.py"
+        line_count = len(server_path.read_text().splitlines())
+        assert line_count <= SERVER_MAX_LINES, (
+            f"server.py is {line_count} lines (cap {SERVER_MAX_LINES}). "
+            f"Move new logic into tools/ or resources/ — see mise-jimohe."
         )
 
 
