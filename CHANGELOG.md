@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.8] - 2026-06-11
+
+### Fixed
+- Guest-mode credential path: load ADC-shaped files directly, never write back; `MISE_TOKEN_PATH` override for caller-owned token files (mise-lebapo)
+- Send `x-goog-user-project` when credentials carry a quota project (mise-lebapo)
+
 ## [0.7.7] - 2026-06-10
 
 Packaging only — restores the mise skill to the marketplace package.
