@@ -156,16 +156,33 @@ mise/
 ## Development
 
 ```bash
-uv sync                           # Install dependencies
-uv run python server.py           # Run MCP server (stdio)
-uv run python server.py --remote  # Run MCP server (StreamableHTTP on :8000/mcp)
-uv run python server.py --help    # CLI help
-uv run pytest                     # Run tests
-uv run pytest tests/unit          # Unit tests only (fast, mocked)
-uv run mypy models.py extractors/ adapters/ validation.py workspace/
+uv sync --all-extras                                # Install deps (full build + dev tools)
+uv run --extra extraction python server.py          # Run MCP server (stdio, full build)
+uv run --extra extraction python server.py --remote # StreamableHTTP on :8000/mcp
+uv run python server.py --help                      # CLI help
+uv run --all-extras python -m pytest                # Run tests (suite ASSUMES the full build)
+uv run --all-extras python -m pytest tests/unit     # Unit tests only (fast, mocked)
+uv run --all-extras python -m mypy models.py extractors/ adapters/ validation.py workspace/
 ```
 
 Integration tests require `-m integration` flag and real credentials.
+
+### Build flavours (mise-hibere, 0.7.9)
+
+Local extraction (`markitdown[pdf]`, `pdf2image`) lives in an optional `extraction`
+extra, **not** core. Two flavours result:
+
+- **Full** — dev/CI and the marketplace plugin (the plugin spawns `uv run --extra
+  extraction`). Fast local PDF text, HTML→markdown, PDF page thumbnails.
+- **Slim / embedded** — what Cornichon vendors (`vendor.sh` installs plain core, no
+  extra). `markitdown` is absent, so `adapters/pdf.py` degrades to **Drive
+  server-side conversion** for PDF text, `html_convert.py` to tag-stripping, and PDF
+  thumbnails are skipped. Image fetch still works (`pillow` is core).
+
+Two things follow: (1) **run the test suite with `--extra extraction`** (or
+`--all-extras`) — PDF-extraction tests assume markitdown is present and fail in a
+slim env; (2) the slim PDF→Drive fallback needs Drive **write** scope (it uploads to
+convert) — fine for Cornichon, whose PDFs come from the user's own Drive.
 
 ### Call Log
 
