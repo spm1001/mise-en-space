@@ -5,6 +5,7 @@ Tests format functions (pure) and do_search wiring (mocked adapters).
 """
 
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -243,6 +244,47 @@ class TestDoSearch:
         mock_drive.assert_called_once()
         mock_gmail.assert_not_called()
         assert result.sources == ["drive"]
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
+    @patch('tools.search.override_path')
+    def test_guest_mode_defaults_to_drive_only(
+        self, mock_override, mock_drive, mock_gmail, mock_write
+    ) -> None:
+        """Guest mode (MISE_TOKEN_PATH set) defaults omitted sources to Drive only.
+
+        The caller-owned credential has no Gmail scope, so an omitted-sources
+        search must not attempt Gmail (mise-kivane).
+        """
+        mock_override.return_value = Path("/tmp/guest-token.json")
+        mock_drive.return_value = []
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test")
+
+        mock_drive.assert_called_once()
+        mock_gmail.assert_not_called()
+        assert result.sources == ["drive"]
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
+    @patch('tools.search.override_path')
+    def test_guest_mode_honours_explicit_sources(
+        self, mock_override, mock_drive, mock_gmail, mock_write
+    ) -> None:
+        """Explicit sources override the guest-mode default — opt-in still works."""
+        mock_override.return_value = Path("/tmp/guest-token.json")
+        mock_drive.return_value = []
+        mock_gmail.return_value = GmailSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test", sources=["drive", "gmail"])
+
+        mock_drive.assert_called_once()
+        mock_gmail.assert_called_once()
+        assert result.sources == ["drive", "gmail"]
 
     @patch('tools.search.write_search_results')
     @patch('tools.search.search_threads')

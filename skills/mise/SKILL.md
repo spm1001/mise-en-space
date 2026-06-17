@@ -203,7 +203,7 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 | Operation | What it does | Key params |
 |-----------|-------------|------------|
 | `create` | New Doc/Sheet/Slides/plain file | `content`+`title` OR `source` |
-| `move` | Move file(s) between folders — single or batch | `file_id` (str or list), `destination_folder_id` |
+| `move` | Move file(s) between folders — single or batch | `file_id` (str or list), `folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
 | `share` | Share file with people (confirm gate) | `file_id`, `to`, `confirm=True` |
 | `overwrite` | Replace full file content (Google Doc or plain file) | `file_id`, `content` OR `source` |
@@ -252,10 +252,10 @@ do(operation="create", content="# Notes\n\nContent here", title="notes.md", doc_
 do(operation="create", content='{"key": "value"}', title="config.json", doc_type="file")
 
 # Move single file
-do(operation="move", file_id="1abc...", destination_folder_id="1xyz...")
+do(operation="move", file_id="1abc...", folder_id="1xyz...")
 
 # Batch move — validates destination once, returns per-file summary
-do(operation="move", file_id=["1abc...", "1def...", "1ghi..."], destination_folder_id="1xyz...")
+do(operation="move", file_id=["1abc...", "1def...", "1ghi..."], folder_id="1xyz...")
 # Returns: {batch: true, total: 3, succeeded: 2, failed: 1, results: [...]}
 ```
 
@@ -424,7 +424,7 @@ fetch("<subfolder_id>", recursive=True, base_path="...")  # repeat per branch
 do(
     operation="move",
     file_id=["<id1>", "<id2>", "<id3>"],
-    destination_folder_id="<dest_id>",
+    folder_id="<dest_id>",
     base_path="..."
 )
 # Returns: {batch: true, total: 3, succeeded: 2, failed: 1, results: [...]}

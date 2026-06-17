@@ -82,7 +82,7 @@ docs/           Design documents and references
 - `do(create)` accepts `doc_type='form'` — creates a Google Form from a YAML or JSON spec. Uses Forms API v1 (not Drive), so `folder_id`, `source`, and `file_path` are ignored. The `content` param is the spec with `title`, `description`, and `questions` array. Supported question types: `paragraph`, `short_answer`, `checkboxes`, `multiple_choice`, `dropdown`, `scale`, `text`, `section_break`. Returns form edit URL and responder URL in cues.
 - `do(create)` accepts `page_setup='pageless'` (doc_type='doc' only) — sets pageless mode via Docs API after creation.
 - `do(create)` with `doc_type='doc'` auto-embeds local images: `![alt](local/path.png)` in markdown triggers post-creation Docs API injection. Requires brief public sharing of each image via Drive permissions — may be blocked by enterprise DLP policies. Check `cues.image_errors` for failures.
-- `do(move)` accepts `file_id` as a list for batch moves — validates destination once, returns per-file summary
+- `do(move)` accepts `file_id` as a list for batch moves — validates destination once, returns per-file summary. The target folder is `folder_id` (canonical, shared with `do(create)`); `destination_folder_id` is kept as a deprecated alias.
 - **Comments included automatically** — open comments deposited as `comments.md`
 - **Cues in every response** — `cues` block surfaces files, comment count, warnings, email context
 - `base_path` is required on all tools in stdio mode — MCP servers run as separate processes, `Path.cwd()` is theirs not Claude's. In remote mode, `base_path` is optional (temp dir used automatically).

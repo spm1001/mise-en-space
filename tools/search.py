@@ -23,6 +23,7 @@ from models import (
     SearchResult,
 )
 from validation import escape_drive_query, sanitize_gmail_query, validate_drive_id
+from token_store import override_path
 from workspace.manager import write_search_results
 
 
@@ -190,7 +191,8 @@ def do_search(
         query: Search terms (not used for activity/calendar sources —
             activity returns recent comment events, calendar returns
             recent events with attachments). Optional when type or folder_id is set.
-        sources: List of sources to search (default: ['drive', 'gmail']).
+        sources: List of sources to search (default: ['drive', 'gmail'],
+            or ['drive'] in guest mode where the token has no Gmail scope).
             Valid sources: 'drive', 'gmail', 'activity', 'calendar'.
         max_results: Maximum results per source
         base_path: Base directory for deposits (defaults to cwd)
@@ -204,7 +206,10 @@ def do_search(
         SearchResult with path to deposited file and result counts
     """
     if sources is None:
-        sources = ["drive", "gmail"]
+        # Guest mode (MISE_TOKEN_PATH set): the caller-owned credential has no
+        # Gmail scope, so an omitted-sources search defaults to Drive only —
+        # otherwise it fails on a scope the guest token never carries (mise-kivane).
+        sources = ["drive"] if override_path() is not None else ["drive", "gmail"]
 
     # Resolve type filter → Drive query clause (validated by caller, guard for direct use)
     type_clause: str | None = None

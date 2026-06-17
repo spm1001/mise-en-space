@@ -44,7 +44,9 @@ class TestDispatchConstant:
         assert result["error"] is True
         assert result["kind"] == "INVALID_INPUT"
         assert "file_id" in result["message"]
-        assert "destination_folder_id" in result["message"]
+        # move's only unconditional required param is now file_id; the folder
+        # target (folder_id, or its destination_folder_id alias) is validated
+        # in the handler once file_id is supplied — mirrors create's content-OR-source.
 
     def test_missing_single_required_param(self) -> None:
         result = do(operation="rename", file_id="f1")

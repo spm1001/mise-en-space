@@ -100,7 +100,7 @@ def search(
 
     Args:
         query: Search terms. Optional when type or folder_id is set.
-        sources: ['drive', 'gmail'] — default: both. Also: 'activity' (recent comments), 'calendar' (recent events with attachments)
+        sources: ['drive', 'gmail'] — default: both (drive only in guest mode). Also: 'activity' (recent comments), 'calendar' (recent events with attachments)
         max_results: Maximum results per source
         base_path: Directory for deposits (pass your cwd so files land next to your project, not the MCP server's directory)
         folder_id: Optional Drive folder ID to scope results to immediate children only.

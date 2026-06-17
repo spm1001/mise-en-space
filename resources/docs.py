@@ -83,7 +83,7 @@ This pattern:
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `query` | str | "" | Search terms. Optional when `type` or `folder_id` is set. |
-| `sources` | list[str] | ['drive', 'gmail'] | Which sources to search |
+| `sources` | list[str] | ['drive', 'gmail'] | Which sources to search (defaults to ['drive'] in guest mode, where the token has no Gmail scope) |
 | `max_results` | int | 20 | Maximum results per source |
 | `folder_id` | str | None | Drive folder ID to scope results to immediate children only. Non-recursive. Forces sources=['drive']. |
 | `type` | str | None | Drive file type filter. Values: `folder`, `doc`, `spreadsheet`, `sheet`, `slides`, `presentation`, `pdf`, `image`, `video`, `form`. Applies to Drive only. |
@@ -390,7 +390,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | Operation | Description | Required params |
 |-----------|-------------|-----------------|
 | `create` | Create Doc/Sheet/plain file/folder from content, deposit, or file_path | `content`+`title` OR `source` OR `file_path`; folder: `title` only |
-| `move` | Move file to different folder | `file_id`, `destination_folder_id` |
+| `move` | Move file to different folder | `file_id`, `folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
 | `share` | Share file with people by email | `file_id`, `to` |
 | `overwrite` | Replace full document content | `file_id`, plus `content` OR `source` OR `file_path` |
@@ -426,9 +426,9 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `content` | str | None | create, overwrite, prepend, append, replace_text, draft (email body) |
 | `title` | str | None | create, rename |
 | `doc_type` | str | 'doc' | create ('doc', 'sheet', 'slides', 'file', 'folder', 'form'). 'file' uploads as-is — MIME inferred from title extension. 'folder' creates an empty folder (no content needed). 'form' creates a Google Form from a YAML/JSON spec. |
-| `folder_id` | str | None | create |
+| `folder_id` | str | None | create, move (target folder — canonical name) |
 | `file_id` | str | None | move, rename, share, overwrite, prepend, append, replace_text |
-| `destination_folder_id` | str | None | move |
+| `destination_folder_id` | str | None | move (deprecated alias for `folder_id`) |
 | `source` | str | None | create, overwrite (path to deposit folder) |
 | `file_path` | str | None | create, overwrite (local file path — no deposit needed) |
 | `base_path` | str | None | Required with source or file_path (your cwd) |
@@ -506,7 +506,7 @@ do(operation="create", title="Research Data", doc_type="folder")
 do(operation="create", title="Q4 Analysis", doc_type="folder", folder_id="1xyz...")
 
 # Move a file to a different folder
-do(operation="move", file_id="1abc...", destination_folder_id="1xyz...")
+do(operation="move", file_id="1abc...", folder_id="1xyz...")
 
 # Rename a file
 do(operation="rename", file_id="1abc...", title="Final Q4 Report")

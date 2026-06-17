@@ -38,7 +38,7 @@ from tools import (
 # Conditional requirements (create needs content OR source) stay in handlers.
 REQUIRED_PARAMS: dict[str, set[str]] = {
     "create": set(),  # content OR source — handler validates
-    "move": {"file_id", "destination_folder_id"},
+    "move": {"file_id"},  # folder_id OR destination_folder_id (alias) — handler validates
     "rename": {"file_id", "title"},
     "share": {"file_id", "to"},
     "overwrite": {"file_id"},  # content OR source — handler validates
@@ -65,7 +65,8 @@ DISPATCH: dict[str, Any] = {
         file_path=p.get("file_path"), page_setup=p.get("page_setup"),
     ),
     "move": lambda p: do_move(
-        file_id=p["file_id"], destination_folder_id=p["destination_folder_id"],
+        file_id=p["file_id"], folder_id=p["folder_id"],
+        destination_folder_id=p["destination_folder_id"],
     ),
     "rename": lambda p: do_rename(
         file_id=p["file_id"], title=p["title"],
@@ -113,7 +114,7 @@ Create: content + title + doc_type (doc/sheet/slides/file/folder/form). page_set
 Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content).
 Email: draft (to + subject + content), reply_draft (file_id + content), archive/star/label.
 Share: file_id + to + role (reader/writer/commenter), confirm=True to execute.
-Move: file_id (single or list) + destination_folder_id.
+Move: file_id (single or list) + folder_id (alias: destination_folder_id).
 setup_oauth: bootstrap Google credentials when none exist. Opens a browser for consent; saves token to Keychain. force=true to re-auth."""
 
 DO_DESCRIPTION_REMOTE = """\

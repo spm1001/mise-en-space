@@ -22,6 +22,7 @@ _DRIVE_API = "https://www.googleapis.com/drive/v3/files"
 
 def do_move(
     file_id: str | list[str] | None = None,
+    folder_id: str | None = None,
     destination_folder_id: str | None = None,
 ) -> DoResult | dict[str, Any]:
     """
@@ -35,33 +36,41 @@ def do_move(
 
     Args:
         file_id: The file(s) to move — single ID or list of IDs
-        destination_folder_id: Target folder ID
+        folder_id: Target folder ID — the canonical name, shared with do(create)
+        destination_folder_id: Deprecated alias for folder_id; still accepted
 
     Returns:
         DoResult on single success, batch summary dict on list input,
         error dict on failure
     """
-    if not file_id or not destination_folder_id:
+    # folder_id is canonical; destination_folder_id is the kept-working alias
+    folder_id = folder_id or destination_folder_id
+    if not file_id or not folder_id:
         missing = []
         if not file_id:
             missing.append("file_id")
-        if not destination_folder_id:
-            missing.append("destination_folder_id")
+        if not folder_id:
+            missing.append("folder_id")
         return {"error": True, "kind": "invalid_input",
                 "message": f"move requires {' and '.join(missing)}"}
 
+    # Validate the destination once, under the canonical name, for both paths
+    try:
+        validate_drive_id(folder_id, "folder_id")
+    except ValueError as e:
+        return {"error": True, "kind": "invalid_input", "message": str(e)}
+
     # Batch path
     if isinstance(file_id, list):
-        return _do_batch_move(file_id, destination_folder_id)
+        return _do_batch_move(file_id, folder_id)
 
     # Single path
     try:
         validate_drive_id(file_id, "file_id")
-        validate_drive_id(destination_folder_id, "destination_folder_id")
     except ValueError as e:
         return {"error": True, "kind": "invalid_input", "message": str(e)}
     try:
-        return _move_file(file_id, destination_folder_id)
+        return _move_file(file_id, folder_id)
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
 

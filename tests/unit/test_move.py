@@ -22,7 +22,8 @@ class TestDoMoveValidation:
         result = do_move(file_id="file1")
         assert result["error"] is True
         assert result["kind"] == "invalid_input"
-        assert "destination_folder_id" in result["message"]
+        # Canonical name is folder_id (shared with do(create))
+        assert "folder_id" in result["message"]
 
     def test_move_without_both_returns_error(self) -> None:
         result = do_move()
@@ -32,7 +33,18 @@ class TestDoMoveValidation:
     def test_move_validation_through_do(self) -> None:
         result = do(operation="move", file_id="file1")
         assert result["error"] is True
-        assert "destination_folder_id" in result["message"]
+        assert "folder_id" in result["message"]
+
+    def test_folder_id_and_destination_alias_feed_same_path(self) -> None:
+        # folder_id is canonical; destination_folder_id is the kept-working
+        # alias. A malformed folder surfaces an identical error under either
+        # name — proving both feed the same destination validation.
+        via_canonical = do_move(file_id="fileid123", folder_id="bad id!")
+        via_alias = do_move(file_id="fileid123", destination_folder_id="bad id!")
+        assert via_canonical["error"] is True
+        assert via_alias["error"] is True
+        assert via_canonical["message"] == via_alias["message"]
+        assert "folder_id" in via_canonical["message"]
 
     def test_rejects_bad_file_id(self) -> None:
         result = do_move(file_id="bad id!", destination_folder_id="folder1")
@@ -80,6 +92,41 @@ class TestDoMove:
         assert result.operation == "move"
         assert result.cues["destination_folder"] == "Archive"
         assert result.cues["previous_parents"] == ["old_folder"]
+
+    @patch("retry.time.sleep")
+    @patch("tools.move.get_sync_client")
+    def test_destination_folder_id_alias_routes_to_drive(self, mock_get_client, _sleep) -> None:
+        """The destination_folder_id alias still drives a real move (back-compat).
+
+        Canonical folder_id is exercised positionally by test_moves_file; this
+        proves the deprecated alias keyword reaches the Drive call unchanged.
+        """
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_client.get_json.side_effect = [
+            {"mimeType": "application/vnd.google-apps.folder", "name": "Archive"},
+            {
+                "id": "file1",
+                "name": "Report.pdf",
+                "parents": ["old_folder"],
+                "webViewLink": "https://drive.google.com/file/d/file1/view",
+            },
+        ]
+        mock_client.patch_json.return_value = {
+            "id": "file1",
+            "name": "Report.pdf",
+            "parents": ["new_folder"],
+            "webViewLink": "https://drive.google.com/file/d/file1/view",
+        }
+
+        result = do_move(file_id="file1", destination_folder_id="new_folder")
+
+        assert isinstance(result, DoResult)
+        assert result.file_id == "file1"
+        patch_call = mock_client.patch_json.call_args
+        params = patch_call[1].get("params", {})
+        assert params["addParents"] == "new_folder"
 
     @patch("retry.time.sleep")
     @patch("tools.move.get_sync_client")
