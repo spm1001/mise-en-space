@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.7.10] - 2026-06-17
+
+### Docs
+- CLAUDE.md: document the full vs slim build flavours (the `extraction` extra), `--extra extraction` for the test suite, and the slim PDF→Drive write-scope dependency (mise-hibere follow-on). Docs-only — CLAUDE.md is vendored content, so the ratchet needs the bump.
+
 ## [0.7.9] - 2026-06-17
 
 ### Changed
