@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.9] - 2026-06-17
+
+### Changed
+- `do(move)` target folder is now `folder_id` (canonical, matching `do(create)`); `destination_folder_id` kept as a deprecated alias (mise-kivane)
+- Guest mode (`MISE_TOKEN_PATH` set): `search` with no explicit `sources` now defaults to `['drive']`, so a guest token with no Gmail scope no longer fails confusingly (mise-kivane)
+- Local extraction (`markitdown[pdf]`, `pdf2image`) moved to an optional `extraction` extra; the plugin spawns with `uv run --extra extraction` so desktop/Cowork stay full. The embedded (Cornichon) flavour installs plain core and sheds magika→onnxruntime (~67M): PDF text falls back to Drive server-side conversion, HTML→markdown to tag-stripping, thumbnails skip, and image fetch (pillow, now core) keeps working (mise-hibere)
+
 ## [0.7.8] - 2026-06-11
 
 ### Fixed
