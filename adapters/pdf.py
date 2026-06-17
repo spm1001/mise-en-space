@@ -16,7 +16,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from markitdown import MarkItDown
+try:
+    from markitdown import MarkItDown
+except ImportError:  # slim/embedded build — PDF text falls back to Drive conversion
+    MarkItDown = None  # type: ignore[assignment,misc]
 
 from adapters.conversion import convert_via_drive
 from adapters.drive import download_file, download_file_to_temp, get_file_size, STREAMING_THRESHOLD_BYTES
@@ -105,15 +108,24 @@ def convert_pdf_content(
 
     warnings: list[str] = []
 
-    # 1. Try markitdown first (fast path)
-    if file_path is not None:
-        md = MarkItDown()
-        result = md.convert_local(str(file_path))
-        content = result.text_content or ""
+    # 1. Try markitdown first (fast path) — absent in the slim/embedded build,
+    #    where PDF text extraction falls through to Drive server-side conversion.
+    if MarkItDown is not None:
+        if file_path is not None:
+            md = MarkItDown()
+            result = md.convert_local(str(file_path))
+            content = result.text_content or ""
+        else:
+            assert file_bytes is not None  # validated above
+            content = _convert_with_markitdown(file_bytes)
+        char_count = len(content.strip())
     else:
-        assert file_bytes is not None  # validated above
-        content = _convert_with_markitdown(file_bytes)
-    char_count = len(content.strip())
+        content = ""
+        char_count = 0
+        warnings.append(
+            "Local PDF extraction unavailable (embedded build) — "
+            "converting via Drive server-side."
+        )
 
     # 2. If markitdown produced enough content, check structural quality
     if char_count >= min_chars_threshold:
@@ -526,6 +538,7 @@ def _convert_with_markitdown(pdf_bytes: bytes) -> str:
 
     Writes to temp file (markitdown requires file path), extracts, cleans up.
     """
+    assert MarkItDown is not None  # only called when the extraction extra is present
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         tmp.write(pdf_bytes)
         tmp_path = Path(tmp.name)

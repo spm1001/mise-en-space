@@ -13,18 +13,28 @@ dependencies = [
     "jeton",
     # Form spec parsing
     "pyyaml>=6.0",
-    # Extraction
-    "markitdown[pdf]>=0.1.4",
     "regex>=2025.11.3",
     "websockets>=16.0",
-    # PDF page thumbnails (requires poppler-utils system package)
-    "pdf2image>=1.17.0",
+    # Image extraction (resize/validate, SVG→PNG). Core because it's cheap (~14M)
+    # and image fetch should work in every flavour, including the embedded build.
+    "pillow>=10.0.0",
 ]
 
 [project.scripts]
 mise = "cli:main"
 
 [project.optional-dependencies]
+# Local fast-path extraction for the full desktop/CLI/Cowork build. The embedded
+# (Cornichon) flavour OMITS these: markitdown pulls magika → onnxruntime (~67M),
+# which mise doesn't need — it routes by Drive MIME, not byte-sniffing. Without
+# them, PDF text falls back to Drive server-side conversion, HTML→markdown to
+# tag-stripping, and PDF page thumbnails are skipped. Image fetch stays in core.
+# The plugin spawns with `uv run --extra extraction`, so plugin/Cowork stay full;
+# Cornichon's vendor.sh installs plain core and gets the slim runtime.
+extraction = [
+    "markitdown[pdf]>=0.1.4",
+    "pdf2image>=1.17.0",
+]
 macos = [
     "pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'",
 ]

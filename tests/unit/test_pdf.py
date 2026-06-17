@@ -73,6 +73,33 @@ class TestPdfExtraction:
         assert any("falling back to Drive" in w for w in result.warnings)
         mock_convert.assert_called_once()
 
+    @patch("adapters.pdf.convert_via_drive")
+    @patch("adapters.pdf.MarkItDown", None)
+    def test_slim_build_falls_back_to_drive(
+        self,
+        mock_convert: MagicMock,
+        sample_pdf_bytes: bytes,
+    ) -> None:
+        """Slim/embedded build (markitdown absent) routes PDF text to Drive conversion.
+
+        markitdown lives in the optional 'extraction' extra; when it isn't
+        installed, adapters.pdf.MarkItDown is None and convert_pdf_content must
+        skip the local fast path and degrade to Drive — not raise ImportError.
+        """
+        from adapters.conversion import ConversionResult
+        mock_convert.return_value = ConversionResult(
+            content="B" * 1000,
+            temp_file_deleted=True,
+            warnings=[],
+        )
+
+        result = convert_pdf_content(sample_pdf_bytes, "file123")
+
+        assert result.method == "drive"
+        assert result.char_count == 1000
+        assert any("embedded build" in w for w in result.warnings)
+        mock_convert.assert_called_once()
+
     @patch("adapters.pdf._convert_with_markitdown")
     def test_custom_threshold(
         self,

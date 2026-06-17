@@ -22,6 +22,8 @@
         "run",
         "--project",
         "${CLAUDE_PLUGIN_ROOT}",
+        "--extra",
+        "extraction",
         "python3",
         "${CLAUDE_PLUGIN_ROOT}/server.py"
       ]
