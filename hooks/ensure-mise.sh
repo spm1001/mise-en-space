@@ -15,6 +15,10 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
 
 ISSUES=""
 
+# Capture uv sync output so a failed dependency install is diagnosable (bon-dotupu).
+SYNC_LOG="$HOME/.cache/mise/ensure.log"
+mkdir -p "$(dirname "$SYNC_LOG")" 2>/dev/null
+
 # 1. Check uv is available
 if ! command -v uv &>/dev/null; then
     ISSUES="${ISSUES}• uv not found — install from https://docs.astral.sh/uv/\n"
@@ -24,9 +28,9 @@ fi
 if [ ! -d "$PLUGIN_ROOT/.venv" ]; then
     if command -v uv &>/dev/null; then
         # Auto-sync — this is safe and idempotent
-        uv sync --project "$PLUGIN_ROOT" --quiet 2>/dev/null
+        uv sync --project "$PLUGIN_ROOT" --quiet >"$SYNC_LOG" 2>&1
         if [ ! -d "$PLUGIN_ROOT/.venv" ]; then
-            ISSUES="${ISSUES}• Dependencies not installed. Run: uv sync --project \"$PLUGIN_ROOT\"\n"
+            ISSUES="${ISSUES}• Dependencies not installed (full error: ${SYNC_LOG}). Run: uv sync --project \"$PLUGIN_ROOT\"\n"
         fi
     else
         ISSUES="${ISSUES}• Dependencies not installed (need uv first)\n"
@@ -54,6 +58,7 @@ fi
 # If no issues, exit silently
 [ -z "$ISSUES" ] && exit 0
 
-cat <<EOF
-{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "⚠️ Mise MCP server needs setup:\n\n${ISSUES}\nThe MCP server won't work until these are resolved."}}
-EOF
+# Render via json.dumps so messages containing quotes (e.g. the quoted PLUGIN_ROOT in
+# recovery commands) produce valid JSON — a raw heredoc does not escape them (bon-dotupu).
+MSG="⚠️ Mise MCP server needs setup:\n\n${ISSUES}\nThe MCP server won't work until these are resolved."
+python3 -c "import json; print(json.dumps({'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': '''${MSG}'''}}))"

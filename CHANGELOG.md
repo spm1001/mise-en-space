@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.7.11] - 2026-06-20
+
+### Fixed
+- `ensure-mise.sh` hook output is now valid JSON on failure: rendered via `python3 json.dumps` instead of a raw `cat <<EOF` heredoc, which left the quoted `"$PLUGIN_ROOT"` in the dependency/OAuth recovery messages unescaped and broke the emitted JSON. `uv sync` stderr is now captured to `~/.cache/mise/ensure.log` (was `2>/dev/null`), and a failed sync surfaces the log path. Found during bon-mavemi/bon-dotupu (same heredoc-quote bug as passe/todoist).
+
 ## [0.7.10] - 2026-06-17
 
 ### Docs
