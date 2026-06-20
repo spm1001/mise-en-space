@@ -568,7 +568,6 @@ Draft-only — Claude composes, the user reviews and sends from Gmail. This is a
 
 **Composes with:**
 - **todoist-gtd** — @Claude inbox items may request research; results inform outcomes
-- **garde-manger** — "Have we researched this before?" Check `garde search` before re-searching
 
 ## When to Use
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.7.12] - 2026-06-20
+
+### Docs
+- Remove the decommissioned garde-manger composition bullet from `skills/mise/SKILL.md` (garde retired 2026-06-03). Part of a suite-wide post-cutover staleness sweep. SKILL.md is vendored, so the ratchet needs the bump.
+
 ## [0.7.11] - 2026-06-20
 
 ### Fixed
