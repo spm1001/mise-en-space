@@ -33,8 +33,13 @@ htmlcov/
 .tox/
 .nox/
 
+# credentials.json is intentionally TRACKED, not ignored — it's an installed-app OAuth
+# client config (mit-workspace-mcp-server). Google treats installed-app client secrets as
+# non-confidential; the real secret is the refresh token (token.json, ignored below).
+# Distributed publicly by design — also vendored in spm1001/batterie. Confirmed posture
+# 2026-06-28 (mise-dumebo). Do NOT re-add an ignore line or `git rm` it. See CLAUDE.md OAuth.
+
 # Secrets - NEVER commit
-credentials.json
 token.json
 .oauth-stash/
 *.env
