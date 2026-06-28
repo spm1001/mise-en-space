@@ -227,10 +227,34 @@ class TestContentToHtml:
         result = _content_to_html("Line one\nLine two")
         assert "Line one<br>" in result
 
-    def test_escapes_html(self) -> None:
+    def test_bare_ampersand_escaped_inline_html_passes(self) -> None:
+        # New contract (mise-zolowa): agent-authored content is markdown, the
+        # draft is user-reviewed, so raw inline HTML passes through; bare
+        # ampersands are still entity-escaped.
         result = _content_to_html("Use <b>tags</b> & ampersands")
-        assert "&lt;b&gt;" in result
+        assert "<b>tags</b>" in result
         assert "&amp;" in result
+
+    # --- Field report mise-zolowa: GFM must render, not appear literally ---
+    def test_gfm_table_renders(self) -> None:
+        result = _content_to_html("| A | B |\n|---|---|\n| 1 | 2 |")
+        assert "<table>" in result
+        assert "<td>1</td>" in result
+        assert "|---|" not in result  # the bug: literal pipe-divider row
+
+    def test_bold_renders(self) -> None:
+        result = _content_to_html("Some **bold** text")
+        assert "<strong>bold</strong>" in result
+        assert "**" not in result  # the bug: literal asterisks
+
+    def test_heading_renders(self) -> None:
+        result = _content_to_html("# Title\n\nBody")
+        assert "<h1>Title</h1>" in result
+
+    def test_list_renders(self) -> None:
+        result = _content_to_html("- one\n- two")
+        assert "<ul>" in result
+        assert "<li>one</li>" in result
 
 
 class TestResolveInclude:

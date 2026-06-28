@@ -37,7 +37,7 @@ I wanted something that had the best of all these ideas:
 |------|---------|-----------------|
 | `search` | Find files and emails across Drive and Gmail (plus activity and calendar) | Yes — results JSON |
 | `fetch` | Extract content to `mise/` as markdown/CSV | Yes — content folder |
-| `do` | Act on Workspace — 14 operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, setup_oauth | Varies |
+| `do` | Act on Workspace — 15 operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment_reply, setup_oauth | Varies |
 
 ## CLI
 

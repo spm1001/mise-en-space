@@ -131,13 +131,15 @@ def _format_comment(comment: CommentData) -> str:
     """Format a single comment with optional replies."""
     parts: list[str] = []
 
-    # Author and date header
+    # Author and date header, with the comment id as a trailing code-span so a
+    # Claude can target it with do(operation="comment_reply", comment_id=...).
     author_str = _format_author(comment.author_name, comment.author_email)
     date_str = _format_date(comment.created_time)
+    id_suffix = f" · `{comment.id}`" if comment.id else ""
     if date_str:
-        parts.append(f"### [{author_str}] • {date_str}\n")
+        parts.append(f"### [{author_str}] • {date_str}{id_suffix}\n")
     else:
-        parts.append(f"### [{author_str}]\n")
+        parts.append(f"### [{author_str}]{id_suffix}\n")
 
     # Resolved indicator
     if comment.resolved:

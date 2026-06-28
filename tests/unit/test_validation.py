@@ -10,6 +10,7 @@ from validation import (
     extract_gmail_id,
     extract_gmail_id_from_url,
     convert_gmail_web_id,
+    detect_fetch_input_problem,
     is_gmail_web_id,
     is_gmail_api_id,
     sanitize_gmail_query,
@@ -283,3 +284,74 @@ class TestSanitizeTitle:
 
     def test_empty_after_strip(self) -> None:
         assert sanitize_title("\x00\x01\x02") == ""
+
+
+class TestDetectFetchInputProblem:
+    """The two fetch-input shapes agents reliably get wrong (mise-dizupe)."""
+
+    # --- Shape (a): 12-char deposit-folder prefix ---
+
+    def test_twelve_char_prefix_flagged(self) -> None:
+        # '1OepZjuwi2em' is exactly the deposit-folder prefix from CLAUDE.md's example.
+        msg = detect_fetch_input_problem("1OepZjuwi2em")
+        assert msg is not None
+        assert "manifest.json" in msg
+        assert "12-character" in msg or "12-char" in msg
+
+    def test_full_drive_id_not_flagged(self) -> None:
+        # A real ~33-char Drive ID must pass through untouched.
+        assert detect_fetch_input_problem("1OepZjuwi2emAbCdEfGhIjKlMnOpQrStUv") is None
+
+    def test_gmail_api_id_not_flagged(self) -> None:
+        # 16-char hex Gmail API ID is not 12 chars — must not trip the prefix trap.
+        assert detect_fetch_input_problem("19b0e7fe6f653f69") is None
+
+    def test_eleven_and_thirteen_char_not_flagged(self) -> None:
+        # The trap is exactly 12; neighbours must not fire.
+        assert detect_fetch_input_problem("1OepZjuwi2e") is None      # 11
+        assert detect_fetch_input_problem("1OepZjuwi2emX") is None    # 13
+
+    # --- Shape (b): non-fetchable / wrong URLs ---
+
+    def test_github_url_flagged(self) -> None:
+        msg = detect_fetch_input_problem("https://github.com/spm1001/mise-en-space")
+        assert msg is not None
+        assert "Workspace" in msg
+        assert "search()" in msg or "WebFetch" in msg or "passe" in msg
+
+    def test_arbitrary_web_url_flagged(self) -> None:
+        msg = detect_fetch_input_problem("https://example.com/some/article")
+        assert msg is not None
+        assert "isn't a Google Workspace handle" in msg
+
+    def test_gmail_search_url_flagged(self) -> None:
+        msg = detect_fetch_input_problem("https://mail.google.com/mail/u/0/#search/quarterly")
+        assert msg is not None
+        assert "search(" in msg
+
+    def test_gmail_inbox_url_flagged(self) -> None:
+        # A bare inbox view with no thread is not fetchable.
+        msg = detect_fetch_input_problem("https://mail.google.com/mail/u/0/#inbox")
+        assert msg is not None
+
+    # --- Pass-through: genuine Workspace handles must not be flagged ---
+
+    def test_genuine_docs_url_not_flagged(self) -> None:
+        url = "https://docs.google.com/document/d/1ABC123_realdocidthatislong/edit"
+        assert detect_fetch_input_problem(url) is None
+
+    def test_genuine_drive_open_url_not_flagged(self) -> None:
+        url = "https://drive.google.com/open?id=0BwGZ5_realdriveid_longenough"
+        assert detect_fetch_input_problem(url) is None
+
+    def test_genuine_gmail_thread_url_not_flagged(self) -> None:
+        # Convertible thread URL (FM… web token) must pass through to normal routing.
+        url = "https://mail.google.com/mail/u/0/#inbox/FMfcgzQdzmSkKHmvSJPBLDSZTbfWQwph"
+        assert detect_fetch_input_problem(url) is None
+
+    def test_bare_full_id_not_flagged(self) -> None:
+        assert detect_fetch_input_problem("1ABC123_realdocidthatislongenough") is None
+
+    def test_empty_input_not_flagged(self) -> None:
+        assert detect_fetch_input_problem("") is None
+        assert detect_fetch_input_problem("   ") is None

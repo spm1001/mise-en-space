@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.2] - 2026-06-28
+
+### Added
+- `comment_reply` do() operation: reply to / resolve / reopen a Drive file comment (Doc/Sheet/Slides) via `comments.replies.create`. Takes `file_id` + `comment_id` (now surfaced in each `comments.md` comment header as a trailing code-span) + `content` and/or `action` (`resolve`/`reopen`); agent replies auto-prefix `[agent] ` so humans can tell them apart. Stdio-only — it's a mutation, not in the remote-safe set (mise-tojuji)
+- Pre-flight fetch input-shape diagnosis: `detect_fetch_input_problem()` catches the two shapes agents reliably fumble — a 12-char deposit-folder prefix reused as a file ID, and a non-fetchable URL (GitHub / arbitrary site / Gmail `#search`-or-inbox) — returning a teaching `invalid_input` error before the bare Google 404 (mise-dizupe)
+
+### Fixed
+- `do(draft)` / `do(reply_draft)` now render GFM tables and **bold** in the Gmail draft body. The old `<p>`/`<br>`-only path emitted literal `|---|` rows and `**` asterisks; content routes through `html_convert.markdown_to_html` (python-markdown, extensions `tables`/`nl2br`/`sane_lists`). `markdown` added to **core** deps — `draft`/`reply_draft` are remote-safe ops that must render in the slim build (mise-zolowa)
+
+### Docs
+- `do` verb documented as 15 ops (was 14) across CLAUDE.md + README, `comment_reply` added to `docs_do()` + `DO_DESCRIPTION_FULL`, and a `SKILL.md` "Replying to Comments" workflow + anti-patterns. `html_convert.py` utility entry updated to HTML↔markdown (both directions).
+
 ## [0.7.12] - 2026-06-20
 
 ### Docs

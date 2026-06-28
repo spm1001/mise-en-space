@@ -2,7 +2,12 @@
 
 from unittest.mock import patch
 
-from html_convert import clean_html_for_conversion, convert_html_to_markdown, strip_html_tags
+from html_convert import (
+    clean_html_for_conversion,
+    convert_html_to_markdown,
+    markdown_to_html,
+    strip_html_tags,
+)
 
 
 class TestCleanHtmlForConversion:
@@ -105,3 +110,35 @@ class TestStripHtmlTags:
 
     def test_empty_input(self) -> None:
         assert strip_html_tags("") == ""
+
+
+class TestMarkdownToHtml:
+    """Tests for markdown→HTML (email draft bodies — field report mise-zolowa)."""
+
+    def test_gfm_table_renders(self) -> None:
+        result = markdown_to_html("| A | B |\n|---|---|\n| 1 | 2 |")
+        assert "<table>" in result
+        assert "<th>A</th>" in result
+        assert "<td>1</td>" in result
+
+    def test_bold_and_italic(self) -> None:
+        result = markdown_to_html("**bold** and *italic*")
+        assert "<strong>bold</strong>" in result
+        assert "<em>italic</em>" in result
+
+    def test_headings(self) -> None:
+        assert "<h1>Title</h1>" in markdown_to_html("# Title")
+        assert "<h2>Sub</h2>" in markdown_to_html("## Sub")
+
+    def test_single_newline_becomes_br(self) -> None:
+        # nl2br + output_format=html → <br> (not <br />)
+        assert "<br>" in markdown_to_html("a\nb")
+
+    def test_bare_ampersand_escaped(self) -> None:
+        assert "&amp;" in markdown_to_html("AT&T")
+
+    def test_plain_text_wrapped_in_paragraph(self) -> None:
+        assert markdown_to_html("Hello world") == "<p>Hello world</p>"
+
+    def test_empty_input(self) -> None:
+        assert markdown_to_html("") == ""

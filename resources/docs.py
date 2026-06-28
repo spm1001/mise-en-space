@@ -402,6 +402,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `archive` | Remove thread(s) from Inbox | `file_id` (thread ID or list) |
 | `star` | Star thread(s) | `file_id` (thread ID or list) |
 | `label` | Add/remove a label on thread(s) | `file_id` (thread ID or list), `label` |
+| `comment_reply` | Reply to / resolve / reopen a Drive file comment | `file_id`, `comment_id`, plus `content` and/or `action` |
 | `setup_oauth` | Bootstrap Google credentials (opens browser) | none (`force=true` to re-auth over existing token) |
 
 **Overwrite** destroys existing content (images, tables, formatting). Use `prepend`/`append`/`replace_text` when existing content matters.
@@ -413,6 +414,8 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 **Share** is a two-step operation (confirm gate). First call returns a preview showing what would happen. Second call with `confirm=True` executes. This ensures the user approves before files become visible to others. Default role is `reader` (least privilege). Notification emails are suppressed.
 
 **Archive/star/label** modify Gmail thread labels. Label names are resolved to IDs automatically (case-insensitive). Use `remove=True` with label to remove instead of add. All three accept `file_id` as a list for batch operations — returns per-thread results (like `move`).
+
+**Comment_reply** posts an in-thread reply to a Drive file comment (Doc/Sheet/Slides). Get `comment_id` from a fetched `comments.md` — each comment's header ends with `` · `comment_id` ``. Pass `content` to reply, `action='resolve'` (or `'reopen'`) to close/reopen the thread, or both (a bare resolve needs only `action`). Replies are auto-prefixed `[agent] ` so humans can tell agent replies from their own, and post as *your* authenticated identity — don't reply on a thread that's @-mentioned to a specific person as if you were them.
 
 **Setup_oauth** is the bootstrap path for users who haven't authenticated yet. It opens Google's consent screen in their default browser and runs a localhost callback listener; once they approve, the token is saved to macOS Keychain. Returns immediately with the auth URL inline (so the user can paste it manually if browser auto-open fails). If a token already exists, returns `status: already_authenticated`. Use `force=true` to re-auth (e.g. after revoking access). Only available in stdio mode — not exposed in remote mode.
 
@@ -436,6 +439,8 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `find` | str | None | replace_text (case-sensitive) |
 | `role` | str | 'reader' | share ('reader', 'writer', 'commenter') |
 | `confirm` | bool | False | share (must be True to execute — first call previews) |
+| `comment_id` | str | None | comment_reply (the comment thread to reply to — from `comments.md`) |
+| `action` | str | None | comment_reply ('resolve' or 'reopen'; omit for a plain reply) |
 
 ### Email operations
 

@@ -30,6 +30,7 @@ from adapters.drive import (
     download_file_to_temp,
     is_google_workspace_file,
     _get_email_attachments_folder_id,
+    reply_to_comment,
     COMMENT_UNSUPPORTED_MIMES,
 )
 
@@ -1200,3 +1201,90 @@ class TestSearchFilesScoped:
         call_kwargs = mock_client.get_json.call_args.kwargs["params"]
         assert call_kwargs.get("supportsAllDrives") == "true"
         assert call_kwargs.get("includeItemsFromAllDrives") == "true"
+
+
+class TestReplyToComment:
+    """Test reply_to_comment with mocked HTTP client."""
+
+    @patch("adapters.drive.get_sync_client")
+    def test_posts_reply_returns_comment_reply(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
+            "id": "reply9",
+            "content": "[agent] Done.",
+            "author": {"displayName": "Claude", "emailAddress": "claude@example.com"},
+            "createdTime": "2026-06-28T10:00:00Z",
+        }
+
+        with patch("retry.time.sleep"):
+            result = reply_to_comment("file1", "comment1", content="[agent] Done.")
+
+        assert isinstance(result, CommentReply)
+        assert result.id == "reply9"
+        assert result.content == "[agent] Done."
+        assert result.author_name == "Claude"
+        # URL targets the comment's replies collection; fields param is required.
+        call = mock_client.post_json.call_args
+        assert call.args[0].endswith("/files/file1/comments/comment1/replies")
+        assert "fields" in call.kwargs["params"]
+        assert call.kwargs["json_body"] == {"content": "[agent] Done."}
+
+    @patch("adapters.drive.get_sync_client")
+    def test_resolve_only_sends_action_no_content(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {"id": "r", "content": "", "author": {}}
+
+        with patch("retry.time.sleep"):
+            reply_to_comment("file1", "comment1", action="resolve")
+
+        body = mock_client.post_json.call_args.kwargs["json_body"]
+        assert body == {"action": "resolve"}
+
+    @patch("adapters.drive.get_sync_client")
+    def test_content_and_action_both_sent(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {"id": "r", "content": "x", "author": {}}
+
+        with patch("retry.time.sleep"):
+            reply_to_comment("file1", "comment1", content="[agent] ok", action="resolve")
+
+        body = mock_client.post_json.call_args.kwargs["json_body"]
+        assert body == {"content": "[agent] ok", "action": "resolve"}
+
+    @patch("adapters.drive.get_sync_client")
+    def test_missing_author_defaults_to_unknown(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {"id": "r", "content": "x", "author": {}}
+
+        with patch("retry.time.sleep"):
+            result = reply_to_comment("file1", "comment1", content="x")
+
+        assert result.author_name == "Unknown"
+
+    @patch("adapters.drive.get_sync_client")
+    def test_404_becomes_not_found(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.side_effect = _make_http_status_error(404)
+
+        with patch("retry.time.sleep"):
+            with pytest.raises(MiseError) as exc:
+                reply_to_comment("file1", "badcomment", content="x")
+
+        assert exc.value.kind == ErrorKind.NOT_FOUND
+
+    @patch("adapters.drive.get_sync_client")
+    def test_403_becomes_permission_denied(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.side_effect = _make_http_status_error(403)
+
+        with patch("retry.time.sleep"):
+            with pytest.raises(MiseError) as exc:
+                reply_to_comment("file1", "comment1", content="x")
+
+        assert exc.value.kind == ErrorKind.PERMISSION_DENIED

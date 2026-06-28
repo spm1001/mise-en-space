@@ -11,6 +11,7 @@ from typing import Any
 
 from adapters.drive import get_file_metadata
 from adapters.gmail import create_draft, IncludedLink
+from html_convert import markdown_to_html
 from models import DoResult, MiseError
 from validation import validate_drive_id
 
@@ -95,23 +96,14 @@ def _format_links_html(links: list[IncludedLink]) -> str:
 
 def _content_to_html(content: str) -> str:
     """
-    Convert plain text content to simple HTML.
+    Render an email draft body (markdown) to HTML.
 
-    Preserves line breaks as <br> and paragraphs as <p> blocks.
-    Does NOT attempt full markdown->HTML conversion — this is email,
-    not a document. Keep it simple and predictable.
+    Routes through markdown_to_html so GFM tables, **bold**, headings, and
+    lists survive into the Gmail draft. The old <p>/<br>-only path emitted
+    literal pipe rows and asterisks (field report mise-zolowa). Single
+    newlines still become <br> (nl2br) for email-friendly line breaks.
     """
-    # Split on double newlines for paragraphs
-    paragraphs = content.split("\n\n")
-    html_parts = []
-    for para in paragraphs:
-        # Escape HTML entities, convert single newlines to <br>
-        escaped = html_escape(para.strip())
-        escaped = escaped.replace("\n", "<br>\n")
-        if escaped:
-            html_parts.append(f"<p>{escaped}</p>")
-
-    return "\n".join(html_parts)
+    return markdown_to_html(content)
 
 
 def do_draft(

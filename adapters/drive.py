@@ -893,3 +893,96 @@ def fetch_file_comments(
         comments=comments,
         warnings=warnings,
     )
+
+
+# Reply fields — replies.create REQUIRES a `fields` param or the API 400s.
+_REPLY_FIELDS = (
+    "id,content,author(displayName,emailAddress),createdTime,modifiedTime,action"
+)
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def reply_to_comment(
+    file_id: str,
+    comment_id: str,
+    content: str | None = None,
+    action: str | None = None,
+) -> CommentReply:
+    """
+    Post a reply to a comment on a Drive file (Drive API comments.replies.create).
+
+    A reply must carry content, an action ('resolve' | 'reopen'), or both — a
+    pure resolve/reopen is a reply with empty content and the action set. Replies
+    post as the token's user; the do() layer prefixes agent-authored content with
+    '[agent] ' so humans can tell them apart (see tools/comment_reply.py).
+
+    Args:
+        file_id: The file the comment lives on
+        comment_id: The comment to reply to (its thread root)
+        content: Reply text (optional when action resolves/reopens)
+        action: 'resolve' or 'reopen' (optional)
+
+    Returns:
+        CommentReply for the created reply
+
+    Raises:
+        MiseError: on API failure
+    """
+    client = get_sync_client()
+
+    body: dict[str, Any] = {}
+    if content:
+        body["content"] = content
+    if action:
+        body["action"] = action
+
+    try:
+        reply = client.post_json(
+            f"{_DRIVE_API}/{file_id}/comments/{comment_id}/replies",
+            json_body=body,
+            params={"fields": _REPLY_FIELDS},
+        )
+    except httpx.HTTPStatusError as e:
+        status = e.response.status_code
+        if status == 404:
+            raise MiseError(
+                ErrorKind.NOT_FOUND,
+                f"Comment {comment_id} not found on file {file_id} "
+                "(wrong ID, or the file type doesn't support comments)",
+                details={"file_id": file_id, "comment_id": comment_id, "http_status": 404},
+            )
+        if status == 403:
+            raise MiseError(
+                ErrorKind.PERMISSION_DENIED,
+                f"No permission to comment on file {file_id}",
+                details={"file_id": file_id, "http_status": 403},
+            )
+        if status == 429:
+            raise MiseError(
+                ErrorKind.RATE_LIMITED,
+                "API quota exceeded posting comment reply",
+                details={"file_id": file_id, "http_status": 429},
+                retryable=True,
+            )
+        if status >= 500:
+            raise MiseError(
+                ErrorKind.NETWORK_ERROR,
+                f"Google API server error: {status}",
+                details={"file_id": file_id, "http_status": status},
+                retryable=True,
+            )
+        raise MiseError(
+            ErrorKind.NETWORK_ERROR,
+            f"HTTP error posting comment reply: {status}",
+            details={"file_id": file_id, "http_status": status},
+        )
+
+    author = reply.get("author", {})
+    return CommentReply(
+        id=reply.get("id", ""),
+        content=reply.get("content", ""),
+        author_name=author.get("displayName") or "Unknown",
+        author_email=author.get("emailAddress"),
+        created_time=reply.get("createdTime"),
+        modified_time=reply.get("modifiedTime"),
+    )

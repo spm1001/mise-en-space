@@ -19,7 +19,7 @@ docs/           Design documents and references
 
 | File | Purpose | Used by |
 |------|---------|---------|
-| `html_convert.py` | HTML→markdown via markitdown (needs tempfile — why it's not in extractors) | adapters |
+| `html_convert.py` | HTML↔markdown: HTML→markdown via markitdown (needs tempfile — why it's not in extractors); markdown→HTML via python-markdown (`markdown_to_html`, for email draft bodies) | adapters, tools |
 | `filters.py` | Attachment filtering logic (`is_trivial_attachment`, `filter_attachments`) — holds two `lru_cache`s | adapters, tools |
 | `validation.py` | ID/URL validation (`validate_drive_id`, `validate_gmail_id`, etc.) | tools, adapters |
 | `retry.py` | Retry decorator with exponential backoff and jitter | adapters |
@@ -66,7 +66,7 @@ docs/           Design documents and references
 |------|---------|---------------|
 | `search` | Find files/emails/activity/calendar events, return metadata + inline preview | No |
 | `fetch` | Download content to `mise/` in cwd, return path + cues | Yes |
-| `do` | Act on Workspace — 14 ops (create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, setup_oauth) | Varies |
+| `do` | Act on Workspace — 15 ops (create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment_reply, setup_oauth) | Varies |
 
 **Key behaviors:**
 - `search` returns metadata only — Claude triages before fetching

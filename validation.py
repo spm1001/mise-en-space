@@ -469,3 +469,87 @@ def validate_drive_id(drive_id: str, param_name: str = "drive_id") -> None:
             f"hyphens, and underscores"
         )
 
+
+# =============================================================================
+# FETCH INPUT SHAPE DIAGNOSIS
+# =============================================================================
+
+# Domains whose URLs carry a fetchable Drive file ID in /d/{id} or ?id={id}.
+_WORKSPACE_FILE_DOMAINS = (
+    "docs.google.com", "sheets.google.com", "slides.google.com", "drive.google.com",
+)
+
+# Deposit folders are named {type}--{slug}--{id[:12]}; this is that trailing chunk.
+_DEPOSIT_PREFIX_LEN = 12
+
+
+def detect_fetch_input_problem(file_id: str) -> str | None:
+    """
+    Pre-flight diagnosis of the two fetch-input shapes agents reliably get wrong.
+
+    Both were mined from calls.jsonl 404s (mise-dizupe): every non-trivial fetch
+    failure was either (a) a 12-char deposit-folder prefix re-used as a file ID, or
+    (b) a URL that isn't a fetchable Workspace handle. Left alone, both fall through
+    ID detection to a bare Google 404 that teaches the agent nothing. This returns a
+    message that names the mistake AND the next move — self-disclosing data over
+    instructional copy (the friendly-error-wrapper pattern).
+
+    Pure function (no I/O) so it's trivially testable and runs before any API call.
+
+    Args:
+        file_id: The raw fetch input.
+
+    Returns:
+        A teaching error message if the input matches a known-bad shape, else None
+        (input is plausibly fetchable — let normal routing handle it).
+    """
+    if not file_id:
+        return None
+    s = file_id.strip()
+
+    # Shape (b): URLs.
+    if s.startswith(("http://", "https://")):
+        head = s if len(s) <= 60 else s[:60] + "…"
+
+        # Gmail URLs are fine only if a single thread is extractable. Search, label,
+        # inbox, and self-sent thread-a URLs can't resolve to an API ID.
+        if "mail.google.com" in s:
+            if extract_gmail_id_from_url(s) is not None:
+                return None  # genuine thread URL — let it through
+            return (
+                f"'{head}' is a Gmail web URL that doesn't point at a single fetchable "
+                f"thread (search, label, and self-sent thread-a URLs can't be resolved "
+                f"to an API ID). To read a conversation, use "
+                f"search('from:… subject:…') to find the thread — fetch retrieves a "
+                f"specific thread, not a Gmail query."
+            )
+
+        # Workspace file URLs are fine if an ID is extractable from the path/query.
+        if any(domain in s for domain in _WORKSPACE_FILE_DOMAINS):
+            if GOOGLE_DRIVE_ID_PATTERN.search(s) or GOOGLE_DRIVE_QUERY_PATTERN.search(s):
+                return None  # genuine Drive/Docs/Sheets/Slides URL — let it through
+
+        # Anything else: an arbitrary web page (GitHub, docs sites, …) or a Workspace
+        # domain URL with no extractable ID. fetch is not a generic web fetcher.
+        return (
+            f"'{head}' isn't a Google Workspace handle. fetch retrieves Google Drive "
+            f"items (Docs/Sheets/Slides/PDFs/folders) and Gmail threads — by ID, or by "
+            f"a Workspace URL (docs.google.com/…, drive.google.com/…, "
+            f"mail.google.com/…). For an arbitrary web page use passe or WebFetch; for "
+            f"a Gmail query use search()."
+        )
+
+    # Shape (a): a bare 12-char deposit-folder prefix re-used as an ID. No genuine
+    # Workspace ID is 12 chars (Drive IDs are ~33+, Gmail API IDs 16-hex), so an
+    # exactly-12-char Drive-charset string is almost always the truncated prefix.
+    if len(s) == _DEPOSIT_PREFIX_LEN and _DRIVE_ID_RE.match(s):
+        return (
+            f"'{s}' looks like a 12-character deposit-folder prefix, not a full file ID. "
+            f"mise names deposit folders {{type}}--{{slug}}--{{id[:12]}}, and that "
+            f"trailing chunk is a truncated ID (real Drive file IDs are ~33+ chars). "
+            f"Open the deposit's manifest.json and use its 'id' field, or call search() "
+            f"to look the file up again."
+        )
+
+    return None
+

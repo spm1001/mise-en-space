@@ -5,7 +5,7 @@ Fetch routing — ID detection and do_fetch entry point.
 from pathlib import Path
 
 from models import MiseError, FetchResult, FetchError
-from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id, GMAIL_WEB_ID_PREFIXES
+from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id, GMAIL_WEB_ID_PREFIXES, detect_fetch_input_problem
 
 from .gmail import fetch_gmail, fetch_attachment
 from .drive import fetch_drive
@@ -54,6 +54,13 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
         recursive: For folder fetches, traverse subfolders recursively
     """
     try:
+        # Pre-flight: catch the two input shapes agents reliably get wrong (a 12-char
+        # deposit-folder prefix; a non-fetchable URL) with a teaching error, before they
+        # fall through to a bare Google 404 (mise-dizupe).
+        problem = detect_fetch_input_problem(file_id)
+        if problem:
+            return FetchError(kind="invalid_input", message=problem)
+
         # Detect ID type and normalize
         source, normalized_id = detect_id_type(file_id)
 

@@ -20,7 +20,7 @@ class TestCommentsExtraction:
         assert result == snapshot("""\
 ## Comments on "Q4 Planning Document" (3 total)
 
-### [Alice Smith <alice@example.com>] • 2026-01-15
+### [Alice Smith <alice@example.com>] • 2026-01-15 · `comment1`
 *Mentions: @bob@example.com, @carol@example.com*
 
 > Revenue target: $2.5M
@@ -33,7 +33,7 @@ class TestCommentsExtraction:
 
 ---
 
-### [David Chen <david@example.com>] • 2026-01-17
+### [David Chen <david@example.com>] • 2026-01-17 · `comment2`
 *[RESOLVED]*
 
 > Beta launch: March 15
@@ -45,7 +45,7 @@ This timeline seems aggressive. Can we push back the launch?
 
 ---
 
-### [Eve Wilson <eve@example.com>] • 2026-01-18
+### [Eve Wilson <eve@example.com>] • 2026-01-18 · `comment3`
 
 Consider adding a fallback strategy here.\
 """)

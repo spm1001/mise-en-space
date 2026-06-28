@@ -215,6 +215,7 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 | `archive` | Remove thread(s) from Inbox | `file_id` (str or list) |
 | `star` | Star thread(s) | `file_id` (str or list) |
 | `label` | Add/remove label on thread(s) | `file_id` (str or list), `label`, optional `remove=True` |
+| `comment_reply` | Reply to / resolve / reopen a doc comment | `file_id`, `comment_id`, `content` and/or `action` |
 
 ### Choosing the Right Edit Operation
 
@@ -235,6 +236,33 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 | Editing a markdown/JSON/SVG file in Drive | Any edit operation (auto-routes to Drive Files API) |
 
 **Binary files** (images, PDFs, etc.) reject text operations (`prepend`/`append`/`replace_text`) with a clear error. `overwrite` works on binary files (full byte replacement).
+
+### Replying to Comments
+
+Close the comment loop without leaving mise: `fetch` a Doc/Sheet/Slides, read `comments.md`, then reply in-thread with `comment_reply`. Each comment's header in `comments.md` ends with its id as a code-span — `` ### [Alice <a@x.com>] • 2026-01-15 · `AAAA1234` `` — and that `comment_id` is what you pass.
+
+```python
+# 1. Fetch the doc — comments.md is deposited automatically when open comments exist
+fetch(file_id="1abc...", base_path="/path/to/project")
+
+# 2. Reply to a comment thread (comment_id from comments.md)
+do(operation="comment_reply", file_id="1abc...", comment_id="AAAA1234",
+   content="Good catch — fixed in the latest revision.")
+
+# 3. Reply AND resolve in one call
+do(operation="comment_reply", file_id="1abc...", comment_id="AAAA1234",
+   content="Done.", action="resolve")
+
+# 4. Resolve with no reply (bare resolve), or reopen
+do(operation="comment_reply", file_id="1abc...", comment_id="AAAA1234", action="resolve")
+do(operation="comment_reply", file_id="1abc...", comment_id="AAAA1234", action="reopen")
+```
+
+**Anti-patterns:**
+- **Don't impersonate.** Replies post as *your* authenticated identity (the token's user), and mise auto-prefixes `[agent] ` so humans can tell. Don't reply on a thread @-mentioned to a *specific* person as if you were them — let the human answer where they were asked by name.
+- **Don't guess the `comment_id`.** It comes from `comments.md` (or a raw Drive comments list), never invented. A wrong id 404s.
+- **Don't double-prefix.** mise adds `[agent] ` itself — write the plain reply text, not `[agent] ...`.
+- **Comments only exist on Google-native files** (Docs/Sheets/Slides). Plain/binary Drive files have no comment threads.
 
 ### Create and Move
 

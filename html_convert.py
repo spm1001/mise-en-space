@@ -1,16 +1,49 @@
 """
-HTML to markdown conversion via markitdown.
+HTML ↔ markdown conversion.
 
-Markitdown requires a file path (no string API), so this module handles the
-tempfile dance. Lives outside extractors/ because it does filesystem I/O.
+Two directions, two backends:
+- HTML→markdown via markitdown (the `extraction` extra; falls back to tag
+  stripping when absent). Needs a file path, so handles the tempfile dance.
+  Used by adapters/gmail.py to pre-convert HTML email bodies before the pure
+  extractor layer.
+- markdown→HTML via python-markdown (core dep). Used by tools/draft.py to
+  render email draft bodies so GFM tables and bold survive into Gmail.
 
-Used by adapters/gmail.py to pre-convert HTML email bodies before they reach
-the pure extractor layer.
+Lives outside extractors/ because the HTML→markdown side does filesystem I/O.
 """
 
 import os
 import re
 import tempfile
+
+import markdown
+
+
+def markdown_to_html(content: str) -> str:
+    """
+    Render markdown to HTML for an email body. Pure, no I/O.
+
+    GFM tables and **bold** must survive into the Gmail draft — the old
+    <p>/<br>-only path emitted literal '|---|' rows and asterisks (field
+    report mise-zolowa). python-markdown with the tables extension fixes it.
+
+    Extensions: `tables` (GFM pipe tables), `nl2br` (single newline → <br>,
+    so email line breaks behave as authors expect — plain markdown would
+    collapse them), `sane_lists` (predictable list nesting). output_format
+    'html' emits <br> not <br />, matching the prior contract.
+
+    NOTE — raw HTML in `content` passes through unescaped (python-markdown's
+    default). This is deliberate and safe HERE: the content is agent-composed
+    markdown, and a draft is reviewed by the user before sending — this is not
+    an untrusted-input boundary. Do NOT add output escaping/sanitising to
+    "harden" it: that re-breaks table and bold rendering (the bug this fixes).
+    Bare ampersands are still entity-escaped (& → &amp;).
+    """
+    return markdown.markdown(
+        content,
+        extensions=["tables", "nl2br", "sane_lists"],
+        output_format="html",
+    )
 
 
 def convert_html_to_markdown(html: str) -> tuple[str, bool]:
