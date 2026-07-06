@@ -73,6 +73,13 @@ packages = ["extractors", "adapters", "tools", "workspace"]
 "oauth_config.py" = "oauth_config.py"
 "auth.py" = "auth.py"
 "cli.py" = "cli.py"
+# Everything below completes the wheel for library consumers (glaneur
+# imports adapters/extractors, whose closure reaches these root modules).
+"cues_util.py" = "cues_util.py"
+"filters.py" = "filters.py"
+"html_convert.py" = "html_convert.py"
+"token_store.py" = "token_store.py"
+"validation.py" = "validation.py"
 
 [tool.ruff]
 line-length = 100
