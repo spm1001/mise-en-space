@@ -18,7 +18,7 @@ Full picture: `spm1001/batterie-de-savoir` → `CLAUDE.md` "Versioning conventio
 extractors/     Pure functions, no MCP awareness (testable without APIs)
 adapters/       Thin Google API wrappers (easily mocked)
 tools/          MCP tool definitions + dispatch/remote orchestration (the wiring layer)
-workspace/      File deposit management (mise/ in cwd)
+workspace/      File deposit management (.mise/ in cwd)
 resources/      MCP resource text (mise://docs/*) + tool-doc registry
 server.py       FastMCP registration shim (stdio default, --remote for StreamableHTTP) — ≤500 lines, enforced
 apps-script/    Google Apps Script for email attachment extraction (runs in Google, not Python)
@@ -75,7 +75,7 @@ docs/           Design documents and references
 | Tool | Purpose | Writes files? |
 |------|---------|---------------|
 | `search` | Find files/emails/activity/calendar events, return metadata + inline preview | No |
-| `fetch` | Download content to `mise/` in cwd, return path + cues | Yes |
+| `fetch` | Download content to `.mise/` in cwd, return path + cues | Yes |
 | `do` | Act on Workspace — 15 ops (create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment_reply, setup_oauth) | Varies |
 
 **Key behaviors:**
@@ -127,7 +127,7 @@ Data models have `warnings: list[str]` fields. Extractors populate them during p
 ## File Deposit Structure
 
 ```
-mise/
+.mise/
 ├── slides--ami-deck-2026--1OepZjuwi2em/
 │   ├── manifest.json       # Self-describing metadata
 │   ├── content.md          # Extracted text/markdown

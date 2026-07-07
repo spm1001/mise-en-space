@@ -95,12 +95,12 @@ def search(
     """
     Search across Drive and Gmail.
 
-    Writes results to mise/ and returns path + summary.
+    Writes results to .mise/ and returns path + summary.
     Read the deposited JSON file for full results.
 
     Args:
         query: Search terms. Optional when type or folder_id is set.
-        sources: ['drive', 'gmail'] — default: both (drive only in guest mode). Also: 'activity' (recent comments), 'calendar' (recent events with attachments)
+        sources: ['drive', 'gmail'] — default: both (drive only in guest mode). Also: 'activity' (recent comments), 'calendar' (events ±7 days, query-filtered, nearest-now kept when capped)
         max_results: Maximum results per source
         base_path: Directory for deposits (pass your cwd so files land next to your project, not the MCP server's directory)
         folder_id: Optional Drive folder ID to scope results to immediate children only.
@@ -159,7 +159,7 @@ def _log_search_result(call_params: dict[str, Any], result: dict[str, Any]) -> N
 @mcp.tool()
 def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs: list[str] | None = None, recursive: bool = False) -> dict[str, Any]:
     """
-    Fetch content to mise/ — auto-detects type (Drive file, Gmail thread, folder).
+    Fetch content to .mise/ — auto-detects type (Drive file, Gmail thread, folder).
 
     Pass base_path=cwd. Use attachment= for specific Gmail attachments (Office/PDF/image).
     Use recursive=True on folders for full tree. Use tabs= to fetch specific spreadsheet tabs.

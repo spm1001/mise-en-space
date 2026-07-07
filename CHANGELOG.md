@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0] - 2026-07-07
+
+### Added
+- Gmail search results carry latest-message triage signals: `last_sender` (From of the newest message — `from` remains the thread originator), `from_me` (tri-state: latest voice is the authenticated user; `null` when identity is unresolved — never read `null` as "theirs"), and `unread_count`. Zero extra API calls — the per-thread metadata fetch already held every message's headers and discarded them (mise-samono)
+- Calendar search honours the query: free text rides the API's `q` param (matches summary/description/attendees/location). The ±7-day window is scanned in full (internal pagination, bounded at 500) and when more events match than `max_results`, the events **nearest to now** are kept — chronological order preserved — with a `cues.calendar_truncated` warning. Previously the query was silently ignored AND Google's oldest-first ordering + a single capped page meant tomorrow's meeting could never appear on a busy calendar: the cap ate the future (mise-bidopi)
+
+### Changed
+- Deposits land in `.mise/` (dot-named, hidden) instead of `mise/` — the piles stop polluting the visible tree; agents are unaffected because every response returns the deposit path explicitly. Existing `mise/` piles keep their old name and are not migrated; repos should gitignore `/.mise/` (mise-pamofa)
+- Gmail search `snippet` now comes from the **latest** message in the thread (was the thread-list snippet, which Gmail draws from an arbitrary — often quoted/early — message; observed misattributing authorship during live triage)
+
+### Docs
+- SKILL.md Workflow-6 truncation claims corrected: results cap at `max_results` (default 20, no auto-pagination past it) and the cue key is `gmail_truncated`, not `truncated`. Calendar source section rewritten to the new semantics with an "is tomorrow's meeting still on?" example
+
 ## [1.2.2] - 2026-06-28
 
 ### Added

@@ -49,7 +49,7 @@ When you fetch a doc/sheet/slides, mise automatically deposits:
 
 ```bash
 # After fetching, check what's in the deposit
-ls mise/doc--strawman-framework--1abc123/
+ls .mise/doc--strawman-framework--1abc123/
 # content.md  comments.md  manifest.json
 
 # Read the comments — they might be more valuable than the doc itself

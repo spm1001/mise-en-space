@@ -40,7 +40,7 @@ search("Q4 planning", base_path="/Users/modha/Repos/my-project")
 fetch("1abc...", base_path="/Users/modha/Repos/my-project")
 ```
 
-**Deposit accumulation:** `mise/` grows without bound during a session. Be aware during heavy research — 15+ deposits add up.
+**Deposit accumulation:** `.mise/` (hidden — dot-named on purpose) grows without bound during a session. Be aware during heavy research — 15+ deposits add up.
 
 ## The Three Tools
 
@@ -165,8 +165,8 @@ Type values: `folder`, `doc`, `spreadsheet` / `sheet`, `slides` / `presentation`
 When search returns 20+ results, don't read the full JSON. Filter first:
 
 ```bash
-jq '.drive_results[:5] | .[] | {name, id}' mise/search--*.json
-jq '.drive_results[] | select(.name | test("framework"; "i"))' mise/search--*.json
+jq '.drive_results[:5] | .[] | {name, id}' .mise/search--*.json
+jq '.drive_results[] | select(.name | test("framework"; "i"))' .mise/search--*.json
 ```
 
 Rule of thumb: <10 results → just read. >15 → filter with jq first.
@@ -180,19 +180,22 @@ Default sources are `['drive', 'gmail']`. Two additional sources are available:
 | Source | What it returns | When to use |
 |--------|----------------|-------------|
 | `activity` | Recent comment events from Drive Activity API | "What's been discussed recently?" / "Any comments on my files?" |
-| `calendar` | Calendar events with Drive attachments | Enriches Drive results with meeting context |
+| `calendar` | Events ±7 days around now, filtered by your query | "Is my meeting with X still on?" / meeting context for Drive files |
 
 ```python
 # Recent comment activity
 search("project update", sources=["activity"], base_path="...")
 
+# Is tomorrow's meeting still on? (query matches summary/description/attendees)
+search("Gareth", sources=["calendar"], base_path="...")
+
 # Calendar enrichment (adds meeting_context to Drive results)
 search("Q4 report", sources=["drive", "calendar"], base_path="...")
 ```
 
-**`activity`** returns comment events — who commented, on what, when. Actors show as "Unknown" (people/ID limitation); the content and file are accurate.
+**`activity`** returns comment events — who commented, on what, when. Actors show as "Unknown" (people/ID limitation); the content and file are accurate. The query is NOT applied to activity — it always returns recent events.
 
-**`calendar`** is NOT in default sources (adds an API call with ±7 day window). When included alongside `drive`, matching calendar event attachments add `meeting_context` to Drive results — connecting a file to the meeting where it was discussed.
+**`calendar`** is NOT in default sources (adds an API call). The query IS applied (free-text match on summary, description, attendees, location) over a ±7-day window around now — upcoming events are first-class, so "confirm tomorrow's meeting" works. If more events match than `max_results`, the ones **nearest to now** are kept and `cues.calendar_truncated` says so. When included alongside `drive`, matching calendar event attachments add `meeting_context` to Drive results — connecting a file to the meeting where it was discussed.
 
 ## Workflow 4: Do (Act on Workspace)
 
@@ -320,7 +323,7 @@ do(operation="share", file_id="1abc...", to="alice@example.com, bob@example.com"
 do(operation="overwrite", file_id="1abc...", content="# Q4 Report\n\nRevised findings...", base_path="...")
 
 # From a deposit folder (fetch → edit locally → publish back)
-do(operation="overwrite", file_id="1abc...", source="mise/doc--q4-report--1abc/", base_path="...")
+do(operation="overwrite", file_id="1abc...", source=".mise/doc--q4-report--1abc/", base_path="...")
 ```
 
 For Google Docs: uses Drive's import engine — all markdown formatting (headings, bold, tables, lists) renders automatically. Response includes `cues.char_count`.
@@ -363,7 +366,7 @@ do(operation="create", doc_type="sheet", title="Staff", base_path="...",
    content='Name,Department,Salary\nAlice,"Sales, Marketing","£65,000"\nBob,Engineering,"£52,000"')
 
 # From a deposit folder (saves tokens — don't inline large CSVs)
-do(operation="create", doc_type="sheet", source="mise/sheet--budget--abc123/", base_path="...")
+do(operation="create", doc_type="sheet", source=".mise/sheet--budget--abc123/", base_path="...")
 ```
 
 **CSV quoting rule:** If a value contains a comma, wrap it in double quotes (`"Sales, Marketing"`). This is standard CSV — applies to currency with thousands separators (`"£65,000"`) and multi-word categories.
@@ -492,11 +495,11 @@ search("category:promotions newer_than:30d", sources=["gmail"], base_path="...")
 search("label:project-alpha is:unread", sources=["gmail"], base_path="...")
 ```
 
-Search follows `nextPageToken` automatically, so results aren't capped at the first page. If results are truncated (very large result set), `cues.truncated` will be `true`.
+**Results are capped at `max_results` (default 20).** Search paginates internally up to that cap, then stops — a 200-thread inbox searched with defaults returns 20 threads. When the cap is hit, the response carries `cues.gmail_truncated` (not `cues.truncated`) telling you more exist. For real triage, pass `max_results` explicitly (e.g. 100+) and check for `gmail_truncated` before believing you've seen everything — a silently-partial picture is how shallow triage happens.
 
 ### Step 2: Review and decide
 
-Read the search results. Each thread shows subject, participants, date, and snippet. Decide which threads to act on — fetch individual threads if you need more context before deciding:
+Read the search results. Each thread shows subject, participants, date, and snippet (drawn from the **latest** message). Three fields answer "whose move is it?" without fetching the thread: `last_sender` (who spoke last — `from` is the thread *originator*, often a different person), `from_me` (the latest voice is yours; `null` means identity unresolved — don't read it as "theirs"), and `unread_count`. Decide which threads to act on — fetch individual threads if you need more context before deciding:
 
 ```python
 fetch("thread_id", base_path="...")  # Read the full conversation

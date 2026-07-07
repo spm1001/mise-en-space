@@ -286,7 +286,7 @@ class TestRemoteFetch:
 
     def _make_fetch_result(self, base_path: Path, content: str, comments: str | None = None) -> FetchResult:
         """Create a deposit folder with content and return a FetchResult pointing to it."""
-        folder = base_path / "mise" / "doc--test--abc123"
+        folder = base_path / ".mise" / "doc--test--abc123"
         folder.mkdir(parents=True, exist_ok=True)
         content_path = folder / "content.md"
         content_path.write_text(content)
@@ -362,7 +362,7 @@ class TestRemoteFetch:
     def test_remote_fetch_skips_binary_content(self) -> None:
         """Binary formats (images) get metadata but no inline content."""
         with tempfile.TemporaryDirectory() as tmp:
-            folder = Path(tmp) / "mise" / "image--photo--abc123"
+            folder = Path(tmp) / ".mise" / "image--photo--abc123"
             folder.mkdir(parents=True)
             img_path = folder / "content.png"
             img_path.write_bytes(b"\x89PNG fake image data")

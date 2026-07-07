@@ -73,7 +73,7 @@ class TestGetDepositFolder:
         )
 
         # Should be under mise/
-        assert folder.parent.name == "mise"
+        assert folder.parent.name == ".mise"
 
         # Should have correct structure
         name = folder.name
@@ -320,7 +320,7 @@ class TestWriteSearchResults:
         path = write_search_results("Q4 planning", results, base_path=tmp_path)
 
         assert path.exists()
-        assert path.parent.name == "mise"
+        assert path.parent.name == ".mise"
         assert path.name.startswith("search--q4-planning--")
         assert path.suffix == ".json"
 
@@ -330,7 +330,7 @@ class TestWriteSearchResults:
     def test_creates_mise_fetch_dir(self, tmp_path: Path) -> None:
         """mise/ created if it doesn't exist."""
         path = write_search_results("test", {}, base_path=tmp_path)
-        assert (tmp_path / "mise").is_dir()
+        assert (tmp_path / ".mise").is_dir()
 
 
 class TestEnrichManifest:

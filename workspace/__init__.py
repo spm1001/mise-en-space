@@ -1,7 +1,7 @@
 """
 Workspace — Per-session folder management.
 
-Handles file deposit to mise/{type}--{title}--{id}/ folders.
+Handles file deposit to .mise/{type}--{title}--{id}/ folders.
 Filesystem-first pattern: content goes to disk, Claude reads what it needs.
 """
 

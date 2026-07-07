@@ -423,6 +423,12 @@ class GmailSearchResult:
     is_unread: bool = False
     label_ids: list[str] = field(default_factory=list)
 
+    # Latest-message signals — "whose move is it?" is THE triage question, and
+    # from_address is the thread ORIGINATOR, not the last voice (mise-samono).
+    last_sender: str | None = None   # From header of the latest message
+    from_me: bool | None = None      # latest message is the user's own; None = identity unresolved
+    unread_count: int = 0
+
 
 @dataclass
 class GmailSearchResults:
@@ -438,7 +444,7 @@ class GmailSearchResults:
 @dataclass
 class FetchResult:
     """Successful fetch result."""
-    path: str                    # Folder path (mise/...)
+    path: str                    # Folder path (.mise/...)
     content_file: str            # Full path to content file
     format: str                  # 'markdown', 'csv'
     type: str                    # 'doc', 'sheet', 'slides', 'gmail'
@@ -764,7 +770,7 @@ class CalendarEvent:
 class CalendarSearchResult:
     """Results from Calendar API query."""
     events: list[CalendarEvent]
-    next_page_token: str | None = None
+    truncated: bool = False  # events dropped by the max_results cap or scan bound
     warnings: list[str] = field(default_factory=list)
 
 

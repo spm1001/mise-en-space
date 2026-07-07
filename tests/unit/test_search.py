@@ -179,6 +179,31 @@ class TestFormatGmailResult:
         assert formatted["is_unread"] is False
         assert formatted["labels"] == []
 
+    def test_latest_message_signals_exposed(self) -> None:
+        """last_sender/from_me/unread_count reach the serialized result (mise-samono)."""
+        result = GmailSearchResult(
+            thread_id="t1",
+            subject="Whose move?",
+            snippet="latest text",
+            from_address="originator@example.com",
+            last_sender="Sarah <sarah@example.com>",
+            from_me=False,
+            unread_count=5,
+        )
+        formatted = format_gmail_result(result)
+        assert formatted["last_sender"] == "Sarah <sarah@example.com>"
+        assert formatted["from_me"] is False
+        assert formatted["unread_count"] == 5
+
+    def test_latest_message_signals_defaults(self) -> None:
+        """Defaults: last_sender None, from_me None (tri-state), unread_count 0."""
+        formatted = format_gmail_result(
+            GmailSearchResult(thread_id="t1", subject="", snippet="")
+        )
+        assert formatted["last_sender"] is None
+        assert formatted["from_me"] is None
+        assert formatted["unread_count"] == 0
+
 
 # ============================================================================
 # do_search WIRING (mocked adapters)
@@ -299,6 +324,33 @@ class TestDoSearch:
         mock_drive.assert_not_called()
         mock_gmail.assert_called_once()
         assert result.sources == ["gmail"]
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.list_events')
+    def test_calendar_gets_query_and_truncation_cue(self, mock_calendar, mock_write) -> None:
+        """Calendar receives the user's query and a truncated result raises
+        the calendar_truncated cue (mise-bidopi)."""
+        from models import CalendarSearchResult
+        mock_calendar.return_value = CalendarSearchResult(events=[], truncated=True)
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("Gareth", sources=["calendar"])
+
+        assert mock_calendar.call_args.kwargs["query"] == "Gareth"
+        assert "calendar_truncated" in result.cues
+        assert "nearest to now" in result.cues["calendar_truncated"]
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.list_events')
+    def test_calendar_no_cue_when_complete(self, mock_calendar, mock_write) -> None:
+        """No truncation cue when the window fit within the cap."""
+        from models import CalendarSearchResult
+        mock_calendar.return_value = CalendarSearchResult(events=[], truncated=False)
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("Gareth", sources=["calendar"])
+
+        assert "calendar_truncated" not in result.cues
 
     @patch('tools.search.write_search_results')
     @patch('tools.search.search_threads')

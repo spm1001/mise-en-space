@@ -1,7 +1,7 @@
 """
 Workspace Manager — Handles file deposit for MCP deliveries.
 
-Deposits fetched content into mise/{type}--{title}--{id}/ folders
+Deposits fetched content into .mise/{type}--{title}--{id}/ folders
 in the current working directory. Each fetch gets its own folder.
 
 This is a filesystem-first pattern: content goes to disk, Claude reads
@@ -14,6 +14,11 @@ import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
+
+# Deposit root, relative to base_path. Dot-named on purpose (mise-pamofa):
+# hidden from humans browsing the tree, unchanged for agents — every response
+# returns the deposit path explicitly. Old visible mise/ piles keep their name.
+DEPOSIT_DIR = ".mise"
 
 # Type aliases
 ContentType = Literal["slides", "doc", "sheet", "form", "gmail", "pdf", "docx", "xlsx", "pptx", "video", "image", "text", "web", "folder"]
@@ -68,7 +73,7 @@ def get_deposit_folder(
     Get the folder path for depositing fetched content.
 
     Creates the folder structure:
-        mise/{type}--{title-slug}--{id}/
+        .mise/{type}--{title-slug}--{id}/
 
     Args:
         content_type: Type of content (slides, doc, sheet, gmail)
@@ -81,11 +86,11 @@ def get_deposit_folder(
 
     Example:
         get_deposit_folder("slides", "AMI Deck 2026", "1OepZju...")
-        -> Path("mise/slides--ami-deck-2026--1OepZju.../")
+        -> Path(".mise/slides--ami-deck-2026--1OepZju.../")
     """
     if base_path is None:
         raise ValueError("base_path is required — deposits must not fall back to MCP server's cwd")
-    mise_fetch = base_path / "mise"
+    mise_fetch = base_path / DEPOSIT_DIR
 
     # Build folder name: {type}--{slug}--{id}
     # Truncate ID to first 12 chars for readability
@@ -310,7 +315,7 @@ def write_search_results(
     base_path: Path | None = None,
 ) -> Path:
     """
-    Write search results to a JSON file in mise/.
+    Write search results to a JSON file in .mise/.
 
     Args:
         query: The search query (used for slugified filename)
@@ -322,11 +327,11 @@ def write_search_results(
 
     Example:
         write_search_results("Q4 planning", {...})
-        -> Path("mise/search--q4-planning--2026-01-31T21-12-53.json")
+        -> Path(".mise/search--q4-planning--2026-01-31T21-12-53.json")
     """
     if base_path is None:
         raise ValueError("base_path is required — deposits must not fall back to MCP server's cwd")
-    mise_fetch = base_path / "mise"
+    mise_fetch = base_path / DEPOSIT_DIR
     mise_fetch.mkdir(parents=True, exist_ok=True)
 
     # Build filename: search--{query-slug}--{timestamp}.json

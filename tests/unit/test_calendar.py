@@ -59,7 +59,7 @@ class TestCalendarModels:
     def test_search_result_defaults(self) -> None:
         result = CalendarSearchResult(events=[])
         assert result.events == []
-        assert result.next_page_token is None
+        assert result.truncated is False
         assert result.warnings == []
 
 
@@ -287,45 +287,89 @@ class TestListEvents:
         result = list_events()
 
         assert result.events == []
-        assert result.next_page_token is None
+        assert result.truncated is False
 
     @patch("retry.time.sleep")
     @patch("adapters.calendar.get_sync_client")
-    def test_pagination_token(self, mock_get_client, _sleep) -> None:
+    def test_internal_pagination_follows_token(self, mock_get_client, _sleep) -> None:
+        """The whole window is scanned across pages before any cap applies —
+        a single capped page is how the cap ate the future (mise-bidopi)."""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
-        mock_client.get_json.return_value = {
-            "items": [_api_event()],
-            "nextPageToken": "page2",
-        }
+        mock_client.get_json.side_effect = [
+            {"items": [_api_event(event_id="e1")], "nextPageToken": "page2"},
+            {"items": [_api_event(event_id="e2")]},
+        ]
 
         result = list_events()
 
-        assert result.next_page_token == "page2"
+        assert len(result.events) == 2
+        assert result.truncated is False
+        # Second call carried the token
+        second_call = mock_client.get_json.call_args_list[1]
+        assert second_call.kwargs["params"]["pageToken"] == "page2"
 
     @patch("retry.time.sleep")
     @patch("adapters.calendar.get_sync_client")
-    def test_page_token_forwarded(self, mock_get_client, _sleep) -> None:
+    def test_query_passed_as_q(self, mock_get_client, _sleep) -> None:
+        """The user's query reaches the API — the original bidopi failure was
+        that it never did, so results were unrelated events."""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
         mock_client.get_json.return_value = {"items": []}
 
-        list_events(page_token="tok123")
+        list_events(query="Gareth")
+        assert mock_client.get_json.call_args.kwargs["params"]["q"] == "Gareth"
 
-        call_kwargs = mock_client.get_json.call_args.kwargs
-        assert call_kwargs["params"]["pageToken"] == "tok123"
+        list_events(query="   ")
+        assert "q" not in mock_client.get_json.call_args.kwargs["params"]
 
     @patch("retry.time.sleep")
     @patch("adapters.calendar.get_sync_client")
-    def test_max_results_capped(self, mock_get_client, _sleep) -> None:
+    def test_max_results_does_not_shrink_page_size(self, mock_get_client, _sleep) -> None:
+        """max_results caps the RETURNED list, not the API page — the scan
+        must see the whole window regardless."""
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
         mock_client.get_json.return_value = {"items": []}
 
-        list_events(max_results=5000)
+        list_events(max_results=5)
 
         call_kwargs = mock_client.get_json.call_args.kwargs
-        assert call_kwargs["params"]["maxResults"] == 2500
+        assert call_kwargs["params"]["maxResults"] == 250
+
+    @patch("retry.time.sleep")
+    @patch("adapters.calendar.get_sync_client")
+    def test_cap_keeps_events_nearest_now(self, mock_get_client, _sleep) -> None:
+        """When more events match than max_results, the nearest-to-now win
+        (in chronological order) and the result is flagged truncated —
+        tomorrow's meeting must survive a busy week (mise-bidopi)."""
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone.utc)
+
+        def iso(delta: timedelta) -> str:
+            return (now + delta).isoformat()
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
+            "items": [
+                _api_event(event_id="old", summary="Last week",
+                           start=iso(timedelta(days=-6)), end=iso(timedelta(days=-6, hours=1))),
+                _api_event(event_id="recent", summary="Earlier today",
+                           start=iso(timedelta(hours=-1)), end=iso(timedelta())),
+                _api_event(event_id="soon", summary="Tomorrow's meeting",
+                           start=iso(timedelta(hours=20)), end=iso(timedelta(hours=21))),
+                _api_event(event_id="far", summary="Next week",
+                           start=iso(timedelta(days=6)), end=iso(timedelta(days=6, hours=1))),
+            ],
+        }
+
+        result = list_events(max_results=2)
+
+        assert result.truncated is True
+        assert [e.event_id for e in result.events] == ["recent", "soon"]  # chronological
 
     @patch("retry.time.sleep")
     @patch("adapters.calendar.get_sync_client")

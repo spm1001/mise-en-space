@@ -28,8 +28,8 @@ Google Workspace MCP server with filesystem-first design.
 
 | Tool | Purpose | Writes files? |
 |------|---------|---------------|
-| `search` | Find files/emails, deposit results to `mise/` | Yes |
-| `fetch` | Download content to `mise/`, return path | Yes |
+| `search` | Find files/emails, deposit results to `.mise/` | Yes |
+| `fetch` | Download content to `.mise/`, return path | Yes |
 | `do` | Act on Workspace (create, move, edit, draft/reply emails) | Varies |
 
 ## Sous-Chef Philosophy
@@ -70,7 +70,7 @@ Search across Drive and Gmail. Deposits results to file for token efficiency.
 
 ## Filesystem-First Pattern
 
-Search results are written to `mise/search--{query-slug}--{timestamp}.json`.
+Search results are written to `.mise/search--{query-slug}--{timestamp}.json`.
 The tool returns the path and summary counts. Read the file for full results.
 
 This pattern:
@@ -93,7 +93,7 @@ This pattern:
 ```python
 # Search both sources
 search("Q4 planning")
-# Returns: {"path": "mise/search--q4-planning--2026-01-31T21-12-53.json",
+# Returns: {"path": ".mise/search--q4-planning--2026-01-31T21-12-53.json",
 #           "drive_count": 15, "gmail_count": 8, ...}
 
 # Filter by type (no keyword needed)
@@ -105,14 +105,14 @@ search("GA4", folder_id="1UclqiqLBfe3BfLRNFTWb0eDbnssxA3Tp")
 # Returns cues.scope note explaining non-recursive limitation
 
 # Then read the file for full results
-Read("mise/search--q4-planning--2026-01-31T21-12-53.json")
+Read(".mise/search--q4-planning--2026-01-31T21-12-53.json")
 ```
 
 ## Response Shape
 
 ```json
 {
-  "path": "mise/search--q4-planning--2026-01-31T21-12-53.json",
+  "path": ".mise/search--q4-planning--2026-01-31T21-12-53.json",
   "query": "Q4 planning",
   "sources": ["drive", "gmail"],
   "drive_count": 15,
@@ -287,7 +287,7 @@ def docs_fetch() -> str:
     """Detailed documentation for the fetch tool."""
     return """# fetch
 
-Fetch content to filesystem. Writes to `mise/` in current directory.
+Fetch content to filesystem. Writes to `.mise/` in current directory.
 
 ## Parameters
 
@@ -344,8 +344,8 @@ This supports gigabyte-scale Office files (common at ITV).
 
 ```json
 {
-  "path": "mise/doc--meeting-notes--abc123/",
-  "content_file": "mise/doc--meeting-notes--abc123/content.md",
+  "path": ".mise/doc--meeting-notes--abc123/",
+  "content_file": ".mise/doc--meeting-notes--abc123/content.md",
   "format": "markdown",
   "type": "doc",
   "metadata": {"title": "Meeting Notes", "mimeType": "..."}
@@ -456,13 +456,13 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 
 ## Deposit-Then-Publish (source param)
 
-Instead of passing content inline, write it to a `mise/` deposit folder and pass the path:
+Instead of passing content inline, write it to a `.mise/` deposit folder and pass the path:
 
 ```python
 # 1. Claude writes content to disk (cheap)
 # 2. Human inspects, edits if needed
 # 3. Publish from deposit (15 tokens vs 5000 for inline CSV)
-do(operation="create", source="mise/sheet--q4-analysis--draft/", base_path="/path/to/project")
+do(operation="create", source=".mise/sheet--q4-analysis--draft/", base_path="/path/to/project")
 ```
 
 Title falls back to `manifest.json` title if not passed explicitly.
@@ -493,7 +493,7 @@ Errors return `{"error": true, "kind": "invalid_input", "message": "..."}` with 
 do(operation="create", content="# Meeting Notes\\n\\n- Item 1", title="Team Sync")
 
 # Create from deposit folder (deposit-then-publish)
-do(operation="create", source="mise/sheet--q4-analysis--draft/", title="Q4 Analysis", doc_type="sheet", base_path="/path/to/project")
+do(operation="create", source=".mise/sheet--q4-analysis--draft/", title="Q4 Analysis", doc_type="sheet", base_path="/path/to/project")
 
 # Create from a local file (no deposit folder needed)
 do(operation="create", file_path="report.md", title="Q4 Report", doc_type="doc", base_path="/path/to/project")
@@ -716,7 +716,7 @@ def docs_workspace() -> str:
     """Documentation for the workspace/deposit folder structure."""
     return """# Workspace Deposit Structure
 
-Fetched content goes to `mise/` in the current working directory.
+Fetched content goes to `.mise/` in the current working directory.
 
 ## Folder Structure
 

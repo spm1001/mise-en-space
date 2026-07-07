@@ -24,6 +24,7 @@ from typing import Any
 from models import GmailThreadData, GmailSearchResult, GmailSearchResults, EmailMessage, EmailAttachment, ForwardedMessage
 from retry import with_retry
 from adapters.http_client import get_sync_client
+from cues_util import current_user_email
 from extractors.gmail import parse_message_payload, parse_attachments_from_payload, parse_forwarded_messages
 from html_convert import clean_html_for_conversion, convert_html_to_markdown
 from filters import is_trivial_attachment, filter_attachments
@@ -93,6 +94,26 @@ def _parse_address_list(value: str | None) -> list[str]:
     parsed = getaddresses([cleaned])
     return [formataddr(pair) if pair[0] else pair[1]
             for pair in parsed if pair[1]]
+
+
+def _is_own_address(from_value: str | None) -> bool | None:
+    """Is this From header the authenticated user's own address?
+
+    Tri-state on purpose: None means "can't tell" (no header, unparseable
+    address, or identity not yet resolved) — callers must not read None as
+    False, or "someone else's move" becomes the silent default (the
+    fail-open shape mise-samono exists to prevent).
+    """
+    if not from_value:
+        return None
+    me = current_user_email()
+    if not me:
+        return None
+    parsed = getaddresses([from_value.strip().rstrip(",")])
+    email = parsed[0][1].lower() if parsed and parsed[0][1] else None
+    if not email:
+        return None
+    return email == me.lower()
 
 
 def _parse_date(date_str: str | None, internal_date: str | None) -> datetime | None:
@@ -326,9 +347,11 @@ def search_threads(
 
     # Step 2: Fetch thread metadata individually
     # Fields mask gives us payload parts tree (for attachment filenames)
-    # without message body data. Same fields as the old batch request.
+    # without message body data. Per-message snippet included so the result
+    # can reflect the LATEST message, not the thread-list snippet (which Gmail
+    # draws from an arbitrary message — observed misattributing authorship).
     search_fields = (
-        "id,messages(id,internalDate,labelIds,"
+        "id,messages(id,internalDate,labelIds,snippet,"
         "payload(headers,mimeType,parts(filename,mimeType,body(attachmentId,size))))"
     )
 
@@ -371,22 +394,32 @@ def search_threads(
 
         # Collect label IDs from first message (thread-level view)
         first_label_ids = first_msg.get("labelIds", [])
-        # Thread is unread if any message has UNREAD label
-        thread_is_unread = any(
-            "UNREAD" in msg.get("labelIds", []) for msg in messages
+        # Unread count across the thread (is_unread kept as the boolean view)
+        unread_count = sum(
+            1 for msg in messages if "UNREAD" in msg.get("labelIds", [])
         )
+
+        # Latest-message signals: whose move is it? (mise-samono)
+        last_msg = messages[-1]
+        last_headers = _parse_headers(last_msg.get("payload", {}).get("headers", []))
+        last_sender = last_headers.get("From")
 
         results.append(GmailSearchResult(
             thread_id=resp_thread_id,
             subject=headers.get("Subject", ""),
-            snippet=snippets_by_id.get(resp_thread_id, ""),
+            # Prefer the latest message's snippet — the thread-list snippet can
+            # surface an arbitrary (often quoted/early) message's text.
+            snippet=last_msg.get("snippet") or snippets_by_id.get(resp_thread_id, ""),
             date=_parse_date(headers.get("Date"), first_msg.get("internalDate")),
             from_address=headers.get("From"),
             message_count=len(messages),
             has_attachments=len(attachment_names) > 0,
             attachment_names=attachment_names,
-            is_unread=thread_is_unread,
+            is_unread=unread_count > 0,
             label_ids=first_label_ids,
+            last_sender=last_sender,
+            from_me=_is_own_address(last_sender),
+            unread_count=unread_count,
         ))
 
     return GmailSearchResults(results=results, truncated=truncated)

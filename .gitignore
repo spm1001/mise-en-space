@@ -55,6 +55,7 @@ apps-script/deploy.json
 # MCP workspace output
 .mcp-workspace/
 /mise/
+/.mise/
 /mise-fetch/
 
 # uv

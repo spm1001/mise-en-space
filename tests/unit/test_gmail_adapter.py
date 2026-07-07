@@ -823,6 +823,108 @@ class TestSearchThreads:
             f"fields mask missing labelIds — is_unread will always be false. "
             f"Got: {fields}"
         )
+        assert "snippet" in fields, (
+            f"fields mask missing per-message snippet — search snippet falls back "
+            f"to the thread-list snippet (arbitrary message). Got: {fields}"
+        )
+
+    @patch('adapters.gmail.current_user_email', return_value="me@example.com")
+    @patch('adapters.gmail.get_sync_client')
+    def test_latest_message_signals(self, mock_get_client, _mock_me) -> None:
+        """last_sender/from_me/unread_count/snippet come from the LATEST message,
+        not the originator (mise-samono: 'whose move is it?')."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_client.get_json.side_effect = [
+            {"threads": [{"id": "t1", "snippet": "Original quoted text"}]},
+            {
+                "id": "t1",
+                "messages": [
+                    {
+                        "id": "m1",
+                        "labelIds": ["INBOX"],
+                        "internalDate": "1706745600000",
+                        "payload": {
+                            "headers": [
+                                {"name": "From", "value": "Alice <alice@example.com>"},
+                                {"name": "Subject", "value": "Plan"},
+                            ],
+                            "mimeType": "text/plain",
+                        },
+                    },
+                    {
+                        "id": "m2",
+                        "labelIds": ["INBOX", "UNREAD"],
+                        "internalDate": "1706832000000",
+                        "snippet": "Middle reply",
+                        "payload": {
+                            "headers": [
+                                {"name": "From", "value": "Bob <bob@example.com>"},
+                            ],
+                            "mimeType": "text/plain",
+                        },
+                    },
+                    {
+                        "id": "m3",
+                        "labelIds": ["INBOX", "UNREAD"],
+                        "internalDate": "1706918400000",
+                        "snippet": "Latest reply text",
+                        "payload": {
+                            "headers": [
+                                {"name": "From", "value": "Me <ME@Example.com>"},
+                            ],
+                            "mimeType": "text/plain",
+                        },
+                    },
+                ],
+            },
+        ]
+
+        with patch('retry.time.sleep'):
+            search = search_threads("plan", max_results=10)
+
+        r = search.results[0]
+        assert r.from_address == "Alice <alice@example.com>"  # originator, unchanged
+        assert r.last_sender == "Me <ME@Example.com>"
+        assert r.from_me is True  # case-insensitive match against identity
+        assert r.unread_count == 2
+        assert r.is_unread is True
+        assert r.snippet == "Latest reply text"  # latest message, not thread-list
+
+    @patch('adapters.gmail.current_user_email', return_value=None)
+    @patch('adapters.gmail.get_sync_client')
+    def test_from_me_is_none_when_identity_unresolved(self, mock_get_client, _mock_me) -> None:
+        """from_me must be None (not False) when identity can't be resolved —
+        None misread as False silently defaults every thread to 'their move'."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_client.get_json.side_effect = [
+            {"threads": [{"id": "t1", "snippet": "Test"}]},
+            {
+                "id": "t1",
+                "messages": [{
+                    "id": "m1",
+                    "labelIds": ["INBOX"],
+                    "internalDate": "1706745600000",
+                    "payload": {
+                        "headers": [
+                            {"name": "From", "value": "a@b.com"},
+                            {"name": "Subject", "value": "Test"},
+                        ],
+                        "mimeType": "text/plain",
+                    },
+                }],
+            },
+        ]
+
+        with patch('retry.time.sleep'):
+            search = search_threads("test", max_results=10)
+
+        assert search.results[0].from_me is None
+        assert search.results[0].last_sender == "a@b.com"
+        assert search.results[0].unread_count == 0
 
     @patch('adapters.gmail.get_sync_client')
     def test_search_unread_from_any_message_in_thread(self, mock_get_client) -> None:

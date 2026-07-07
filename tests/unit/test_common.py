@@ -21,9 +21,9 @@ class TestResolveSource:
             resolve_source("mise/something", None)
 
     def test_relative_path_resolved(self, tmp_path: Path) -> None:
-        deposit = tmp_path / "mise" / "doc--test--abc123"
+        deposit = tmp_path / ".mise" / "doc--test--abc123"
         deposit.mkdir(parents=True)
-        result = resolve_source("mise/doc--test--abc123", str(tmp_path))
+        result = resolve_source(".mise/doc--test--abc123", str(tmp_path))
         assert result == deposit
 
     def test_rejects_traversal(self, tmp_path: Path) -> None:

@@ -16,9 +16,11 @@ from adapters.activity import search_comment_activities
 from adapters.calendar import list_events
 from models import (
     CalendarEvent,
+    CalendarSearchResult,
     CommentActivity,
     DriveSearchResult,
     GmailSearchResult,
+    GmailSearchResults,
     MiseError,
     SearchResult,
 )
@@ -79,9 +81,12 @@ def format_gmail_result(result: GmailSearchResult) -> dict[str, Any]:
     return {
         "thread_id": result.thread_id,
         "subject": result.subject,
-        "snippet": result.snippet,
+        "snippet": result.snippet,  # drawn from the LATEST message
         "date": result.date.isoformat() if result.date else None,
-        "from": result.from_address,
+        "from": result.from_address,  # thread ORIGINATOR — see last_sender for the latest voice
+        "last_sender": result.last_sender,
+        "from_me": result.from_me,  # None = identity unresolved, not "someone else"
+        "unread_count": result.unread_count,
         "message_count": result.message_count,
         "has_attachments": result.has_attachments,
         "attachment_names": result.attachment_names,
@@ -181,16 +186,17 @@ def do_search(
     """
     Search across Drive, Gmail, Activity, and Calendar.
 
-    Deposits results to mise/ and returns path + summary.
+    Deposits results to .mise/ and returns path + summary.
     Follows filesystem-first pattern for token efficiency.
 
     When both 'drive' and 'calendar' are in sources, Drive results are
     enriched with meeting context from matching calendar event attachments.
 
     Args:
-        query: Search terms (not used for activity/calendar sources —
-            activity returns recent comment events, calendar returns
-            recent events with attachments). Optional when type or folder_id is set.
+        query: Search terms. Applied to drive, gmail, AND calendar (free-text
+            match on event summary/description/attendees). Not used for
+            activity, which returns recent comment events regardless.
+            Optional when type or folder_id is set.
         sources: List of sources to search (default: ['drive', 'gmail'],
             or ['drive'] in guest mode where the token has no Gmail scope).
             Valid sources: 'drive', 'gmail', 'activity', 'calendar'.
@@ -257,7 +263,7 @@ def do_search(
             parts.append(type_clause)
         return search_files(" and ".join(parts), max_results=max_results, folder_id=folder_id)
 
-    def _run_gmail() -> list[GmailSearchResult]:
+    def _run_gmail() -> GmailSearchResults:
         sanitized_query = sanitize_gmail_query(query)
         return search_threads(sanitized_query, max_results=max_results)
 
@@ -267,14 +273,14 @@ def do_search(
         activity_result = search_comment_activities(page_size=max_results)
         return activity_result.activities
 
-    def _run_calendar() -> list[CalendarEvent]:
-        # Calendar returns recent events (±7 days by default).
-        # max_results caps event count.
-        calendar_result = list_events(max_results=max_results)
-        return calendar_result.events
+    def _run_calendar() -> CalendarSearchResult:
+        # Query rides the API's q filter; the ±7 day window is scanned in
+        # full and a hit cap keeps events nearest NOW (mise-bidopi — the
+        # cap must not eat the future).
+        return list_events(max_results=max_results, query=query)
 
     # Run searches in parallel
-    futures: dict[str, Future] = {}
+    futures: dict[str, Future[Any]] = {}
     active_sources: list[tuple[str, Any]] = []
     if search_drive:
         active_sources.append(("drive", _run_drive))
@@ -325,8 +331,15 @@ def do_search(
     calendar_events: list[CalendarEvent] = []
     if "calendar" in futures:
         try:
-            calendar_events = futures["calendar"].result()
+            calendar_search = futures["calendar"].result()
+            calendar_events = calendar_search.events
             result.calendar_results = [format_calendar_result(e) for e in calendar_events]
+            if calendar_search.truncated:
+                result.cues["calendar_truncated"] = (
+                    f"Results capped at {len(calendar_events)} — more events matched "
+                    "in the ±7-day window; the events nearest to now were kept. "
+                    "Add a query or raise max_results to see more."
+                )
         except MiseError as e:
             result.errors.append(f"Calendar search failed: {e.message}")
         except Exception as e:

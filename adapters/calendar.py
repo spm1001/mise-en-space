@@ -25,6 +25,12 @@ from retry import with_retry
 # Google Calendar API v3 base URL
 _CALENDAR_API = "https://www.googleapis.com/calendar/v3/calendars"
 
+# Internal pagination: events fetched per page while scanning the window
+_PAGE_SIZE = 250
+# Hard bound on events scanned per list_events call — a ±7 day window rarely
+# holds more; the bound only guards against pathological calendars
+_SCAN_CAP = 500
+
 
 def _parse_attendee(data: dict[str, Any]) -> CalendarAttendee:
     """Parse an attendee from Calendar API response."""
@@ -98,24 +104,48 @@ def _parse_event(data: dict[str, Any]) -> CalendarEvent:
     )
 
 
+def _event_start_dt(event: CalendarEvent) -> datetime:
+    """Event start as an aware datetime — all-day dates become UTC midnight.
+
+    Unparseable starts sort to the far future so they lose nearest-now
+    selection rather than crashing it.
+    """
+    try:
+        dt = datetime.fromisoformat(event.start_time)
+    except ValueError:
+        return datetime.max.replace(tzinfo=timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 @with_retry(max_attempts=3, delay_ms=1000)
 def list_events(
     days_back: int = 7,
     days_forward: int = 7,
     max_results: int = 50,
-    page_token: str | None = None,
+    query: str = "",
 ) -> CalendarSearchResult:
     """
-    List calendar events in a time window around now.
+    List calendar events in a time window around now, optionally filtered.
+
+    The full window is scanned (paginated internally, bounded at _SCAN_CAP)
+    BEFORE the max_results cap is applied, and the cap keeps the events
+    nearest to now. Both halves matter: Google returns oldest-first, so a
+    single capped page fills up with last week and tomorrow's meeting never
+    appears (mise-bidopi — the cap must not eat the future).
 
     Args:
         days_back: How many days in the past to include.
         days_forward: How many days in the future to include.
-        max_results: Maximum events to return (max 2500).
-        page_token: Pagination token for next page.
+        max_results: Maximum events returned; when more match, the ones
+            nearest to now win and the result is flagged truncated.
+        query: Free-text filter passed as the API's `q` param (matches
+            summary, description, attendees, location). Empty = no filter.
 
     Returns:
-        CalendarSearchResult with events sorted by start time.
+        CalendarSearchResult, chronological; .truncated True when events
+        were dropped by the cap or the scan bound.
     """
     client = get_sync_client()
     now = datetime.now(timezone.utc)
@@ -127,24 +157,37 @@ def list_events(
         "timeMax": time_max,
         "singleEvents": "true",  # Google API expects lowercase string
         "orderBy": "startTime",
-        "maxResults": min(max_results, 2500),
+        "maxResults": _PAGE_SIZE,
     }
-    if page_token:
-        params["pageToken"] = page_token
+    if query.strip():
+        params["q"] = query.strip()
 
-    response = client.get_json(
-        f"{_CALENDAR_API}/primary/events",
-        params=params,
-    )
+    items: list[dict[str, Any]] = []
+    page_token: str | None = None
+    while True:
+        if page_token:
+            params["pageToken"] = page_token
+        response = client.get_json(
+            f"{_CALENDAR_API}/primary/events",
+            params=params,
+        )
+        items.extend(response.get("items", []))
+        page_token = response.get("nextPageToken")
+        if not page_token or len(items) >= _SCAN_CAP:
+            break
 
-    events = [_parse_event(item) for item in response.get("items", [])]
-    warnings: list[str] = []
+    # Scan bound hit with pages still unread — window not fully seen
+    truncated = bool(page_token)
 
-    return CalendarSearchResult(
-        events=events,
-        next_page_token=response.get("nextPageToken"),
-        warnings=warnings,
-    )
+    events = [_parse_event(item) for item in items]
+
+    if len(events) > max_results:
+        truncated = True
+        # Keep the events nearest to now, then restore chronological order.
+        events = sorted(events, key=lambda e: abs(_event_start_dt(e) - now))[:max_results]
+        events.sort(key=_event_start_dt)
+
+    return CalendarSearchResult(events=events, truncated=truncated)
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
