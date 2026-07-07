@@ -25,13 +25,13 @@ def _mock_credentials():
 
 def _make_client(creds=None) -> MiseHttpClient:
     """Create an async client with mocked credentials."""
-    with patch("adapters.http_client.load_credentials", return_value=creds or _mock_credentials()):
+    with patch("adapters.http_client._load_and_diagnose_credentials", return_value=creds or _mock_credentials()):
         return MiseHttpClient()
 
 
 def _make_sync_client(creds=None) -> MiseSyncClient:
     """Create a sync client with mocked credentials."""
-    with patch("adapters.http_client.load_credentials", return_value=creds or _mock_credentials()):
+    with patch("adapters.http_client._load_and_diagnose_credentials", return_value=creds or _mock_credentials()):
         return MiseSyncClient()
 
 
@@ -252,7 +252,7 @@ class TestDelete:
 class TestSingleton:
     def test_get_http_client_returns_same_instance(self) -> None:
         clear_http_client()
-        with patch("adapters.http_client.load_credentials", return_value=_mock_credentials()):
+        with patch("adapters.http_client._load_and_diagnose_credentials", return_value=_mock_credentials()):
             a = get_http_client()
             b = get_http_client()
         assert a is b
@@ -260,7 +260,7 @@ class TestSingleton:
 
     def test_clear_resets_instance(self) -> None:
         clear_http_client()
-        with patch("adapters.http_client.load_credentials", return_value=_mock_credentials()):
+        with patch("adapters.http_client._load_and_diagnose_credentials", return_value=_mock_credentials()):
             a = get_http_client()
             clear_http_client()
             b = get_http_client()
@@ -406,7 +406,7 @@ class TestSyncClient:
 class TestSyncSingleton:
     def test_get_sync_client_returns_same_instance(self) -> None:
         clear_sync_client()
-        with patch("adapters.http_client.load_credentials", return_value=_mock_credentials()):
+        with patch("adapters.http_client._load_and_diagnose_credentials", return_value=_mock_credentials()):
             a = get_sync_client()
             b = get_sync_client()
         assert a is b
@@ -414,7 +414,7 @@ class TestSyncSingleton:
 
     def test_clear_resets_instance(self) -> None:
         clear_sync_client()
-        with patch("adapters.http_client.load_credentials", return_value=_mock_credentials()):
+        with patch("adapters.http_client._load_and_diagnose_credentials", return_value=_mock_credentials()):
             a = get_sync_client()
             clear_sync_client()
             b = get_sync_client()
