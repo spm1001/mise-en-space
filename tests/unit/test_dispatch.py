@@ -54,6 +54,40 @@ class TestDispatchConstant:
         assert "title" in result["message"]
 
 
+class TestSignatureCarriesEveryDispatchParam:
+    """Every param a dispatch handler reads must exist in do()'s signature.
+
+    FastMCP derives the tool schema from the signature — a param consumed by
+    dispatch but absent from the signature is silently discarded by pydantic
+    before dispatch ever sees it (force was dropped this way for two months
+    while the tool description advertised it; caught by live smoke, 2026-07-07).
+    This is the mechanical guard: adding a param to a handler without adding
+    it to do()'s signature fails here, not in production.
+    """
+
+    def test_every_handler_param_is_in_do_signature(self) -> None:
+        import inspect
+        import re
+        from pathlib import Path
+
+        dispatch_src = (
+            Path(__file__).parents[2] / "tools" / "dispatch.py"
+        ).read_text()
+        handler_keys = set(re.findall(r'p\.get\("([a-z_]+)"', dispatch_src))
+        handler_keys |= set(re.findall(r'p\["([a-z_]+)"\]', dispatch_src))
+
+        injected_by_run_operation = {"_metadata"}
+        sig_params = set(inspect.signature(do).parameters)
+
+        missing = handler_keys - sig_params - injected_by_run_operation
+        assert not missing, (
+            f"dispatch handlers read {sorted(missing)} from params, but do()'s "
+            "signature doesn't declare them — FastMCP's schema won't carry them "
+            "and pydantic will silently drop callers' values. Add them to the "
+            "do() signature in server.py (and the params dict + call_params list)."
+        )
+
+
 class TestRunOperationNeverRaises:
     """run_operation is a do()-funnel of the two-tier error contract
     (CLAUDE.md → Error Handling): whatever a handler throws, the caller
