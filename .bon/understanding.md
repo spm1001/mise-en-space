@@ -16,6 +16,10 @@ When mise added `archive`, `star`, and `label` as do() operations, `label` was a
 
 When you *do* add one: the op name and count drift more surfaces than CLAUDE.md's 6-step recipe lists. `test_dispatch.py` auto-verifies OPERATIONS/DISPATCH/REQUIRED_PARAMS sync, but the "N ops: a, b, c…" line lives un-policed in CLAUDE.md, README.md, `DO_DESCRIPTION_FULL` in tools/dispatch.py, `docs_do()` in resources/docs.py, and the SKILL.md operations table. Grep for the current count (`grep -rn "ops\b"` on the op list) and update every surface — otherwise cold-start docs say "14 ops" while the tool has 15 (learned adding comment_reply, 2026-06-28).
 
+## The data you need may already be in hand
+
+Before adding an API call (or assuming a scope change), check what the existing fetch already downloads and discards. samono (1.3.0) added `last_sender`/`from_me`/`unread_count` + latest-message snippet to Gmail search for ZERO extra calls — the per-thread fields mask already pulled every message's headers and labelIds; the old code only read `messages[0]`. Same evening, corollary: meduto's invite-state enrichment needed no scope change because `calendar.readonly` already covers `events.list`. The expensive-looking enhancement is often a read of data already in hand — the constraint you assume (another call, another scope) may not exist.
+
 ## The MCP description length ceiling
 
 MCP tool descriptions have a hard ceiling at 2048 characters, enforced by Claude Code's `MAX_MCP_DESCRIPTION_LENGTH` constant at `src/services/mcp/client.ts:218`. Descriptions over this limit are sliced and suffixed with `'… [truncated]'`. This truncation triggers a secondary, more insidious failure: the Anthropic API silently drops properties from the tool's JSON schema during `tool_reference` expansion (the mechanism that expands deferred tools when ToolSearch is called). The schema is sent in full by CC — the property loss happens API-side during expansion, not during transmission.
@@ -65,6 +69,12 @@ Separately, kivane made `do(move)`'s target folder `folder_id` (canonical, match
 Google's Sheets value APIs (`values.batchGet`) return *display* data, not *structural* data. Merge ranges live in the metadata endpoint (`spreadsheets.get`), not the value endpoint. When you fetch values with `FORMATTED_VALUE`, merged cells return the value only in the top-left cell; every other cell in the merge range comes back as an empty string.
 
 The fix: request `sheets.merges` in the metadata fields, `_resolve_merges` propagates top-left values post-fetch. `_resolve_merges` handles horizontal merges too — merged column headers get the same value in each spanned column. The warning cue mitigates misinterpretation.
+
+## Google Calendar: two traps (2026-07-07)
+
+**The list API hides cancelled events rather than marking them.** `events.list(iCalUID=…)` returns 0 items for a cancelled event unless `showDeleted=true` — absence-of-result is indistinguishable from never-existed (verification ledger #6's fail-open shape, as an API design). Any event-state code MUST pass `showDeleted=true`. Full mechanism + probe evidence: `docs/2026-07-07-meduto-invite-event-state.md`; the build recommendation is filed as mise-pinodi.
+
+**The cap ate the future, and the fix (bidopi, 1.3.0) has three legs that only work together.** Google returns events oldest-first; a single capped page therefore fills with last week before ever reaching tomorrow. The fix: (1) pass the query (`q` param) to shrink the result set, (2) full-window internal pagination so everything is seen, (3) nearest-now selection to decide who survives a genuine overflow (`calendar_truncated` cue when it fires). Any one leg alone re-breaks the "is tomorrow's meeting still on?" case. `find_events_for_file` still has the disease — it's dead code with no production caller (verified by grep), and mise-kulefi deletes it on the next batch's bump rather than repairing it.
 
 ## httpx migration — complete (Mar 2026)
 
@@ -136,7 +146,7 @@ Mise ships eight Resources via FastMCP — six static docs (`mise://docs/*`), on
 
 ## Workspace cache vision (cuvusa) — ABANDONED 2026-07-07, design record only
 
-**Sameer's call (2026-07-07): the central cache is not worth it — do not build this.** The idea had already been lost and re-found ~3 times; this is the deliberate end of the line, not another loss. What survives: deposit *disposal* lives on as **mise-bigiko** (gc verb, on the board under novanu, possibly plus a rename of the deposit dir to a hidden name), and the error-message slice of kaceta already shipped as **mise-dizupe**. Everything else below is a design record kept only in case a real consumer (a genuine dedup or corpus-grep need) ever revives it. If you're reading this wondering whether to build it: don't — re-open the conversation with Sameer instead.
+**Sameer's call (2026-07-07): the central cache is not worth it — do not build this.** The idea had already been lost and re-found ~3 times; this is the deliberate end of the line, not another loss. The disposal thread closed the same day: **mise-bigiko was closed with the gc verb deliberately ditched** — piles are acceptable once invisible, and the rename half shipped as pamofa (deposits → hidden `.mise/`, see "Deposits are dot-named" below). The error-message slice of kaceta already shipped as **mise-dizupe**. Everything else below is a design record kept only in case a real consumer (a genuine dedup or corpus-grep need) ever revives it. If you're reading this wondering whether to build it: don't — re-open the conversation with Sameer instead.
 
 Background: 20 `mise/` folders are scattered across `~/Repos/`, ~250MB total — Drive content gets pulled per-cwd, never deduplicated, never grep-able as a corpus. Pre-Dolt history (mise-6bo, mise-fuSepi, three open cleanup bons that never shipped) shows this conversation has happened multiple times.
 
@@ -148,11 +158,15 @@ Survivor design after pushback: central cache + cwd hardlinks + manifest index. 
 
 **Sequencing risks:** if rocume ships before diwosi, fetch keeps round-tripping during the gap (decide deliberately). If rocume + diwosi ship before gotace, the cache accumulates without bound — ship gotace concurrently or document the manual cleanup path. Hardlinks need cross-filesystem fallback to symlinks (Taildrive mounts, external drives) — verify `os.link` failure handling actually triggers fallback. Before implementing rocume, verify Drive's web URL is the right human-facing handle to carry in the manifest.
 
+## Deposits are dot-named (1.3.0, pamofa)
+
+New deposits land in `.mise/` — the `DEPOSIT_DIR` constant in `workspace/manager.py` is the single authority. Old visible `mise/` piles keep their name and rot in place; both names are inert because the estate ignore is layered: `~/.dotfiles/git/gitignore_global` carries `.mise/` + `mise/` (covers every repo on every machine — this is the one edit that covers the whole estate for any future deposit-adjacent artefact), `~/notes` has explicit lines (its 5-min auto-commit made it urgent), and this repo has repo-local lines. Known notes/tube/Mac piles were renamed 2026-07-07.
+
 ## Current state (June 2026)
 
 *Caveat on this whole section: current-state prose rots fastest — on 2026-06-10 the morning's own synthesis described as open three things the afternoon fixed. Claims below are dated where possible; for live status, trust the bon board over this prose.*
 
-*(2026-07 update: mise's own version number ended at 0.7.12 — the suite cutover happened and mise now ships under the single Batterie number, 1.2.x. The 2026-06-28 coordinated ship (suite 1.2.2, commit 7d8855f) landed dizupe + zolowa + tojuji; dopufo's wheel-closure fix and the deferred Dependabot bumps followed. zolowa/tojuji are code-shipped but their bons stay open pending live smoke-test.)*
+*(2026-07 update: mise's own version number ended at 0.7.12 — the suite cutover happened and mise now ships under the single Batterie number. The 2026-06-28 coordinated ship (suite 1.2.2, commit 7d8855f) landed dizupe + zolowa + tojuji; dopufo's wheel-closure fix and the deferred Dependabot bumps followed. zolowa/tojuji were live-smoke-tested and closed 2026-07-07. **Suite 1.3.0** (2026-07-07, commit 7ddd588) shipped the search-fidelity batch: samono (gmail triage signals, zero extra calls), bidopi (calendar honours query — see the Calendar traps section), pamofa (deposits → `.mise/`) — all three live-smoked on 1.3.0 and closed the same evening.)*
 
 Core MCP server stable and in daily use via stdio (v0.7.12 — 0.7.5 carried the 2026-06-10 fixes below; 0.7.6/0.7.7 were packaging-only bumps during the marketplace husk repair, a legitimate pattern: the version ratchet demands a bump whenever vendored content changes, even when no code did). The 0.7.8→0.7.12 run was the guest-mode arc and its housekeeping: **0.7.8** shipped guest credentials (lebapo — `MISE_TOKEN_PATH`, ADC-shaped load, `x-goog-user-project`); **0.7.9** the guest-mode cluster (kivane folder_id + Drive-only search default, hibere slim build); **0.7.10** docs-only (the build-flavours section, a ratchet bump for vendored CLAUDE.md); bon-dotupu fixed the `ensure-mise` hook (valid-JSON failure render + diagnosable `uv sync`); **0.7.12** swept out decommissioned garde-manger references post-cutover. Cowork plugin validated end-to-end (2026-05-04 field test). **MCPB packaging retired** (May 2026 — `manifest.json` deleted; the Claude Code plugin format is the only bundle now). Remote mode transport done. Merged-cell resolution, pageless doc creation, folder creation, token diagnostics, and heading extraction all shipped. MCP description length fixed (property drop bug resolved). Apps Script email extractor ported from archived repo.
 

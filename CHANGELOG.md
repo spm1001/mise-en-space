@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.3.1] - 2026-07-07
+
+### Fixed
+- `setup_oauth` no longer races itself: the tool mints the consent URL **once** (persisting the PKCE verifier) and the detached subprocess consumes it via the new `python -m auth --auto --url <url>` mode, instead of minting a second URL whose verifier overwrote the first — the returned URL is now always exchangeable (its `code_challenge` matches the persisted verifier). On headless boxes the subprocess now keeps a threaded callback listener alive for 5 minutes (an `ssh -L 3000:localhost:3000` tunnel delivers the callback), and the `--code` path is the documented fallback either way — the verifier survives listener timeout and failed exchanges (mise-zefahe)
+- `setup_oauth` verifies credentials actually **load** before claiming `already_authenticated` — a present-but-revoked/corrupt token now falls through to a fresh flow with status `reauthenticating_stale_creds` and the load diagnostic in `cues.stale_creds_diagnostic`, instead of bouncing the user between "authed!" and auth errors (mise-didage)
+- Port pre-check hardened and shared: `oauth_config.port_is_free` binds with SO_REUSEADDR to match the real listener's semantics (a TIME_WAIT socket from a just-finished flow no longer blocks retries for ~60s), and `python -m auth --auto` now pre-checks the port BEFORE opening a browser, so a busy port can't burn a consent click (mise-zanezo)
+
+### Removed
+- `find_events_for_file` (adapters/calendar.py): dead code — no production caller (drive enrichment uses `list_events` + the meeting-context index) — still carrying the single-page oldest-first cap bug that 1.3.0 fixed in `list_events`. Deleted rather than repaired (mise-kulefi)
+
+### Docs
+- CLAUDE.md Error Handling rewritten to the real, deliberate two-tier contract: API-facing adapters (drive, gmail) convert Google's HTTP taxonomy to `MiseError` kinds at the adapter layer; processing adapters (office, pdf, conversion, image, charts, forms, activity, calendar, genai, cdp) raise bare and every tools-layer funnel converts uniformly (fetch router / search per-source / `run_operation` / server.py backstop) — plus the rule for new adapters (mise-ceroru)
+
+### Tests
+- New `tests/unit/test_setup_oauth.py` (14 tests): creds-validity gate, single-mint invariant (spawn argv carries the returned URL; returned URL's challenge == S256(persisted verifier) through real jeton minting), callback-handler CSRF/state validation, CLI arg contract, `port_is_free` semantics. `run_operation`'s never-raises wrap pinned in test_dispatch.py (mise-jiberu)
+
 ## [1.3.0] - 2026-07-07
 
 ### Added

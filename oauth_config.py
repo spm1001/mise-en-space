@@ -2,8 +2,11 @@
 OAuth Configuration - Single Source of Truth
 
 All OAuth parameters defined here. Do not duplicate elsewhere.
+Also holds port_is_free() — the callback-port pre-check shared by the
+MCP setup_oauth tool and the auth.py CLI.
 """
 
+import socket
 from pathlib import Path
 
 # Package root (where this file lives)
@@ -45,6 +48,24 @@ SCOPES = [
 
 # OAuth server port (localhost callback receiver)
 OAUTH_PORT = 3000
+
+
+def port_is_free(port: int) -> bool:
+    """Check if localhost:port is bindable. Returns True if free.
+
+    SO_REUSEADDR matches the listener's own bind semantics (http.server sets
+    allow_reuse_address) — without it, a TIME_WAIT socket from a just-finished
+    flow fails this check for ~60s while the real listener would bind fine.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind(("localhost", port))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
 
 # Local credentials file (for external users who provide their own)
 LOCAL_CREDENTIALS_FILE = _PACKAGE_ROOT / 'credentials.json'

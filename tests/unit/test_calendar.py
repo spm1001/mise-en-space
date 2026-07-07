@@ -15,7 +15,6 @@ from adapters.calendar import (
     _parse_attachment,
     _parse_event,
     list_events,
-    find_events_for_file,
 )
 
 
@@ -407,90 +406,3 @@ class TestListEvents:
         assert summaries == ["Morning standup", "Lunch", "Review"]
 
 
-# ============================================================================
-# find_events_for_file (mocked HTTP client)
-# ============================================================================
-
-
-class TestFindEventsForFile:
-    """Test find_events_for_file with mocked HTTP client."""
-
-    @patch("retry.time.sleep")
-    @patch("adapters.calendar.get_sync_client")
-    def test_finds_matching_event(self, mock_get_client, _sleep) -> None:
-        mock_client = MagicMock()
-        mock_get_client.return_value = mock_client
-        mock_client.get_json.return_value = {
-            "items": [
-                _api_event(
-                    event_id="e1",
-                    summary="Review meeting",
-                    attachments=[{"fileId": "target_file", "title": "Agenda"}],
-                ),
-                _api_event(event_id="e2", summary="Unrelated"),
-            ],
-        }
-
-        result = find_events_for_file("target_file")
-
-        assert len(result.events) == 1
-        assert result.events[0].event_id == "e1"
-        assert result.events[0].summary == "Review meeting"
-
-    @patch("retry.time.sleep")
-    @patch("adapters.calendar.get_sync_client")
-    def test_no_match(self, mock_get_client, _sleep) -> None:
-        mock_client = MagicMock()
-        mock_get_client.return_value = mock_client
-        mock_client.get_json.return_value = {
-            "items": [
-                _api_event(event_id="e1", summary="No attachments"),
-                _api_event(
-                    event_id="e2",
-                    attachments=[{"fileId": "other_file", "title": "Other"}],
-                ),
-            ],
-        }
-
-        result = find_events_for_file("target_file")
-
-        assert result.events == []
-
-    @patch("retry.time.sleep")
-    @patch("adapters.calendar.get_sync_client")
-    def test_empty_calendar(self, mock_get_client, _sleep) -> None:
-        mock_client = MagicMock()
-        mock_get_client.return_value = mock_client
-        mock_client.get_json.return_value = {"items": []}
-
-        result = find_events_for_file("target_file")
-
-        assert result.events == []
-
-    @patch("retry.time.sleep")
-    @patch("adapters.calendar.get_sync_client")
-    def test_multiple_matches(self, mock_get_client, _sleep) -> None:
-        """Same file attached to multiple meetings."""
-        mock_client = MagicMock()
-        mock_get_client.return_value = mock_client
-        mock_client.get_json.return_value = {
-            "items": [
-                _api_event(
-                    event_id="e1",
-                    summary="Draft review",
-                    attachments=[{"fileId": "doc1", "title": "Draft"}],
-                ),
-                _api_event(
-                    event_id="e2",
-                    summary="Final review",
-                    attachments=[
-                        {"fileId": "doc1", "title": "Draft"},
-                        {"fileId": "doc2", "title": "Notes"},
-                    ],
-                ),
-            ],
-        }
-
-        result = find_events_for_file("doc1")
-
-        assert len(result.events) == 2

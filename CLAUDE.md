@@ -118,7 +118,15 @@ docs/           Design documents and references
 
 ## Error Handling
 
-Errors are `MiseError` (in `models.py`) with `ErrorKind`: `AUTH_EXPIRED`, `NOT_FOUND`, `PERMISSION_DENIED`, `RATE_LIMITED`, `NETWORK_ERROR`, `INVALID_INPUT`, `EXTRACTION_FAILED`. Each includes `retryable` hint. Adapters catch Google exceptions and convert; tools catch `MiseError` and format for MCP response.
+Errors are `MiseError` (in `models.py`) with `ErrorKind`: `AUTH_EXPIRED`, `NOT_FOUND`, `PERMISSION_DENIED`, `RATE_LIMITED`, `NETWORK_ERROR`, `INVALID_INPUT`, `EXTRACTION_FAILED`. Each includes `retryable` hint.
+
+**The conversion contract is deliberately two-tier** (mise-ceroru — don't "fix" the second tier into the first):
+
+- **API-facing adapters convert at the adapter layer.** `drive.py` and `gmail.py` (plus thinner docs/sheets/slides call sites) map Google's HTTP taxonomy to `MiseError` kinds — the status code carries meaning (403→PERMISSION_DENIED, 404→NOT_FOUND, 429→RATE_LIMITED) and a `retryable` hint the tools layer couldn't reconstruct from a bare exception.
+- **Processing adapters raise bare.** The conversion family (office, pdf, conversion, image, charts, forms, activity, calendar, genai, cdp) raises `ValueError`/`Exception` or returns None: their failures are local processing errors whose message IS the diagnostic — a MiseError wrapper would add ceremony, not information.
+- **Every tools-layer funnel converts uniformly, so nothing reaches an MCP response raw:** fetch (`tools/fetch/router.py` — MiseError→its kind, ValueError→invalid_input, Exception→unknown), search (`tools/search.py` — per-source catch into `errors[]`; one source failing doesn't block the others), do() (`run_operation` in `tools/dispatch.py` — never raises; an exception escaping a handler becomes kind INTERNAL, since handlers format their own errors), and server.py's wrapper as backstop.
+
+New adapter rule: interprets Google API responses directly → convert with kinds; post-processes content → raise with a clear message and let the funnel catch.
 
 ## Warnings Pattern
 

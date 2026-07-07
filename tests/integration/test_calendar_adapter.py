@@ -6,7 +6,7 @@ Run with: uv run pytest tests/integration/test_calendar_adapter.py -v -m integra
 
 import pytest
 
-from adapters.calendar import list_events, find_events_for_file
+from adapters.calendar import list_events
 from models import CalendarSearchResult, CalendarEvent, CalendarAttendee
 
 
@@ -58,18 +58,3 @@ def test_list_events_attendees_are_typed() -> None:
         for att in event.attendees:
             assert isinstance(att, CalendarAttendee)
             assert att.email  # Non-empty
-
-
-# ============================================================================
-# find_events_for_file
-# ============================================================================
-
-
-@pytest.mark.integration
-def test_find_events_for_file_returns_result() -> None:
-    """find_events_for_file returns a CalendarSearchResult even with no matches."""
-    # Use a fake file ID — should return empty but not error
-    result = find_events_for_file("nonexistent_file_id_xyz", days_back=7)
-
-    assert isinstance(result, CalendarSearchResult)
-    assert result.events == []

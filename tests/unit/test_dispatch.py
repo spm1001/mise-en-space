@@ -54,6 +54,38 @@ class TestDispatchConstant:
         assert "title" in result["message"]
 
 
+class TestRunOperationNeverRaises:
+    """run_operation is a do()-funnel of the two-tier error contract
+    (CLAUDE.md → Error Handling): whatever a handler throws, the caller
+    gets a structured error dict, never an exception."""
+
+    def test_handler_exception_wrapped_as_internal(self) -> None:
+        from tools.dispatch import run_operation
+
+        with patch.dict(_DISPATCH, {"star": MagicMock(side_effect=RuntimeError("boom"))}):
+            result = run_operation("star", {"file_id": "f1"})
+
+        assert result["error"] is True
+        assert result["kind"] == "INTERNAL"
+        assert "boom" in result["message"]
+        assert result["retryable"] is False
+
+    def test_escaped_miseerror_also_caught(self) -> None:
+        """Handlers format their own MiseErrors; one escaping is a handler
+        bug — still never raises, wrapped as INTERNAL."""
+        from models import ErrorKind, MiseError
+        from tools.dispatch import run_operation
+
+        with patch.dict(
+            _DISPATCH,
+            {"star": MagicMock(side_effect=MiseError(ErrorKind.NOT_FOUND, "gone"))},
+        ):
+            result = run_operation("star", {"file_id": "f1"})
+
+        assert result["error"] is True
+        assert result["kind"] == "INTERNAL"
+
+
 class TestAllOperationsReturnDoResult:
     """Every operation returns DoResult on success (not raw dict)."""
 
