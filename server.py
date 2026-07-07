@@ -225,6 +225,7 @@ def do(
     remove: bool = False,
     comment_id: str | None = None,
     action: str | None = None,
+    force: bool = False,
 ) -> dict[str, Any]:
     """Act on Google Workspace."""
     # Build log params — include operation and non-None values that matter,
@@ -236,7 +237,7 @@ def do(
         ("source", source), ("file_path", file_path), ("page_setup", page_setup), ("find", find), ("to", to), ("subject", subject),
         ("cc", cc), ("label", label), ("role", role), ("remove", remove),
         ("reply_all", reply_all), ("confirm", confirm),
-        ("comment_id", comment_id), ("action", action),
+        ("comment_id", comment_id), ("action", action), ("force", force),
     ]:
         if v is not None and v is not False:
             call_params[k] = v
@@ -260,7 +261,7 @@ def do(
         "reply_all": reply_all, "role": role, "confirm": confirm,
         "label": label, "remove": remove,
         "comment_id": comment_id, "action": action,
-        "page_setup": page_setup,
+        "page_setup": page_setup, "force": force,
     }
 
     # Validation, metadata prefetch, and execution live in tools/dispatch.py.

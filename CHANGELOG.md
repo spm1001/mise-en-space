@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.3.2] - 2026-07-07
+
+### Fixed
+- `do(setup_oauth, force=true)` actually forces now. `force` was documented in the tool description and consumed by dispatch, but `do()`'s signature in server.py never declared it — so FastMCP's schema didn't carry it and pydantic silently discarded the argument: `force=true` and no flag returned byte-identical `already_authenticated` responses, while the error message recommended the very flag being swallowed. Found by a live smoke test minutes after 1.3.1 shipped (the 1.3.1 unit tests exercised `do_setup_oauth(force=True)` one layer below the break). Two seam tests now pin the full server→dispatch→handler path, including a signature check that guards the schema source (field report via live session; fix rides with it)
+
 ## [1.3.1] - 2026-07-07
 
 ### Fixed

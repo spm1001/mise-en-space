@@ -245,6 +245,42 @@ class TestAuthCli:
         assert "--url requires --auto" in r.stderr
 
 
+class TestServerSeam:
+    """force must survive the MCP surface: server.do → dispatch → handler.
+
+    The 1.3.1 smoke test found force=true silently dropped at this seam —
+    do()'s signature had no force param, so FastMCP's schema never declared
+    it and pydantic discarded it, while the tool's own error message was
+    recommending it. Unit tests one layer down stayed green (wrong-layer
+    green). This pins the full path.
+    """
+
+    def test_force_is_in_do_signature(self):
+        """FastMCP generates the tool schema from the signature — the param
+        must exist there or callers' force is dropped before dispatch."""
+        import inspect
+
+        from server import do
+
+        assert "force" in inspect.signature(do).parameters
+
+    def test_force_reaches_handler_through_server_do(self, tmp_token_file):
+        with (
+            patch("tools.setup_oauth.has_token", return_value=True),
+            patch("adapters.http_client.get_sync_client") as sync_client,
+            patch("tools.setup_oauth.port_is_free", return_value=True),
+            patch("tools.setup_oauth.get_auth_url", return_value=FAKE_URL),
+            patch("tools.setup_oauth.subprocess.Popen") as popen,
+        ):
+            from server import do
+
+            result = do(operation="setup_oauth", force=True)
+
+        assert result["status"] == "browser_opening"  # NOT already_authenticated
+        popen.assert_called_once()
+        sync_client.assert_not_called()
+
+
 class TestPortIsFree:
     """port_is_free (oauth_config) — shared by the MCP tool and auth.py CLI."""
 
