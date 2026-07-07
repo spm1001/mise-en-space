@@ -2,6 +2,16 @@
 
 **mise-en-space** — Google Workspace MCP (Drive, Gmail) with mise-en-place philosophy: everything prepped, in its place, ready for Claude to cook with.
 
+## Versioning & releasing (suite-managed)
+
+mise ships as part of the **Batterie de Savoir** suite, which carries **one suite-wide version**. So:
+
+- **Do NOT hand-bump `.claude-plugin/plugin.json` to release.** This repo's own `plugin.json` version is **local-dev-only** — the assembler stamps every published plugin to the suite version, overwriting it.
+- **Release via `/batterie:publish`** from this working tree — it bumps the suite version centrally and ships the change (a 2-repo push: this repo + the central suite bump). Never hand-run the assemble.
+- **mise is vendored full-source** (it's the MCP plugin) — so *any* source edit here, plus `CLAUDE.md` / `instructions.md` / `skills/` / `hooks/`, is vendored content that must ride a suite bump (a publish) to ship, or the assembler quarantines the plugin. `docs/` / `.bon/` / `tests/` edits are free (excluded from the vendor).
+
+Full picture: `spm1001/batterie-de-savoir` → `CLAUDE.md` "Versioning convention" + `.bon/understanding.md`.
+
 ## Architecture
 
 ```
