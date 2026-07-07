@@ -36,7 +36,7 @@ mise = "cli:main"
 # The plugin spawns with `uv run --extra extraction`, so plugin/Cowork stay full;
 # Cornichon's vendor.sh installs plain core and gets the slim runtime.
 extraction = [
-    "markitdown[pdf]>=0.1.4",
+    "markitdown[pdf]>=0.1.6",
     "pdf2image>=1.17.0",
 ]
 macos = [
