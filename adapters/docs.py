@@ -12,10 +12,18 @@ from typing import Any
 from models import DocData, DocTab
 from retry import with_retry
 from adapters.http_client import get_sync_client
+from extractors.docs import (
+    annotate_checkbox_states,
+    is_checkbox_list,
+    parse_checkbox_markers,
+)
 
 
 # Google Docs API base URL
 _DOCS_API = "https://docs.googleapis.com/v1/documents"
+
+# Drive files API — used only for the markdown-export checkbox oracle below
+_DRIVE_FILES_API = "https://www.googleapis.com/drive/v3/files"
 
 # Fields to request — only what we need for extraction
 # includeTabsContent gives us all tabs + body content in one call
@@ -58,6 +66,43 @@ def _build_legacy_tab(doc: dict[str, Any]) -> DocTab:
     )
 
 
+def _apply_checkbox_states(client: Any, document_id: str, data: DocData) -> None:
+    """Annotate checkbox paragraphs with checked-state via the markdown-export oracle.
+
+    The Docs API does NOT expose checkbox checked-state (a checked and an
+    unchecked row are byte-identical). So when a checkbox list is present, fetch
+    the Drive markdown export — which renders `- [x]` / `- [ ]` — parse the
+    markers, and annotate each checkbox paragraph in document order. Any failure
+    (no export, permission, count mismatch) degrades to plain bullets with a
+    warning; a wrong tick is never emitted. One extra API call, and only when a
+    checkbox list actually exists.
+    """
+    has_checkbox = any(
+        is_checkbox_list(list_def)
+        for tab in data.tabs
+        for list_def in tab.lists.values()
+    )
+    if not has_checkbox:
+        return
+
+    try:
+        md_bytes = client.get_bytes(
+            f"{_DRIVE_FILES_API}/{document_id}/export",
+            params={"mimeType": "text/markdown"},
+        )
+        states = parse_checkbox_markers(md_bytes.decode("utf-8"))
+    except Exception as exc:  # export is best-effort — never fail the whole fetch
+        data.adapter_warnings.append(
+            f"Checkbox tick-state unavailable: markdown export failed ({exc}). "
+            "Rendering plain bullets."
+        )
+        return
+
+    warning = annotate_checkbox_states(data.tabs, states)
+    if warning:
+        data.adapter_warnings.append(warning)
+
+
 @with_retry(max_attempts=3, delay_ms=1000)
 def fetch_document(document_id: str) -> DocData:
     """
@@ -98,8 +143,13 @@ def fetch_document(document_id: str) -> DocData:
         # Legacy format: create single tab from document root
         tabs = [_build_legacy_tab(doc)]
 
-    return DocData(
+    doc_data = DocData(
         title=title,
         document_id=document_id,
         tabs=tabs,
     )
+
+    # Checkbox checked-state isn't in the Docs API — resolve it via export oracle
+    _apply_checkbox_states(client, document_id, doc_data)
+
+    return doc_data

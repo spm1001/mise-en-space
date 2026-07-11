@@ -178,6 +178,11 @@ class DocData:
     # Warnings during extraction (unknown elements, truncation, etc.)
     warnings: list[str] = field(default_factory=list)
 
+    # Warnings raised by the adapter before extraction runs (e.g. checkbox
+    # export desync). The extractor clears `warnings` at the start of each
+    # pass, so adapter-sourced warnings must live here and are merged in.
+    adapter_warnings: list[str] = field(default_factory=list)
+
 
 # ============================================================================
 # GMAIL TYPES

@@ -5,9 +5,11 @@ Receives DocData with tabs, returns combined markdown output.
 No API calls, no MCP awareness.
 """
 
+import re
+from collections.abc import Iterator
 from typing import Any
 
-from models import DocData
+from models import DocData, DocTab
 
 
 def extract_doc_content(
@@ -37,8 +39,10 @@ def extract_doc_content(
     content_parts: list[str] = []
     total_length = 0
 
-    # Clear any existing warnings and set up tracking
-    data.warnings = []
+    # Seed warnings from the adapter (e.g. checkbox export desync), then set up
+    # tracking. The adapter runs before extraction, so clearing unconditionally
+    # would drop its warnings.
+    data.warnings = list(data.adapter_warnings)
     unknown_elements: set[str] = set()
     missing_objects: list[str] = []
 
@@ -205,6 +209,108 @@ def _to_roman(n: int, lowercase: bool = True) -> str:
 
 
 # =============================================================================
+# CHECKBOX HANDLING
+# =============================================================================
+#
+# Google Docs checklists ("tick boxes") carry their CHECKED state only in the
+# rendered output, never in the Docs API JSON — a checked and an unchecked row
+# are byte-identical there (verified 2026-07-11). The adapter fetches the Drive
+# markdown export (which DOES render `- [x]` / `- [ ]`) as an oracle, parses the
+# markers here, and annotates each checkbox paragraph in document order. The
+# extractor then reads the annotation. See mise-newosi / mise-pirozu.
+
+_CHECKBOX_MARKER_RE = re.compile(r"^\s*[-*]\s+\[( |x|X)\]\s")
+
+
+def is_checkbox_list(list_def: dict[str, Any]) -> bool:
+    """True if any nesting level of a list definition is a checkbox glyph.
+
+    Checkbox lists use glyphType GLYPH_TYPE_UNSPECIFIED with no glyphSymbol;
+    ordinary bullets carry a glyphSymbol. Used by the adapter to decide whether
+    a markdown export is worth fetching at all.
+    """
+    for level in list_def.get("listProperties", {}).get("nestingLevels", []):
+        if level.get("glyphType") == "GLYPH_TYPE_UNSPECIFIED" and not level.get("glyphSymbol"):
+            return True
+    return False
+
+
+def _paragraph_is_checkbox(paragraph: dict[str, Any], lists: dict[str, Any]) -> bool:
+    """True if this paragraph is a checkbox list item (level-precise)."""
+    bullet = paragraph.get("bullet")
+    if not bullet:
+        return False
+    list_def = lists.get(bullet.get("listId", ""), {})
+    level = bullet.get("nestingLevel", 0)
+    levels = list_def.get("listProperties", {}).get("nestingLevels", [])
+    if level < len(levels):
+        lvl = levels[level]
+        return lvl.get("glyphType") == "GLYPH_TYPE_UNSPECIFIED" and not lvl.get("glyphSymbol")
+    return False
+
+
+def parse_checkbox_markers(markdown: str) -> list[bool]:
+    """Parse `- [ ]` / `- [x]` task-list markers from exported markdown, in order.
+
+    Returns one bool per checkbox line (True = checked). Non-checkbox lines are
+    ignored. Order is document reading order, matching the Docs body walk.
+    """
+    states: list[bool] = []
+    for line in markdown.splitlines():
+        m = _CHECKBOX_MARKER_RE.match(line)
+        if m:
+            states.append(m.group(1).lower() == "x")
+    return states
+
+
+def _iter_checkbox_paragraphs(
+    elements: list[dict[str, Any]], lists: dict[str, Any]
+) -> Iterator[dict[str, Any]]:
+    """Yield checkbox paragraphs in reading order, recursing into tables/TOC.
+
+    Mirrors the extractor's own visiting order so the export markers align.
+    """
+    for element in elements:
+        if "paragraph" in element:
+            para = element["paragraph"]
+            if _paragraph_is_checkbox(para, lists):
+                yield para
+        elif "table" in element:
+            for row in element["table"].get("tableRows", []):
+                for cell in row.get("tableCells", []):
+                    yield from _iter_checkbox_paragraphs(cell.get("content", []), lists)
+        elif "tableOfContents" in element:
+            yield from _iter_checkbox_paragraphs(
+                element["tableOfContents"].get("content", []), lists
+            )
+
+
+def annotate_checkbox_states(tabs: list[DocTab], states: list[bool]) -> str | None:
+    """Tag each checkbox paragraph with its checked-state from the export oracle.
+
+    Walks all tabs in reading order, zipping checkbox paragraphs against the
+    parsed export markers, mutating each paragraph dict in place to add
+    `_mise_checkbox_checked` (bool). Returns None on success, or a warning
+    string if the counts don't align — in which case NOTHING is annotated and
+    the extractor renders plain bullets (never a wrong tick).
+    """
+    checkbox_paras: list[dict[str, Any]] = []
+    for tab in tabs:
+        checkbox_paras.extend(
+            _iter_checkbox_paragraphs(tab.body.get("content", []), tab.lists)
+        )
+    if len(checkbox_paras) != len(states):
+        return (
+            f"Checkbox tick-state suppressed: {len(checkbox_paras)} checkbox items "
+            f"in the document but {len(states)} in the markdown export — cannot "
+            f"align, rendering plain bullets."
+        )
+    for para, checked in zip(checkbox_paras, states):
+        para["_mise_checkbox_checked"] = checked
+    return None
+
+
+# =============================================================================
 # ELEMENT EXTRACTION
 # =============================================================================
 
@@ -344,7 +450,16 @@ def _extract_paragraph(
                 if counter_key in list_counters:
                     del list_counters[counter_key]
 
-        list_prefix = _get_list_prefix(lists, list_id, nesting_level, list_counters)
+        checkbox_checked = paragraph.get("_mise_checkbox_checked")
+        if checkbox_checked is not None:
+            # Checkbox item: render as a GFM task-list marker. Checked-state
+            # comes from the adapter's markdown-export oracle (the Docs API does
+            # not expose it). Checkboxes aren't numbered, so skip the counter.
+            indent = "  " * nesting_level
+            mark = "x" if checkbox_checked else " "
+            list_prefix = f"{indent}- [{mark}] "
+        else:
+            list_prefix = _get_list_prefix(lists, list_id, nesting_level, list_counters)
         prev_list_id = list_id
         prev_nesting_level = nesting_level
     else:
