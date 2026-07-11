@@ -30,6 +30,7 @@ from adapters.drive import (
     download_file_to_temp,
     is_google_workspace_file,
     _get_email_attachments_folder_id,
+    create_comment,
     reply_to_comment,
     COMMENT_UNSUPPORTED_MIMES,
 )
@@ -1286,5 +1287,69 @@ class TestReplyToComment:
         with patch("retry.time.sleep"):
             with pytest.raises(MiseError) as exc:
                 reply_to_comment("file1", "comment1", content="x")
+
+        assert exc.value.kind == ErrorKind.PERMISSION_DENIED
+
+
+class TestCreateComment:
+    """Test create_comment (opens a new thread) with mocked HTTP client."""
+
+    @patch("adapters.drive.get_sync_client")
+    def test_posts_comment_returns_comment_data(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
+            "id": "cmt9",
+            "content": "[agent] Checked this.",
+            "author": {"displayName": "Claude", "emailAddress": "claude@example.com"},
+            "createdTime": "2026-07-11T10:00:00Z",
+        }
+
+        with patch("retry.time.sleep"):
+            result = create_comment("file1", "[agent] Checked this.")
+
+        assert isinstance(result, CommentData)
+        assert result.id == "cmt9"
+        assert result.content == "[agent] Checked this."
+        assert result.author_name == "Claude"
+        # POSTs to the file's comments collection (not a replies sub-collection);
+        # fields param is required by the Drive comments API.
+        call = mock_client.post_json.call_args
+        assert call.args[0].endswith("/files/file1/comments")
+        assert "fields" in call.kwargs["params"]
+        assert call.kwargs["json_body"] == {"content": "[agent] Checked this."}
+
+    @patch("adapters.drive.get_sync_client")
+    def test_missing_author_defaults_to_unknown(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {"id": "c", "content": "x", "author": {}}
+
+        with patch("retry.time.sleep"):
+            result = create_comment("file1", "x")
+
+        assert result.author_name == "Unknown"
+
+    @patch("adapters.drive.get_sync_client")
+    def test_404_becomes_not_found(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.side_effect = _make_http_status_error(404)
+
+        with patch("retry.time.sleep"):
+            with pytest.raises(MiseError) as exc:
+                create_comment("file1", "x")
+
+        assert exc.value.kind == ErrorKind.NOT_FOUND
+
+    @patch("adapters.drive.get_sync_client")
+    def test_403_becomes_permission_denied(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.side_effect = _make_http_status_error(403)
+
+        with patch("retry.time.sleep"):
+            with pytest.raises(MiseError) as exc:
+                create_comment("file1", "x")
 
         assert exc.value.kind == ErrorKind.PERMISSION_DENIED

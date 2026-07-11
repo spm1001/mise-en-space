@@ -218,6 +218,7 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 | `archive` | Remove thread(s) from Inbox | `file_id` (str or list) |
 | `star` | Star thread(s) | `file_id` (str or list) |
 | `label` | Add/remove label on thread(s) | `file_id` (str or list), `label`, optional `remove=True` |
+| `comment` | Open a NEW comment thread on a doc | `file_id`, `content` |
 | `comment_reply` | Reply to / resolve / reopen a doc comment | `file_id`, `comment_id`, `content` and/or `action` |
 
 ### Choosing the Right Edit Operation
@@ -240,7 +241,18 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 
 **Binary files** (images, PDFs, etc.) reject text operations (`prepend`/`append`/`replace_text`) with a clear error. `overwrite` works on binary files (full byte replacement).
 
-### Replying to Comments
+### Writing & Replying to Comments
+
+Comments are a two-way channel with the human. Two write operations:
+
+- **`comment`** opens a NEW thread — use it to proactively flag something ("this figure looks stale", "confirmed against source") when there's no existing thread to answer. Unanchored: it lands at the document level, not tied to specific text.
+- **`comment_reply`** answers an existing thread (and can resolve/reopen it).
+
+```python
+# Open a new comment thread on a doc (no comment_id needed)
+do(operation="comment", file_id="1abc...",
+   content="Checked these totals against the source sheet — row 14 is off by 2.")
+```
 
 Close the comment loop without leaving mise: `fetch` a Doc/Sheet/Slides, read `comments.md`, then reply in-thread with `comment_reply`. Each comment's header in `comments.md` ends with its id as a code-span — `` ### [Alice <a@x.com>] • 2026-01-15 · `AAAA1234` `` — and that `comment_id` is what you pass.
 

@@ -402,6 +402,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `archive` | Remove thread(s) from Inbox | `file_id` (thread ID or list) |
 | `star` | Star thread(s) | `file_id` (thread ID or list) |
 | `label` | Add/remove a label on thread(s) | `file_id` (thread ID or list), `label` |
+| `comment` | Open a NEW comment thread on a Drive file | `file_id`, `content` |
 | `comment_reply` | Reply to / resolve / reopen a Drive file comment | `file_id`, `comment_id`, plus `content` and/or `action` |
 | `setup_oauth` | Bootstrap Google credentials (opens browser) | none (`force=true` to re-auth over existing token) |
 
@@ -415,6 +416,8 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 
 **Archive/star/label** modify Gmail thread labels. Label names are resolved to IDs automatically (case-insensitive). Use `remove=True` with label to remove instead of add. All three accept `file_id` as a list for batch operations — returns per-thread results (like `move`).
 
+**Comment** opens a NEW (unanchored) comment thread on a Drive file (Doc/Sheet/Slides) — the write-side twin of the `comments.md` you get on fetch. Use it to proactively flag something to a human in the doc's comment pane, when there's no existing thread to reply to. Content is auto-prefixed `[agent] ` and posts as *your* authenticated identity. Anchored comments (tied to specific text) aren't supported yet — the comment lands at the document level.
+
 **Comment_reply** posts an in-thread reply to a Drive file comment (Doc/Sheet/Slides). Get `comment_id` from a fetched `comments.md` — each comment's header ends with `` · `comment_id` ``. Pass `content` to reply, `action='resolve'` (or `'reopen'`) to close/reopen the thread, or both (a bare resolve needs only `action`). Replies are auto-prefixed `[agent] ` so humans can tell agent replies from their own, and post as *your* authenticated identity — don't reply on a thread that's @-mentioned to a specific person as if you were them.
 
 **Setup_oauth** is the bootstrap path for users who haven't authenticated yet. It opens Google's consent screen in their default browser and runs a localhost callback listener; once they approve, the token is saved to macOS Keychain. Returns immediately with the auth URL inline (so the user can paste it manually if browser auto-open fails). If a token already exists, returns `status: already_authenticated`. Use `force=true` to re-auth (e.g. after revoking access). Only available in stdio mode — not exposed in remote mode.
@@ -426,7 +429,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | Param | Type | Default | Used by |
 |-------|------|---------|---------|
 | `operation` | str | **required** | All |
-| `content` | str | None | create, overwrite, prepend, append, replace_text, draft (email body) |
+| `content` | str | None | create, overwrite, prepend, append, replace_text, draft (email body), comment |
 | `title` | str | None | create, rename |
 | `doc_type` | str | 'doc' | create ('doc', 'sheet', 'slides', 'file', 'folder', 'form'). 'file' uploads as-is — MIME inferred from title extension. 'folder' creates an empty folder (no content needed). 'form' creates a Google Form from a YAML/JSON spec. |
 | `folder_id` | str | None | create, move (target folder — canonical name) |

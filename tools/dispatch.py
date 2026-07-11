@@ -19,6 +19,7 @@ from tools import (
     OPERATIONS,
     do_append,
     do_archive,
+    do_comment,
     do_comment_reply,
     do_create,
     do_draft,
@@ -51,6 +52,7 @@ REQUIRED_PARAMS: dict[str, set[str]] = {
     "archive": {"file_id"},
     "star": {"file_id"},
     "label": {"file_id", "label"},
+    "comment": {"file_id", "content"},  # opens a new (unanchored) thread
     "comment_reply": {"file_id", "comment_id"},  # content OR action — handler validates
     "setup_oauth": set(),  # no required params — force=true is optional
 }
@@ -103,6 +105,9 @@ DISPATCH: dict[str, Any] = {
         file_id=p["file_id"], label=p.get("label"),
         remove=p.get("remove", False),
     ),
+    "comment": lambda p: do_comment(
+        file_id=p["file_id"], content=p.get("content"),
+    ),
     "comment_reply": lambda p: do_comment_reply(
         file_id=p["file_id"], comment_id=p.get("comment_id"),
         content=p.get("content"), action=p.get("action"),
@@ -115,11 +120,11 @@ DISPATCH: dict[str, Any] = {
 DO_DESCRIPTION_FULL = """\
 Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail.
 
-Operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment_reply, setup_oauth.
+Operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, setup_oauth.
 Create: content + title + doc_type (doc/sheet/slides/file/folder/form). page_setup='pageless' for pageless docs. file_path= to read from disk. folder: title only, no content needed. form: content is YAML/JSON spec with title, description, questions.
 Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content).
 Email: draft (to + subject + content), reply_draft (file_id + content), archive/star/label.
-Comments: comment_reply (file_id + comment_id [from comments.md] + content and/or action=resolve|reopen). Replies auto-prefix '[agent] '.
+Comments: comment (file_id + content — opens a NEW thread), comment_reply (file_id + comment_id [from comments.md] + content and/or action=resolve|reopen). Both auto-prefix '[agent] '.
 Share: file_id + to + role (reader/writer/commenter), confirm=True to execute.
 Move: file_id (single or list) + folder_id (alias: destination_folder_id).
 setup_oauth: bootstrap Google credentials when none exist. Opens a browser for consent; saves token to Keychain. force=true to re-auth."""

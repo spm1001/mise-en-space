@@ -76,7 +76,7 @@ docs/           Design documents and references
 |------|---------|---------------|
 | `search` | Find files/emails/activity/calendar events, return metadata + inline preview | No |
 | `fetch` | Download content to `.mise/` in cwd, return path + cues | Yes |
-| `do` | Act on Workspace — 15 ops (create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment_reply, setup_oauth) | Varies |
+| `do` | Act on Workspace — 16 ops (create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, setup_oauth) | Varies |
 
 **Key behaviors:**
 - `search` returns metadata only — Claude triages before fetching

@@ -717,6 +717,18 @@ COMMENT_FIELDS = (
     ")"
 )
 
+# Fields for a single created comment — comments.create returns one comment
+# object, not a wrapped list, so the comments(...) wrapper is dropped. NOTE:
+# mentionedEmailAddresses is valid for comments.LIST but REJECTED by
+# comments.CREATE ("Invalid field selection", HTTP 400) — a Drive API asymmetry
+# verified live 2026-07-11. A freshly-created comment has no @mentions anyway,
+# so it's simply omitted here. Don't add it back.
+_SINGLE_COMMENT_FIELDS = (
+    "id,content,"
+    "author(displayName,emailAddress),"
+    "createdTime,modifiedTime,resolved,quotedFileContent"
+)
+
 
 # MIME types that don't support comments (return 404 from Comments API)
 COMMENT_UNSUPPORTED_MIMES = {
@@ -899,6 +911,84 @@ def fetch_file_comments(
 _REPLY_FIELDS = (
     "id,content,author(displayName,emailAddress),createdTime,modifiedTime,action"
 )
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def create_comment(file_id: str, content: str) -> CommentData:
+    """
+    Create a new comment on a Drive file (Drive API comments.create).
+
+    Opens a NEW top-level comment thread (unanchored). This is the write-side
+    twin of fetch_file_comments — it lets an agent proactively flag something in
+    a doc's comment pane, not just reply. Anchored comments (tied to a text
+    region) are a future extension: the Drive anchor is a revision-tied region
+    blob, materially harder than unanchored create. Posts as the token's user;
+    the do() layer prefixes agent-authored content with '[agent] '
+    (see tools/comment.py).
+
+    Args:
+        file_id: The file to comment on
+        content: The comment text (plain text)
+
+    Returns:
+        CommentData for the created comment
+
+    Raises:
+        MiseError: on API failure
+    """
+    client = get_sync_client()
+
+    try:
+        comment = client.post_json(
+            f"{_DRIVE_API}/{file_id}/comments",
+            json_body={"content": content},
+            params={"fields": _SINGLE_COMMENT_FIELDS},
+        )
+    except httpx.HTTPStatusError as e:
+        status = e.response.status_code
+        if status == 404:
+            raise MiseError(
+                ErrorKind.NOT_FOUND,
+                f"File {file_id} not found, or its type doesn't support comments",
+                details={"file_id": file_id, "http_status": 404},
+            )
+        if status == 403:
+            raise MiseError(
+                ErrorKind.PERMISSION_DENIED,
+                f"No permission to comment on file {file_id}",
+                details={"file_id": file_id, "http_status": 403},
+            )
+        if status == 429:
+            raise MiseError(
+                ErrorKind.RATE_LIMITED,
+                "API quota exceeded creating comment",
+                details={"file_id": file_id, "http_status": 429},
+                retryable=True,
+            )
+        if status >= 500:
+            raise MiseError(
+                ErrorKind.NETWORK_ERROR,
+                f"Google API server error: {status}",
+                details={"file_id": file_id, "http_status": status},
+                retryable=True,
+            )
+        raise MiseError(
+            ErrorKind.NETWORK_ERROR,
+            f"HTTP error creating comment: {status}",
+            details={"file_id": file_id, "http_status": status},
+        )
+
+    author = comment.get("author", {})
+    return CommentData(
+        id=comment.get("id", ""),
+        content=comment.get("content", ""),
+        author_name=author.get("displayName", "Unknown"),
+        author_email=author.get("emailAddress"),
+        created_time=comment.get("createdTime"),
+        modified_time=comment.get("modifiedTime"),
+        resolved=comment.get("resolved", False),
+        mentioned_emails=comment.get("mentionedEmailAddresses", []) or [],
+    )
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
