@@ -15,7 +15,9 @@ from models import MiseError, EmailContext
 from workspace import write_content, write_page_thumbnail
 
 
-def _enrich_with_comments(file_id: str, folder: Path) -> tuple[int, str | None]:
+def _enrich_with_comments(
+    file_id: str, folder: Path, document_markdown: str | None = None
+) -> tuple[int, str | None]:
     """
     Fetch open comments and write to deposit folder.
 
@@ -24,6 +26,9 @@ def _enrich_with_comments(file_id: str, folder: Path) -> tuple[int, str | None]:
     Args:
         file_id: Drive file ID
         folder: Deposit folder path
+        document_markdown: The fetched doc's content (Docs only). When supplied,
+            comments are located in the document tree and ordered by document
+            position; sheets/slides omit it and keep the flat API-order render.
 
     Returns:
         Tuple of (open_comment_count, comments_md or None)
@@ -35,7 +40,7 @@ def _enrich_with_comments(file_id: str, folder: Path) -> tuple[int, str | None]:
             return (0, None)
 
         # Extract to markdown
-        comments_md = extract_comments_content(data)
+        comments_md = extract_comments_content(data, document_markdown=document_markdown)
 
         # Write to deposit folder
         write_content(folder, comments_md, filename="comments.md")

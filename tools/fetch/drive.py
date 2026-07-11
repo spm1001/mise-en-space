@@ -209,8 +209,9 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: 
     folder = get_deposit_folder("doc", title, doc_id, base_path=base_path)
     content_path = write_content(folder, content)
 
-    # Enrich with open comments (sous-chef philosophy)
-    open_comment_count, _ = _enrich_with_comments(doc_id, folder)
+    # Enrich with open comments (sous-chef philosophy). Pass the doc content so
+    # each comment is located in the document tree and ordered by position.
+    open_comment_count, _ = _enrich_with_comments(doc_id, folder, document_markdown=content)
 
     extra: dict[str, Any] = {"tab_count": len(doc_data.tabs) if doc_data.tabs else 1}
     if doc_data.warnings:

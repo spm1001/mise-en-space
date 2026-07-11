@@ -252,6 +252,133 @@ class TestRealCommentsEdgeCases:
         assert "*rich*" in result
 
 
+_DOC_MD = """\
+# Doc Title
+
+## Section A — the first one
+
+**group-one**
+
+- [ ] First outcome (id-aaa) — 2 open actions
+- [x] Second outcome (id-bbb) — done
+
+## Section B — the second one
+
+- [ ] Lonely item (id-ccc)
+"""
+
+
+def _doc_comment(cid: str, quoted: str, content: str = "a comment") -> CommentData:
+    return CommentData(
+        id=cid,
+        content=content,
+        author_name="Sameer",
+        created_time="2026-07-11T10:00:00.000Z",
+        quoted_text=quoted,
+    )
+
+
+class TestCommentLocation:
+    """Document-location correlation (mise-jimive) — only when document_markdown given."""
+
+    def test_no_location_without_document_markdown(self):
+        """Backward compat: no document_markdown → no locator line, API order kept."""
+        data = FileCommentsData(
+            file_id="d",
+            file_name="Doc",
+            comments=[
+                _doc_comment("c1", "Lonely item (id-ccc)"),
+                _doc_comment("c2", "First outcome (id-aaa) — 2 open actions"),
+            ],
+        )
+        result = extract_comments_content(data)
+        assert "↳" not in result
+        # API order preserved: c1 (Lonely) before c2 (First)
+        assert result.index("id-ccc") < result.index("id-aaa")
+
+    def test_leaf_item_shows_section_and_group(self):
+        data = FileCommentsData(
+            file_id="d",
+            file_name="Doc",
+            comments=[_doc_comment("c1", "First outcome (id-aaa) — 2 open actions")],
+        )
+        result = extract_comments_content(data, document_markdown=_DOC_MD)
+        assert "*↳ Section A — the first one › group-one*" in result
+
+    def test_heading_anchor_flagged_as_container(self):
+        data = FileCommentsData(
+            file_id="d",
+            file_name="Doc",
+            comments=[_doc_comment("c1", "Section B — the second one")],
+        )
+        result = extract_comments_content(data, document_markdown=_DOC_MD)
+        assert "⚠ anchored on a section heading" in result
+
+    def test_label_anchor_flagged_as_container(self):
+        data = FileCommentsData(
+            file_id="d",
+            file_name="Doc",
+            comments=[_doc_comment("c1", "group-one")],
+        )
+        result = extract_comments_content(data, document_markdown=_DOC_MD)
+        assert "⚠ anchored on a group heading" in result
+        assert "Section A — the first one" in result  # names the enclosing section
+
+    def test_comments_reordered_to_document_order(self):
+        """Comments given in reverse-document order render in document order."""
+        data = FileCommentsData(
+            file_id="d",
+            file_name="Doc",
+            comments=[
+                _doc_comment("c1", "Lonely item (id-ccc)"),  # Section B (later)
+                _doc_comment("c2", "First outcome (id-aaa) — 2 open actions"),  # Section A (earlier)
+            ],
+        )
+        result = extract_comments_content(data, document_markdown=_DOC_MD)
+        assert result.index("id-aaa") < result.index("id-ccc")
+
+    def test_unmatched_comment_listed_last_with_warning(self):
+        data = FileCommentsData(
+            file_id="d",
+            file_name="Doc",
+            comments=[
+                _doc_comment("c1", "this text is nowhere in the document at all"),
+                _doc_comment("c2", "First outcome (id-aaa) — 2 open actions"),
+            ],
+        )
+        data.warnings = []
+        result = extract_comments_content(data, document_markdown=_DOC_MD)
+        # Matched comment sorts before the unmatched one
+        assert result.index("id-aaa") < result.index("nowhere in the document")
+        assert any("could not be located" in w.lower() for w in data.warnings)
+
+    def test_anchor_html_unescaped(self):
+        """quotedFileContent.value is HTML-escaped — the rendered anchor is not."""
+        data = FileCommentsData(
+            file_id="d",
+            file_name="Doc",
+            comments=[_doc_comment("c1", "OP&#39;s baseline &amp; more")],
+        )
+        result = extract_comments_content(data, document_markdown=_DOC_MD)
+        assert "OP's baseline & more" in result
+        assert "&#39;" not in result
+
+    def test_multiline_anchor_prefixes_every_line(self):
+        """A multi-line span anchor gets `> ` on every line, no mid-span truncation."""
+        anchor = (
+            "First outcome (id-aaa) — 2 open actions\n"
+            "Second outcome (id-bbb) — done"
+        )
+        data = FileCommentsData(
+            file_id="d",
+            file_name="Doc",
+            comments=[_doc_comment("c1", anchor)],
+        )
+        result = extract_comments_content(data, document_markdown=_DOC_MD)
+        assert "> First outcome (id-aaa) — 2 open actions" in result
+        assert "> Second outcome (id-bbb) — done" in result  # continuation IS quoted
+
+
 class TestCommentDataModel:
     """Tests for the comment data models."""
 

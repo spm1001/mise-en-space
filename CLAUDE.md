@@ -104,7 +104,7 @@ docs/           Design documents and references
 | Aspect | stdio (default) | remote (`--remote`) |
 |--------|----------------|---------------------|
 | Transport | stdin/stdout | StreamableHTTP on `/mcp` |
-| `do()` operations | All 14 | 6 safe ops: create, draft, reply_draft, archive, star, label |
+| `do()` operations | All 16 | 6 safe ops: create, draft, reply_draft, archive, star, label |
 | Content delivery | Filesystem deposits | Inline in JSON-RPC response (`content` + `comments` fields) |
 | `base_path` | Required | Optional (temp dir) |
 | Tool description | Full | Restricted (only safe ops + relevant params) |
@@ -170,6 +170,8 @@ Data models have `warnings: list[str]` fields. Extractors populate them during p
 | **`search` query is `""` not `None` when omitted** | `query` defaults to `""`. Empty string and absent query are indistinguishable inside `do_search` — both skip the `fullText` clause. If you add a source that needs to distinguish "no query given" from "empty query", use a sentinel (e.g. `query: str \| None = None` and check `is None`). Don't assume `""` means "give me everything" — the type/folder_id validation gate catches the all-empty case. |
 | **Image embedding needs public sharing** | `do(create)` with local image refs uses Docs API `insertInlineImage`, which requires a publicly accessible URL. Images are uploaded to Drive, shared publicly for seconds, then permissions revoked and temp files deleted. Enterprise Workspace accounts with DLP policies may block the `permissions.create` call — images will be skipped with `cues.image_errors`, doc is still created. |
 | **`file_path` is stdio-only** | `file_path` on `do(create)` and `do(overwrite)` reads from disk — meaningless when the server is remote. Currently no remote gate (the param just won't resolve). Don't use `file_path` in remote mode. |
+| **Checkbox tick-state is export-only** | Google Docs checkbox checked-state is NOT in the Docs API (`documents.get` returns identical bullet dicts for checked/unchecked). `adapters/docs.py::_apply_checkbox_states` fetches the `text/markdown` export as an oracle — a **2nd API call, only when a checkbox list is present** (`is_checkbox_list` gate) — parses `[ ]`/`[x]` in document order, and tags each paragraph. Count-mismatch → plain bullets + a warning cue (never a wrong tick). The `~~` on checked rows in the export is synthesised by Google's renderer from the checked bit, NOT `textStyle.strikethrough` — don't try to read it from the API. |
+| **`comments.md` locates comments (docs only)** | On a Doc fetch, `_enrich_with_comments` passes the doc content to the comments extractor, which correlates each comment's anchor against the document tree — comments render in **document order** with a `↳` locator (nearest heading › sub-group), and heading/group-anchored comments are flagged `⚠` (they scope the whole section). Sheets/slides pass no content and keep the flat API-order render. Anchor text is HTML-unescaped; multi-line span anchors quote every line. |
 
 ## Development
 
