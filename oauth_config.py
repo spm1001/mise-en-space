@@ -6,7 +6,9 @@ Also holds port_is_free() — the callback-port pre-check shared by the
 MCP setup_oauth tool and the auth.py CLI.
 """
 
+import os
 import socket
+import sys
 from pathlib import Path
 
 # Package root (where this file lives)
@@ -66,6 +68,19 @@ def port_is_free(port: int) -> bool:
         return False
     finally:
         sock.close()
+
+def can_open_browser() -> bool:
+    """Whether a graphical browser can be opened in THIS environment.
+
+    Single source of truth shared by the auth.py CLI and the setup_oauth MCP
+    tool, so both agree on whether to promise a browser tab or lead with the
+    URL/tunnel path (mise-petaga). The subprocess setup_oauth spawns inherits
+    this env, so the tool can predict the subprocess's decision exactly.
+    """
+    if sys.platform == "darwin":
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
 
 # Local credentials file (for external users who provide their own)
 LOCAL_CREDENTIALS_FILE = _PACKAGE_ROOT / 'credentials.json'

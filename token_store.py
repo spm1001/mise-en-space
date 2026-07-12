@@ -220,8 +220,18 @@ def save_token(token_path: Path) -> None:
     if store_to_keychain(raw):
         token_path.unlink(missing_ok=True)
         print(f"  Token stored in macOS Keychain (service: {KEYCHAIN_SERVICE}).", file=sys.stderr)
+    elif override_path() is not None:
+        # Guest mode: the credential belongs to the embedding caller; the file
+        # at its path is the designed home, not a fallback.
+        print(f"  Token stored as a file at {token_path} (guest mode — no Keychain write by design).", file=sys.stderr)
+    elif not _has_keychain():
+        # No Keychain on this platform (e.g. Linux): file storage is the
+        # DESIGNED path, not a failure. The old "Keychain storage failed"
+        # wording read as a defect for entirely normal behaviour (mise-petaga).
+        print(f"  Token stored as a file at {token_path} (this platform has no Keychain — file is the designed store).", file=sys.stderr)
     else:
-        print(f"  Warning: Keychain storage failed. Token remains at {token_path}.", file=sys.stderr)
+        # Keychain IS present but the write genuinely failed — a real problem.
+        print(f"  Warning: Keychain is present but the token write failed. Token remains at {token_path}.", file=sys.stderr)
 
 
 def has_token(fallback_path: Path) -> bool:

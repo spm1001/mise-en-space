@@ -7,9 +7,13 @@ Two credential sources, tried in order:
 2. GCP Secret Manager (for maintainer — requires gcloud CLI)
 
 Usage:
-    uv run python -m auth                    # Auto mode (opens browser, or prints URL if headless)
-    uv run python -m auth --code URL         # Exchange code from headless flow
-    uv run python -m auth --project OTHER    # Use different GCP project
+    uv run python -m auth                     # Print the auth URL to paste elsewhere,
+                                              #   then finish with --code (headless-friendly; no browser, no listener)
+    uv run python -m auth --auto              # Open a browser + run the localhost:3000 listener + save token
+    uv run python -m auth --auto --url URL    # Listener only (what setup_oauth spawns): exchange a pre-minted
+                                              #   URL without minting a second one (would orphan the PKCE verifier)
+    uv run python -m auth --code URL          # Exchange the code / redirect URL from the print or tunnel flow
+    uv run python -m auth --project OTHER     # Use a different GCP project for Secret Manager
 
 Prerequisites (external users):
     - credentials.json in repo root (from GCP Console)
@@ -19,7 +23,6 @@ Prerequisites (maintainer):
     - Access to the GCP project containing the secret
 """
 
-import os
 import subprocess
 import sys
 import tempfile
@@ -38,6 +41,7 @@ from oauth_config import (
     GCP_PROJECT,
     SECRET_NAME,
     LOCAL_CREDENTIALS_FILE,
+    can_open_browser,
     port_is_free,
 )
 from token_store import save_token
@@ -69,10 +73,12 @@ def fetch_credentials_from_secret_manager(project: str, secret_name: str) -> str
 
 
 def _can_open_browser() -> bool:
-    """Check if a graphical environment is available (mirrors jeton's check)."""
-    if sys.platform == "darwin":
-        return True
-    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    """Whether a graphical browser can be opened here.
+
+    Delegates to oauth_config.can_open_browser so the CLI and the setup_oauth
+    MCP tool share ONE definition and can never drift (mise-petaga).
+    """
+    return can_open_browser()
 
 
 def _print_code_instructions() -> None:

@@ -1,16 +1,11 @@
 #!/bin/bash
-# SessionStart hook: copy instruction shard into rules/
+# SessionStart hook: (formerly also copied instructions.md → rules/mise.md).
+#
+# The rules-shard install now lives SOLELY in ensure-mise.sh, which writes it
+# with a per-flavour identity header (mise-tatego/betiko). This hook must NOT
+# copy the shard too: it runs after ensure-mise.sh, so a plain copy here would
+# clobber the header'd file. Left as a no-op stdin-consumer so the SessionStart
+# hook registration in plugin.json stays stable.
 # set -euo pipefail  # removed: races with plugin autoUpdate cache swap
-HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_ROOT="$(dirname "$HOOK_DIR")"
-if [ -f "$PLUGIN_ROOT/instructions.md" ]; then
-    mkdir -p "$HOME/.claude/rules"
-    # Copy, NOT symlink: the plugin root can be an ephemeral temp dir (Desktop
-    # hostloop stages under /var/folders/.../T, which macOS purges) — a symlink
-    # there dangles and the shard silently vanishes. This hook re-runs every
-    # session-start, so the copy stays current. Do NOT revert to ln -sf.
-    cp -f "$PLUGIN_ROOT/instructions.md" "$HOME/.claude/rules/mise.md"
-fi
-# Consume stdin (hook protocol)
 cat > /dev/null
 exit 0

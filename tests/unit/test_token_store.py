@@ -404,3 +404,52 @@ class TestTokenPathOverride:
             result = resolve_token_path(fallback)
         assert result == fallback
         assert fallback.read_text() == SAMPLE_TOKEN
+
+
+# =============================================================================
+# save_token() — message split (mise-petaga)
+# =============================================================================
+
+
+class TestSaveTokenMessages:
+    """The False branch of store_to_keychain has THREE causes with different
+    meanings — guest mode, no-keychain-platform (designed), and a real failure.
+    Only the last is a warning; the old code cried 'Keychain storage failed'
+    for all three, alarming for normal Linux behaviour.
+    """
+
+    def _save(self, tmp_path):
+        token_file = tmp_path / "token.json"
+        token_file.write_text(SAMPLE_TOKEN)
+        with patch("token_store._fetch_user_email", return_value=None):
+            save_token(token_file)
+        return token_file
+
+    @patch("token_store.store_to_keychain", return_value=False)
+    def test_guest_mode_is_not_a_warning(self, _store, tmp_path, capsys):
+        with patch("token_store.override_path", return_value=tmp_path / "caller.json"):
+            self._save(tmp_path)
+        err = capsys.readouterr().err
+        assert "guest mode" in err
+        assert "failed" not in err.lower()
+
+    @patch("token_store.store_to_keychain", return_value=False)
+    @patch("token_store._has_keychain", return_value=False)
+    def test_no_keychain_platform_is_designed_not_failure(
+        self, _kc, _store, tmp_path, capsys
+    ):
+        with patch("token_store.override_path", return_value=None):
+            self._save(tmp_path)
+        err = capsys.readouterr().err
+        assert "designed store" in err
+        assert "no Keychain" in err
+        assert "failed" not in err.lower()
+
+    @patch("token_store.store_to_keychain", return_value=False)
+    @patch("token_store._has_keychain", return_value=True)
+    def test_real_keychain_failure_is_a_warning(self, _kc, _store, tmp_path, capsys):
+        with patch("token_store.override_path", return_value=None):
+            self._save(tmp_path)
+        err = capsys.readouterr().err
+        assert "Warning" in err
+        assert "write failed" in err

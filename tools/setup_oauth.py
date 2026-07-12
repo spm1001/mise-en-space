@@ -32,7 +32,14 @@ from typing import Any
 from jeton import get_auth_url
 
 from cues_util import with_identity
-from oauth_config import LOCAL_CREDENTIALS_FILE, OAUTH_PORT, SCOPES, TOKEN_FILE, port_is_free
+from oauth_config import (
+    LOCAL_CREDENTIALS_FILE,
+    OAUTH_PORT,
+    SCOPES,
+    TOKEN_FILE,
+    can_open_browser,
+    port_is_free,
+)
 from token_store import has_token
 
 # Where the subprocess lives — at the package root, runnable as `python -m auth`.
@@ -148,13 +155,30 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
             "message": f"Failed to spawn auth subprocess: {e}",
         }
 
-    message = (
-        "A browser tab should be opening at Google's consent screen (on "
-        "machines with a browser). Approve the requested permissions there. "
-        "A listener on localhost:3000 catches the callback for the next 5 "
-        "minutes and saves the token automatically. Once you see "
-        "'Authorization Successful' in the browser, retry your original mise call."
-    )
+    # The spawned subprocess inherits this env, so we can predict its browser
+    # decision EXACTLY (same check as auth.py, shared via oauth_config). Don't
+    # promise a browser tab that will never open on a headless box (mise-petaga)
+    # — lead with the URL + tunnel/--code path instead.
+    if can_open_browser():
+        status = "browser_opening"
+        message = (
+            "A browser tab should be opening at Google's consent screen. Approve "
+            "the requested permissions there. A listener on localhost:3000 catches "
+            "the callback for the next 5 minutes and saves the token automatically. "
+            "Once you see 'Authorization Successful' in the browser, retry your "
+            "original mise call."
+        )
+    else:
+        status = "headless_use_url"
+        message = (
+            "Headless environment — no browser will open. Open the 'url' field "
+            "below in any browser. The callback must reach localhost:3000 on the "
+            "machine running mise: either run `ssh -L 3000:localhost:3000 <host>` "
+            "before clicking, or after approving copy the localhost redirect URL "
+            "from the address bar and run `uv run python -m auth --code "
+            "'<redirect_url>'`. A listener on localhost:3000 catches the callback "
+            "for the next 5 minutes."
+        )
     cues: dict[str, Any] = {
         "fallback": (
             "If no browser opened (headless box), open the 'url' field in any "
@@ -169,6 +193,9 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
     }
     if stale_creds_diagnostic:
         cues["stale_creds_diagnostic"] = stale_creds_diagnostic
+        # Stale wins the status (the caller needs to know it's a RE-auth); the
+        # message keeps its environment-correct browser/headless guidance.
+        status = "reauthenticating_stale_creds"
         message = (
             "A token was present but could not be loaded (see "
             "cues.stale_creds_diagnostic), so a fresh sign-in is needed. "
@@ -176,7 +203,7 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
 
     return {
         "operation": "setup_oauth",
-        "status": "reauthenticating_stale_creds" if stale_creds_diagnostic else "browser_opening",
+        "status": status,
         "url": auth_url,
         "message": message,
         "cues": cues,

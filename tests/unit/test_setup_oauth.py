@@ -78,6 +78,7 @@ class TestCredsValidityGate:
             patch("adapters.http_client.get_sync_client") as sync_client,
             patch("tools.setup_oauth.port_is_free", return_value=True),
             patch("tools.setup_oauth.get_auth_url", return_value=FAKE_URL),
+            patch("tools.setup_oauth.can_open_browser", return_value=True),
             patch("tools.setup_oauth.subprocess.Popen") as popen,
         ):
             result = do_setup_oauth(force=True)
@@ -128,6 +129,7 @@ class TestSingleMintInvariant:
             patch("tools.setup_oauth.has_token", return_value=False),
             patch("tools.setup_oauth.port_is_free", return_value=True),
             patch("tools.setup_oauth.get_auth_url", return_value=FAKE_URL),
+            patch("tools.setup_oauth.can_open_browser", return_value=True),
             patch("tools.setup_oauth.subprocess.Popen") as popen,
         ):
             result = do_setup_oauth()
@@ -170,6 +172,59 @@ class TestSingleMintInvariant:
             .decode()
         )
         assert challenge == derived
+
+
+class TestBrowserEnvStatus:
+    """status/message must tell the truth about THIS environment (mise-petaga).
+
+    The old code returned status='browser_opening' unconditionally — a lie on a
+    headless box, where the spawned subprocess correctly logs 'not opening a
+    browser'. The tool can predict the subprocess's decision because the child
+    inherits its env, so it reads can_open_browser() and reports honestly.
+    """
+
+    def _fresh_flow(self, browser: bool, tmp_token_file):
+        with (
+            patch("tools.setup_oauth.has_token", return_value=False),
+            patch("tools.setup_oauth.port_is_free", return_value=True),
+            patch("tools.setup_oauth.get_auth_url", return_value=FAKE_URL),
+            patch("tools.setup_oauth.can_open_browser", return_value=browser),
+            patch("tools.setup_oauth.subprocess.Popen"),
+        ):
+            return do_setup_oauth()
+
+    def test_headless_status_and_url_led_message(self, tmp_token_file):
+        result = self._fresh_flow(browser=False, tmp_token_file=tmp_token_file)
+        assert result["status"] == "headless_use_url"
+        assert result["url"] == FAKE_URL
+        # Never the browser branch's false promise; leads with URL + tunnel/--code.
+        assert "should be opening" not in result["message"].lower()
+        assert "headless" in result["message"].lower()
+        assert "ssh -L 3000:localhost:3000" in result["message"]
+        assert "--code" in result["message"]
+
+    def test_browser_env_status_and_message(self, tmp_token_file):
+        result = self._fresh_flow(browser=True, tmp_token_file=tmp_token_file)
+        assert result["status"] == "browser_opening"
+        assert "browser tab should be opening" in result["message"].lower()
+
+    def test_stale_status_wins_but_message_keeps_env_truth(self, tmp_token_file):
+        """A stale re-auth on a headless box: status names the re-auth, but the
+        message still carries the headless URL/tunnel guidance (not a browser)."""
+        with (
+            patch("tools.setup_oauth.has_token", return_value=True),
+            patch(
+                "adapters.http_client.get_sync_client",
+                side_effect=FileNotFoundError("refresh failed"),
+            ),
+            patch("tools.setup_oauth.port_is_free", return_value=True),
+            patch("tools.setup_oauth.get_auth_url", return_value=FAKE_URL),
+            patch("tools.setup_oauth.can_open_browser", return_value=False),
+            patch("tools.setup_oauth.subprocess.Popen"),
+        ):
+            result = do_setup_oauth()
+        assert result["status"] == "reauthenticating_stale_creds"
+        assert "ssh -L 3000:localhost:3000" in result["message"]
 
 
 class TestPreMintedCallbackHandler:
@@ -270,6 +325,7 @@ class TestServerSeam:
             patch("adapters.http_client.get_sync_client") as sync_client,
             patch("tools.setup_oauth.port_is_free", return_value=True),
             patch("tools.setup_oauth.get_auth_url", return_value=FAKE_URL),
+            patch("tools.setup_oauth.can_open_browser", return_value=True),
             patch("tools.setup_oauth.subprocess.Popen") as popen,
         ):
             from server import do
