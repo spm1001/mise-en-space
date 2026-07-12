@@ -12,6 +12,10 @@ mise ships as part of the **Batterie de Savoir** suite, which carries **one suit
 
 Full picture: `spm1001/batterie-de-savoir` → `CLAUDE.md` "Versioning convention" + `.bon/understanding.md`.
 
+### Identity flavours (mise vs mise-home) — distinct from build flavours
+
+Mise ships as **two identity flavours** from this one source: `mise` (work — `mit-workspace-mcp-server` OAuth client, `@itv.com`) and `mise-home` (personal/family — `planetmodha-workspace-mcp` client, `@planetmodha.com`). This is a *different axis* from the full/slim build flavours (see Development → Build flavours). The home flavour is produced by `spm1001/batterie/transforms/make-mise-flavour.sh`, a **guarded substitution transform** that rewrites the identity strings in the vendored copy — the data-dir name, keychain service, and `rules/mise.md` filename in `hooks/*.sh`, plus the `mise-batterie-de-savoir` / `mise-oauth-token` constants in `oauth_config.py` — and swaps `credentials.json`. **If you edit those identity strings in the hooks or `oauth_config.py`, know they get rewritten per-flavour and the transform's guard will fail the build on any un-rewritten ITV string.** Full topology (three repos) + the coexistence-clarity work: `.bon/understanding.md` → "Identity flavours", tracked under `mise-tatego`.
+
 ## Architecture
 
 ```

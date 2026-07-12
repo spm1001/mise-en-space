@@ -112,6 +112,21 @@ Watch the spawn arg: if `--extra extraction` is ever dropped from plugin.json, e
 
 Direction-of-conversion maps to build flavour. HTML→markdown (markitdown) is extraction-extra; markdown→HTML (`markdown_to_html` in html_convert.py, python-markdown) had to go in **core**, because `draft`/`reply_draft` are remote-safe ops that must render GFM in every flavour including slim (zolowa, 2026-06-28). Rule of thumb: anything a remote-safe op needs is core; local fast-path extraction is the extra.
 
+## Identity flavours: mise (ITV) vs mise-home (Planet Modha) — a SECOND flavour axis (mise-tatego, 2026-07-12)
+
+Distinct from build-flavours above (full/slim = *extraction extras*). This axis is *identity/credential*: mise ships as two published plugins from one source — **`mise`** (work; `mit-workspace-mcp-server` OAuth client; `sameer.modha@itv.com`) and **`mise-home`** (personal/family; `planetmodha-workspace-mcp` client; `sameer@planetmodha.com`). Only these two will ever exist — Sameer won't mint more.
+
+**Build topology (three repos — the thing that's easy to get lost in):**
+- `spm1001/batterie-de-savoir` — the suite *source* (docs, `brigade.toml`, `publish.py`). "batterie" in conversation.
+- `spm1001/batterie` — a *separate, generated* marketplace repo. Holds `assemble.sh`, which vendors each tool's source into installable plugins (the public marketplace users `add`).
+- `spm1001/batterie-home` — a *private, generated* marketplace carrying ONLY `mise-home` (private for the Teams-Directory requirement, not the credential). Every file is output — never hand-edit.
+
+**The flavour transform:** `assemble.sh` calls `spm1001/batterie/transforms/make-mise-flavour.sh <mise_dir> <out> home <planetmodha-creds>`. It's a clean, scripted, **guarded** string-substitution packaging step (the mise runtime is unchanged): rewrites the distinct-identity strings — data-dir (`mise-batterie-de-savoir`→`mise-home`), keychain service (`mise-oauth-token`→`mise-home-oauth-token`), rules filename (`rules/mise.md`→`rules/mise-home.md`), plugin `name`/`displayName`, mcpServers key — swaps `credentials.json`, then a `scan` guard **fails the build if any ITV-identifying string leaks through**. Why substitution and not a runtime env axis: the SessionStart hooks carry hardcoded identity strings and run in the session env, so an `mcpServers.env` block can't reach them.
+
+**The coexistence-clarity gap (why mise-tatego exists):** the transform differentiates every *plumbing* surface but leaves every *model-facing* surface byte-identical — SessionStart warning, `instructions.md` shard, skill name+description. So two same-named "mise" tools coexist in one session, and an unauthenticated flavour's (correct) no-token warning reads as "the *other* mise is broken" (a competent Cowork Claude filed exactly that misdiagnosis 2026-07-12). The flavour is knowable at runtime (`plugin.json` `name`) but never *spoken*. Fix: make model-facing identity as distinct as the plumbing — a **symmetric stamped `identity` label** (`"ITV (itv.com)"` on base in `assemble.sh`, overwritten to `"Planet Modha (planetmodha)"` in `make-mise-flavour.sh`, guard-checked), read by the hook. The label already half-exists (`displayName`, description suffix). Decision recorded on `mise-tatego`/`mise-zileka`.
+
+**Per-flavour token stores never cross:** each flavour's runtime `TOKEN_FILE` is `~/.claude/plugins/data/<name>/token.json` — so authenticating one does nothing for the other. On Linux there's no Keychain, so the file at that path IS the source of truth (the "Keychain storage failed" line on Linux is benign — file storage is the designed path; see mise-petaga).
+
 ## Image embedding architecture
 
 `do(create)` with `doc_type='doc'` supports `![alt](local/path.png)` via post-creation Docs API `batchUpdate`. Critical constraint: Docs API `insertInlineImage` requires a publicly accessible URL — no "insert from Drive file ID" equivalent. Enterprise DLP policies will 403 on the sharing step. GCS signed URLs is the clean alternative (tracked by mise-hagaru).
