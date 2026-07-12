@@ -1,5 +1,30 @@
 # Changelog
 
+> Since the single-version cutover (suite 1.2.2, 2026-06-28) mise ships at the
+> Batterie **suite** version, not its own. This log records changes to *mise*
+> specifically; suite releases that carried no mise change (e.g. 1.8.0) are
+> intentionally absent — the shipped version number can therefore be ahead of
+> the newest entry here.
+
+## [1.8.1] - 2026-07-12
+
+### Fixed
+- Instruction shard is now **copied** into `~/.claude/rules/` rather than
+  symlinked. The plugin root can be an ephemeral temp dir (Desktop stages the
+  plugin under `/var/folders/.../T`, which macOS purges); the old symlink then
+  dangled and the shard silently vanished. The copy is refreshed every
+  session-start, so it stays current.
+
+## [1.7.0] - 2026-07-11
+
+### Added
+- `do(comment)` — open a new comment thread on a Drive file.
+
+## [1.6.0] - 2026-07-11
+
+### Added
+- Google Docs checkbox tick-state via the markdown-export oracle.
+
 ## [1.3.2] - 2026-07-07
 
 ### Fixed

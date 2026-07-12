@@ -2,12 +2,16 @@
 # SessionStart hook: ensure mise MCP server can start
 # Silent when everything is fine; helpful when it's not.
 
-# Symlink instruction shard into rules/
+# Copy instruction shard into rules/ (copy, NOT symlink — see below)
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _PLUGIN_ROOT="$(dirname "$HOOK_DIR")"
 if [ -f "$_PLUGIN_ROOT/instructions.md" ]; then
     mkdir -p "$HOME/.claude/rules"
-    ln -sf "$_PLUGIN_ROOT/instructions.md" "$HOME/.claude/rules/mise.md"
+    # The plugin root can be an ephemeral temp dir (Desktop hostloop stages under
+    # /var/folders/.../T, which macOS purges) — a symlink there dangles and the
+    # shard silently vanishes. Copy instead; re-run each session-start keeps it
+    # current. Do NOT revert to ln -sf.
+    cp -f "$_PLUGIN_ROOT/instructions.md" "$HOME/.claude/rules/mise.md"
 fi
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
