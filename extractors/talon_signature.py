@@ -359,6 +359,21 @@ _RE_PHONE = re.compile(
 # bug fixed in 2026-05).
 _AGGRESSIVE_STRIP_RATIO = 0.20
 
+# Catastrophic-strip REVERT thresholds (mise-rejula, 2026-07). Warning alone
+# wasn't enough: a single-message briefing was cut to 6% at an early section
+# header and the eaten body was unrecoverable through mise. When signature/
+# contact stripping BOTH keeps less than _REVERT_RATIO of the pre-signature
+# body AND removes more than _REVERT_MIN_CHARS in absolute terms, revert to
+# the un-stripped body — the heuristic almost certainly ate real content.
+# The absolute floor is load-bearing: it distinguishes a genuine compact
+# signature (a few hundred chars, correctly stripped) from an eaten payload,
+# so short-reply-plus-signature cases are NOT reverted. Do NOT drop the floor
+# to a pure ratio guard — that re-adds signatures to short replies. Under-
+# stripping a signature is far safer than eating the body (see the walk-
+# backwards rationale in _strip_trailing_contact_block).
+_REVERT_RATIO = 0.35
+_REVERT_MIN_CHARS = 1000
+
 
 def _strip_trailing_contact_block(body: str) -> tuple[str, list[str]]:
     """
@@ -468,6 +483,25 @@ def strip_signature_and_quotes(msg_body: str) -> tuple[str, list[str]]:
     without_quotes = strip_quoted_lines(own_content)
     body, _ = extract_signature(without_quotes)
     body, warnings = _strip_trailing_contact_block(body)
+
+    # Safety net (mise-rejula): if signature/contact stripping ate the body,
+    # revert to the un-stripped (post-quote) content. Baseline is without_quotes
+    # — quote removal is legitimate, so we measure only what the signature/
+    # contact steps removed. Fires only when BOTH the kept ratio is extreme AND
+    # the absolute removal is large (see the threshold constants above).
+    baseline_len = len(without_quotes)
+    removed = baseline_len - len(body)
+    if (
+        baseline_len > 0
+        and removed > _REVERT_MIN_CHARS
+        and len(body) / baseline_len < _REVERT_RATIO
+    ):
+        warnings.append(
+            f"Signature stripping removed {removed} chars "
+            f"({100 * len(body) / baseline_len:.0f}% kept) — reverted to full "
+            f"body to avoid eating content"
+        )
+        body = without_quotes
 
     # Step 4: reassemble with forwarded sections
     if forwarded:

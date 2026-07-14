@@ -14,7 +14,13 @@ Full picture: `spm1001/batterie-de-savoir` → `CLAUDE.md` "Versioning conventio
 
 ### Identity flavours (mise vs mise-home) — distinct from build flavours
 
-Mise ships as **two identity flavours** from this one source: `mise` (work — `mit-workspace-mcp-server` OAuth client, `@itv.com`) and `mise-home` (personal/family — `planetmodha-workspace-mcp` client, `@planetmodha.com`). This is a *different axis* from the full/slim build flavours (see Development → Build flavours). The home flavour is produced by `spm1001/batterie/transforms/make-mise-flavour.sh`, a **guarded substitution transform** that rewrites the identity strings in the vendored copy — the data-dir name, keychain service, and `rules/mise.md` filename in `hooks/*.sh`, plus the `mise-batterie-de-savoir` / `mise-oauth-token` constants in `oauth_config.py` — and swaps `credentials.json`. **If you edit those identity strings in the hooks or `oauth_config.py`, know they get rewritten per-flavour and the transform's guard will fail the build on any un-rewritten ITV string.** Full topology (three repos) + the coexistence-clarity work: `.bon/understanding.md` → "Identity flavours", tracked under `mise-tatego`.
+Mise ships as **two identity flavours** from this one source: `mise` (work — `mit-workspace-mcp-server` OAuth client, `@itv.com`) and `mise-home` (personal/family — `planetmodha-workspace-mcp` client, `@planetmodha.com`). This is a *different axis* from the full/slim build flavours (see Development → Build flavours). The home flavour is produced by `spm1001/batterie/transforms/make-mise-flavour.sh`, a **guarded substitution transform** that rewrites the identity strings in the vendored copy:
+
+- the data-dir name, keychain service, and `rules/mise.md` filename in `hooks/*.sh`, plus the `mise-batterie-de-savoir` / `mise-oauth-token` constants in `oauth_config.py`;
+- the `plugin.json` **`identity`** (`"ITV (itv.com)"`→`"Planet Modha (planetmodha)"`) and **`displayName`** fields — the base values live in the *source* `plugin.json` (drift-exempt from the ratchet), the transform overrides `identity` for home and a field-specific guard asserts the swap landed;
+- the **skill's tool-prefix** `mcp__mise__`→`mcp__<name>__` (so the home skill's `allowed-tools` point at `mcp__mise-home__*`, not the work server) and a flavour marker front-loaded into the skill *description*;
+
+and swaps `credentials.json`. **If you edit those identity strings in the hooks, `oauth_config.py`, the `plugin.json` identity/displayName, or the skill's `mcp__mise__` tool refs, know they get rewritten per-flavour and the transform's guard will fail the build on any un-rewritten `mcp__mise__` leftover or missing identity.** Full topology (three repos) + the coexistence-clarity work: `.bon/understanding.md` → "Identity flavours" — shipped suite 1.8.7.
 
 ## Architecture
 

@@ -1,0 +1,24 @@
+Hi all,
+
+A few notes before I disappear for two weeks — I'm back on the 21st, and Colin is holding the pager while I'm away. Please skim the section with your name on it; I've tried to keep each one short. If something is genuinely on fire and cannot wait, Colin can reach me, but please treat that as a genuine last resort rather than a first one.
+
+The headline is that Q3 is locked, the roadmap is signed off, and we go into the summer in good shape. Thank you all — it has genuinely been our strongest measurement quarter to date, and that is down to every one of you.
+
+Now the specifics, by person:
+
+@Everyone
+Roadmap.
+The Q3 plan is locked and every workstream tracker needs to reflect the agreed delivery dates by Friday close of play, without exception this time. The dependency map matters as much as the dates: if your deliverable feeds someone else's, flag the handoff explicitly rather than assuming they can see it. We were bitten twice last quarter by silent cross-workstream dependencies that nobody owned.
+The signed-off roadmap and the full RACI live here: https://docs.google.com/document/d/aaaaaaaaaaaaaaaaaaaa/edit and the dependency map is the tab next to it. Please actually open it.
+
+@Colin
+You are covering triage and the shared mit-mailbox rota for the full fortnight while I am completely out of contact and offline. The main thing is not to let anything sit unacknowledged for more than a working day, even if the answer is "noted, I'll pick this up when Sameer is back". People mostly want to know they've been heard.
+The escalation runbook and the BARB-feed fallback both live here: https://docs.google.com/document/d/bbbbbbbbbbbbbbbbbbbb/edit so please read them before Monday. If the panel feed drops, do not wait for me — go straight to the data team and open an incident, because the SLA clock starts the moment the gap appears, not the moment we notice it.
+
+@Priya
+The dashboard refresh is cleared to ship, but only once a second analyst has independently checked the confidence intervals end to end. This is not a formality: the numbers on that dashboard get quoted in the exec pack, so a wrong interval becomes a wrong decision two levels up before anyone catches it.
+Last time the intervals were computed against the wrong denominator, so please diff carefully against https://docs.google.com/document/d/cccccccccccccccccccc/edit before you release anything. If the diff shows any movement you can't explain in one sentence, hold the release and ask.
+
+@Ben
+Budget sign-off for the panel top-up is still sitting with finance and it needs actively chasing before the quarter-end deadline lapses on us. If it lapses we lose the top-up entirely and have to re-bid next quarter, which realistically means a two-month gap in the incremental sample.
+Chase Cal directly if it is not through by Wednesday, and keep the contingency line genuinely uncommitted rather than letting it drift toward Thinkbox by default. That line is the only slack we have if the reach model needs a second wave of fieldwork.

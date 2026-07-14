@@ -315,6 +315,75 @@ class TestOutlookReplyWithUrlDenseQuote:
         assert "Question 5: File attached." in result
 
 
+class TestCatastrophicStripReverts:
+    """Regression (mise-rejula): a single-message briefing whose body IS the
+    payload was cut to 6% at an early section header (@Everyone), because
+    _strip_trailing_contact_block walked backwards, disqualified the later
+    URL-followed-by-long-line headers, and anchored the cut at @Everyone with
+    the entire body trailing below it. Sameer had to drop to the raw Gmail API
+    to recover the text.
+
+    Fix: strip_signature_and_quotes reverts to the pre-signature body when the
+    strip is catastrophic — both an extreme kept-ratio (<35%) AND a large
+    absolute removal (>1000 chars). The absolute floor is what distinguishes a
+    genuine compact signature (a few hundred chars, correctly stripped — see
+    TestAggressiveStripWarning) from an eaten body. Under-stripping a signature
+    is far safer than eating the payload.
+
+    Fixture is synthetic but reproduces the exact mechanism (~20% kept, ~2.4KB
+    removed) verified against the real code before the fix landed.
+    """
+
+    FIXTURE = Path(__file__).parent.parent.parent / "fixtures/gmail/catastrophic_strip_briefing.txt"
+
+    def test_body_survives(self):
+        """Content below the early section header must not be eaten."""
+        raw = self.FIXTURE.read_text()
+        result, _ = strip_signature_and_quotes(raw)
+        # Distinctive lines from the sections that were being truncated away
+        assert "keep the contingency line genuinely uncommitted" in result, (
+            "The @Ben contingency line was eaten — catastrophic strip not reverted"
+        )
+        assert "The dashboard refresh is cleared to ship" in result
+        assert "escalation runbook" in result
+
+    def test_no_catastrophic_reduction(self):
+        """Reverting to the full body should keep the vast majority."""
+        raw = self.FIXTURE.read_text()
+        result, _ = strip_signature_and_quotes(raw)
+        ratio = len(result) / len(raw)
+        assert ratio > 0.9, (
+            f"Body reduced to {ratio:.0%} ({len(result)}/{len(raw)}) — "
+            f"catastrophic strip should have reverted to full body"
+        )
+
+    def test_revert_warning_emitted(self):
+        """The revert must be visible, not silent."""
+        raw = self.FIXTURE.read_text()
+        _, warnings = strip_signature_and_quotes(raw)
+        assert any("reverted to full body" in w for w in warnings), (
+            f"Expected a revert warning. Got: {warnings}"
+        )
+
+    def test_compact_signature_still_stripped(self):
+        """The floor must NOT trip on a genuine small signature: a short reply
+        with a compact URL-rich sig should still be stripped (removal is small),
+        not reverted."""
+        text = (
+            "Hi.\n\nOK.\nYes.\n\n"
+            "Senior Engineer, Acme\n"
+            "Mobile: 07700 900111\n"
+            "https://example.com/one\n"
+            "https://example.com/two\n"
+            "https://example.com/three\n"
+        )
+        result, warnings = strip_signature_and_quotes(text)
+        assert "Senior Engineer" not in result, "Compact signature should still be stripped"
+        assert not any("reverted to full body" in w for w in warnings), (
+            "Small-removal strip must NOT trip the revert guard"
+        )
+
+
 class TestHTMLCleaning:
     """Tests for HTML cleaning before markdown conversion."""
 
