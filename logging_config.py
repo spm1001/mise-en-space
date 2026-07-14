@@ -62,7 +62,14 @@ def configure_call_logging() -> Path | None:
     Returns the log file path, or None if the directory can't be created.
     Call once at server startup (server.py __main__).
     """
-    if _calls_logger.handlers:
+    # "Already configured" means OUR RotatingFileHandler is wired — not merely
+    # that some handler exists. A test/host harness can attach its own handlers
+    # to this logger (pytest 9.1's logging plugin attaches capture handlers even
+    # to a propagate=False logger); those must not count as configured, or the
+    # file handler never gets wired. In production only this function ever adds
+    # handlers here, so the check is equivalent — just more honest.
+    if any(isinstance(h, logging.handlers.RotatingFileHandler)
+           for h in _calls_logger.handlers):
         return _CALLS_FILE  # Already configured
 
     try:

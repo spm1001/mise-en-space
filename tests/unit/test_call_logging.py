@@ -17,19 +17,14 @@ from logging_config import (
 
 @pytest.fixture(autouse=True)
 def _isolate_calls_logger():
-    """Isolate mise.calls handlers around each test, then restore.
+    """Drop any RotatingFileHandler a test wires so it doesn't leak to the next.
 
-    Clearing at SETUP is load-bearing under pytest >= 9.1: its logging plugin
-    attaches capture handlers (_LiveLoggingNullHandler, _FileHandler,
-    LogCaptureHandler) onto this propagate=False logger. Left in place they make
-    _calls_logger.handlers non-empty, so configure_call_logging() takes its
-    'already configured' early-return and never wires the RotatingFileHandler —
-    which fails every test here. Start each test with a clean logger so the real
-    wiring path runs; restore pytest's handlers afterwards so capture keeps
-    working. (Harmless on pytest 9.0.x, which didn't inject these.)
+    configure_call_logging() now keys its 'already configured' check on its OWN
+    RotatingFileHandler (not any handler), so pytest 9.1's capture handlers on
+    this logger no longer trip it — no per-test clearing needed. This fixture
+    just restores the handler list at teardown for isolation.
     """
     original_handlers = list(_calls_logger.handlers)
-    _calls_logger.handlers = []
     yield
     _calls_logger.handlers = original_handlers
 
@@ -39,7 +34,6 @@ class TestConfigureCallLogging:
 
     def test_creates_log_file_and_returns_path(self, tmp_path: Path) -> None:
         log_file = tmp_path / "calls.jsonl"
-        _calls_logger.handlers.clear()  # pytest 9.1 injects call-phase capture handlers
         with patch("logging_config._CALLS_DIR", tmp_path), \
              patch("logging_config._CALLS_FILE", log_file):
             result = configure_call_logging()
@@ -53,7 +47,6 @@ class TestConfigureCallLogging:
     def test_creates_directory_if_missing(self, tmp_path: Path) -> None:
         nested = tmp_path / "deep" / "path"
         log_file = nested / "calls.jsonl"
-        _calls_logger.handlers.clear()  # pytest 9.1 injects call-phase capture handlers
         with patch("logging_config._CALLS_DIR", nested), \
              patch("logging_config._CALLS_FILE", log_file):
             result = configure_call_logging()
@@ -62,7 +55,6 @@ class TestConfigureCallLogging:
         assert nested.exists()
 
     def test_returns_none_if_dir_creation_fails(self, tmp_path: Path) -> None:
-        _calls_logger.handlers.clear()  # pytest 9.1 injects call-phase capture handlers
         with patch("logging_config._CALLS_DIR", tmp_path), \
              patch("logging_config._CALLS_FILE", tmp_path / "calls.jsonl"), \
              patch("pathlib.Path.mkdir", side_effect=OSError("permission denied")):
@@ -72,7 +64,6 @@ class TestConfigureCallLogging:
 
     def test_idempotent(self, tmp_path: Path) -> None:
         log_file = tmp_path / "calls.jsonl"
-        _calls_logger.handlers.clear()  # else both calls vacuously early-return under pytest 9.1
         with patch("logging_config._CALLS_DIR", tmp_path), \
              patch("logging_config._CALLS_FILE", log_file):
             configure_call_logging()

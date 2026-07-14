@@ -70,7 +70,7 @@ docs/           Design documents and references
 | `slides.py` | Slides API + thumbnail fetching |
 | `gmail.py` | Gmail threads and messages |
 | `activity.py` | Drive Activity API v2 |
-| `calendar.py` | Calendar events with meeting context (attendees, attachments, Meet links) |
+| `calendar.py` | Calendar events with meeting context (attendees, attachments, Meet links); `get_event_by_ical_uid` for live invite-state (`showDeleted=true` load-bearing) |
 | `forms.py` | Google Forms API v1 (structure: questions, sections, options) |
 | `charts.py` | Sheets chart export via temporary Slides embed (Sheets API has no direct export) |
 | `cdp.py` | Chrome DevTools Protocol cookie access (for genai.py; graceful fallback) |
@@ -91,7 +91,9 @@ docs/           Design documents and references
 **Key behaviors:**
 - `search` returns metadata only — Claude triages before fetching
 - `search` accepts `type=` for MIME filter: `folder`, `doc`, `spreadsheet`/`sheet`, `slides`, `pdf`, `image`, `video`, `form`. `query` is optional when `type` or `folder_id` is set.
+- `search` gmail results carry `has_invite` (thread has a calendar invite — free, from the parts mask) so triage can spot meetings
 - `fetch` auto-detects ID type (Drive file ID vs Gmail thread ID)
+- `fetch` of a Gmail invite adds `cues.invite_state` — the **live** Calendar state (status/my_response/current_start/cancelled_at) resolved by iCalUID, not the email's frozen snapshot; a cancelled meeting also emits a warning. Best-effort (skipped silently without calendar scope). See `docs/2026-07-07-meduto-invite-event-state.md`.
 - `fetch` accepts optional `attachment` param for extracting specific Gmail attachments
 - `fetch` accepts optional `tabs` param (list of tab names) to fetch only specific tabs from spreadsheets
 - `fetch` accepts `recursive=True` on folder IDs — returns full indented tree (max depth 5, 1000 items)
