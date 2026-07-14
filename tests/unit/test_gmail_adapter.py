@@ -26,6 +26,7 @@ from adapters.gmail import (
     resolve_label_name,
     AttachmentDownload,
     DRIVE_LINK_PATTERN,
+    payload_has_calendar_part,
 )
 
 
@@ -1253,3 +1254,91 @@ class TestResolveLabelName:
         with pytest.raises(MiseError) as exc_info:
             resolve_label_name("Nonexistent")
         assert "not found" in str(exc_info.value)
+
+
+class TestCalendarPartDetection:
+    """payload_has_calendar_part — free has_invite detection (mise-pinodi)."""
+
+    def test_nested_text_calendar(self):
+        """The real Google invite shape: text/calendar nested in
+        multipart/alternative under multipart/mixed."""
+        payload = {"mimeType": "multipart/mixed", "parts": [
+            {"mimeType": "multipart/alternative", "parts": [
+                {"mimeType": "text/plain"},
+                {"mimeType": "text/html"},
+                {"mimeType": "text/calendar", "filename": "invite.ics"},
+            ]},
+        ]}
+        assert payload_has_calendar_part(payload) is True
+
+    def test_top_level_application_ics(self):
+        payload = {"mimeType": "multipart/mixed", "parts": [
+            {"mimeType": "text/plain"},
+            {"mimeType": "application/ics", "filename": "invite.ics"},
+        ]}
+        assert payload_has_calendar_part(payload) is True
+
+    def test_ics_filename_octet_stream(self):
+        """An .ics mis-tagged as octet-stream is still detected by filename."""
+        payload = {"mimeType": "multipart/mixed", "parts": [
+            {"mimeType": "application/octet-stream", "filename": "meeting.ICS"},
+        ]}
+        assert payload_has_calendar_part(payload) is True
+
+    def test_no_calendar_part(self):
+        payload = {"mimeType": "multipart/alternative", "parts": [
+            {"mimeType": "text/plain"},
+            {"mimeType": "text/html"},
+        ]}
+        assert payload_has_calendar_part(payload) is False
+
+    def test_plain_message(self):
+        assert payload_has_calendar_part({"mimeType": "text/plain"}) is False
+
+
+class TestSearchHasInvite:
+    """has_invite flag is set on search results carrying a calendar part."""
+
+    @patch('adapters.gmail.get_sync_client')
+    def test_invite_thread_flagged(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = [
+            {"threads": [{"id": "t1", "snippet": "Invitation"}]},
+            {"id": "t1", "messages": [{
+                "id": "m1", "internalDate": "1706745600000",
+                "payload": {
+                    "headers": [{"name": "From", "value": "a@x.com"},
+                                {"name": "Subject", "value": "Meeting"}],
+                    "mimeType": "multipart/mixed",
+                    "parts": [
+                        {"mimeType": "multipart/alternative", "parts": [
+                            {"mimeType": "text/plain"},
+                            {"mimeType": "text/calendar", "filename": "invite.ics"},
+                        ]},
+                    ],
+                },
+            }]},
+        ]
+        with patch('retry.time.sleep'):
+            result = search_threads("meeting")
+        assert result.results[0].has_invite is True
+
+    @patch('adapters.gmail.get_sync_client')
+    def test_plain_thread_not_flagged(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = [
+            {"threads": [{"id": "t1", "snippet": "Just chatting"}]},
+            {"id": "t1", "messages": [{
+                "id": "m1", "internalDate": "1706745600000",
+                "payload": {
+                    "headers": [{"name": "From", "value": "a@x.com"},
+                                {"name": "Subject", "value": "Hi"}],
+                    "mimeType": "text/plain",
+                },
+            }]},
+        ]
+        with patch('retry.time.sleep'):
+            result = search_threads("hi")
+        assert result.results[0].has_invite is False

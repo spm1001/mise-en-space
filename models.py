@@ -225,8 +225,11 @@ class EmailMessage:
     body_text: str | None = None  # Plain text version
     body_html: str | None = None  # HTML version
 
-    # Attachments
+    # Attachments (trivials like .ics/.vcf filtered out — hidden from Claude)
     attachments: list[EmailAttachment] = field(default_factory=list)
+    # Calendar invite parts, kept even though filtered from `attachments` — the
+    # ICS carries the iCalUID used to read live event state (mise-pinodi).
+    calendar_attachments: list[EmailAttachment] = field(default_factory=list)
 
     # Threading headers (for reply drafts)
     message_id_header: str | None = None  # Message-ID header (RFC 5322)
@@ -433,6 +436,7 @@ class GmailSearchResult:
     last_sender: str | None = None   # From header of the latest message
     from_me: bool | None = None      # latest message is the user's own; None = identity unresolved
     unread_count: int = 0
+    has_invite: bool = False         # thread carries a calendar invite (text/calendar or .ics part) — mise-pinodi
 
 
 @dataclass
@@ -777,5 +781,29 @@ class CalendarSearchResult:
     events: list[CalendarEvent]
     truncated: bool = False  # events dropped by the max_results cap or scan bound
     warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class InviteState:
+    """Live Calendar state for an invitation email (mise-pinodi).
+
+    An invite email is a frozen snapshot (ICS says STATUS:CONFIRMED forever);
+    this is the CURRENT state read from the user's calendar by iCalUID, so a
+    cancelled or rescheduled meeting is disclosed instead of repeated stale.
+    """
+    status: str                        # confirmed / tentative / cancelled
+    my_response: str | None = None     # needsAction / accepted / declined / tentative
+    current_start: str | None = None   # ISO — always the CURRENT start (covers reschedule)
+    cancelled_at: str | None = None    # event's 'updated' time, only when status == cancelled
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {"status": self.status}
+        if self.my_response is not None:
+            d["my_response"] = self.my_response
+        if self.current_start is not None:
+            d["current_start"] = self.current_start
+        if self.cancelled_at is not None:
+            d["cancelled_at"] = self.cancelled_at
+        return d
 
 

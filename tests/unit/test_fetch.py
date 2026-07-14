@@ -19,8 +19,9 @@ from tools.fetch import (
 )
 from models import (
     GmailThreadData, EmailMessage, EmailAttachment, FetchResult, FetchError,
-    MiseError, ErrorKind, EmailContext,
+    MiseError, ErrorKind, EmailContext, InviteState,
 )
+from tools.fetch.gmail import _enrich_invite_state
 from adapters.gmail import AttachmentDownload
 from tools.fetch.common import _build_cues
 from adapters.office import OfficeConversionResult
@@ -2876,3 +2877,73 @@ class TestFetchAttachmentLookupFailure:
         # Warning should be in manifest
         manifest_extra = mock_manifest.call_args[1]["extra"]
         assert "warnings" in manifest_extra
+
+
+class TestEnrichInviteState:
+    """Fetch-side invite-state enrichment (mise-pinodi). Best-effort — must
+    disclose cancelled meetings but never fail the fetch."""
+
+    def _msg_with_ics(self):
+        return EmailMessage(
+            message_id="m1", from_address="a@x.com", to_addresses=["me@x.com"],
+            calendar_attachments=[EmailAttachment(
+                filename="invite.ics", mime_type="text/calendar",
+                size=1830, attachment_id="att1")],
+        )
+
+    def _msg_plain(self):
+        return EmailMessage(
+            message_id="m2", from_address="a@x.com", to_addresses=["me@x.com"],
+        )
+
+    def test_no_ics_returns_none(self):
+        warnings = []
+        assert _enrich_invite_state([self._msg_plain()], warnings) is None
+        assert warnings == []
+
+    @patch("tools.fetch.gmail.get_event_by_ical_uid")
+    @patch("tools.fetch.gmail._download_attachment_bytes")
+    def test_cancelled_adds_state_and_warning(self, mock_dl, mock_lookup):
+        mock_dl.return_value = b"BEGIN:VEVENT\nUID:u@google.com\nEND:VEVENT\n"
+        mock_lookup.return_value = InviteState(
+            status="cancelled", my_response="needsAction",
+            current_start="2026-06-29T15:00:00+01:00",
+            cancelled_at="2026-06-26T15:59:41Z")
+        warnings = []
+        state = _enrich_invite_state([self._msg_with_ics()], warnings)
+        assert state.status == "cancelled"
+        assert any("STALE SNAPSHOT" in w and "CANCELLED" in w for w in warnings)
+        # the UID parsed from the (mocked) ICS bytes drives the lookup
+        mock_lookup.assert_called_once_with("u@google.com")
+
+    @patch("tools.fetch.gmail.get_event_by_ical_uid")
+    @patch("tools.fetch.gmail._download_attachment_bytes")
+    def test_confirmed_state_no_warning(self, mock_dl, mock_lookup):
+        mock_dl.return_value = b"UID:u@google.com\n"
+        mock_lookup.return_value = InviteState(
+            status="confirmed", my_response="accepted",
+            current_start="2026-07-01T09:00:00+01:00")
+        warnings = []
+        state = _enrich_invite_state([self._msg_with_ics()], warnings)
+        assert state.status == "confirmed"
+        assert warnings == []  # only cancelled warns
+
+    @patch("tools.fetch.gmail.get_event_by_ical_uid")
+    @patch("tools.fetch.gmail._download_attachment_bytes")
+    def test_guest_mode_no_calendar_scope_skips_silently(self, mock_dl, mock_lookup):
+        """A guest token may lack calendar scope: the lookup raises, and
+        enrichment must swallow it (return None) so the fetch never fails."""
+        mock_dl.return_value = b"UID:u@google.com\n"
+        mock_lookup.side_effect = MiseError("no calendar scope", ErrorKind.PERMISSION_DENIED)
+        warnings = []
+        # must not raise
+        assert _enrich_invite_state([self._msg_with_ics()], warnings) is None
+        assert warnings == []
+
+    @patch("tools.fetch.gmail.get_event_by_ical_uid")
+    @patch("tools.fetch.gmail._download_attachment_bytes")
+    def test_no_uid_in_ics_returns_none(self, mock_dl, mock_lookup):
+        mock_dl.return_value = b"BEGIN:VCALENDAR\nEND:VCALENDAR\n"  # no UID
+        warnings = []
+        assert _enrich_invite_state([self._msg_with_ics()], warnings) is None
+        mock_lookup.assert_not_called()

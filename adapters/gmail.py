@@ -64,6 +64,30 @@ DRIVE_LINK_PATTERN = re.compile(
 )
 
 
+# Calendar-invite MIME types. Google invites carry the ICS both as a nested
+# text/calendar part (inside multipart/alternative) AND a top-level
+# application/ics attachment; third-party senders vary — so detection walks
+# the whole parts tree and also accepts an .ics filename (mise-pinodi).
+_CALENDAR_MIME_TYPES = frozenset({"text/calendar", "application/ics"})
+
+
+def payload_has_calendar_part(payload: dict[str, Any]) -> bool:
+    """True if the message payload carries a calendar-invite part anywhere in
+    its (possibly nested) parts tree. Detection is by MIME type or .ics
+    filename — an invite may ride as an inline text/calendar part (no
+    attachmentId) or as an attachment, so we can't rely on the attachment
+    parser. Cheap: reads only mimeType/filename already in the fetched mask."""
+    def walk(part: dict[str, Any]) -> bool:
+        mime = (part.get("mimeType") or "").lower()
+        if mime in _CALENDAR_MIME_TYPES:
+            return True
+        filename = (part.get("filename") or "").lower()
+        if filename.endswith(".ics"):
+            return True
+        return any(walk(sub) for sub in part.get("parts", []))
+    return walk(payload)
+
+
 # RFC 5322 header names are case-insensitive and clients vary in practice
 # (Outlook emits "CC:", some emit "Message-Id"). Match case-insensitively
 # but key the result by canonical name so headers.get("Cc") works downstream.
@@ -184,6 +208,20 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
         )
         for a in filtered_raw
     ]
+    # Calendar parts are trivial-filtered out of `attachments` above, but the
+    # ICS carries the iCalUID for live invite-state lookup — keep them separately
+    # (mise-pinodi). Sourced from the UNFILTERED list.
+    calendar_attachments = [
+        EmailAttachment(
+            filename=a["filename"],
+            mime_type=a["mimeType"],
+            size=a["size"],
+            attachment_id=a["attachment_id"],
+        )
+        for a in attachments_raw
+        if (a["mimeType"] or "").lower() in _CALENDAR_MIME_TYPES
+        or (a["filename"] or "").lower().endswith(".ics")
+    ]
 
     # Extract Drive links from body
     drive_links = _extract_drive_links(body_text) or _extract_drive_links(body_html)
@@ -210,6 +248,7 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
         in_reply_to=headers.get("In-Reply-To"),
         references=headers.get("References"),
         attachments=attachments,
+        calendar_attachments=calendar_attachments,
         drive_links=drive_links,
         forwarded_messages=forwarded,
         label_ids=msg.get("labelIds", []),
@@ -350,9 +389,12 @@ def search_threads(
     # without message body data. Per-message snippet included so the result
     # can reflect the LATEST message, not the thread-list snippet (which Gmail
     # draws from an arbitrary message — observed misattributing authorship).
+    # Two levels of parts: calendar invites nest text/calendar inside
+    # multipart/alternative, so a one-level mask misses it (mise-pinodi).
     search_fields = (
         "id,messages(id,internalDate,labelIds,snippet,"
-        "payload(headers,mimeType,parts(filename,mimeType,body(attachmentId,size))))"
+        "payload(headers,mimeType,parts(filename,mimeType,body(attachmentId,size),"
+        "parts(filename,mimeType,body(attachmentId,size)))))"
     )
 
     results: list[GmailSearchResult] = []
@@ -404,6 +446,12 @@ def search_threads(
         last_headers = _parse_headers(last_msg.get("payload", {}).get("headers", []))
         last_sender = last_headers.get("From")
 
+        # Calendar invite present anywhere in the thread? Free — the parts
+        # tree is already in the fields mask (mise-pinodi).
+        has_invite = any(
+            payload_has_calendar_part(msg.get("payload", {})) for msg in messages
+        )
+
         results.append(GmailSearchResult(
             thread_id=resp_thread_id,
             subject=headers.get("Subject", ""),
@@ -420,6 +468,7 @@ def search_threads(
             last_sender=last_sender,
             from_me=_is_own_address(last_sender),
             unread_count=unread_count,
+            has_invite=has_invite,
         ))
 
     return GmailSearchResults(results=results, truncated=truncated)

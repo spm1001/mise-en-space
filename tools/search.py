@@ -92,6 +92,7 @@ def format_gmail_result(result: GmailSearchResult) -> dict[str, Any]:
         "attachment_names": result.attachment_names,
         "is_unread": result.is_unread,
         "labels": result.label_ids,
+        "has_invite": result.has_invite,  # thread carries a calendar invite (mise-pinodi)
     }
 
 

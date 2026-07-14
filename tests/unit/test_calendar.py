@@ -9,12 +9,14 @@ from models import (
     CalendarAttendee,
     CalendarEvent,
     CalendarSearchResult,
+    InviteState,
 )
 from adapters.calendar import (
     _parse_attendee,
     _parse_attachment,
     _parse_event,
     list_events,
+    get_event_by_ical_uid,
 )
 
 
@@ -406,3 +408,103 @@ class TestListEvents:
         assert summaries == ["Morning standup", "Lunch", "Review"]
 
 
+
+
+class TestGetEventByIcalUid:
+    """Live invite-state lookup (mise-pinodi). An invite email is a frozen
+    snapshot; this reads the CURRENT event state by iCalUID."""
+
+    @patch("retry.time.sleep")
+    @patch("adapters.calendar.get_sync_client")
+    def test_showdeleted_is_passed(self, mock_get_client, _sleep) -> None:
+        """showDeleted=true is LOAD-BEARING: without it a cancelled event
+        returns 0 items (invisible), so the request MUST include it."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"items": []}
+
+        get_event_by_ical_uid("uid@google.com")
+
+        _args, kwargs = mock_client.get_json.call_args
+        assert kwargs["params"]["showDeleted"] == "true"
+        assert kwargs["params"]["iCalUID"] == "uid@google.com"
+
+    @patch("retry.time.sleep")
+    @patch("adapters.calendar.get_sync_client")
+    def test_cancelled_event(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"items": [{
+            "status": "cancelled",
+            "start": {"dateTime": "2026-06-29T15:00:00+01:00"},
+            "updated": "2026-06-26T15:59:41Z",
+            "attendees": [
+                {"email": "other@x.com", "responseStatus": "accepted"},
+                {"email": "me@x.com", "self": True, "responseStatus": "needsAction"},
+            ],
+        }]}
+
+        state = get_event_by_ical_uid("uid@google.com")
+
+        assert isinstance(state, InviteState)
+        assert state.status == "cancelled"
+        assert state.my_response == "needsAction"
+        assert state.current_start == "2026-06-29T15:00:00+01:00"
+        assert state.cancelled_at == "2026-06-26T15:59:41Z"
+
+    @patch("retry.time.sleep")
+    @patch("adapters.calendar.get_sync_client")
+    def test_confirmed_event_has_no_cancelled_at(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"items": [{
+            "status": "confirmed",
+            "start": {"dateTime": "2026-07-01T09:00:00+01:00"},
+            "updated": "2026-06-20T10:00:00Z",
+            "attendees": [{"email": "me@x.com", "self": True, "responseStatus": "accepted"}],
+        }]}
+
+        state = get_event_by_ical_uid("uid@google.com")
+
+        assert state.status == "confirmed"
+        assert state.my_response == "accepted"
+        assert state.cancelled_at is None  # only surfaced when cancelled
+
+    @patch("retry.time.sleep")
+    @patch("adapters.calendar.get_sync_client")
+    def test_rescheduled_start_is_current(self, mock_get_client, _sleep) -> None:
+        """current_start is always the live start — covers reschedule for free."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"items": [{
+            "status": "confirmed",
+            "start": {"dateTime": "2026-08-15T14:30:00+01:00"},
+            "attendees": [],
+        }]}
+
+        state = get_event_by_ical_uid("uid@google.com")
+        assert state.current_start == "2026-08-15T14:30:00+01:00"
+        assert state.my_response is None  # no self attendee
+
+    @patch("retry.time.sleep")
+    @patch("adapters.calendar.get_sync_client")
+    def test_no_matching_event_returns_none(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"items": []}
+
+        assert get_event_by_ical_uid("nonexistent@google.com") is None
+
+    @patch("retry.time.sleep")
+    @patch("adapters.calendar.get_sync_client")
+    def test_all_day_event_uses_date(self, mock_get_client, _sleep) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"items": [{
+            "status": "confirmed",
+            "start": {"date": "2026-09-01"},
+            "attendees": [],
+        }]}
+
+        state = get_event_by_ical_uid("uid@google.com")
+        assert state.current_start == "2026-09-01"

@@ -75,6 +75,7 @@ The fetch response includes a `cues` block with decision-tree signals — check 
 4. If `warnings` is non-empty → note extraction issues
 5. Read `content.md`
 6. For Gmail: check `cues.files` for `*.pdf.md` (extracted attachment text)
+7. For Gmail invites: if `cues.invite_state` is present, it's the **live** Calendar state, not the email's frozen snapshot — `{status, my_response, current_start, cancelled_at}`. A `status: "cancelled"` (with a warning) means the meeting is off even though the email body still reads as a live invitation; `current_start` reflects any reschedule. Trust this over the ICS in the body.
 
 `manifest.json` is still on disk for scripts/jq, but `cues` surfaces the actionable signals so you don't need to read it separately.
 
@@ -170,6 +171,8 @@ jq '.drive_results[] | select(.name | test("framework"; "i"))' .mise/search--*.j
 ```
 
 Rule of thumb: <10 results → just read. >15 → filter with jq first.
+
+Gmail results carry a free `has_invite` flag (the thread contains a calendar invite). It costs no extra call, but it's only a flag — to know whether the meeting is still on, `fetch` the thread and read `cues.invite_state` (see "After Every Fetch"). Filter for invites with `jq '.gmail_results[] | select(.has_invite)'`.
 
 See `references/filtering-results.md` for patterns.
 

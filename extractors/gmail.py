@@ -381,6 +381,20 @@ def _parse_rfc822_part(part: dict[str, Any]) -> ForwardedMessage | None:
     )
 
 
+def parse_ics_uid(ics_text: str) -> str | None:
+    """Extract the UID from an ICS (iCalendar) blob. Pure — no I/O.
+
+    The UID is the join key to the live Calendar event (mise-pinodi). Handles
+    RFC 5545 line folding: a long value is split across lines with the
+    continuation line prefixed by a single space or tab. Returns the first
+    UID found, stripped, or None.
+    """
+    # Unfold continuation lines before matching (CRLF/LF + space/tab).
+    unfolded = re.sub(r'\r?\n[ \t]', '', ics_text)
+    match = re.search(r'^UID:(.+)$', unfolded, re.MULTILINE)
+    return match.group(1).strip() if match else None
+
+
 def parse_attachments_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     """
     Extract attachment metadata from Gmail API message payload.

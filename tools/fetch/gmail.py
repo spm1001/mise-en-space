@@ -6,12 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from adapters.drive import download_file, lookup_exfiltrated
+from adapters.calendar import get_event_by_ical_uid
 from adapters.gmail import fetch_thread
 from adapters.office import convert_office_content, get_office_type_from_mime
 from adapters.pdf import convert_pdf_content, render_pdf_pages
-from extractors.gmail import extract_thread_content
+from extractors.gmail import extract_thread_content, parse_ics_uid
 from extractors.image import resize_image_bytes
-from models import FetchResult, FetchError
+from models import FetchResult, FetchError, InviteState
 from workspace import get_deposit_folder, write_content, write_manifest, write_image
 
 from .common import _build_cues, _deposit_pdf_thumbnails
@@ -25,6 +26,49 @@ from .gmail_attachments import (
 )
 from .gmail_exfil import _match_exfil_for_message
 from .gmail_participants import _extract_participants
+
+
+def _enrich_invite_state(messages: list[Any], warnings: list[str]) -> InviteState | None:
+    """Resolve a thread's calendar invite to its LIVE event state (mise-pinodi).
+
+    An invitation email is a frozen snapshot (its ICS says CONFIRMED forever);
+    this reads the current Calendar state by iCalUID so a cancelled or
+    rescheduled meeting is disclosed instead of repeated stale. When the live
+    state is `cancelled`, a warning is appended so the stale body is flagged.
+
+    Best-effort by design: a guest token may carry no calendar scope, so ANY
+    failure (no ICS, no UID, no scope, transient error) returns None and never
+    fails the fetch. Costs at most two API calls (attachment fetch + events
+    lookup) and only when the thread actually carries an invite.
+    """
+    ics: tuple[Any, Any] | None = None
+    for msg in messages:
+        # calendar_attachments holds the ICS parts that were trivial-filtered
+        # out of the user-facing `attachments` list (mise-pinodi).
+        if msg.calendar_attachments:
+            ics = (msg, msg.calendar_attachments[0])
+            break
+    if ics is None:
+        return None
+
+    msg, att = ics
+    try:
+        raw = _download_attachment_bytes(msg, att, att.mime_type or "text/calendar")
+        uid = parse_ics_uid(raw.decode("utf-8", "replace"))
+        if not uid:
+            return None
+        state = get_event_by_ical_uid(uid)
+        if state and state.status == "cancelled":
+            when = f" (on {state.cancelled_at})" if state.cancelled_at else ""
+            warnings.append(
+                f"Calendar invite is a STALE SNAPSHOT: this meeting was "
+                f"CANCELLED{when}. The email body still reads as a live invitation."
+            )
+        return state
+    except Exception:
+        # No calendar scope (guest mode), attachment gone, or transient error —
+        # enrichment is a bonus, never a failure mode for the fetch.
+        return None
 
 
 def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
@@ -155,6 +199,11 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
 
         all_drive_links.extend(msg.drive_links)
 
+    # Invite-state enrichment: disclose live Calendar state for invitation
+    # emails (cancelled/rescheduled). Appends a cancelled warning into
+    # extraction_warnings so it flows to both the manifest and the cues.
+    invite_state = _enrich_invite_state(thread_data.messages, extraction_warnings)
+
     # Append extraction summary so caller knows which files were extracted
     if extracted_attachments:
         extraction_lines = ["\n---\n\n**Extracted attachments:**"]
@@ -262,6 +311,10 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
     notable_labels = all_label_ids & {"STARRED", "IMPORTANT"}
     if notable_labels:
         cues["notable_labels"] = sorted(notable_labels)
+
+    # Live Calendar state for an invite thread (mise-pinodi)
+    if invite_state is not None:
+        cues["invite_state"] = invite_state.to_dict()
 
     return FetchResult(
         path=str(folder),

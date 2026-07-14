@@ -18,6 +18,7 @@ from models import (
     CalendarAttendee,
     CalendarEvent,
     CalendarSearchResult,
+    InviteState,
 )
 from retry import with_retry
 
@@ -188,3 +189,53 @@ def list_events(
         events.sort(key=_event_start_dt)
 
     return CalendarSearchResult(events=events, truncated=truncated)
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def get_event_by_ical_uid(uid: str) -> InviteState | None:
+    """Resolve an invitation's iCalUID to its LIVE calendar event state.
+
+    An invite email's ICS is a frozen snapshot; this reads the current state
+    from the user's primary calendar so a cancelled/rescheduled meeting is
+    disclosed rather than repeated stale (mise-pinodi / meduto exploration).
+
+    `showDeleted=true` is LOAD-BEARING: with the default (false) a cancelled
+    event returns ZERO items — invisible, not marked cancelled — so a naive
+    lookup concludes "no such event". With it, the cancelled event comes back
+    with status=cancelled.
+
+    Returns None when no matching event exists on the primary calendar (e.g.
+    an external invite never added to this calendar). Raises on API error —
+    the caller decides whether to skip (guest mode may lack calendar scope).
+    """
+    client = get_sync_client()
+    response = client.get_json(
+        f"{_CALENDAR_API}/primary/events",
+        params={"iCalUID": uid, "showDeleted": "true"},
+    )
+    items = response.get("items", [])
+    if not items:
+        return None
+
+    event = items[0]
+    status = event.get("status", "confirmed")
+
+    my_response: str | None = None
+    for attendee in event.get("attendees", []):
+        if attendee.get("self"):
+            my_response = attendee.get("responseStatus")
+            break
+
+    start = event.get("start", {})
+    current_start = start.get("dateTime") or start.get("date")
+
+    # 'updated' is the last-modified time; for a cancelled event that is the
+    # cancellation time. Only surface it when actually cancelled.
+    cancelled_at = event.get("updated") if status == "cancelled" else None
+
+    return InviteState(
+        status=status,
+        my_response=my_response,
+        current_start=current_start,
+        cancelled_at=cancelled_at,
+    )

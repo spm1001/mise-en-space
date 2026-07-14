@@ -15,6 +15,7 @@ from extractors.gmail import (
     parse_message_payload,
     parse_attachments_from_payload,
     parse_forwarded_messages,
+    parse_ics_uid,
 )
 from extractors.talon_signature import (
     strip_signature,
@@ -993,3 +994,32 @@ class TestRfc822Extraction:
         assert fwd.from_address  # has a sender
         assert len(fwd.body_text) > 100  # substantial content
         assert fwd.body_text.startswith("Hi ")  # real email opening
+
+
+class TestParseIcsUid:
+    """parse_ics_uid — the join key from an ICS blob to the live event (mise-pinodi)."""
+
+    def test_basic(self):
+        ics = "BEGIN:VCALENDAR\nUID:2ma8jaquv7dsb83@google.com\nEND:VCALENDAR\n"
+        assert parse_ics_uid(ics) == "2ma8jaquv7dsb83@google.com"
+
+    def test_crlf(self):
+        ics = "BEGIN:VEVENT\r\nUID:abc-123@example.com\r\nEND:VEVENT\r\n"
+        assert parse_ics_uid(ics) == "abc-123@example.com"
+
+    def test_folded_line(self):
+        """RFC 5545 folds long values onto continuation lines (space/tab prefix);
+        unfolding removes BOTH the CRLF and the following whitespace, so the
+        original contiguous UID is reconstructed (no space introduced)."""
+        ics = "UID:very-long-uid-that-was\r\n foldedacrosslines@google.com\r\n"
+        assert parse_ics_uid(ics) == "very-long-uid-that-wasfoldedacrosslines@google.com"
+
+    def test_missing_uid(self):
+        assert parse_ics_uid("BEGIN:VCALENDAR\nEND:VCALENDAR\n") is None
+
+    def test_empty(self):
+        assert parse_ics_uid("") is None
+
+    def test_first_uid_wins(self):
+        ics = "UID:first@x.com\nBEGIN:VEVENT\nUID:second@x.com\n"
+        assert parse_ics_uid(ics) == "first@x.com"
