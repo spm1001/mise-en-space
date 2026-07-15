@@ -15,6 +15,10 @@ const PROCESSED_IDS_KEY = 'processedMessageIds';
 const CONTENT_HASHES_KEY = 'contentHashes';
 const LAST_RUN_KEY = 'lastRun';
 const PROCESSED_COUNT_KEY = 'processedCount';
+// Separate cursor for the Doc-link ongoing path. Deliberately distinct from
+// LAST_RUN_KEY so the attachment and Drive-link ongoing triggers never clash
+// (backfillDriveLinks does NOT call updateStats, so it can't touch lastRun).
+const LAST_RUN_DRIVELINKS_KEY = 'lastRunDriveLinks';
 
 /**
  * Retry a function with exponential backoff.
@@ -829,6 +833,39 @@ function processNewEmails() {
 
   console.log(`Processing emails since: ${sinceDate}`);
   return backfillSince(sinceDate, 50, false);
+}
+
+/**
+ * Process new Drive-link emails (no attachment) since last run.
+ * Called by its own time-driven trigger. Mirrors processNewEmails but for the
+ * Drive-links path, using its OWN cursor (LAST_RUN_DRIVELINKS_KEY) so it never
+ * clashes with the attachment cursor. backfillDriveLinks does not advance any
+ * cursor, so we advance ours here after the run.
+ */
+function processNewDriveLinks() {
+  console.log(`Using filter config v${FILTER_CONFIG_VERSION}`);
+  const props = PropertiesService.getScriptProperties();
+  const lastRun = props.getProperty(LAST_RUN_DRIVELINKS_KEY);
+
+  let sinceDate;
+  if (lastRun) {
+    // Convert ISO date to Gmail search format (YYYY/MM/DD)
+    const date = new Date(lastRun);
+    sinceDate = Utilities.formatDate(date, 'UTC', 'yyyy/MM/dd');
+  } else {
+    // First run - process last 7 days
+    const date = new Date();
+    date.setDate(date.getDate() - 7);
+    sinceDate = Utilities.formatDate(date, 'UTC', 'yyyy/MM/dd');
+  }
+
+  console.log(`Processing Drive-link emails since: ${sinceDate}`);
+  const result = backfillDriveLinks(sinceDate, 50, false);
+
+  // backfillDriveLinks does NOT touch any cursor, so advance ours to now.
+  props.setProperty(LAST_RUN_DRIVELINKS_KEY, new Date().toISOString());
+
+  return result;
 }
 
 /**
@@ -1841,13 +1878,23 @@ function resetState() {
  * Run once via: itv-appscript run setupTriggers --dev
  */
 function setupTriggers() {
-  // Clear existing triggers first to avoid duplicates
-  clearTriggers();
+  // Surgically remove only existing chunkBackfillAll triggers to avoid
+  // duplicates. Do NOT call clearTriggers() here — it deletes ALL project
+  // triggers, which would kill the ongoing processNewEmails /
+  // processNewDriveLinks triggers (regression: silently stops live capture).
+  const triggers = ScriptApp.getProjectTriggers();
+  let removed = 0;
+  for (const trigger of triggers) {
+    if (trigger.getHandlerFunction() === 'chunkBackfillAll') {
+      ScriptApp.deleteTrigger(trigger);
+      removed++;
+    }
+  }
 
   ScriptApp.newTrigger('chunkBackfillAll').timeBased().everyMinutes(15).create();
 
-  console.log(`Created 1 trigger for ${BACKFILL_YEARS.length} years - every 15 minutes`);
-  return { created: 1, years: BACKFILL_YEARS, interval: '15 minutes' };
+  console.log(`Created 1 backfill trigger for ${BACKFILL_YEARS.length} years - every 15 minutes (removed ${removed} existing)`);
+  return { created: 1, years: BACKFILL_YEARS, interval: '15 minutes', removed };
 }
 
 /**
@@ -1941,6 +1988,35 @@ function setupOngoingTrigger() {
     .create();
 
   console.log(`Created 15-minute trigger for processNewEmails (removed ${removed} existing)`);
+  return { created: true, interval: 'every 15 minutes', removed };
+}
+
+/**
+ * Set up the ongoing trigger for new Drive-link emails (no attachment).
+ * Mirrors setupOngoingTrigger. Surgically removes only its own trigger.
+ *
+ * MUST be created from the Apps Script EDITOR — triggers created via
+ * scripts.run are silently dropped (verified 2026-07-09).
+ *   From the editor: Run > setupOngoingDriveLinksTrigger
+ */
+function setupOngoingDriveLinksTrigger() {
+  // Remove any existing processNewDriveLinks trigger to avoid duplicates
+  const triggers = ScriptApp.getProjectTriggers();
+  let removed = 0;
+  for (const trigger of triggers) {
+    if (trigger.getHandlerFunction() === 'processNewDriveLinks') {
+      ScriptApp.deleteTrigger(trigger);
+      removed++;
+    }
+  }
+
+  // Create 15-minute trigger for near-real-time Drive-link capture
+  ScriptApp.newTrigger('processNewDriveLinks')
+    .timeBased()
+    .everyMinutes(15)
+    .create();
+
+  console.log(`Created 15-minute trigger for processNewDriveLinks (removed ${removed} existing)`);
   return { created: true, interval: 'every 15 minutes', removed };
 }
 
