@@ -122,7 +122,7 @@ Act on Google Workspace — create, move, edit, draft/reply emails, organise Gma
 
 Operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, setup_oauth.
 Create: content + title + doc_type (doc/sheet/slides/file/folder/form). page_setup='pageless' for pageless docs. file_path= to read from disk. folder: title only, no content needed. form: content is YAML/JSON spec with title, description, questions.
-Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content).
+Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content). Sheets: overwrite=CSV replaces first tab; replace_text=cell find/replace.
 Email: draft (to + subject + content), reply_draft (file_id + content), archive/star/label. Drafts auto-append the user's Gmail signature — don't write a sign-off in content.
 Comments: comment (file_id + content — opens a NEW thread), comment_reply (file_id + comment_id [from comments.md] + content and/or action=resolve|reopen). Both auto-prefix '[agent] '.
 Share: file_id + to + role (reader/writer/commenter), confirm=True to execute.

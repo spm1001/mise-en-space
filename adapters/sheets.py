@@ -340,3 +340,70 @@ def rename_sheet(spreadsheet_id: str, sheet_id: int, new_title: str) -> None:
         f"{_SHEETS_API}/{spreadsheet_id}:batchUpdate",
         json_body=body,
     )
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def get_sheet_properties(spreadsheet_id: str) -> list[dict[str, Any]]:
+    """
+    Fetch tab properties only (sheetId, title, index) — no values.
+
+    Light metadata call for write-path routing (mise-lirugi): overwrite
+    needs the first tab's title without pulling the whole grid.
+    """
+    client = get_sync_client()
+    response = client.get_json(
+        f"{_SHEETS_API}/{spreadsheet_id}",
+        params={"fields": "sheets.properties(sheetId,title,index,sheetType)"},
+    )
+    props = [s.get("properties", {}) for s in response.get("sheets", [])]
+    # GRID sheets only — OBJECT sheets (chart-only tabs) have no cells
+    return [p for p in props if p.get("sheetType", "GRID") == "GRID"]
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def clear_sheet_values(spreadsheet_id: str, range_: str) -> None:
+    """
+    Clear all values in a range (A1 notation; a bare quoted tab title
+    clears the whole tab). Formatting and structure survive — this is
+    the values:clear endpoint, not a sheet delete.
+    """
+    client = get_sync_client()
+    client.post_json(
+        f"{_SHEETS_API}/{spreadsheet_id}/values/{range_}:clear",
+        json_body={},
+    )
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def find_replace_cells(spreadsheet_id: str, find: str, replacement: str) -> int:
+    """
+    Find/replace a literal string across all sheets' cell values.
+
+    matchEntireCell=False (substring semantics, matching the plain-file
+    replace_text contract), matchCase=True, formulas excluded — a literal
+    text swap must not silently rewrite formula internals.
+
+    Returns:
+        Number of occurrences changed.
+    """
+    client = get_sync_client()
+    body = {
+        "requests": [
+            {
+                "findReplace": {
+                    "find": find,
+                    "replacement": replacement,
+                    "allSheets": True,
+                    "matchCase": True,
+                    "matchEntireCell": False,
+                    "includeFormulas": False,
+                }
+            }
+        ]
+    }
+    response = client.post_json(
+        f"{_SHEETS_API}/{spreadsheet_id}:batchUpdate",
+        json_body=body,
+    )
+    reply = response.get("replies", [{}])[0].get("findReplace", {})
+    return int(reply.get("occurrencesChanged", 0))

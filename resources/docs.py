@@ -393,10 +393,10 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `move` | Move file to different folder | `file_id`, `folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
 | `share` | Share file with people by email | `file_id`, `to` |
-| `overwrite` | Replace full document content | `file_id`, plus `content` OR `source` OR `file_path` |
+| `overwrite` | Replace full document content (Sheets: CSV content replaces the first tab) | `file_id`, plus `content` OR `source` OR `file_path` |
 | `prepend` | Insert text at start of document | `file_id`, `content` |
 | `append` | Insert text at end of document | `file_id`, `content` |
-| `replace_text` | Find and replace text in document | `file_id`, `find`, `content` |
+| `replace_text` | Find and replace text in document (Sheets: across all tabs' cells, formulas untouched) | `file_id`, `find`, `content` |
 | `draft` | Create Gmail draft (does NOT send) | `to`, `subject`, `content` |
 | `reply_draft` | Create threaded reply draft | `file_id` (thread ID), `content` |
 | `archive` | Remove thread(s) from Inbox | `file_id` (thread ID or list) |
@@ -436,7 +436,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `file_id` | str | None | move, rename, share, overwrite, prepend, append, replace_text |
 | `destination_folder_id` | str | None | move (deprecated alias for `folder_id`) |
 | `source` | str | None | create, overwrite (path to deposit folder) |
-| `file_path` | str | None | create, overwrite (local file path — no deposit needed) |
+| `file_path` | str | None | create, overwrite (any readable local path — `/tmp`, `~/scratch` etc. all fine; no deposit needed) |
 | `base_path` | str | None | Required with source or file_path (your cwd) |
 | `page_setup` | str | None | create ('pageless' for pageless Google Docs) |
 | `find` | str | None | replace_text (case-sensitive) |

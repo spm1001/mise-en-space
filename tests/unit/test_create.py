@@ -397,16 +397,27 @@ class TestDoCreateFile:
         assert result["error"] is True
         assert "not found" in result["message"].lower()
 
-    def test_file_path_containment_check(self, tmp_path: Path) -> None:
-        """file_path outside base_path is rejected."""
-        test_file = tmp_path / "test.png"
-        test_file.write_bytes(b"\x89PNG")
-        result = do_create(
-            file_path=str(test_file), doc_type="file",
-            base_path=str(tmp_path / "subdir"),
+    @patch("retry.time.sleep")
+    @patch("tools.create.get_sync_client")
+    def test_file_path_outside_base_allowed(self, mock_get_client, _sleep, tmp_path: Path) -> None:
+        """stdio allows file_path anywhere readable — /tmp and ~/scratch are
+        natural staging spots (mise-jebude). Remote mode rejects file_path
+        outright in server.py's do() wrapper; that's the real boundary."""
+        md_file = tmp_path / "staged.md"
+        md_file.write_text("# Staged outside base_path", encoding="utf-8")
+        base = tmp_path / "subdir"
+        base.mkdir()
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            name="staged.md",
         )
-        assert result["error"] is True
-        assert "within" in result["message"].lower()
+
+        result = do_create(
+            file_path=str(md_file), doc_type="doc", base_path=str(base),
+        )
+        assert isinstance(result, DoResult)
 
     def test_file_rejects_source_param(self, tmp_path: Path) -> None:
         (tmp_path / "content.md").write_text("# Hello")

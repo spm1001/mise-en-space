@@ -489,3 +489,27 @@ class TestRemoteSearch:
 
         assert d["error"] is True
         assert "base_path" in d["message"]
+
+
+class TestRemoteFilePathGate:
+    """file_path reads the SERVER's filesystem — rejected outright in remote
+    mode (the gap CLAUDE.md documented as 'currently no remote gate'). In
+    stdio the param is deliberately unrestricted (mise-jebude)."""
+
+    def test_remote_rejects_file_path(self) -> None:
+        with patch.object(server, "_REMOTE_MODE", True):
+            # create is a remote-ALLOWED op, so this exercises the file_path
+            # gate specifically, not the op gate.
+            result = do(operation="create", title="t", doc_type="doc",
+                        file_path="/tmp/x.md")
+            assert result["error"] is True
+            assert "file_path" in result["message"]
+
+    def test_stdio_passes_file_path_gate(self) -> None:
+        with patch.object(server, "_REMOTE_MODE", False):
+            result = do(operation="create", title="t", doc_type="doc",
+                        file_path="/nonexistent/never/x.md",
+                        base_path="/tmp")
+            # Fails on file-not-found downstream — NOT on a remote/file_path gate
+            assert result["error"] is True
+            assert "not found" in result["message"].lower()

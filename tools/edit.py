@@ -15,11 +15,12 @@ Uses httpx via MiseSyncClient (Phase 1 migration).
 
 from typing import Any
 
-from adapters.drive import GOOGLE_DOC_MIME
+from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME
 from adapters.http_client import get_sync_client
 from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 from tools.plain_file import plain_prepend, plain_append, plain_replace_text
+from tools.sheet_edit import sheet_replace_text
 from validation import validate_drive_id
 
 
@@ -106,6 +107,8 @@ def do_replace_text(
         validate_drive_id(file_id, "file_id")
     except ValueError as e:
         return {"error": True, "kind": "invalid_input", "message": str(e)}
+    if metadata and metadata.get("mimeType") == GOOGLE_SHEET_MIME:
+        return sheet_replace_text(file_id, find, content, metadata)
     if metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
         return plain_replace_text(file_id, find, content, metadata)
     try:

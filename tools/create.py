@@ -301,13 +301,10 @@ def do_create(
             resolved_file_path = Path(base_path) / resolved_file_path
         resolved_file_path = resolved_file_path.resolve()
 
-        # Containment check — file_path must be under base_path.
-        # is_relative_to, not str.startswith: a prefix check admits sibling
-        # dirs that share the prefix (/home/x/repo matches /home/x/repo-evil).
-        if base_path:
-            base_resolved = Path(base_path).resolve()
-            if not resolved_file_path.is_relative_to(base_resolved):
-                return _create_error("invalid_input", "file_path must be within the working directory.")
+        # No containment check: stdio mise is a local single-user process, and
+        # Claude naturally stages content in /tmp and ~/scratch (mise-jebude —
+        # the old cwd-only rail rejected both, twice, in real use). The system
+        # boundary is remote mode, where server.py rejects file_path outright.
 
         if not resolved_file_path.exists():
             return _create_error("invalid_input", f"File not found: {file_path}")

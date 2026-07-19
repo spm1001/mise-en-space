@@ -69,17 +69,28 @@ BLOCKING=false
 SYNC_LOG="$HOME/.cache/mise/ensure.log"
 mkdir -p "$(dirname "$SYNC_LOG")" 2>/dev/null
 
-# 1. Check uv is available
-if ! command -v uv &>/dev/null; then
+# 1. Find uv. `command -v` respects PATH, but hook shells can run with a PATH
+#    that omits uv's real home (seen live 2026-07-19: Cowork VM had uv at
+#    /usr/local/bin yet the hook warned "uv not found" — mise-cuveza). Fall
+#    back to the known install locations, and carry the discovered ABSOLUTE
+#    path into the auto-sync below — a PATH that fails the check would have
+#    failed the sync identically.
+UV_BIN="$(command -v uv 2>/dev/null)"
+if [ -z "$UV_BIN" ]; then
+    for _c in /usr/local/bin/uv "$HOME/.local/bin/uv" /opt/homebrew/bin/uv /usr/bin/uv; do
+        if [ -x "$_c" ]; then UV_BIN="$_c"; break; fi
+    done
+fi
+if [ -z "$UV_BIN" ]; then
     ISSUES="${ISSUES}• uv not found — install from https://docs.astral.sh/uv/\n"
     BLOCKING=true
 fi
 
 # 2. Check dependencies are synced (look for .venv in plugin root)
 if [ ! -d "$PLUGIN_ROOT/.venv" ]; then
-    if command -v uv &>/dev/null; then
+    if [ -n "$UV_BIN" ]; then
         # Auto-sync — this is safe and idempotent
-        uv sync --project "$PLUGIN_ROOT" --quiet >"$SYNC_LOG" 2>&1
+        "$UV_BIN" sync --project "$PLUGIN_ROOT" --quiet >"$SYNC_LOG" 2>&1
         if [ ! -d "$PLUGIN_ROOT/.venv" ]; then
             ISSUES="${ISSUES}• Dependencies not installed (full error: ${SYNC_LOG}). Run: uv sync --project \"$PLUGIN_ROOT\"\n"
             BLOCKING=true

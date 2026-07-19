@@ -251,6 +251,15 @@ def do(
         log_mcp_call("do", params=call_params, ok=False, error=msg)
         return {"error": True, "kind": "invalid_input", "message": msg}
 
+    # file_path reads the SERVER's filesystem — meaningful only when the server
+    # runs beside the caller (stdio). In remote mode it's a boundary violation:
+    # a remote client must never read the host's disk. This is the system
+    # boundary; stdio deliberately allows any readable local path (mise-jebude).
+    if _REMOTE_MODE and file_path:
+        msg = "file_path is not available in remote mode — pass content directly."
+        log_mcp_call("do", params=call_params, ok=False, error=msg)
+        return {"error": True, "kind": "invalid_input", "message": msg}
+
     params = {
         "content": content, "title": title, "doc_type": doc_type,
         "folder_id": folder_id, "file_id": file_id,

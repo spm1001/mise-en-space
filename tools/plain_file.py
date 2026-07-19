@@ -35,11 +35,18 @@ def _reject_google_native(metadata: dict[str, Any]) -> dict[str, Any] | None:
     mime = metadata.get("mimeType", "")
     if is_google_workspace_file(mime):
         kind = mime.split(".")[-1]  # "spreadsheet", "presentation", etc.
+        # Spreadsheets only reach here via prepend/append now — overwrite and
+        # replace_text route to tools/sheet_edit.py first (mise-lirugi). Name
+        # the supported alternatives instead of dead-ending.
+        hint = ""
+        if kind == "spreadsheet":
+            hint = (" For Spreadsheets use overwrite (CSV replaces the first "
+                    "tab) or replace_text (cell find/replace) instead.")
         return {
             "error": True,
             "kind": "invalid_input",
             "message": f"Edit operations on Google {kind.title()} files use a different API path. "
-                       f"This operation is for plain files (markdown, JSON, etc.) stored in Drive.",
+                       f"This operation is for plain files (markdown, JSON, etc.) stored in Drive." + hint,
         }
     return None
 

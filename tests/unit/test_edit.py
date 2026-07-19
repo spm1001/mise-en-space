@@ -387,14 +387,17 @@ class TestPlainFileReplaceText:
         assert isinstance(result, DoResult)
         assert result.cues["occurrences_changed"] == 1
 
-    def test_rejects_google_sheet(self) -> None:
-        """Google Sheets routed here should get a clear error, not an opaque API failure."""
+    @patch("tools.sheet_edit.find_replace_cells")
+    def test_google_sheet_routes_to_sheets_path(self, mock_fr) -> None:
+        """Sheets are no longer rejected — replace_text routes to the Sheets
+        findReplace API (mise-lirugi flipped the old dead-end contract)."""
+        mock_fr.return_value = 2
         result = do_replace_text("file123", "find", "replace", metadata=_plain_file_metadata(
             name="Budget.gsheet", mime="application/vnd.google-apps.spreadsheet",
         ))
 
-        assert result["error"] is True
-        assert "Spreadsheet" in result["message"]
+        assert not (isinstance(result, dict) and result.get("error"))
+        assert mock_fr.called
 
     @patch("retry.time.sleep")
     @patch("tools.plain_file.upload_file_content")

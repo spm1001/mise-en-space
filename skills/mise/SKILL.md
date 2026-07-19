@@ -212,10 +212,10 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 | `move` | Move file(s) between folders — single or batch | `file_id` (str or list), `folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
 | `share` | Share file with people (confirm gate) | `file_id`, `to`, `confirm=True` |
-| `overwrite` | Replace full file content (Google Doc or plain file) | `file_id`, `content` OR `source` |
+| `overwrite` | Replace full file content (Google Doc or plain file; Sheets: CSV content replaces the first tab) | `file_id`, `content` OR `source` |
 | `prepend` | Insert at start of file | `file_id`, `content` |
 | `append` | Insert at end of file | `file_id`, `content` |
-| `replace_text` | Find-and-replace in file | `file_id`, `find`, `content` |
+| `replace_text` | Find-and-replace in file (Sheets: across cell values, all tabs) | `file_id`, `find`, `content` |
 | `draft` | Compose a new Gmail draft | `to`, `subject`, `content`, optional `include` (Drive file IDs) |
 | `reply_draft` | Reply draft in an existing thread | `file_id` (thread ID), `content`, optional `include` |
 | `archive` | Remove thread(s) from Inbox | `file_id` (str or list) |

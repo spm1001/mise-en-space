@@ -278,16 +278,24 @@ class TestOverwriteFromFilePath:
         assert result["error"] is True
         assert "not found" in result["message"].lower()
 
-    def test_file_path_containment_check(self, tmp_path) -> None:
+    @patch("retry.time.sleep")
+    @patch("tools.overwrite.upload_file_content")
+    def test_file_path_outside_base_allowed(self, mock_upload, _sleep, tmp_path) -> None:
+        """stdio allows file_path outside base_path (mise-jebude) — the remote
+        gate in server.py's do() wrapper is the real boundary."""
         md_file = tmp_path / "test.md"
         md_file.write_text("content")
+        base = tmp_path / "subdir"
+        base.mkdir()
+        mock_upload.return_value = {"name": "Doc"}
+
         result = do_overwrite(
             file_id="doc123",
             file_path=str(md_file),
-            base_path=str(tmp_path / "subdir"),
+            base_path=str(base),
         )
-        assert result["error"] is True
-        assert "within" in result["message"].lower()
+        assert isinstance(result, DoResult)
+        assert mock_upload.called
 
 
 class TestOverwriteFromSource:
