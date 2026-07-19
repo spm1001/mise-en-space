@@ -24,17 +24,19 @@ from .gmail_ops import do_archive, do_star, do_label
 from .comment import do_comment
 from .comment_reply import do_comment_reply
 from .setup_oauth import do_setup_oauth
+from .trash import do_trash
 
 # Single source of truth for valid do() operation names.
 OPERATIONS = frozenset({
     "create", "move", "rename", "share", "overwrite", "prepend", "append", "replace_text",
     "draft", "reply_draft", "archive", "star", "label", "comment", "comment_reply",
-    "setup_oauth",
+    "setup_oauth", "trash",
 })
 
 __all__ = [
     "do_search", "do_fetch", "do_create", "do_move", "do_rename", "do_share", "do_overwrite",
     "do_prepend", "do_append", "do_replace_text", "do_draft", "do_reply_draft",
     "do_archive", "do_star", "do_label", "do_comment", "do_comment_reply", "do_setup_oauth",
+    "do_trash",
     "OPERATIONS",
 ]

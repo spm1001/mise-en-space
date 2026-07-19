@@ -14,9 +14,15 @@ we fall through to the Google Doc path for backward compatibility.
 from pathlib import Path
 from typing import Any
 
-from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, upload_file_content
+from adapters.drive import (
+    GOOGLE_DOC_MIME,
+    GOOGLE_FORM_MIME,
+    GOOGLE_SHEET_MIME,
+    upload_file_content,
+)
 from models import DoResult, MiseError
 from tools.common import resolve_source as _resolve_source
+from tools.form_edit import form_overwrite
 from tools.plain_file import plain_overwrite
 from tools.sheet_edit import sheet_overwrite
 from validation import validate_drive_id
@@ -99,10 +105,13 @@ def do_overwrite(
             "message": "overwrite requires 'content', 'source', or 'file_path'",
         }
 
-    # Route by file type: Sheets → values API (mise-lirugi), Google Docs →
-    # Drive import, plain files → Drive Files API
+    # Route by file type: Sheets → values API (mise-lirugi), Forms →
+    # batchUpdate from spec (mise-wemuki), Google Docs → Drive import,
+    # plain files → Drive Files API
     if metadata and metadata.get("mimeType") == GOOGLE_SHEET_MIME:
         return sheet_overwrite(file_id, content, metadata)
+    if metadata and metadata.get("mimeType") == GOOGLE_FORM_MIME:
+        return form_overwrite(file_id, content, metadata)
     if metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
         return plain_overwrite(file_id, content, source, base_path, metadata)
 

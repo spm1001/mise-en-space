@@ -480,3 +480,91 @@ class TestDraftSignature:
         assert "signature" not in result.cues
         assert "signature_warnings" not in result.cues
         assert mock_create.call_args[1]["body_text"] == "Hello"
+
+
+# =============================================================================
+# TOOL: do_draft update mode (file_id= — mise-wemuki)
+# =============================================================================
+
+
+def _existing_draft_headers():
+    return {
+        "headers": {
+            "to": "alice@example.com",
+            "cc": "bob@example.com",
+            "subject": "Original subject",
+            "in-reply-to": "<msg-123@mail.example>",
+            "references": "<msg-100@mail.example> <msg-123@mail.example>",
+        },
+        "thread_id": "thread-789",
+    }
+
+
+class TestDraftUpdate:
+    """draft with file_id updates an existing draft in place."""
+
+    def test_update_requires_content(self) -> None:
+        result = do_draft(file_id="r123456")
+        assert result["error"] is True
+        assert "content" in result["message"]
+
+    @patch("tools.draft.get_primary_signature", return_value=None)
+    @patch("tools.draft.update_draft")
+    @patch("tools.draft.get_draft_headers", return_value=_existing_draft_headers())
+    def test_carries_over_unsupplied_fields(
+        self, mock_get, mock_update, _sig
+    ) -> None:
+        mock_update.return_value = DraftResult(
+            draft_id="r123456", message_id="m1",
+            web_link="https://mail.google.com/mail/#drafts/r123456",
+            to="alice@example.com", subject="Original subject",
+        )
+
+        result = do_draft(file_id="r123456", content="New body")
+
+        assert isinstance(result, DoResult)
+        kwargs = mock_update.call_args.kwargs
+        assert kwargs["to"] == "alice@example.com"
+        assert kwargs["subject"] == "Original subject"
+        assert kwargs["cc"] == "bob@example.com"
+        # Threading always carries over — reply drafts stay on their thread
+        assert kwargs["thread_id"] == "thread-789"
+        assert kwargs["in_reply_to"] == "<msg-123@mail.example>"
+        assert kwargs["references"].endswith("<msg-123@mail.example>")
+        assert set(result.cues["carried_over"]) == {"to", "subject", "cc"}
+
+    @patch("tools.draft.get_primary_signature", return_value=None)
+    @patch("tools.draft.update_draft")
+    @patch("tools.draft.get_draft_headers", return_value=_existing_draft_headers())
+    def test_resupplied_fields_override(self, mock_get, mock_update, _sig) -> None:
+        mock_update.return_value = DraftResult(
+            draft_id="r123456", message_id="m1", web_link="w",
+            to="alice@example.com", subject="New subject",
+        )
+
+        result = do_draft(
+            file_id="r123456", content="New body", subject="New subject"
+        )
+
+        assert isinstance(result, DoResult)
+        kwargs = mock_update.call_args.kwargs
+        assert kwargs["subject"] == "New subject"
+        assert "subject" not in result.cues.get("carried_over", [])
+
+    @patch("tools.draft.get_draft_headers")
+    def test_missing_draft_is_clean_error(self, mock_get) -> None:
+        from models import ErrorKind, MiseError
+
+        mock_get.side_effect = MiseError(ErrorKind.NOT_FOUND, "no such draft")
+        result = do_draft(file_id="r999", content="x")
+        assert result["error"] is True
+        assert result["kind"] == "not_found"
+        assert "r999" in result["message"]
+
+    @patch("tools.draft.get_primary_signature", return_value=None)
+    @patch("tools.draft.get_draft_headers",
+           return_value={"headers": {}, "thread_id": None})
+    def test_no_recipient_anywhere_errors(self, mock_get, _sig) -> None:
+        result = do_draft(file_id="r123", content="x")
+        assert result["error"] is True
+        assert "to" in result["message"]

@@ -33,6 +33,7 @@ from tools import (
     do_setup_oauth,
     do_share,
     do_star,
+    do_trash,
 )
 
 # Required params per operation — validated before dispatch.
@@ -47,7 +48,7 @@ REQUIRED_PARAMS: dict[str, set[str]] = {
     "prepend": {"file_id", "content"},
     "append": {"file_id", "content"},
     "replace_text": {"file_id", "find", "content"},
-    "draft": {"to", "subject", "content"},
+    "draft": {"content"},  # create needs to+subject too; update (file_id) doesn't — handler validates
     "reply_draft": {"file_id", "content"},
     "archive": {"file_id"},
     "star": {"file_id"},
@@ -55,6 +56,7 @@ REQUIRED_PARAMS: dict[str, set[str]] = {
     "comment": {"file_id", "content"},  # opens a new (unanchored) thread
     "comment_reply": {"file_id", "comment_id"},  # content OR action — handler validates
     "setup_oauth": set(),  # no required params — force=true is optional
+    "trash": {"file_id"},
 }
 
 # Content operations that need mime-type routing (metadata pre-fetched at dispatch)
@@ -93,7 +95,7 @@ DISPATCH: dict[str, Any] = {
     ),
     "draft": lambda p: do_draft(
         to=p["to"], subject=p["subject"], content=p["content"],
-        cc=p["cc"], include=p["include"],
+        cc=p["cc"], include=p["include"], file_id=p["file_id"],
     ),
     "reply_draft": lambda p: do_reply_draft(
         file_id=p["file_id"], content=p["content"],
@@ -113,6 +115,7 @@ DISPATCH: dict[str, Any] = {
         content=p.get("content"), action=p.get("action"),
     ),
     "setup_oauth": lambda p: do_setup_oauth(force=p.get("force", False)),
+    "trash": lambda p: do_trash(file_id=p["file_id"]),
 }
 
 
@@ -120,10 +123,11 @@ DISPATCH: dict[str, Any] = {
 DO_DESCRIPTION_FULL = """\
 Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail.
 
-Operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, setup_oauth.
+Operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, trash, setup_oauth.
 Create: content + title + doc_type (doc/sheet/slides/file/folder/form). page_setup='pageless' for pageless docs. file_path= to read from disk. folder: title only, no content needed. form: content is YAML/JSON spec with title, description, questions.
-Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content). Sheets: overwrite=CSV replaces first tab; replace_text=cell find/replace.
-Email: draft (to + subject + content), reply_draft (file_id + content), archive/star/label. Drafts auto-append the user's Gmail signature — don't write a sign-off in content.
+Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content). Sheets: overwrite=CSV replaces first tab; replace_text=cell find/replace. Forms: overwrite takes the same spec as create — fetch, tweak, overwrite (replaces all questions).
+Email: draft (to + subject + content; file_id=draft_id updates that draft in place), reply_draft (file_id + content), archive/star/label. Drafts auto-append the user's Gmail signature — don't write a sign-off in content.
+Trash: file_id (single or list) — Drive files go to recoverable trash; Gmail draft IDs (r+digits) are discarded permanently.
 Comments: comment (file_id + content — opens a NEW thread), comment_reply (file_id + comment_id [from comments.md] + content and/or action=resolve|reopen). Both auto-prefix '[agent] '.
 Share: file_id + to + role (reader/writer/commenter), confirm=True to execute.
 Move: file_id (single or list) + folder_id (alias: destination_folder_id).

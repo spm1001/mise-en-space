@@ -513,3 +513,25 @@ class TestRemoteFilePathGate:
             # Fails on file-not-found downstream — NOT on a remote/file_path gate
             assert result["error"] is True
             assert "not found" in result["message"].lower()
+
+
+class TestRemoteDraftUpdateGate:
+    """Remote 'draft' is create-only: update mode (file_id) rewrites an
+    existing draft — destructive to a human's hand-edits, outside the
+    audited safe set (mise-wemuki)."""
+
+    def test_remote_rejects_draft_update(self) -> None:
+        with patch.object(server, "_REMOTE_MODE", True):
+            # draft is a remote-ALLOWED op, so this exercises the update
+            # gate specifically, not the op gate.
+            result = do(operation="draft", file_id="r123456", content="x")
+            assert result["error"] is True
+            assert "update" in result["message"].lower()
+
+    def test_remote_still_allows_draft_create(self) -> None:
+        with patch.object(server, "_REMOTE_MODE", True), \
+                patch("tools.dispatch.do_draft") as mock_draft:
+            mock_draft.return_value = {"operation": "draft", "file_id": "r1"}
+            result = do(operation="draft", to="a@b.c", subject="s", content="x")
+            assert not result.get("error")
+            mock_draft.assert_called_once()

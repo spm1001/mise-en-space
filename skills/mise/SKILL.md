@@ -48,7 +48,7 @@ fetch("1abc...", base_path="/Users/modha/Repos/my-project")
 |------|---------|--------|
 | `search` | Find files/emails/activity/calendar events | Path to deposited JSON + counts |
 | `fetch` | Extract content to disk | Deposit folder: content.md, comments.md, manifest.json |
-| `do` | Act on Workspace (create, move, rename, share, overwrite, edit, draft, archive, star, label) | File ID + web URL + cues |
+| `do` | Act on Workspace (create, move, rename, share, overwrite, edit, draft, archive, star, label, trash) | File ID + web URL + cues |
 
 `fetch` auto-detects input: Drive file ID, Drive URL, or Gmail thread ID.
 
@@ -212,17 +212,18 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 | `move` | Move file(s) between folders — single or batch | `file_id` (str or list), `folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
 | `share` | Share file with people (confirm gate) | `file_id`, `to`, `confirm=True` |
-| `overwrite` | Replace full file content (Google Doc or plain file; Sheets: CSV content replaces the first tab) | `file_id`, `content` OR `source` |
+| `overwrite` | Replace full file content (Google Doc or plain file; Sheets: CSV content replaces the first tab; Forms: YAML/JSON spec replaces all questions) | `file_id`, `content` OR `source` |
 | `prepend` | Insert at start of file | `file_id`, `content` |
 | `append` | Insert at end of file | `file_id`, `content` |
 | `replace_text` | Find-and-replace in file (Sheets: across cell values, all tabs) | `file_id`, `find`, `content` |
-| `draft` | Compose a new Gmail draft | `to`, `subject`, `content`, optional `include` (Drive file IDs) |
+| `draft` | Compose a new Gmail draft — or update an existing one in place | `to`, `subject`, `content`, optional `include` (Drive file IDs); update: `file_id` (draft ID) + `content` |
 | `reply_draft` | Reply draft in an existing thread | `file_id` (thread ID), `content`, optional `include` |
 | `archive` | Remove thread(s) from Inbox | `file_id` (str or list) |
 | `star` | Star thread(s) | `file_id` (str or list) |
 | `label` | Add/remove label on thread(s) | `file_id` (str or list), `label`, optional `remove=True` |
 | `comment` | Open a NEW comment thread on a doc | `file_id`, `content` |
 | `comment_reply` | Reply to / resolve / reopen a doc comment | `file_id`, `comment_id`, `content` and/or `action` |
+| `trash` | Trash Drive file(s) / discard Gmail draft(s) — routed by ID shape | `file_id` (str or list) |
 
 ### Choosing the Right Edit Operation
 
@@ -243,6 +244,10 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 | Editing a markdown/JSON/SVG file in Drive | Any edit operation (auto-routes to Drive Files API) |
 
 **Binary files** (images, PDFs, etc.) reject text operations (`prepend`/`append`/`replace_text`) with a clear error. `overwrite` works on binary files (full byte replacement).
+
+**Editing a Form:** `overwrite` on a form takes the same YAML/JSON spec as `create` — fetch the form first (`structure.json` shows current state), tweak the spec (e.g. add one option to a checkbox question), and overwrite. It replaces ALL questions wholesale; if the form already has responses, edit in the Forms UI instead.
+
+**Updating a draft:** `draft` with `file_id` (the draft ID a previous draft/reply_draft returned) rewrites that draft instead of minting a stray new one. `content` is required; `to`/`subject`/`cc` carry over when not resupplied; reply drafts keep their threading. Superseded drafts and files: `trash` — Drive files go to the recoverable bin, drafts are discarded permanently.
 
 ### Writing & Replying to Comments
 

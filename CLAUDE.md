@@ -86,7 +86,7 @@ docs/           Design documents and references
 |------|---------|---------------|
 | `search` | Find files/emails/activity/calendar events, return metadata + inline preview | No |
 | `fetch` | Download content to `.mise/` in cwd, return path + cues | Yes |
-| `do` | Act on Workspace — 16 ops (create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, setup_oauth) | Varies |
+| `do` | Act on Workspace — 17 ops (create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, trash, setup_oauth) | Varies |
 
 **Key behaviors:**
 - `search` returns metadata only — Claude triages before fetching
@@ -118,7 +118,7 @@ docs/           Design documents and references
 | Aspect | stdio (default) | remote (`--remote`) |
 |--------|----------------|---------------------|
 | Transport | stdin/stdout | StreamableHTTP on `/mcp` |
-| `do()` operations | All 16 | 6 safe ops: create, draft, reply_draft, archive, star, label |
+| `do()` operations | All 17 | 6 safe ops: create, draft, reply_draft, archive, star, label |
 | Content delivery | Filesystem deposits | Inline in JSON-RPC response (`content` + `comments` fields) |
 | `base_path` | Required | Optional (temp dir) |
 | Tool description | Full | Restricted (only safe ops + relevant params) |

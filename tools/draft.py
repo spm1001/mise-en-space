@@ -10,7 +10,13 @@ from html import escape as html_escape
 from typing import Any
 
 from adapters.drive import get_file_metadata
-from adapters.gmail import create_draft, get_primary_signature, IncludedLink
+from adapters.gmail import (
+    IncludedLink,
+    create_draft,
+    get_draft_headers,
+    get_primary_signature,
+    update_draft,
+)
 from html_convert import html_to_text_with_links, markdown_to_html
 from models import DoResult, MiseError
 from validation import validate_drive_id
@@ -134,13 +140,19 @@ def do_draft(
     content: str | None = None,
     cc: str | None = None,
     include: list[str] | None = None,
+    file_id: str | None = None,
     **_kwargs: Any,
 ) -> DoResult | dict[str, Any]:
     """
-    Create a Gmail draft.
+    Create a Gmail draft — or update an existing one in place.
 
     Draft-only — does NOT send. User reviews and sends from Gmail.
     Drive file IDs in `include` are resolved to formatted links in the body.
+
+    With file_id (a draft ID from a previous draft/reply_draft result):
+    updates that draft in place. content is required (the body is rebuilt);
+    to/subject/cc not resupplied carry over from the existing draft, and
+    threading headers are preserved so reply drafts stay on their thread.
 
     Args:
         to: Recipient email address(es), comma-separated
@@ -148,11 +160,15 @@ def do_draft(
         content: Email body text
         cc: Optional CC address(es), comma-separated
         include: Optional list of Drive file IDs to include as links
+        file_id: Existing draft ID to update in place (mise-wemuki)
 
     Returns:
         DoResult on success, error dict on failure
     """
-    # Validate required params
+    if file_id:
+        return _update_draft_in_place(file_id, to, subject, content, cc, include)
+
+    # Validate required params (create mode)
     if not to:
         return {"error": True, "kind": "invalid_input",
                 "message": "draft requires 'to' (recipient email address)"}
@@ -189,6 +205,94 @@ def do_draft(
     cues: dict[str, Any] = {
         "action": "Draft created \u2014 review and send from Gmail",
     }
+    if sig_html:
+        cues["signature"] = "Gmail signature appended automatically"
+    if included_links:
+        cues["included_links"] = [
+            {"title": l.title, "url": l.web_link} for l in included_links
+        ]
+    if include_warnings:
+        cues["include_warnings"] = include_warnings
+    if sig_warnings:
+        cues["signature_warnings"] = sig_warnings
+
+    return DoResult(
+        file_id=result.draft_id,
+        title=subject,
+        web_link=result.web_link,
+        operation="draft",
+        cues=cues,
+    )
+
+
+def _update_draft_in_place(
+    draft_id: str,
+    to: str | None,
+    subject: str | None,
+    content: str | None,
+    cc: str | None,
+    include: list[str] | None,
+) -> DoResult | dict[str, Any]:
+    """Update an existing draft (drafts.update rebuilds the message wholesale).
+
+    content is required — the body can't be carried over, because Gmail
+    stores it as rendered MIME and re-extracting it to re-append links and
+    signature would compound conversions. to/subject/cc carry over from the
+    draft's current headers when not resupplied; In-Reply-To/References/
+    threadId always carry over, so reply drafts stay on their thread.
+    """
+    if not content:
+        return {"error": True, "kind": "invalid_input",
+                "message": "draft update (file_id given) requires 'content' — "
+                           "the body is rebuilt; to/subject/cc carry over when "
+                           "not resupplied"}
+
+    try:
+        existing = get_draft_headers(draft_id)
+    except MiseError as e:
+        return {"error": True, "kind": e.kind.value,
+                "message": f"Could not load draft '{draft_id}': {e.message}"}
+
+    headers = existing["headers"]
+    carried = [f for f, v in (("to", to), ("subject", subject), ("cc", cc))
+               if v is None and headers.get(f)]
+    to = to or headers.get("to")
+    subject = subject if subject is not None else headers.get("subject", "")
+    cc = cc or headers.get("cc")
+    if not to:
+        return {"error": True, "kind": "invalid_input",
+                "message": "draft update requires 'to' — the existing draft "
+                           "has no recipient to carry over"}
+
+    included_links: list[IncludedLink] = []
+    include_warnings: list[str] = []
+    if include:
+        included_links, include_warnings = _resolve_include(include)
+
+    sig_html, sig_text, sig_warnings = _fetch_signature()
+    body_text = content + _format_links_text(included_links) + sig_text
+    body_html = _content_to_html(content) + _format_links_html(included_links) + sig_html
+
+    try:
+        result = update_draft(
+            draft_id,
+            to=to,
+            subject=subject,
+            body_text=body_text,
+            body_html=body_html,
+            cc=cc,
+            thread_id=existing.get("thread_id"),
+            in_reply_to=headers.get("in-reply-to"),
+            references=headers.get("references"),
+        )
+    except MiseError as e:
+        return {"error": True, "kind": e.kind.value, "message": e.message}
+
+    cues: dict[str, Any] = {
+        "action": "Draft updated in place — review and send from Gmail",
+    }
+    if carried:
+        cues["carried_over"] = carried
     if sig_html:
         cues["signature"] = "Gmail signature appended automatically"
     if included_links:

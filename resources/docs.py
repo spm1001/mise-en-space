@@ -393,22 +393,25 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `move` | Move file to different folder | `file_id`, `folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
 | `share` | Share file with people by email | `file_id`, `to` |
-| `overwrite` | Replace full document content (Sheets: CSV content replaces the first tab) | `file_id`, plus `content` OR `source` OR `file_path` |
+| `overwrite` | Replace full document content (Sheets: CSV content replaces the first tab; Forms: YAML/JSON spec replaces all questions) | `file_id`, plus `content` OR `source` OR `file_path` |
 | `prepend` | Insert text at start of document | `file_id`, `content` |
 | `append` | Insert text at end of document | `file_id`, `content` |
 | `replace_text` | Find and replace text in document (Sheets: across all tabs' cells, formulas untouched) | `file_id`, `find`, `content` |
-| `draft` | Create Gmail draft (does NOT send) | `to`, `subject`, `content` |
+| `draft` | Create Gmail draft (does NOT send) — or update an existing draft in place | create: `to`, `subject`, `content`; update: `file_id` (draft ID), `content` |
 | `reply_draft` | Create threaded reply draft | `file_id` (thread ID), `content` |
 | `archive` | Remove thread(s) from Inbox | `file_id` (thread ID or list) |
 | `star` | Star thread(s) | `file_id` (thread ID or list) |
 | `label` | Add/remove a label on thread(s) | `file_id` (thread ID or list), `label` |
 | `comment` | Open a NEW comment thread on a Drive file | `file_id`, `content` |
 | `comment_reply` | Reply to / resolve / reopen a Drive file comment | `file_id`, `comment_id`, plus `content` and/or `action` |
+| `trash` | Trash Drive file(s) / discard Gmail draft(s) | `file_id` (single or list; routed by ID shape) |
 | `setup_oauth` | Bootstrap Google credentials (opens browser) | none (`force=true` to re-auth over existing token) |
 
-**Overwrite** destroys existing content (images, tables, formatting). Use `prepend`/`append`/`replace_text` when existing content matters.
+**Overwrite** destroys existing content (images, tables, formatting). Use `prepend`/`append`/`replace_text` when existing content matters. On a **Form**, `content` is the same YAML/JSON spec as `create` (title, description, questions) — the edit loop is fetch (structure.json shows current state) → tweak the spec → overwrite. Replaces ALL questions wholesale; if the form already has responses their linkage to old questions is lost, so edit response-bearing forms in the Forms UI.
 
-**Draft** creates a draft in Gmail's Drafts folder — user reviews and sends from Gmail. Drive file IDs in `include` are resolved to formatted links in the email body. The user's Gmail signature (from sendAs settings) is auto-appended to both MIME parts with links intact — do NOT write a sign-off in `content`; end at the last sentence of the message.
+**Draft** creates a draft in Gmail's Drafts folder — user reviews and sends from Gmail. Drive file IDs in `include` are resolved to formatted links in the email body. The user's Gmail signature (from sendAs settings) is auto-appended to both MIME parts with links intact — do NOT write a sign-off in `content`; end at the last sentence of the message. **To update an existing draft in place**, pass `file_id` with the draft ID (from a previous draft/reply_draft result): `content` is required (body rebuilt, links + signature re-appended); `to`/`subject`/`cc` carry over from the existing draft when not resupplied; reply drafts keep their threading.
+
+**Trash** routes by ID shape: Drive IDs go to the recoverable Drive trash (~30 days); Gmail draft IDs (`r` + digits) are discarded via drafts.delete — PERMANENT, drafts have no trash. Accepts a list for batch cleanup. Threads/messages are NOT trashable — use `archive`/`label`.
 
 **Reply draft** fetches a thread, infers recipients from the last message, adds threading headers (In-Reply-To, References), and creates a draft in the correct conversation. Recipients auto-populated; use `reply_all=True` to Cc all original recipients. Auto-appends the Gmail signature like `draft` — no sign-off in `content`.
 
@@ -433,7 +436,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `title` | str | None | create, rename |
 | `doc_type` | str | 'doc' | create ('doc', 'sheet', 'slides', 'file', 'folder', 'form'). 'file' uploads as-is — MIME inferred from title extension. 'folder' creates an empty folder (no content needed). 'form' creates a Google Form from a YAML/JSON spec. |
 | `folder_id` | str | None | create, move (target folder — canonical name) |
-| `file_id` | str | None | move, rename, share, overwrite, prepend, append, replace_text |
+| `file_id` | str | None | move, rename, share, overwrite, prepend, append, replace_text, trash (str or list), draft (draft ID — update in place) |
 | `destination_folder_id` | str | None | move (deprecated alias for `folder_id`) |
 | `source` | str | None | create, overwrite (path to deposit folder) |
 | `file_path` | str | None | create, overwrite (any readable local path — `/tmp`, `~/scratch` etc. all fine; no deposit needed) |

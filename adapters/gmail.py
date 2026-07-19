@@ -662,6 +662,92 @@ def create_draft(
     )
 
 
+@with_retry(max_attempts=3, delay_ms=1000)
+def get_draft_headers(draft_id: str) -> dict[str, Any]:
+    """
+    Fetch an existing draft's headers and threading info (no body).
+
+    Returns {"headers": {lower-cased name: value}, "thread_id": str | None}.
+    Used by draft update to carry over To/Cc/Subject and threading headers
+    the caller didn't resupply.
+
+    Raises:
+        MiseError: On API failure (404 → NOT_FOUND for a bad draft ID)
+    """
+    client = get_sync_client()
+    draft = client.get_json(
+        f"{_GMAIL_API}/drafts/{draft_id}",
+        params={"format": "metadata"},
+    )
+    message = draft.get("message", {}) or {}
+    headers: dict[str, str] = {}
+    for h in message.get("payload", {}).get("headers", []):
+        name = h.get("name", "").lower()
+        if name:
+            headers[name] = h.get("value", "")
+    return {"headers": headers, "thread_id": message.get("threadId")}
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def update_draft(
+    draft_id: str,
+    to: str,
+    subject: str,
+    body_text: str,
+    body_html: str,
+    cc: str | None = None,
+    thread_id: str | None = None,
+    in_reply_to: str | None = None,
+    references: str | None = None,
+) -> DraftResult:
+    """
+    Replace an existing Gmail draft's message in place (drafts.update).
+
+    The draft keeps its ID and Gmail position; the message is rebuilt
+    wholesale — callers carry over any fields the user didn't change
+    (see get_draft_headers). thread_id keeps a reply draft on its thread.
+
+    Raises:
+        MiseError: On API failure
+    """
+    client = get_sync_client()
+
+    raw = _build_draft_message(
+        to, subject, body_text, body_html, cc=cc,
+        in_reply_to=in_reply_to, references=references,
+    )
+    message: dict[str, Any] = {"raw": raw}
+    if thread_id:
+        message["threadId"] = thread_id
+
+    draft = client.request(
+        "PUT",
+        f"{_GMAIL_API}/drafts/{draft_id}",
+        json_body={"message": message},
+    ).json()
+
+    new_id = draft.get("id", draft_id)
+    return DraftResult(
+        draft_id=new_id,
+        message_id=draft.get("message", {}).get("id", ""),
+        web_link=_draft_web_link(new_id),
+        to=to,
+        subject=subject,
+    )
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def delete_draft(draft_id: str) -> None:
+    """
+    Discard a Gmail draft (drafts.delete). PERMANENT — drafts have no trash.
+
+    Raises:
+        MiseError: On API failure (404 → NOT_FOUND for a bad draft ID)
+    """
+    client = get_sync_client()
+    client.delete(f"{_GMAIL_API}/drafts/{draft_id}")
+
+
 @dataclass
 class ReplyDraftResult:
     """Result of creating a threaded reply draft."""

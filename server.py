@@ -260,6 +260,13 @@ def do(
         log_mcp_call("do", params=call_params, ok=False, error=msg)
         return {"error": True, "kind": "invalid_input", "message": msg}
 
+    # Remote 'draft' is create-only: update mode (file_id) rewrites an existing
+    # draft — destructive to a human's hand-edits, outside the audited safe set.
+    if _REMOTE_MODE and operation == "draft" and file_id:
+        msg = "Draft update is not available in remote mode — create a new draft instead."
+        log_mcp_call("do", params=call_params, ok=False, error=msg)
+        return {"error": True, "kind": "invalid_input", "message": msg}
+
     params = {
         "content": content, "title": title, "doc_type": doc_type,
         "folder_id": folder_id, "file_id": file_id,
