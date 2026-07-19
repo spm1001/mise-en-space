@@ -22,6 +22,7 @@ from adapters.gmail import (
     fetch_message,
     search_threads,
     download_attachment,
+    get_primary_signature,
     list_labels,
     resolve_label_name,
     AttachmentDownload,
@@ -1342,3 +1343,60 @@ class TestSearchHasInvite:
         with patch('retry.time.sleep'):
             result = search_threads("hi")
         assert result.results[0].has_invite is False
+
+
+class TestGetPrimarySignature:
+    """Test get_primary_signature adapter function (sendAs settings read)."""
+
+    @staticmethod
+    def _client_returning(payload):
+        mock_client = MagicMock()
+        mock_client.get_json.return_value = payload
+        return mock_client
+
+    @patch('adapters.gmail.get_sync_client')
+    def test_picks_default_alias(self, mock_get_client) -> None:
+        mock_get_client.return_value = self._client_returning({
+            "sendAs": [
+                {"sendAsEmail": "alias@example.com", "signature": "<p>Alias</p>"},
+                {"sendAsEmail": "me@example.com", "isDefault": True,
+                 "isPrimary": True, "signature": "<p>Default sig</p>"},
+            ]
+        })
+        with patch('retry.time.sleep'):
+            assert get_primary_signature() == "<p>Default sig</p>"
+
+    @patch('adapters.gmail.get_sync_client')
+    def test_falls_back_to_primary_then_first(self, mock_get_client) -> None:
+        mock_get_client.return_value = self._client_returning({
+            "sendAs": [
+                {"sendAsEmail": "a@example.com", "signature": "<p>A</p>"},
+                {"sendAsEmail": "b@example.com", "isPrimary": True,
+                 "signature": "<p>Primary</p>"},
+            ]
+        })
+        with patch('retry.time.sleep'):
+            assert get_primary_signature() == "<p>Primary</p>"
+
+        # No default, no primary → first alias
+        mock_get_client.return_value = self._client_returning({
+            "sendAs": [{"sendAsEmail": "a@example.com", "signature": "<p>First</p>"}]
+        })
+        with patch('retry.time.sleep'):
+            assert get_primary_signature() == "<p>First</p>"
+
+    @patch('adapters.gmail.get_sync_client')
+    def test_no_aliases_returns_none(self, mock_get_client) -> None:
+        mock_get_client.return_value = self._client_returning({"sendAs": []})
+        with patch('retry.time.sleep'):
+            assert get_primary_signature() is None
+
+    @patch('adapters.gmail.get_sync_client')
+    def test_empty_signature_returns_none(self, mock_get_client) -> None:
+        # No signature configured — Gmail returns "" or omits the field
+        mock_get_client.return_value = self._client_returning({
+            "sendAs": [{"sendAsEmail": "me@example.com", "isDefault": True,
+                        "signature": "  "}]
+        })
+        with patch('retry.time.sleep'):
+            assert get_primary_signature() is None

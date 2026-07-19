@@ -571,6 +571,8 @@ do(operation="draft", to="team@example.com", subject="Report ready",
 
 Draft-only — Claude composes, the user reviews and sends from Gmail. This is a safety boundary, not a limitation.
 
+Both draft ops auto-append the user's Gmail signature (from their sendAs settings, links intact) to the body. **Don't write a sign-off in `content`** — no "Best regards, ..." — end at the last sentence; the real signature lands below it. The `signature` cue in the response confirms it was appended.
+
 ### Common mistakes
 
 | Mistake | What happens | Better approach |

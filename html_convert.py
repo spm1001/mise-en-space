@@ -15,6 +15,7 @@ Lives outside extractors/ because the HTML→markdown side does filesystem I/O.
 import os
 import re
 import tempfile
+from html.parser import HTMLParser
 
 import markdown
 
@@ -164,6 +165,81 @@ def clean_html_for_conversion(html: str) -> str:
     )
 
     return html
+
+
+class _TextWithLinksParser(HTMLParser):
+    """
+    HTML → plain text, rendering <a href> as 'text (url)'.
+
+    Line model: a newline on block-tag CLOSE only (plus <br>), so adjacent
+    one-line-per-div Gmail markup reads as single line breaks while a
+    deliberate <div><br></div> blank line survives as a paragraph gap.
+    """
+
+    _BLOCK_TAGS = {"p", "div", "tr", "li", "table", "ul", "ol"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._href: str | None = None
+        self._link_text: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "a":
+            self._href = dict(attrs).get("href")
+            self._link_text = []
+        elif tag == "br":
+            self.parts.append("\n")
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "br":
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "a":
+            text = "".join(self._link_text).strip()
+            href = (self._href or "").strip()
+            # Suppress the (url) suffix when it adds nothing: bare-URL link
+            # text, or a mailto: wrapping the address it displays.
+            redundant = href in (text, f"mailto:{text}")
+            if href and text and not redundant:
+                self.parts.append(f"{text} ({href})")
+            else:
+                self.parts.append(text or href)
+            self._href = None
+            self._link_text = []
+        elif tag in self._BLOCK_TAGS:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._href is not None:
+            self._link_text.append(data)
+        else:
+            self.parts.append(data)
+
+
+def html_to_text_with_links(html: str) -> str:
+    """
+    Convert HTML to plain text, preserving hyperlinks as 'text (url)'.
+
+    Pure, no I/O, stdlib-only — deliberately NOT markitdown, because this
+    feeds the text/plain part of email drafts (a remote-safe op that must
+    work in the slim build, where markitdown is absent). Block-level tags
+    become newlines; entities are unescaped; whitespace is collapsed.
+
+    Used to render the Gmail signature into a draft's plain-text part so
+    links survive both MIME alternatives.
+    """
+    if not html or not html.strip():
+        return ""
+    parser = _TextWithLinksParser()
+    parser.feed(html)
+    parser.close()
+    text = "".join(parser.parts)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r" ?\n ?", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def strip_html_tags(html: str) -> str:

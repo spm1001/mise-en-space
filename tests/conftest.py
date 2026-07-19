@@ -42,6 +42,20 @@ def _no_identity_in_tests() -> "object":
         yield
 
 
+# ============================================================================
+# Signature isolation
+# ============================================================================
+# do_draft/do_reply_draft auto-fetch the user's Gmail signature (sendAs
+# settings) — a live API call on a dev box with a real token. Default it to
+# None (no signature configured); signature-behaviour tests re-patch.
+# Patches `tools.draft.get_primary_signature` because both draft ops fetch
+# through tools.draft._fetch_signature.
+@pytest.fixture(autouse=True)
+def _no_signature_in_tests() -> "object":
+    with patch("tools.draft.get_primary_signature", return_value=None):
+        yield
+
+
 def load_fixture(category: str, name: str) -> dict:
     """
     Load a JSON fixture by category and name.

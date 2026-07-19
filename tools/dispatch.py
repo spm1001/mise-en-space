@@ -123,7 +123,7 @@ Act on Google Workspace — create, move, edit, draft/reply emails, organise Gma
 Operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, setup_oauth.
 Create: content + title + doc_type (doc/sheet/slides/file/folder/form). page_setup='pageless' for pageless docs. file_path= to read from disk. folder: title only, no content needed. form: content is YAML/JSON spec with title, description, questions.
 Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content).
-Email: draft (to + subject + content), reply_draft (file_id + content), archive/star/label.
+Email: draft (to + subject + content), reply_draft (file_id + content), archive/star/label. Drafts auto-append the user's Gmail signature — don't write a sign-off in content.
 Comments: comment (file_id + content — opens a NEW thread), comment_reply (file_id + comment_id [from comments.md] + content and/or action=resolve|reopen). Both auto-prefix '[agent] '.
 Share: file_id + to + role (reader/writer/commenter), confirm=True to execute.
 Move: file_id (single or list) + folder_id (alias: destination_folder_id).
@@ -134,7 +134,8 @@ Act on Google Workspace (remote mode — safe operations only).
 
 Args:
     operation: What to do. One of: 'create', 'draft', 'reply_draft', 'archive', 'star', 'label'
-    content: Text content (required for create, draft, reply_draft)
+    content: Text content (required for create, draft, reply_draft).
+        Drafts auto-append the user's Gmail signature — don't write a sign-off.
     title: Document title (for create)
     doc_type: 'doc' | 'sheet' | 'slides' | 'form' (for create). form: content is YAML/JSON spec
     folder_id: Optional destination folder (for create)

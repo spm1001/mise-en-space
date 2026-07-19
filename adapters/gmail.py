@@ -818,6 +818,31 @@ def list_labels() -> list[dict[str, str]]:
     ]
 
 
+@with_retry(max_attempts=3, delay_ms=1000)
+def get_primary_signature() -> str | None:
+    """
+    Fetch the authenticated user's Gmail signature (HTML) from sendAs settings.
+
+    Picks the default send-as alias (falling back to primary, then first).
+    Readable under the existing gmail.modify scope — no settings scope
+    needed (verified against the live API, 2026-07-19).
+
+    Returns:
+        Signature HTML string, or None when no signature is configured.
+    """
+    client = get_sync_client()
+    response = client.get_json(f"{_GMAIL_API}/settings/sendAs")
+    aliases = response.get("sendAs", [])
+    if not aliases:
+        return None
+    chosen = next(
+        (a for a in aliases if a.get("isDefault")),
+        next((a for a in aliases if a.get("isPrimary")), aliases[0]),
+    )
+    signature = chosen.get("signature", "").strip()
+    return signature or None
+
+
 def resolve_label_name(name: str) -> str:
     """
     Resolve a human-readable label name to a Gmail label ID.

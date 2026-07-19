@@ -5,6 +5,7 @@ from unittest.mock import patch
 from html_convert import (
     clean_html_for_conversion,
     convert_html_to_markdown,
+    html_to_text_with_links,
     markdown_to_html,
     strip_html_tags,
 )
@@ -142,3 +143,51 @@ class TestMarkdownToHtml:
 
     def test_empty_input(self) -> None:
         assert markdown_to_html("") == ""
+
+
+class TestHtmlToTextWithLinks:
+    """html_to_text_with_links — signature rendering for text/plain parts."""
+
+    def test_link_becomes_text_with_url(self) -> None:
+        html = '<a href="https://example.com/x">Visit us</a>'
+        assert html_to_text_with_links(html) == "Visit us (https://example.com/x)"
+
+    def test_bare_url_link_not_doubled(self) -> None:
+        html = '<a href="https://example.com">https://example.com</a>'
+        assert html_to_text_with_links(html) == "https://example.com"
+
+    def test_mailto_wrapping_its_own_address(self) -> None:
+        html = '<a href="mailto:a@b.com">a@b.com</a>'
+        assert html_to_text_with_links(html) == "a@b.com"
+
+    def test_block_tags_become_newlines(self) -> None:
+        html = "<div>Line one</div><div>Line two</div>"
+        assert html_to_text_with_links(html) == "Line one\nLine two"
+
+    def test_br_variants(self) -> None:
+        assert html_to_text_with_links("a<br>b") == "a\nb"
+        assert html_to_text_with_links("a<br/>b") == "a\nb"
+
+    def test_entities_unescaped(self) -> None:
+        assert html_to_text_with_links("<p>Fish &amp; Chips</p>") == "Fish & Chips"
+
+    def test_blank_runs_collapse(self) -> None:
+        html = "<div>a</div><div><br></div><div><br></div><div>b</div>"
+        assert html_to_text_with_links(html) == "a\n\nb"
+
+    def test_empty_input(self) -> None:
+        assert html_to_text_with_links("") == ""
+        assert html_to_text_with_links("   ") == ""
+
+    def test_realistic_signature(self) -> None:
+        # Shape of a real Gmail sendAs signature: nested divs, styled links
+        html = (
+            '<div dir="ltr"><div>Sam</div><div><br></div>'
+            '<div>Measurement Team</div>'
+            '<div>Visit <a href="https://maps.example/q" style="color:blue" '
+            'target="_blank">our office</a></div></div>'
+        )
+        text = html_to_text_with_links(html)
+        assert "Sam" in text
+        assert "our office (https://maps.example/q)" in text
+        assert "style" not in text  # attributes never leak

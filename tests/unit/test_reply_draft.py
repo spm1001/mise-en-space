@@ -521,3 +521,30 @@ class TestDoReplyDraftWithInclude:
 
         assert isinstance(result, DoResult)
         assert "included_links" in result.cues
+
+class TestReplyDraftSignature:
+    """Reply drafts get the Gmail signature grace note too."""
+
+    @patch("retry.time.sleep")
+    @patch("tools.draft.get_primary_signature")
+    @patch("tools.reply_draft.create_reply_draft")
+    @patch("tools.reply_draft.fetch_thread")
+    def test_signature_appended_to_reply(
+        self, mock_fetch, mock_create, mock_sig, _sleep
+    ) -> None:
+        sig = '<div>Sam<br><a href="https://maps.example/q">Our office</a></div>'
+        mock_sig.return_value = sig
+        mock_fetch.return_value = _make_thread()
+        mock_create.return_value = ReplyDraftResult(
+            draft_id="d1", message_id="m1", thread_id="abc123def456abc1",
+            web_link="https://mail.google.com/mail/#drafts/d1",
+            to="alice@example.com", subject="Re: Original Subject",
+        )
+
+        result = do_reply_draft(file_id="abc123def456abc1", content="Thanks!")
+
+        kwargs = mock_create.call_args[1]
+        assert sig in kwargs["body_html"]
+        assert "Our office (https://maps.example/q)" in kwargs["body_text"]
+        assert isinstance(result, DoResult)
+        assert result.cues["signature"] == "Gmail signature appended automatically"

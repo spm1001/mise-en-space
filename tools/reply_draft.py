@@ -21,6 +21,7 @@ from cues_util import current_user_email
 from models import DoResult, EmailMessage, MiseError
 from tools.draft import (
     _content_to_html,
+    _fetch_signature,
     _format_links_text,
     _format_links_html,
     _resolve_include,
@@ -161,9 +162,10 @@ def do_reply_draft(
     if include:
         included_links, include_warnings = _resolve_include(include)
 
-    # Build body with included links appended
-    body_text = content + _format_links_text(included_links)
-    body_html = _content_to_html(content) + _format_links_html(included_links)
+    # Build body: content, then included links, then the Gmail signature
+    sig_html, sig_text, sig_warnings = _fetch_signature()
+    body_text = content + _format_links_text(included_links) + sig_text
+    body_html = _content_to_html(content) + _format_links_html(included_links) + sig_html
 
     try:
         result = create_reply_draft(
@@ -185,6 +187,8 @@ def do_reply_draft(
         "thread_id": file_id,
         "replying_to": last_message.from_address,
     }
+    if sig_html:
+        cues["signature"] = "Gmail signature appended automatically"
     if final_cc:
         cues["cc"] = final_cc
     if included_links:
@@ -193,6 +197,8 @@ def do_reply_draft(
         ]
     if include_warnings:
         cues["include_warnings"] = include_warnings
+    if sig_warnings:
+        cues["signature_warnings"] = sig_warnings
 
     return DoResult(
         file_id=result.draft_id,

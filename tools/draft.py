@@ -10,8 +10,8 @@ from html import escape as html_escape
 from typing import Any
 
 from adapters.drive import get_file_metadata
-from adapters.gmail import create_draft, IncludedLink
-from html_convert import markdown_to_html
+from adapters.gmail import create_draft, get_primary_signature, IncludedLink
+from html_convert import html_to_text_with_links, markdown_to_html
 from models import DoResult, MiseError
 from validation import validate_drive_id
 
@@ -94,6 +94,28 @@ def _format_links_html(links: list[IncludedLink]) -> str:
     return "\n".join(parts)
 
 
+def _fetch_signature() -> tuple[str, str, list[str]]:
+    """
+    Fetch the user's Gmail signature for appending to a draft body.
+
+    Returns (html_part, text_part, warnings) — separator included, empty
+    strings when no signature is configured. A signature is a grace note:
+    fetch failure produces a warning, never blocks the draft.
+    """
+    try:
+        sig_html = get_primary_signature()
+    except MiseError as e:
+        return "", "", [f"Could not fetch Gmail signature: {e.message}"]
+    except Exception as e:
+        return "", "", [f"Could not fetch Gmail signature: {e}"]
+
+    if not sig_html:
+        return "", "", []
+
+    sig_text = html_to_text_with_links(sig_html)
+    return f"<br>{sig_html}", f"\n\n{sig_text}", []
+
+
 def _content_to_html(content: str) -> str:
     """
     Render an email draft body (markdown) to HTML.
@@ -147,9 +169,10 @@ def do_draft(
     if include:
         included_links, include_warnings = _resolve_include(include)
 
-    # Build body with included links appended
-    body_text = content + _format_links_text(included_links)
-    body_html = _content_to_html(content) + _format_links_html(included_links)
+    # Build body: content, then included links, then the Gmail signature
+    sig_html, sig_text, sig_warnings = _fetch_signature()
+    body_text = content + _format_links_text(included_links) + sig_text
+    body_html = _content_to_html(content) + _format_links_html(included_links) + sig_html
 
     try:
         result = create_draft(
@@ -166,12 +189,16 @@ def do_draft(
     cues: dict[str, Any] = {
         "action": "Draft created \u2014 review and send from Gmail",
     }
+    if sig_html:
+        cues["signature"] = "Gmail signature appended automatically"
     if included_links:
         cues["included_links"] = [
             {"title": l.title, "url": l.web_link} for l in included_links
         ]
     if include_warnings:
         cues["include_warnings"] = include_warnings
+    if sig_warnings:
+        cues["signature_warnings"] = sig_warnings
 
     return DoResult(
         file_id=result.draft_id,

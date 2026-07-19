@@ -385,3 +385,98 @@ class TestDoDraftSuccess:
         mock_create.assert_called_once()
         call_kwargs = mock_create.call_args[1]
         assert call_kwargs["cc"] == "bob@example.com"
+
+
+class TestDraftSignature:
+    """Gmail signature grace note — auto-appended to both MIME parts."""
+
+    _SIG = '<div>Sam<br><a href="https://maps.example/q">Our office</a></div>'
+
+    @patch("retry.time.sleep")
+    @patch("tools.draft.get_primary_signature")
+    @patch("tools.draft.create_draft")
+    def test_signature_appended_to_both_parts(
+        self, mock_create, mock_sig, _sleep
+    ) -> None:
+        mock_sig.return_value = self._SIG
+        mock_create.return_value = DraftResult(
+            draft_id="d1", message_id="m1",
+            web_link="https://mail.google.com/mail/#drafts/d1",
+            to="alice@example.com", subject="Test",
+        )
+
+        result = do_draft(to="alice@example.com", subject="Test", content="Hello")
+
+        kwargs = mock_create.call_args[1]
+        # HTML part: raw signature HTML, links intact
+        assert self._SIG in kwargs["body_html"]
+        assert 'href="https://maps.example/q"' in kwargs["body_html"]
+        # Text part: rendered with link as 'text (url)'
+        assert "Our office (https://maps.example/q)" in kwargs["body_text"]
+        # Cue tells Claude the signature landed
+        assert isinstance(result, DoResult)
+        assert result.cues["signature"] == "Gmail signature appended automatically"
+
+    @patch("retry.time.sleep")
+    @patch("tools.draft.get_file_metadata")
+    @patch("tools.draft.get_primary_signature")
+    @patch("tools.draft.create_draft")
+    def test_signature_lands_after_included_links(
+        self, mock_create, mock_sig, mock_meta, _sleep
+    ) -> None:
+        mock_sig.return_value = self._SIG
+        mock_meta.return_value = {
+            "name": "Report",
+            "mimeType": "application/vnd.google-apps.document",
+            "webViewLink": "https://docs.google.com/document/d/xyz/edit",
+        }
+        mock_create.return_value = DraftResult(
+            draft_id="d1", message_id="m1",
+            web_link="https://mail.google.com/mail/#drafts/d1",
+            to="alice@example.com", subject="Test",
+        )
+
+        do_draft(to="alice@example.com", subject="Test",
+                 content="See report", include=["xyz"])
+
+        html = mock_create.call_args[1]["body_html"]
+        assert html.index("docs.google.com/document/d/xyz") < html.index(self._SIG)
+
+    @patch("retry.time.sleep")
+    @patch("tools.draft.get_primary_signature")
+    @patch("tools.draft.create_draft")
+    def test_fetch_failure_warns_but_draft_succeeds(
+        self, mock_create, mock_sig, _sleep
+    ) -> None:
+        from models import MiseError, ErrorKind
+        mock_sig.side_effect = MiseError(ErrorKind.NETWORK_ERROR, "boom")
+        mock_create.return_value = DraftResult(
+            draft_id="d1", message_id="m1",
+            web_link="https://mail.google.com/mail/#drafts/d1",
+            to="alice@example.com", subject="Test",
+        )
+
+        result = do_draft(to="alice@example.com", subject="Test", content="Hello")
+
+        assert isinstance(result, DoResult)  # draft still created
+        assert "signature" not in result.cues
+        assert any("boom" in w for w in result.cues["signature_warnings"])
+        # Body carries no signature fragments
+        assert mock_create.call_args[1]["body_text"] == "Hello"
+
+    @patch("retry.time.sleep")
+    @patch("tools.draft.create_draft")
+    def test_no_signature_configured_is_silent(self, mock_create, _sleep) -> None:
+        # Autouse fixture defaults get_primary_signature to None
+        mock_create.return_value = DraftResult(
+            draft_id="d1", message_id="m1",
+            web_link="https://mail.google.com/mail/#drafts/d1",
+            to="alice@example.com", subject="Test",
+        )
+
+        result = do_draft(to="alice@example.com", subject="Test", content="Hello")
+
+        assert isinstance(result, DoResult)
+        assert "signature" not in result.cues
+        assert "signature_warnings" not in result.cues
+        assert mock_create.call_args[1]["body_text"] == "Hello"
