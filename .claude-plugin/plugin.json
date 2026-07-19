@@ -2,7 +2,7 @@
   "name": "mise",
   "displayName": "Mise",
   "identity": "ITV (itv.com)",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "description": "Google Workspace MCP server \u2014 search Drive, fetch Gmail, act on documents",
   "author": {
     "name": "Sameer Modha",
