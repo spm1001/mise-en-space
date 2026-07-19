@@ -1,10 +1,11 @@
-"""Tests for auth module — credential resolution."""
+"""Tests for auth module — credential resolution and browser suitability."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-from oauth_config import LOCAL_CREDENTIALS_FILE
+from oauth_config import LOCAL_CREDENTIALS_FILE, can_open_browser
 
 
 # =============================================================================
@@ -51,3 +52,55 @@ class TestCredentialResolution:
         assert any("localhost" in uri for uri in redirect_uris), (
             "credentials.json missing localhost redirect URI"
         )
+
+
+# =============================================================================
+# can_open_browser — suitability gates (mise-zikesa)
+# =============================================================================
+
+
+class TestCanOpenBrowser:
+    """A browser must be available AND suitable — a remote desktop's browser
+    is often signed into the wrong Google account, so firing xdg-open at it
+    burns the consent click on 'access blocked'."""
+
+    def test_linux_with_display(self):
+        with patch("oauth_config.sys") as mock_sys, \
+                patch.dict("os.environ", {"DISPLAY": ":0"}, clear=True):
+            mock_sys.platform = "linux"
+            assert can_open_browser() is True
+
+    def test_linux_headless(self):
+        with patch("oauth_config.sys") as mock_sys, \
+                patch.dict("os.environ", {}, clear=True):
+            mock_sys.platform = "linux"
+            assert can_open_browser() is False
+
+    def test_xrdp_session_suppresses_browser(self):
+        """xrdp remote desktop: DISPLAY exists but the browser is the remote
+        box's own — steer to --code instead."""
+        with patch("oauth_config.sys") as mock_sys, \
+                patch.dict(
+                    "os.environ",
+                    {"DISPLAY": ":10.0", "XRDP_SESSION": "1"},
+                    clear=True,
+                ):
+            mock_sys.platform = "linux"
+            assert can_open_browser() is False
+
+    def test_mise_no_browser_override(self):
+        """Explicit operator override — detection can't know account
+        suitability, so a box can declare its browser unusable for OAuth."""
+        with patch.dict(
+            "os.environ", {"MISE_NO_BROWSER": "1", "DISPLAY": ":0"}, clear=True
+        ):
+            assert can_open_browser() is False
+
+    def test_mise_no_browser_overrides_darwin(self):
+        """The override wins even on macOS (always-True platform)."""
+        with patch("oauth_config.sys") as mock_sys, \
+                patch.dict(
+                    "os.environ", {"MISE_NO_BROWSER": "1"}, clear=True
+                ):
+            mock_sys.platform = "darwin"
+            assert can_open_browser() is False

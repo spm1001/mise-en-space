@@ -171,22 +171,29 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
     else:
         status = "headless_use_url"
         message = (
-            "Headless environment — no browser will open. Open the 'url' field "
-            "below in any browser. The callback must reach localhost:3000 on the "
-            "machine running mise: either run `ssh -L 3000:localhost:3000 <host>` "
-            "before clicking, or after approving copy the localhost redirect URL "
-            "from the address bar and run `uv run python -m auth --code "
-            "'<redirect_url>'`. A listener on localhost:3000 catches the callback "
-            "for the next 5 minutes."
+            "Not opening a browser here — this environment is headless or a "
+            "remote desktop whose own browser may be signed into the WRONG "
+            "Google account (a remote box's browser rarely holds the account "
+            "being authed; consent would fail with 'access blocked'). "
+            "RECOMMENDED path: open the 'url' field below in a browser signed "
+            "into the CORRECT Google account — e.g. on your own machine. After "
+            "approving, the browser lands on a localhost URL (usually a "
+            "connection-error page; that's expected — the code is in the "
+            "address bar). Copy that full URL and run on the machine running "
+            "mise: uv run python -m auth --code '<redirect_url>'. "
+            "Alternative: run `ssh -L 3000:localhost:3000 <this-host>` from the "
+            "browser's machine BEFORE clicking — a listener catches the "
+            "callback for the next 5 minutes and finishes automatically."
         )
     cues: dict[str, Any] = {
         "fallback": (
-            "If no browser opened (headless box), open the 'url' field in any "
-            "browser. The callback must reach localhost:3000 on the machine "
-            "running mise — either run `ssh -L 3000:localhost:3000 <host>` "
-            "before clicking, or after approving copy the localhost redirect "
-            "URL from the address bar and run: "
-            "uv run python -m auth --code '<redirect_url>'"
+            "If no browser opened, use a browser signed into the CORRECT "
+            "Google account (e.g. on your own machine) to open the 'url' "
+            "field. After approving, copy the localhost redirect URL from the "
+            "address bar and run on the machine running mise: "
+            "uv run python -m auth --code '<redirect_url>'. Alternative: "
+            "`ssh -L 3000:localhost:3000 <host>` from the browser's machine "
+            "before clicking lets the 5-minute listener finish automatically."
         ),
         "log_path": str(log_path),
         "token_will_save_to": str(TOKEN_FILE),

@@ -105,6 +105,8 @@ docs/           Design documents and references
 - `do(create)` accepts `page_setup='pageless'` (doc_type='doc' only) — sets pageless mode via Docs API after creation.
 - `do(create)` with `doc_type='doc'` auto-embeds local images: `![alt](local/path.png)` in markdown triggers post-creation Docs API injection. Requires brief public sharing of each image via Drive permissions — may be blocked by enterprise DLP policies. Check `cues.image_errors` for failures.
 - `do(move)` accepts `file_id` as a list for batch moves — validates destination once, returns per-file summary. The target folder is `folder_id` (canonical, shared with `do(create)`); `destination_folder_id` is kept as a deprecated alias.
+- `do(draft)` and `do(reply_draft)` **auto-append the user's real Gmail signature** (sendAs settings) to both MIME parts — HTML with links intact, plus a text rendering for text/plain. Do NOT write a sign-off in `content`; the signature arrives by itself (suite 1.13.0, wituwa).
+- **Sheets editing** (suite 1.14.0, lirugi): `do(overwrite)` on a spreadsheet clears and replaces the FIRST grid tab with CSV (warning cue when other tabs exist); `do(replace_text)` does literal cell find/replace across ALL tabs (matchCase, formulas excluded, `occurrences_changed` cue). `prepend`/`append` on sheets still reject, naming those two alternatives.
 - **Comments included automatically** — open comments deposited as `comments.md`
 - **Cues in every response** — `cues` block surfaces files, comment count, warnings, email context
 - `base_path` is required on all tools in stdio mode — MCP servers run as separate processes, `Path.cwd()` is theirs not Claude's. In remote mode, `base_path` is optional (temp dir used automatically).
@@ -238,6 +240,8 @@ uv run python -m auth --auto              # Auto (opens browser, runs listener, 
 uv run python -m auth                     # Headless — prints URL, paste back via --code
 uv run python -m auth --code URL_OR_CODE  # Exchange code from headless flow
 ```
+
+**Headless / remote-desktop boxes (e.g. tube): use the `--code` path.** Mint with plain `uv run python -m auth` (print mode, no listener), open the URL in a browser signed into the **right** Google account — tube's xrdp browser is on planetmodha while this client is Internal to itv.com, so click from an itv-signed browser (e.g. the Mac) — then paste the redirect URL back via `--code`. `can_open_browser()` refuses to fire xdg-open under `XRDP_SESSION`; set `MISE_NO_BROWSER=1` on any box whose browser is signed into the wrong account (detection can't know account suitability). Concurrent auth flows are safe since jeton 1.4.0 — `.pkce_state.json` keys verifiers by the OAuth `state` param, so mints merge instead of clobbering; if you redeem a bare code while several flows are in flight, paste the full redirect URL instead (it carries `state`). A fresh token landing on disk is picked up by a running MCP server on its next call (`_refresh_or_reload`) — no restart needed after re-auth.
 
 `credentials.json` (OAuth client config, not secret) ships with the repo. The OAuth client lives in ITV's `mit-workspace-mcp-server` GCP project with **User type: Internal** — any `@itv.com` Workspace account can authenticate without verification or a test-user list. Token auto-refreshes; `clear_service_cache` handles revoked refresh tokens. Maintainer can also fetch credentials from GCP Secret Manager as fallback.
 

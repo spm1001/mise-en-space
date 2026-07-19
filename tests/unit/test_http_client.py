@@ -505,3 +505,93 @@ class TestQuotaProjectHeader:
     def test_header_absent_for_personal_creds(self):
         h = self._client_with(None)._auth_headers()
         assert "x-goog-user-project" not in h
+
+
+class TestStaleTokenReload:
+    """A long-running server used to serve invalid_grant forever after a fresh
+    token landed on disk — credentials load once at client creation, so the
+    only fix was a restart (mise-zikesa). _refresh_or_reload self-heals by
+    re-reading the token file when the in-memory grant is refused."""
+
+    def _dead_creds(self):
+        from google.auth.exceptions import RefreshError
+
+        creds = _mock_credentials()
+        creds.refresh_token = "dead-grant"
+        creds.refresh.side_effect = RefreshError("invalid_grant: revoked")
+        return creds
+
+    def test_sync_swaps_fresh_grant_from_disk(self) -> None:
+        client = _make_sync_client(self._dead_creds())
+        fresh = _mock_credentials()
+        fresh.refresh_token = "new-grant"
+        fresh.valid = True
+
+        with (
+            patch(
+                "adapters.http_client._load_and_diagnose_credentials",
+                return_value=fresh,
+            ),
+            patch(
+                "adapters.http_client.resolve_token_path",
+                return_value=Path("/tmp/no-such-token.json"),
+            ),
+            patch("cues_util.clear_user_email_cache"),
+            patch("cues_util.resolve_user_email_eager") as resolve_identity,
+        ):
+            client._refresh_or_reload()
+
+        assert client._credentials is fresh
+        # The new grant may be a different account — identity re-resolved
+        resolve_identity.assert_called_once()
+
+    def test_sync_same_dead_grant_raises_friendly(self) -> None:
+        client = _make_sync_client(self._dead_creds())
+        same = _mock_credentials()
+        same.refresh_token = "dead-grant"  # disk holds the SAME revoked grant
+
+        with (
+            patch(
+                "adapters.http_client._load_and_diagnose_credentials",
+                return_value=same,
+            ),
+            patch(
+                "adapters.http_client.resolve_token_path",
+                return_value=Path("/tmp/no-such-token.json"),
+            ),
+        ):
+            with pytest.raises(FileNotFoundError, match="same grant"):
+                client._refresh_or_reload()
+
+    def test_async_swaps_fresh_grant_from_disk(self) -> None:
+        client = _make_client(self._dead_creds())
+        fresh = _mock_credentials()
+        fresh.refresh_token = "new-grant"
+        fresh.valid = True
+
+        with (
+            patch(
+                "adapters.http_client._load_and_diagnose_credentials",
+                return_value=fresh,
+            ),
+            patch(
+                "adapters.http_client.resolve_token_path",
+                return_value=Path("/tmp/no-such-token.json"),
+            ),
+        ):
+            client._refresh_or_reload()
+
+        assert client._credentials is fresh
+
+    def test_healthy_refresh_never_touches_disk(self) -> None:
+        creds = _mock_credentials()
+        creds.valid = False  # expired access token, healthy grant
+        client = _make_sync_client(creds)
+
+        with patch(
+            "adapters.http_client._load_and_diagnose_credentials"
+        ) as loader:
+            client._ensure_valid_token()
+
+        creds.refresh.assert_called_once()
+        loader.assert_not_called()

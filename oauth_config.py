@@ -70,13 +70,23 @@ def port_is_free(port: int) -> bool:
         sock.close()
 
 def can_open_browser() -> bool:
-    """Whether a graphical browser can be opened in THIS environment.
+    """Whether a graphical browser is available AND suitable for OAuth here.
 
     Single source of truth shared by the auth.py CLI and the setup_oauth MCP
     tool, so both agree on whether to promise a browser tab or lead with the
-    URL/tunnel path (mise-petaga). The subprocess setup_oauth spawns inherits
+    URL/--code path (mise-petaga). The subprocess setup_oauth spawns inherits
     this env, so the tool can predict the subprocess's decision exactly.
+
+    Two suitability gates beyond bare availability (mise-zikesa):
+    - MISE_NO_BROWSER: explicit operator override for boxes whose browser is
+      signed into the wrong Google account (e.g. a remote-desktop box).
+      Detection can't know account suitability; this is the honest lever.
+    - XRDP_SESSION: best-effort auto-detect of an xrdp remote desktop, whose
+      browser is the remote box's own — firing xdg-open at it burns the
+      consent click on "access blocked" when accounts don't line up.
     """
+    if os.environ.get("MISE_NO_BROWSER") or os.environ.get("XRDP_SESSION"):
+        return False
     if sys.platform == "darwin":
         return True
     return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))

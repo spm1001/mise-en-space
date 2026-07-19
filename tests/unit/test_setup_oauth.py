@@ -160,14 +160,17 @@ class TestSingleMintInvariant:
         ):
             result = do_setup_oauth()
 
-        challenge = parse_qs(urlparse(result["url"]).query)["code_challenge"][0]
+        params = parse_qs(urlparse(result["url"]).query)
+        challenge = params["code_challenge"][0]
+        state = params["state"][0]
         pkce_state = json.loads(
             (tmp_token_file.parent / ".pkce_state.json").read_text()
         )
+        # jeton 1.4.0 keys verifiers by the flow's state param (concurrent
+        # flows merge instead of clobbering) — look up THIS URL's entry.
+        verifier = pkce_state["flows"][state]["code_verifier"]
         derived = (
-            base64.urlsafe_b64encode(
-                hashlib.sha256(pkce_state["code_verifier"].encode()).digest()
-            )
+            base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
             .rstrip(b"=")
             .decode()
         )

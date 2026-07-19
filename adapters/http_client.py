@@ -32,6 +32,7 @@ QueryParamsType = dict[str, Any] | list[tuple[str, str]] | None
 
 import json
 import logging
+from pathlib import Path
 
 import httpx
 import orjson
@@ -47,7 +48,28 @@ logger = logging.getLogger(__name__)
 API_TIMEOUT = 60
 
 
-def _load_and_diagnose_credentials(token_path: str) -> Any:
+def _bootstrap_hint(guest_mode: bool) -> str:
+    """The re-auth remedy line for credential errors.
+
+    Points at the setup_oauth tool, which is what's reachable when running
+    under Claude Desktop / Cowork. The CLI fallback (`uv run python -m auth
+    --auto`) is mentioned only when the bootstrap tool can't be reached.
+    In guest mode (MISE_TOKEN_PATH) neither applies — the credential belongs
+    to the embedding app, and an agent reading this error must be pointed
+    AWAY from self-service re-auth (observed live: an agent followed the CLI
+    hint into a PATH-probing expedition inside a sealed sandbox).
+    """
+    return (
+        "This credential file belongs to the embedding application — "
+        "re-authenticate there. Do not attempt setup_oauth or CLI auth."
+        if guest_mode
+        else "Call mise.do(operation=\"setup_oauth\") to authenticate "
+        "(opens a browser; saves token to Keychain). "
+        "CLI fallback: uv run python -m auth --auto"
+    )
+
+
+def _load_and_diagnose_credentials(token_path: str | Path) -> Any:
     """Load OAuth credentials with clear error messages for each failure mode.
 
     Instead of a generic "token not found" error, distinguishes:
@@ -56,27 +78,11 @@ def _load_and_diagnose_credentials(token_path: str) -> Any:
     - Token expired with no refresh_token
     - Token expired and refresh failed
     """
-    from pathlib import Path
     from token_store import override_path
     token_path = Path(token_path)
     guest_mode = override_path() is not None
 
-    # Bootstrap hint surfaced from inside an MCP session — points at the
-    # setup_oauth tool, which is what's reachable when running under Claude
-    # Desktop / Cowork. The CLI fallback (`uv run python -m auth --auto`)
-    # is mentioned only when the bootstrap tool can't be reached.
-    # In guest mode (MISE_TOKEN_PATH) neither applies — the credential belongs
-    # to the embedding app, and an agent reading this error must be pointed
-    # AWAY from self-service re-auth (observed live: an agent followed the CLI
-    # hint into a PATH-probing expedition inside a sealed sandbox).
-    _BOOTSTRAP_HINT = (
-        "This credential file belongs to the embedding application — "
-        "re-authenticate there. Do not attempt setup_oauth or CLI auth."
-        if guest_mode
-        else "Call mise.do(operation=\"setup_oauth\") to authenticate "
-        "(opens a browser; saves token to Keychain). "
-        "CLI fallback: uv run python -m auth --auto"
-    )
+    _BOOTSTRAP_HINT = _bootstrap_hint(guest_mode)
 
     if not token_path.exists():
         raise FileNotFoundError(
@@ -161,7 +167,42 @@ class MiseHttpClient:
         once per hour. Not worth the complexity of async wrapping.
         """
         if not self._credentials.valid:
+            self._refresh_or_reload()
+
+    def _refresh_or_reload(self) -> None:
+        """Refresh the access token; on a dead grant, re-read the token file.
+
+        Credentials load once at client creation, so a long-running server
+        used to keep serving invalid_grant after a fresh token had already
+        landed on disk via re-auth — the only fix was a restart
+        (mise-zikesa). Reloading on refresh failure makes that self-healing:
+        a DIFFERENT grant on disk gets swapped in; the SAME dead grant gets
+        the friendly re-auth pointer.
+        """
+        from google.auth.exceptions import RefreshError
+
+        try:
             self._credentials.refresh(GoogleAuthRequest())
+            return
+        except RefreshError:
+            old_refresh = getattr(self._credentials, "refresh_token", None)
+            token_path = resolve_token_path(TOKEN_FILE)
+            fresh = _load_and_diagnose_credentials(token_path)
+            if getattr(fresh, "refresh_token", None) == old_refresh:
+                from token_store import override_path
+                raise FileNotFoundError(
+                    "OAuth token was refused by Google (refresh failed — "
+                    f"likely revoked) and the token on disk at {token_path} "
+                    "is the same grant. "
+                    + _bootstrap_hint(override_path() is not None)
+                    + " Once a fresh token lands, this server picks it up on "
+                    "the next call — no restart needed."
+                )
+            self._credentials = fresh
+            # A guest-mode reload may return not-yet-refreshed creds; a dead
+            # NEW grant would raise RefreshError here — rare, and honest.
+            if not self._credentials.valid:
+                self._credentials.refresh(GoogleAuthRequest())
 
     def _auth_headers(self) -> dict[str, str]:
         """Get Authorization header with current token.
@@ -210,7 +251,7 @@ class MiseHttpClient:
 
         # Retry once on 401 — see MiseSyncClient.request for rationale
         if response.status_code == 401:
-            self._credentials.refresh(GoogleAuthRequest())
+            self._refresh_or_reload()
             kwargs["headers"]["Authorization"] = f"Bearer {self._credentials.token}"
             response = await self._client.request(method, url, **kwargs)
 
@@ -353,7 +394,45 @@ class MiseSyncClient:
     def _ensure_valid_token(self) -> None:
         """Refresh the access token if expired."""
         if not self._credentials.valid:
+            self._refresh_or_reload()
+
+    def _refresh_or_reload(self) -> None:
+        """Refresh the access token; on a dead grant, re-read the token file.
+
+        Credentials load once at client creation, so a long-running server
+        used to keep serving invalid_grant after a fresh token had already
+        landed on disk via re-auth — the only fix was a restart
+        (mise-zikesa). Reloading on refresh failure makes that self-healing:
+        a DIFFERENT grant on disk gets swapped in; the SAME dead grant gets
+        the friendly re-auth pointer.
+        """
+        from google.auth.exceptions import RefreshError
+
+        try:
             self._credentials.refresh(GoogleAuthRequest())
+            return
+        except RefreshError:
+            old_refresh = getattr(self._credentials, "refresh_token", None)
+            token_path = resolve_token_path(TOKEN_FILE)
+            fresh = _load_and_diagnose_credentials(token_path)
+            if getattr(fresh, "refresh_token", None) == old_refresh:
+                from token_store import override_path
+                raise FileNotFoundError(
+                    "OAuth token was refused by Google (refresh failed — "
+                    f"likely revoked) and the token on disk at {token_path} "
+                    "is the same grant. "
+                    + _bootstrap_hint(override_path() is not None)
+                    + " Once a fresh token lands, this server picks it up on "
+                    "the next call — no restart needed."
+                )
+            self._credentials = fresh
+            if not self._credentials.valid:
+                self._credentials.refresh(GoogleAuthRequest())
+            # The new grant may belong to a different account — re-resolve so
+            # the _identity cue stays honest (best-effort inside).
+            from cues_util import clear_user_email_cache, resolve_user_email_eager
+            clear_user_email_cache()
+            resolve_user_email_eager(self, token_path)
 
     def _auth_headers(self) -> dict[str, str]:
         """Get Authorization header with current token.
@@ -403,7 +482,7 @@ class MiseSyncClient:
         # (google-auth's creds.valid only checks local expiry field, which can
         # be None for some token formats). AuthorizedHttp did this automatically.
         if response.status_code == 401:
-            self._credentials.refresh(GoogleAuthRequest())
+            self._refresh_or_reload()
             kwargs["headers"]["Authorization"] = f"Bearer {self._credentials.token}"
             response = self._client.request(method, url, **kwargs)
 

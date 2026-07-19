@@ -172,10 +172,11 @@ def _serve_pre_minted(auth_url: str, credentials_path: str) -> None:
         except Exception:
             print("Could not auto-open browser — use the URL setup_oauth returned")
     else:
-        print("Headless environment — not opening a browser.")
-        print("Open the URL setup_oauth returned in any browser. The callback must")
-        print(f"reach localhost:{OAUTH_PORT} on THIS machine: either run")
-        print(f"  ssh -L {OAUTH_PORT}:localhost:{OAUTH_PORT} <this-host>")
+        print("Not opening a browser here (headless, or this box's browser may be")
+        print("signed into the wrong Google account — mise-zikesa).")
+        print("Open the URL setup_oauth returned in a browser signed into the")
+        print(f"CORRECT account. The callback must reach localhost:{OAUTH_PORT} on THIS")
+        print(f"machine: either run  ssh -L {OAUTH_PORT}:localhost:{OAUTH_PORT} <this-host>")
         print("before clicking, or use the --code path when the redirect fails.")
 
     server.oauth_result = None  # type: ignore[attr-defined]
@@ -203,12 +204,16 @@ def _serve_pre_minted(auth_url: str, credentials_path: str) -> None:
         sys.exit(1)
 
     print("Authorization code received")
+    # state= selects THIS flow's PKCE verifier from the keyed state file
+    # (jeton 1.4.0) — without it, a bare code + a concurrent flow's entry
+    # would be refused as ambiguous.
     authenticate(
         credentials_path=credentials_path,
         token_path=TOKEN_FILE,
         scopes=SCOPES,
         code=value,
         port=OAUTH_PORT,
+        state=expected_state,
     )
     save_token(TOKEN_FILE)
     print()
