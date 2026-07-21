@@ -885,7 +885,7 @@ requires-dist = [
     { name = "jeton", git = "https://github.com/spm1001/jeton.git" },
     { name = "markdown", specifier = ">=3.5" },
     { name = "markitdown", extras = ["pdf"], marker = "extra == 'extraction'", specifier = ">=0.1.6" },
-    { name = "mcp", extras = ["cli"], specifier = ">=1.27.0,<2.0.0" },
+    { name = "mcp", extras = ["cli"], specifier = ">=1.28.1,<2.0.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8.0" },
     { name = "orjson", specifier = ">=3.11.9" },
     { name = "pdf2image", marker = "extra == 'extraction'", specifier = ">=1.17.0" },
