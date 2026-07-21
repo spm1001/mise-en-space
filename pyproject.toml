@@ -13,8 +13,8 @@ dependencies = [
     "jeton",
     # Form spec parsing
     "pyyaml>=6.0",
-    "regex>=2026.7.10",
-    "websockets>=16.1",
+    "regex>=2026.7.19",
+    "websockets>=16.1.1",
     # Image extraction (resize/validate, SVG→PNG). Core because it's cheap (~14M)
     # and image fetch should work in every flavour, including the embedded build.
     "pillow>=12.3.0",
@@ -45,7 +45,7 @@ macos = [
 dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
-    "ruff>=0.15.21",
+    "ruff>=0.15.22",
     "mypy>=1.8.0",
     # Stubs for the core `markdown` dep so html_convert.markdown_to_html types
     # cleanly (markdown ships no py.typed).
@@ -112,5 +112,5 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
-    "inline-snapshot>=0.34.2",
+    "inline-snapshot>=0.35.2",
 ]
