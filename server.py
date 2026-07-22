@@ -230,6 +230,7 @@ def do(
     action: str | None = None,
     force: bool = False,
     restore_comment: bool = True,
+    supersede: bool = False,
 ) -> dict[str, Any]:
     """Act on Google Workspace."""
     # Build log params — include operation and non-None values that matter,
@@ -242,6 +243,7 @@ def do(
         ("cc", cc), ("label", label), ("role", role), ("remove", remove),
         ("reply_all", reply_all), ("confirm", confirm),
         ("comment_id", comment_id), ("action", action), ("force", force),
+        ("supersede", supersede),
     ]:
         if v is not None and v is not False:
             call_params[k] = v
@@ -273,6 +275,13 @@ def do(
         log_mcp_call("do", params=call_params, ok=False, error=msg)
         return {"error": True, "kind": "invalid_input", "message": msg}
 
+    # Remote supersede would drafts.delete (permanent) — same audited-safe-set
+    # boundary as draft update. The guard's refusal still fires remotely.
+    if _REMOTE_MODE and supersede:
+        msg = "supersede is not available in remote mode (drafts.delete is permanent) — ask the user to discard or send the existing draft in Gmail first."
+        log_mcp_call("do", params=call_params, ok=False, error=msg)
+        return {"error": True, "kind": "invalid_input", "message": msg}
+
     params = {
         "content": content, "title": title, "doc_type": doc_type,
         "folder_id": folder_id, "file_id": file_id,
@@ -284,7 +293,7 @@ def do(
         "label": label, "remove": remove,
         "comment_id": comment_id, "action": action,
         "page_setup": page_setup, "force": force,
-        "restore_comment": restore_comment,
+        "restore_comment": restore_comment, "supersede": supersede,
     }
 
     # Validation, metadata prefetch, and execution live in tools/dispatch.py.

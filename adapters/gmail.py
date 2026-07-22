@@ -13,6 +13,8 @@ import base64
 import logging
 import re
 import tempfile
+
+import orjson
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
@@ -746,6 +748,53 @@ def delete_draft(draft_id: str) -> None:
     """
     client = get_sync_client()
     client.delete(f"{_GMAIL_API}/drafts/{draft_id}")
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def list_thread_drafts(thread_id: str) -> list[dict[str, str]]:
+    """
+    List existing drafts on a thread — the superseded-draft guard's eyes.
+
+    Gmail allows N draft objects per thread, but the conversation view renders
+    only ONE inline, hiding the rest exactly where the user is most likely to
+    hit Send (mise-sasivo, probed 2026-07-22). reply_draft calls this before
+    creating so a second draft is never minted silently.
+
+    Returns [{"draft_id", "snippet", "internal_date"}, ...] in list order.
+    Gotcha handled here: with a fields mask and zero drafts, Gmail returns a
+    ZERO-LENGTH body (not `{}`), so this parses raw bytes and treats empty as
+    "no drafts" rather than letting orjson raise.
+    """
+    client = get_sync_client()
+    params: dict[str, Any] = {
+        "maxResults": 500,
+        "fields": "drafts(id,message(threadId)),nextPageToken",
+    }
+    matches: list[str] = []
+    while True:
+        raw = client.get_bytes(f"{_GMAIL_API}/drafts", params=params)
+        page = orjson.loads(raw) if raw.strip() else {}
+        for d in page.get("drafts", []):
+            if d.get("message", {}).get("threadId") == thread_id:
+                matches.append(d["id"])
+        token = page.get("nextPageToken")
+        if not token:
+            break
+        params["pageToken"] = token
+
+    results: list[dict[str, str]] = []
+    for draft_id in matches:
+        detail = client.get_json(
+            f"{_GMAIL_API}/drafts/{draft_id}",
+            params={"format": "metadata", "fields": "id,message(snippet,internalDate)"},
+        )
+        message = detail.get("message", {})
+        results.append({
+            "draft_id": draft_id,
+            "snippet": message.get("snippet", ""),
+            "internal_date": message.get("internalDate", ""),
+        })
+    return results
 
 
 @dataclass

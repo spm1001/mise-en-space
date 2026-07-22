@@ -431,7 +431,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 
 **Trash** routes by ID shape: Drive IDs go to the recoverable Drive trash (~30 days); Gmail draft IDs (`r` + digits) are discarded via drafts.delete — PERMANENT, drafts have no trash. Accepts a list for batch cleanup. Threads/messages are NOT trashable — use `archive`/`label`.
 
-**Reply draft** fetches a thread, infers recipients from the last message, adds threading headers (In-Reply-To, References), and creates a draft in the correct conversation. Recipients auto-populated; use `reply_all=True` to Cc all original recipients. Auto-appends the Gmail signature like `draft` — no sign-off in `content`.
+**Reply draft** fetches a thread, infers recipients from the last message, adds threading headers (In-Reply-To, References), and creates a draft in the correct conversation. Recipients auto-populated; use `reply_all=True` to Cc all original recipients. Auto-appends the Gmail signature like `draft` — no sign-off in `content`. **Superseded-draft guard:** if the thread already carries a draft, the call refuses and names it (Gmail renders only one draft inline per conversation, so a silent second draft hides where the user hits Send). Update the existing draft via `draft` with `file_id=<draft_id>`, or pass `supersede=True` to discard existing thread drafts and create fresh (permanent; rejected in remote mode).
 
 **Share** is a two-step operation (confirm gate). First call returns a preview showing what would happen. Second call with `confirm=True` executes. This ensures the user approves before files become visible to others. Default role is `reader` (least privilege). Notification emails are suppressed.
 

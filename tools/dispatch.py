@@ -101,6 +101,7 @@ DISPATCH: dict[str, Any] = {
     "reply_draft": lambda p: do_reply_draft(
         file_id=p["file_id"], content=p["content"],
         cc=p["cc"], include=p["include"], reply_all=p.get("reply_all", False),
+        supersede=p.get("supersede", False),
     ),
     "archive": lambda p: do_archive(file_id=p["file_id"]),
     "star": lambda p: do_star(file_id=p["file_id"]),
@@ -127,7 +128,7 @@ Act on Google Workspace — create, move, edit, draft/reply emails, organise Gma
 Operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, trash, setup_oauth.
 Create: content + title + doc_type (doc/sheet/slides/file/folder/form). page_setup='pageless' for pageless docs. file_path= to read from disk. folder: title only, no content needed. form: content is YAML/JSON spec with title, description, questions.
 Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content). Sheets: overwrite=CSV replaces first tab; replace_text=cell find/replace. Forms: overwrite takes the same spec as create — fetch, tweak, overwrite (replaces all questions). Doc edits return cues.restore_point (pre-edit Version history anchor); overwrite also posts a restore-point comment (restore_comment=False to skip on shared docs).
-Email: draft (to + subject + content; file_id=draft_id updates that draft in place), reply_draft (file_id + content), archive/star/label. Drafts auto-append the user's Gmail signature — don't write a sign-off in content.
+Email: draft (to + subject + content; file_id=draft_id updates that draft in place), reply_draft (file_id + content — refuses if the thread already carries a draft, naming it; supersede=True discards existing thread drafts first), archive/star/label. Drafts auto-append the user's Gmail signature — don't write a sign-off in content.
 Trash: file_id (single or list) — Drive files go to recoverable trash; Gmail draft IDs (r+digits) are discarded permanently.
 Comments: comment (file_id + content — opens a NEW thread), comment_reply (file_id + comment_id [from comments.md] + content and/or action=resolve|reopen). Both auto-prefix '[agent] '.
 Share: file_id + to + role (reader/writer/commenter), confirm=True to execute.

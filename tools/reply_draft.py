@@ -14,6 +14,8 @@ from adapters.gmail import (
     IncludedLink,
     fetch_thread,
     create_reply_draft,
+    delete_draft,
+    list_thread_drafts,
     _build_references,
     _ensure_re_prefix,
 )
@@ -91,12 +93,22 @@ def _infer_recipients_all(
     return sender, cc
 
 
+def _format_existing_drafts(existing: list[dict[str, str]]) -> str:
+    """Render existing-draft details for the guard's teaching error."""
+    parts = []
+    for d in existing:
+        snippet = d.get("snippet", "")[:80]
+        parts.append(f"{d['draft_id']} ({snippet!r})")
+    return "; ".join(parts)
+
+
 def do_reply_draft(
     file_id: str | None = None,
     content: str | None = None,
     cc: str | None = None,
     include: list[str] | None = None,
     reply_all: bool = False,
+    supersede: bool = False,
     **_kwargs: Any,
 ) -> DoResult | dict[str, Any]:
     """
@@ -106,6 +118,13 @@ def do_reply_draft(
     from the last message, adds threading headers, and creates a draft in
     the correct conversation. Does NOT send.
 
+    Superseded-draft guard (mise-sasivo): Gmail allows N draft objects per
+    thread but its conversation view renders only ONE inline — a silently
+    created second draft hides exactly where the user would hit Send. So if
+    the thread already carries a draft, this refuses with the existing
+    draft's id (update it in place via draft(file_id=...), or pass
+    supersede=True to discard existing thread drafts and create fresh).
+
     Args:
         file_id: Gmail thread ID to reply to
         content: Reply body text
@@ -113,6 +132,8 @@ def do_reply_draft(
             and reply_all=True, Cc is inferred from the thread.
         include: Optional list of Drive file IDs to include as links
         reply_all: If True, infer Cc from all recipients on the last message
+        supersede: If True, discard any existing drafts on this thread before
+            creating the new one (drafts.delete is permanent)
 
     Returns:
         DoResult on success, error dict on failure
@@ -128,6 +149,43 @@ def do_reply_draft(
         validate_gmail_id(file_id, "file_id")
     except ValueError as e:
         return {"error": True, "kind": "invalid_input", "message": str(e)}
+
+    # Superseded-draft guard — check before creating, fail open with a
+    # warning if the check itself fails (the draft is what was asked for;
+    # undisclosed ambiguity, not a listing hiccup, is the trap).
+    guard_warnings: list[str] = []
+    superseded: list[str] = []
+    try:
+        existing = list_thread_drafts(file_id)
+    except Exception as exc:
+        existing = []
+        guard_warnings.append(
+            f"Could not check for existing drafts on this thread ({exc}) — "
+            "if you staged a draft here earlier, prefer updating it via "
+            "draft(file_id=<draft_id>)."
+        )
+    if existing and not supersede:
+        details = _format_existing_drafts(existing)
+        return {
+            "error": True, "kind": "invalid_input",
+            "message": (
+                f"Thread {file_id} already carries {len(existing)} draft(s): "
+                f"{details}. Gmail shows only ONE draft inline per "
+                "conversation — a second would be hidden exactly where the "
+                "user hits Send. Update the existing draft with "
+                "do(operation='draft', file_id='<draft_id>', content=...), "
+                "or re-run with supersede=True to discard it and create "
+                "fresh (permanent)."
+            ),
+        }
+    if existing and supersede:
+        for d in existing:
+            try:
+                delete_draft(d["draft_id"])
+                superseded.append(d["draft_id"])
+            except MiseError as e:
+                return {"error": True, "kind": e.kind.value,
+                        "message": f"supersede failed discarding draft {d['draft_id']}: {e.message}"}
 
     # Fetch the thread to get threading info and recipients
     try:
@@ -189,6 +247,10 @@ def do_reply_draft(
     }
     if sig_html:
         cues["signature"] = "Gmail signature appended automatically"
+    if superseded:
+        cues["superseded_drafts"] = superseded
+    if guard_warnings:
+        cues.setdefault("warnings", []).extend(guard_warnings)
     if final_cc:
         cues["cc"] = final_cc
     if included_links:

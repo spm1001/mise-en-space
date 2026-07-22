@@ -15,13 +15,23 @@ from adapters.gmail import (
     _ensure_re_prefix,
     create_reply_draft,
 )
-from models import DoResult, EmailMessage, GmailThreadData
+from models import DoResult, EmailMessage, GmailThreadData, MiseError, ErrorKind
 from tools.reply_draft import (
     _extract_email,
     _infer_recipients,
     _infer_recipients_all,
     do_reply_draft,
 )
+
+import pytest as _pytest
+
+
+@_pytest.fixture(autouse=True)
+def _stub_thread_draft_guard(monkeypatch):
+    """Neutralise the superseded-draft guard (mise-sasivo) — it makes a live
+    drafts.list call. Guard behaviour is asserted in TestSupersededDraftGuard,
+    which re-patches explicitly; everywhere else the thread has no drafts."""
+    monkeypatch.setattr("tools.reply_draft.list_thread_drafts", lambda thread_id: [])
 
 
 # =============================================================================
@@ -548,3 +558,117 @@ class TestReplyDraftSignature:
         assert "Our office (https://maps.example/q)" in kwargs["body_text"]
         assert isinstance(result, DoResult)
         assert result.cues["signature"] == "Gmail signature appended automatically"
+
+
+class TestSupersededDraftGuard:
+    """The superseded-draft guard (mise-sasivo)."""
+
+    _EXISTING = [{"draft_id": "r111", "snippet": "Earlier staged reply", "internal_date": "1784752914000"}]
+
+    @patch("tools.reply_draft.create_reply_draft")
+    @patch("tools.reply_draft.list_thread_drafts")
+    def test_existing_draft_refuses_with_teaching_error(self, mock_list, mock_create) -> None:
+        mock_list.return_value = self._EXISTING
+        result = do_reply_draft(file_id="19f8a9797b30561b", content="hi")
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+        assert "r111" in result["message"]
+        assert "supersede=True" in result["message"]
+        assert "only ONE draft inline" in result["message"]
+        mock_create.assert_not_called()
+
+    @patch("retry.time.sleep")
+    @patch("tools.reply_draft.create_reply_draft")
+    @patch("tools.reply_draft.fetch_thread")
+    @patch("tools.reply_draft._fetch_signature", return_value=("", "", []))
+    @patch("tools.reply_draft.delete_draft")
+    @patch("tools.reply_draft.list_thread_drafts")
+    def test_supersede_discards_then_creates(
+        self, mock_list, mock_delete, _sig, mock_fetch, mock_create, _sleep
+    ) -> None:
+        mock_list.return_value = self._EXISTING
+        mock_fetch.return_value = MagicMock(
+            subject="Re: test",
+            messages=[MagicMock(from_address="a@b.com", to_addresses=[], cc_addresses=[])],
+        )
+        mock_create.return_value = MagicMock(draft_id="r222", web_link="link")
+        result = do_reply_draft(file_id="19f8a9797b30561b", content="hi", supersede=True)
+        mock_delete.assert_called_once_with("r111")
+        assert result.cues["superseded_drafts"] == ["r111"]
+        mock_create.assert_called_once()
+
+    @patch("retry.time.sleep")
+    @patch("tools.reply_draft.create_reply_draft")
+    @patch("tools.reply_draft.fetch_thread")
+    @patch("tools.reply_draft._fetch_signature", return_value=("", "", []))
+    @patch("tools.reply_draft.list_thread_drafts", side_effect=RuntimeError("api down"))
+    def test_check_failure_fails_open_with_warning(
+        self, mock_list, _sig, mock_fetch, mock_create, _sleep
+    ) -> None:
+        mock_fetch.return_value = MagicMock(
+            subject="Re: test",
+            messages=[MagicMock(from_address="a@b.com", to_addresses=[], cc_addresses=[])],
+        )
+        mock_create.return_value = MagicMock(draft_id="r333", web_link="link")
+        result = do_reply_draft(file_id="19f8a9797b30561b", content="hi")
+        assert any("Could not check for existing drafts" in w for w in result.cues["warnings"])
+        mock_create.assert_called_once()
+
+    @patch("tools.reply_draft.delete_draft", side_effect=MiseError(ErrorKind.PERMISSION_DENIED, "nope"))
+    @patch("tools.reply_draft.list_thread_drafts")
+    def test_supersede_delete_failure_is_an_error(self, mock_list, mock_delete) -> None:
+        mock_list.return_value = self._EXISTING
+        result = do_reply_draft(file_id="19f8a9797b30561b", content="hi", supersede=True)
+        assert result["error"] is True
+        assert "supersede failed" in result["message"]
+
+
+class TestListThreadDrafts:
+    """Adapter: list_thread_drafts (the guard's eyes)."""
+
+    @patch("adapters.gmail.get_sync_client")
+    def test_filters_by_thread_and_fetches_snippets(self, mock_get_client) -> None:
+        from adapters.gmail import list_thread_drafts
+        import orjson
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_bytes.return_value = orjson.dumps({
+            "drafts": [
+                {"id": "r1", "message": {"threadId": "thread_A"}},
+                {"id": "r2", "message": {"threadId": "thread_B"}},
+                {"id": "r3", "message": {"threadId": "thread_A"}},
+            ]
+        })
+        mock_client.get_json.return_value = {"id": "x", "message": {"snippet": "hello", "internalDate": "123"}}
+        with patch("retry.time.sleep"):
+            result = list_thread_drafts("thread_A")
+        assert [d["draft_id"] for d in result] == ["r1", "r3"]
+        assert result[0]["snippet"] == "hello"
+        assert mock_client.get_json.call_count == 2  # snippet fetch per match
+
+    @patch("adapters.gmail.get_sync_client")
+    def test_zero_length_body_means_no_drafts(self, mock_get_client) -> None:
+        """Gmail returns an EMPTY body (not {}) for zero drafts under a fields mask."""
+        from adapters.gmail import list_thread_drafts
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_bytes.return_value = b""
+        with patch("retry.time.sleep"):
+            assert list_thread_drafts("thread_A") == []
+        mock_client.get_json.assert_not_called()
+
+    @patch("adapters.gmail.get_sync_client")
+    def test_follows_pagination(self, mock_get_client) -> None:
+        from adapters.gmail import list_thread_drafts
+        import orjson
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_bytes.side_effect = [
+            orjson.dumps({"drafts": [{"id": "r1", "message": {"threadId": "T"}}], "nextPageToken": "tok"}),
+            orjson.dumps({"drafts": [{"id": "r2", "message": {"threadId": "T"}}]}),
+        ]
+        mock_client.get_json.return_value = {"message": {"snippet": "", "internalDate": ""}}
+        with patch("retry.time.sleep"):
+            result = list_thread_drafts("T")
+        assert [d["draft_id"] for d in result] == ["r1", "r2"]
+        assert mock_client.get_bytes.call_args_list[1].kwargs["params"]["pageToken"] == "tok"
