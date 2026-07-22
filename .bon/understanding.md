@@ -184,6 +184,10 @@ The call log (`~/.local/share/mise/calls.jsonl`) is the primary operational data
 
 Code health (same session): 92% test coverage, zero layer violations, dispatch table sync verified, tool descriptions within 2048 limit, no TODO/FIXME/HACK. Mypy errors 30→22 (remaining are upstream httpx/orjson noise — the right fix is a thin `_parse_json` wrapper centralising one ignore, not scattershot `type: ignore`).
 
+## Session hygiene: a restart re-presents a stale handoff
+
+A mid-session restart re-fires the SessionStart hook, which re-presents the most recent *written* handoff — and that handoff can describe a world the same session has since worked past (observed 2026-07-19: the hook said "two items remaining" while the board was already empty). At any restart, reconcile the hook's picture against `git log` + `bon status` before believing it — a handoff is a snapshot of when it was written, not of the session that wrote it.
+
 ## MCP Resources: what they're for
 
 Mise ships eight Resources via FastMCP — six static docs (`mise://docs/*`), one live API call (`mise://gmail/labels` → `Gmail labels.list` rendered as markdown), and one parameterised template (`mise://tools/{tool_name}` for auto-generated tool docs). Empirical behaviour (Apr 2026, tested in a live CC session):
