@@ -6,6 +6,20 @@ from models import DoResult, MiseError, ErrorKind
 from server import do
 from tools.edit import do_prepend, do_append, do_replace_text
 
+
+import pytest as _pytest
+
+
+@_pytest.fixture(autouse=True)
+def _stub_restore_point(monkeypatch):
+    """Neutralise the pre-edit restore-point capture (mise-cizuzi) — it makes
+    a live revisions.list call. Wiring is asserted in test_restore_point.py;
+    here it must never reach the network. Returns {} = merge no-op."""
+    monkeypatch.setattr(
+        "tools.edit.capture_restore_point", lambda file_id, comment=False: {}
+    )
+
+
 GOOGLE_DOC_MIME = "application/vnd.google-apps.document"
 
 

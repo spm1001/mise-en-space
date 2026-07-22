@@ -24,6 +24,7 @@ from models import DoResult, MiseError
 from tools.common import resolve_source as _resolve_source
 from tools.form_edit import form_overwrite
 from tools.plain_file import plain_overwrite
+from tools.restore_point import capture_restore_point, merge_restore_cues
 from tools.sheet_edit import sheet_overwrite
 from validation import validate_drive_id
 
@@ -35,6 +36,7 @@ def do_overwrite(
     base_path: str | None = None,
     metadata: dict[str, Any] | None = None,
     file_path: str | None = None,
+    restore_comment: bool = True,
 ) -> DoResult | dict[str, Any]:
     """
     Replace full content of a Google Doc or plain file.
@@ -46,6 +48,9 @@ def do_overwrite(
         base_path: Working directory for resolving relative paths
         metadata: Pre-fetched file metadata (from dispatch). If None, assumes Google Doc.
         file_path: Local file path to read content from (no deposit folder needed)
+        restore_comment: Google Docs only — post a '[agent]' comment naming the
+            pre-edit Version history entry before overwriting (default True;
+            pass False on shared docs where the comment notification is noise)
 
     Returns:
         DoResult on success, error dict on failure
@@ -128,10 +133,16 @@ def do_overwrite(
 
     title = metadata.get("name", "Untitled") if metadata else None
 
+    # Pre-edit restore point (Google Doc path only — we're past all other
+    # routing). Overwrite replaces the doc wholesale, so it also gets the
+    # UI-visible marker comment unless opted out. Captured BEFORE the write.
+    restore_cues = capture_restore_point(file_id, comment=restore_comment)
+
     try:
-        return _overwrite_doc(file_id, content, title=title)  # type: ignore[arg-type]
+        result = _overwrite_doc(file_id, content, title=title)  # type: ignore[arg-type]
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
+    return merge_restore_cues(result, restore_cues)
 
 
 def _overwrite_doc(

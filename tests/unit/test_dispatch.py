@@ -14,6 +14,20 @@ from tools.dispatch import DISPATCH as _DISPATCH, REQUIRED_PARAMS as _REQUIRED_P
 from tools.remote import REMOTE_ALLOWED_OPS as _REMOTE_ALLOWED_OPS
 
 
+import pytest as _pytest
+
+
+@_pytest.fixture(autouse=True)
+def _stub_restore_point(monkeypatch):
+    """Neutralise the pre-edit restore-point capture (mise-cizuzi) — it makes
+    a live revisions.list call. Wiring is asserted in test_restore_point.py;
+    here it must never reach the network. Returns {} = merge no-op."""
+    monkeypatch.setattr(
+        "tools.overwrite.capture_restore_point", lambda file_id, comment=False: {}
+    )
+
+
+
 class TestDispatchConstant:
     """OPERATIONS constant and _DISPATCH dict stay in sync."""
 

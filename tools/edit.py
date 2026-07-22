@@ -20,6 +20,7 @@ from adapters.http_client import get_sync_client
 from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 from tools.plain_file import plain_prepend, plain_append, plain_replace_text
+from tools.restore_point import capture_restore_point, merge_restore_cues
 from tools.sheet_edit import sheet_replace_text
 from validation import validate_drive_id
 
@@ -57,8 +58,9 @@ def do_prepend(
         return {"error": True, "kind": "invalid_input", "message": str(e)}
     if metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
         return plain_prepend(file_id, content, metadata)
+    restore_cues = capture_restore_point(file_id)
     try:
-        return _prepend(file_id, content)
+        return merge_restore_cues(_prepend(file_id, content), restore_cues)
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
 
@@ -81,8 +83,9 @@ def do_append(
         return {"error": True, "kind": "invalid_input", "message": str(e)}
     if metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
         return plain_append(file_id, content, metadata)
+    restore_cues = capture_restore_point(file_id)
     try:
-        return _append(file_id, content)
+        return merge_restore_cues(_append(file_id, content), restore_cues)
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
 
@@ -111,8 +114,9 @@ def do_replace_text(
         return sheet_replace_text(file_id, find, content, metadata)
     if metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
         return plain_replace_text(file_id, find, content, metadata)
+    restore_cues = capture_restore_point(file_id)
     try:
-        return _replace_text(file_id, find, content)
+        return merge_restore_cues(_replace_text(file_id, find, content), restore_cues)
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
 

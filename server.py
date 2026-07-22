@@ -229,6 +229,7 @@ def do(
     comment_id: str | None = None,
     action: str | None = None,
     force: bool = False,
+    restore_comment: bool = True,
 ) -> dict[str, Any]:
     """Act on Google Workspace."""
     # Build log params — include operation and non-None values that matter,
@@ -244,6 +245,8 @@ def do(
     ]:
         if v is not None and v is not False:
             call_params[k] = v
+    if restore_comment is False:
+        call_params["restore_comment"] = False
     if content is not None:
         call_params["content_len"] = len(content)
 
@@ -281,6 +284,7 @@ def do(
         "label": label, "remove": remove,
         "comment_id": comment_id, "action": action,
         "page_setup": page_setup, "force": force,
+        "restore_comment": restore_comment,
     }
 
     # Validation, metadata prefetch, and execution live in tools/dispatch.py.

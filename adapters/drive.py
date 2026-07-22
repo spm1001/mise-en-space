@@ -907,6 +907,47 @@ def fetch_file_comments(
     )
 
 
+@with_retry(max_attempts=3, delay_ms=1000)
+def get_head_revision(file_id: str) -> dict[str, str]:
+    """
+    Read the file's current head revision — the pre-edit restore anchor.
+
+    Returns {"id": ..., "modifiedTime": ...} for the LAST revision in the
+    file's revision list, following pagination (a long-lived doc can exceed
+    one page). This is the precise pointer into File → Version history for
+    "the state before this edit". Named versions and keepForever have no API
+    surface for Google-native docs (probed 2026-07-22, mise-cizuzi), so a
+    readable anchor is the strongest pre-edit marker available.
+
+    Raises:
+        MiseError: on API failure (converted by @with_retry), or NOT_FOUND
+            if the file reports no revisions at all.
+    """
+    client = get_sync_client()
+    params: dict[str, Any] = {
+        "fields": "nextPageToken,revisions(id,modifiedTime)",
+        "pageSize": 1000,
+    }
+    last: dict[str, str] | None = None
+    while True:
+        page = client.get_json(f"{_DRIVE_API}/{file_id}/revisions", params=params)
+        revisions = page.get("revisions", [])
+        if revisions:
+            last = revisions[-1]
+        token = page.get("nextPageToken")
+        if not token:
+            break
+        params["pageToken"] = token
+
+    if last is None:
+        raise MiseError(
+            ErrorKind.NOT_FOUND,
+            f"File {file_id} has no readable revisions",
+            details={"file_id": file_id},
+        )
+    return {"id": last["id"], "modifiedTime": last.get("modifiedTime", "")}
+
+
 # Reply fields — replies.create REQUIRES a `fields` param or the API 400s.
 _REPLY_FIELDS = (
     "id,content,author(displayName,emailAddress),createdTime,modifiedTime,action"

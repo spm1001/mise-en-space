@@ -257,6 +257,8 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 
 **Overwrite destroys everything** — images, tables, formatting, all gone. It's a full replacement from markdown. Use it when you're publishing a complete new version of a document.
 
+**Every Doc edit leaves a restore point.** Mutating a Google Doc (overwrite, prepend, append, replace_text) first captures the pre-edit revision and returns it as `cues.restore_point {revision_id, modified_time}` — the exact File → Version history entry to revert to. `overwrite` also posts an `[agent]` comment in the doc naming that entry, so the human can find the restore point from inside the doc without asking. Pass `restore_comment=False` on shared docs where a comment notification would be noise. If a revert is needed, point the human at Version history → the cued timestamp (a program cannot restore or name versions — that's UI-only).
+
 **Surgical edits preserve existing content.** Use `prepend`, `append`, or `replace_text` when the document has content worth keeping:
 
 | Situation | Use |
