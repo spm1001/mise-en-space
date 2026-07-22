@@ -42,7 +42,7 @@ def _add_file_dates(extra: dict[str, Any], metadata: dict[str, Any]) -> None:
         extra["modified_time"] = metadata["modifiedTime"]
 
 
-def fetch_drive(file_id: str, base_path: Path | None = None, recursive: bool = False, tabs: list[str] | None = None) -> FetchResult | FetchError:
+def fetch_drive(file_id: str, base_path: Path | None = None, recursive: bool = False, tabs: list[str] | None = None, suggestions: str = "accepted") -> FetchResult | FetchError:
     """Fetch Drive file, route by type, extract content, deposit to workspace."""
     # Get metadata to determine type
     metadata = get_file_metadata(file_id)
@@ -56,7 +56,7 @@ def fetch_drive(file_id: str, base_path: Path | None = None, recursive: bool = F
     if mime_type == GOOGLE_FOLDER_MIME:
         return fetch_folder(file_id, title, metadata, base_path=base_path, recursive=recursive)
     elif mime_type == GOOGLE_DOC_MIME:
-        return fetch_doc(file_id, title, metadata, email_context, base_path=base_path)
+        return fetch_doc(file_id, title, metadata, email_context, base_path=base_path, suggestions=suggestions)
     elif mime_type == GOOGLE_SHEET_MIME:
         return fetch_sheet(file_id, title, metadata, email_context, base_path=base_path, tabs=tabs)
     elif mime_type == GOOGLE_SLIDES_MIME:
@@ -201,9 +201,9 @@ def _any_truncated(node: "FolderTreeNode") -> bool:
     return any(_any_truncated(c) for c in node.children)
 
 
-def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
+def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None, suggestions: str = "accepted") -> FetchResult:
     """Fetch Google Doc with open comments included."""
-    doc_data = fetch_document(doc_id)
+    doc_data = fetch_document(doc_id, suggestions=suggestions)
     content = extract_doc_content(doc_data)
 
     folder = get_deposit_folder("doc", title, doc_id, base_path=base_path)
@@ -218,6 +218,9 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: 
         extra["warnings"] = doc_data.warnings
     if open_comment_count > 0:
         extra["open_comment_count"] = open_comment_count
+    if doc_data.suggestion_count > 0:
+        extra["suggestion_count"] = doc_data.suggestion_count
+        extra["suggestions_mode"] = doc_data.suggestions_mode
     _add_file_dates(extra, metadata)
     write_manifest(folder, "doc", title, doc_id, extra=extra)
 
@@ -231,6 +234,10 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: 
         warnings=doc_data.warnings,
         email_context=email_context,
     )
+    if doc_data.suggestion_count > 0:
+        cues["has_suggestions"] = True
+        cues["suggestion_count"] = doc_data.suggestion_count
+        cues["suggestions_mode"] = doc_data.suggestions_mode
 
     return FetchResult(
         path=str(folder),

@@ -263,26 +263,29 @@ def parse_checkbox_markers(markdown: str) -> list[bool]:
     return states
 
 
-def _iter_checkbox_paragraphs(
-    elements: list[dict[str, Any]], lists: dict[str, Any]
-) -> Iterator[dict[str, Any]]:
-    """Yield checkbox paragraphs in reading order, recursing into tables/TOC.
+def _iter_paragraphs(elements: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:
+    """Yield paragraph dicts in reading order, recursing into tables/TOC.
 
-    Mirrors the extractor's own visiting order so the export markers align.
+    Mirrors the extractor's own visiting order.
     """
     for element in elements:
         if "paragraph" in element:
-            para = element["paragraph"]
-            if _paragraph_is_checkbox(para, lists):
-                yield para
+            yield element["paragraph"]
         elif "table" in element:
             for row in element["table"].get("tableRows", []):
                 for cell in row.get("tableCells", []):
-                    yield from _iter_checkbox_paragraphs(cell.get("content", []), lists)
+                    yield from _iter_paragraphs(cell.get("content", []))
         elif "tableOfContents" in element:
-            yield from _iter_checkbox_paragraphs(
-                element["tableOfContents"].get("content", []), lists
-            )
+            yield from _iter_paragraphs(element["tableOfContents"].get("content", []))
+
+
+def _iter_checkbox_paragraphs(
+    elements: list[dict[str, Any]], lists: dict[str, Any]
+) -> Iterator[dict[str, Any]]:
+    """Yield checkbox paragraphs in reading order, recursing into tables/TOC."""
+    for para in _iter_paragraphs(elements):
+        if _paragraph_is_checkbox(para, lists):
+            yield para
 
 
 def annotate_checkbox_states(tabs: list[DocTab], states: list[bool]) -> str | None:
@@ -308,6 +311,81 @@ def annotate_checkbox_states(tabs: list[DocTab], states: list[bool]) -> str | No
     for para, checked in zip(checkbox_paras, states):
         para["_mise_checkbox_checked"] = checked
     return None
+
+
+# =============================================================================
+# SUGGESTED-EDIT HANDLING
+# =============================================================================
+#
+# Google Docs "suggesting mode" edits arrive as ordinary text runs tagged with
+# suggestedInsertionIds / suggestedDeletionIds (visible only when the document
+# was fetched with suggestionsViewMode=SUGGESTIONS_INLINE — see
+# adapters/docs.py::fetch_document for the mode dance). In markup mode the
+# adapter calls annotate_suggestion_markup and the renderer wraps tagged runs
+# CriticMarkup-style: {++inserted++}[s1] / {--deleted--}[s1]. Runs of one
+# suggestion share an [sN] tag, so a delete+insert pair with the same tag reads
+# as a replace. The Docs API does not expose suggestion authorship, so the
+# spans carry no names. See mise-wofomu.
+
+_SUGGESTION_ID_FIELDS = ("suggestedInsertionIds", "suggestedDeletionIds")
+
+
+def _iter_suggestion_runs(tabs: list[DocTab]) -> Iterator[dict[str, Any]]:
+    """Yield textRun dicts carrying suggestion ids, in reading order."""
+    for tab in tabs:
+        for para in _iter_paragraphs(tab.body.get("content", [])):
+            for elem in para.get("elements", []):
+                run = elem.get("textRun")
+                if run and any(run.get(f) for f in _SUGGESTION_ID_FIELDS):
+                    yield run
+
+
+def count_suggestions(tabs: list[DocTab]) -> int:
+    """Count distinct unresolved suggestions across all tabs.
+
+    Text-level suggestions only (insert/delete/replace of text runs) — the
+    overwhelmingly common class. Structural suggestions (row inserts, style
+    changes) are not counted.
+    """
+    ids: set[str] = set()
+    for run in _iter_suggestion_runs(tabs):
+        for f in _SUGGESTION_ID_FIELDS:
+            ids.update(run.get(f) or [])
+    return len(ids)
+
+
+def annotate_suggestion_markup(tabs: list[DocTab]) -> int:
+    """Tag suggestion runs for CriticMarkup rendering; returns distinct count.
+
+    Mutates each tagged textRun in place, adding `_mise_suggestion_kind`
+    ('ins' | 'del') and `_mise_suggestion_tag` ('s1', 's2', … — one ordinal per
+    suggestion id, in first-appearance order). The renderer wraps tagged runs;
+    documents without annotations render exactly as before.
+    """
+    ordinals: dict[str, int] = {}
+    for run in _iter_suggestion_runs(tabs):
+        deletion_ids = run.get("suggestedDeletionIds") or []
+        insertion_ids = run.get("suggestedInsertionIds") or []
+        sid = (deletion_ids or insertion_ids)[0]
+        if sid not in ordinals:
+            ordinals[sid] = len(ordinals) + 1
+        # A run that is both a suggested insertion and a suggested deletion is
+        # a suggestion-on-a-suggestion netting to nothing — render as deleted.
+        run["_mise_suggestion_kind"] = "del" if deletion_ids else "ins"
+        run["_mise_suggestion_tag"] = f"s{ordinals[sid]}"
+    return len(ordinals)
+
+
+def _wrap_suggestion(content: str, kind: str, tag: str, text_style: dict[str, Any]) -> str:
+    """Wrap formatted run content in CriticMarkup, whitespace kept outside."""
+    leading_ws = content[: len(content) - len(content.lstrip())]
+    trailing_ws = content[len(content.rstrip()):]
+    inner = content.strip()
+    link_url = text_style.get("link", {}).get("url")
+    if link_url and inner:
+        inner = _format_markdown_link(inner, link_url)
+    open_mark, close_mark = ("{--", "--}") if kind == "del" else ("{++", "++}")
+    return f"{leading_ws}{open_mark}{inner}{close_mark}[{tag}]{trailing_ws}"
 
 
 # =============================================================================
@@ -544,6 +622,17 @@ def _extract_paragraph_content(
 
             # Apply formatting
             content = _apply_text_formatting(content, text_style)
+
+            # Suggestion-tagged run (markup mode): wrap in CriticMarkup and
+            # bypass link merging — the wrap handles its own link, and merging
+            # across suggestion boundaries would blur what's suggested.
+            sugg_kind = text_run.get("_mise_suggestion_kind")
+            if sugg_kind and content.strip():
+                flush_link()
+                text_parts.append(_wrap_suggestion(
+                    content, sugg_kind, text_run.get("_mise_suggestion_tag", "s?"), text_style
+                ))
+                continue
 
             # Check for external link
             link_url = text_style.get("link", {}).get("url")

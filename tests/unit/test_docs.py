@@ -5,6 +5,8 @@ from inline_snapshot import snapshot
 
 from extractors.docs import (
     extract_doc_content,
+    count_suggestions,
+    annotate_suggestion_markup,
     _escape_markdown_link_text,
     _escape_markdown_url,
     _format_markdown_link,
@@ -549,3 +551,101 @@ class TestListHelpers:
 
         assert result0 == "- "
         assert result1 == "  - "  # 2 spaces indent
+
+
+# ============================================================================
+# SUGGESTED EDITS (mise-wofomu)
+# ============================================================================
+
+def _sugg_doc() -> DocData:
+    """One replace (insert+delete sharing an id) + one pure-delete line."""
+    body = {
+        "content": [
+            {"paragraph": {"elements": [
+                {"textRun": {"content": "Six feet under screams, "}},
+                {"textRun": {
+                    "content": "but no one cares about this song",
+                    "suggestedInsertionIds": ["suggest.abc"],
+                }},
+                {"textRun": {
+                    "content": "but no one seems to hear a thing\n",
+                    "suggestedDeletionIds": ["suggest.abc"],
+                }},
+            ]}},
+            {"paragraph": {"elements": [
+                {"textRun": {
+                    "content": "'Cause there's a spark in you\n",
+                    "suggestedDeletionIds": ["suggest.def"],
+                }},
+            ]}},
+        ]
+    }
+    return DocData(
+        title="Firework",
+        document_id="doc123",
+        tabs=[DocTab(title="Tab 1", tab_id="t.0", index=0, body=body)],
+    )
+
+
+class TestSuggestions:
+    """count_suggestions / annotate_suggestion_markup / markup rendering."""
+
+    def test_count_distinct_ids(self) -> None:
+        data = _sugg_doc()
+        assert count_suggestions(data.tabs) == 2  # replace pair shares one id
+
+    def test_count_zero_on_clean_doc(self, docs_response: DocData) -> None:
+        assert count_suggestions(docs_response.tabs) == 0
+
+    def test_count_recurses_into_tables(self) -> None:
+        body = {"content": [{"table": {"tableRows": [{"tableCells": [{"content": [
+            {"paragraph": {"elements": [
+                {"textRun": {"content": "cell edit", "suggestedInsertionIds": ["suggest.t1"]}},
+            ]}},
+        ]}]}]}}]}
+        tabs = [DocTab(title="T", tab_id="t", index=0, body=body)]
+        assert count_suggestions(tabs) == 1
+
+    def test_annotate_assigns_shared_tags(self) -> None:
+        data = _sugg_doc()
+        count = annotate_suggestion_markup(data.tabs)
+        assert count == 2
+        runs = [
+            e["textRun"]
+            for p in data.tabs[0].body["content"]
+            for e in p["paragraph"]["elements"]
+            if "textRun" in e and e["textRun"].get("_mise_suggestion_kind")
+        ]
+        assert [r["_mise_suggestion_kind"] for r in runs] == ["ins", "del", "del"]
+        # replace pair shares s1; the standalone delete gets s2
+        assert [r["_mise_suggestion_tag"] for r in runs] == ["s1", "s1", "s2"]
+
+    def test_annotate_deletion_dominates_double_tagged_run(self) -> None:
+        body = {"content": [{"paragraph": {"elements": [
+            {"textRun": {
+                "content": "ghost",
+                "suggestedInsertionIds": ["suggest.a"],
+                "suggestedDeletionIds": ["suggest.b"],
+            }},
+        ]}}]}
+        tabs = [DocTab(title="T", tab_id="t", index=0, body=body)]
+        annotate_suggestion_markup(tabs)
+        run = tabs[0].body["content"][0]["paragraph"]["elements"][0]["textRun"]
+        assert run["_mise_suggestion_kind"] == "del"
+
+    def test_markup_rendering(self) -> None:
+        data = _sugg_doc()
+        annotate_suggestion_markup(data.tabs)
+        result = extract_doc_content(data)
+        assert result == snapshot("""\
+# Tab 1
+
+Six feet under screams, {++but no one cares about this song++}[s1]{--but no one seems to hear a thing--}[s1]
+{--'Cause there's a spark in you--}[s2]\
+""")
+
+    def test_unannotated_suggestions_render_inline(self) -> None:
+        """Without annotation (non-markup modes never see suggestion runs), text passes through untouched."""
+        data = _sugg_doc()
+        result = extract_doc_content(data)
+        assert "{++" not in result and "{--" not in result

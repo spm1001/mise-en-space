@@ -1497,6 +1497,7 @@ class TestFetchDoc:
         """Doc is fetched, extracted, comments enriched, and deposited."""
         mock_doc = MagicMock()
         mock_doc.tabs = [MagicMock()]
+        mock_doc.suggestion_count = 0
         mock_doc.warnings = []
         mock_fetch.return_value = mock_doc
 
@@ -1518,6 +1519,7 @@ class TestFetchDoc:
         """Email context appears in result metadata."""
         mock_doc = MagicMock()
         mock_doc.tabs = [MagicMock()]
+        mock_doc.suggestion_count = 0
         mock_doc.warnings = []
         mock_fetch.return_value = mock_doc
         ctx = EmailContext(message_id="m1", from_address="a@b.com", subject="Re: test")
@@ -1536,6 +1538,7 @@ class TestFetchDoc:
         """Warnings from doc data appear in manifest."""
         mock_doc = MagicMock()
         mock_doc.tabs = [MagicMock()]
+        mock_doc.suggestion_count = 0
         mock_doc.warnings = ["Unknown element"]
         mock_fetch.return_value = mock_doc
 
@@ -1554,6 +1557,7 @@ class TestFetchDoc:
         """File dates from Drive metadata appear in manifest extra."""
         mock_doc = MagicMock()
         mock_doc.tabs = [MagicMock()]
+        mock_doc.suggestion_count = 0
         mock_doc.warnings = []
         mock_fetch.return_value = mock_doc
 
@@ -2096,7 +2100,7 @@ class TestDoFetchRouting:
         """Drive IDs route to fetch_drive."""
         mock_drive.return_value = FetchResult(path="/p", content_file="/p/c.md", format="markdown", type="doc", metadata={})
         result = do_fetch("f1")
-        mock_drive.assert_called_once_with("f1", base_path=None, recursive=False, tabs=None)
+        mock_drive.assert_called_once_with("f1", base_path=None, recursive=False, tabs=None, suggestions="accepted")
 
     def test_mise_error_caught(self):
         """MiseError becomes FetchError."""
@@ -2125,7 +2129,7 @@ class TestDoFetchRouting:
         """base_path is forwarded to fetcher."""
         mock_drive.return_value = FetchResult(path="/p", content_file="/p/c.md", format="markdown", type="doc", metadata={})
         do_fetch("f1", base_path=Path("/custom"))
-        mock_drive.assert_called_once_with("f1", base_path=Path("/custom"), recursive=False, tabs=None)
+        mock_drive.assert_called_once_with("f1", base_path=Path("/custom"), recursive=False, tabs=None, suggestions="accepted")
 
 
 class TestExtractParticipants:
@@ -2947,3 +2951,23 @@ class TestEnrichInviteState:
         warnings = []
         assert _enrich_invite_state([self._msg_with_ics()], warnings) is None
         mock_lookup.assert_not_called()
+
+
+class TestSuggestionsParamValidation:
+    """do_fetch validates suggestions= before any network call (mise-wofomu)."""
+
+    def test_invalid_value_rejected(self):
+        result = do_fetch("1abcDEF", suggestions="track-changes")
+        assert isinstance(result, FetchError)
+        assert result.kind == "invalid_input"
+        assert "suggestions must be one of" in result.message
+
+    def test_valid_values_pass_validation(self):
+        # Routing proceeds past validation and hits the (unmocked) drive path,
+        # so patch fetch_drive to observe the pass-through.
+        from unittest.mock import patch as _patch
+        with _patch("tools.fetch.router.fetch_drive") as mock_drive:
+            mock_drive.return_value = FetchError(kind="not_found", message="stub")
+            for mode in ("accepted", "original", "markup"):
+                do_fetch("1abcDEF", suggestions=mode)
+                assert mock_drive.call_args.kwargs["suggestions"] == mode

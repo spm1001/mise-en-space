@@ -14,6 +14,8 @@ from retry import with_retry
 from adapters.http_client import get_sync_client
 from extractors.docs import (
     annotate_checkbox_states,
+    annotate_suggestion_markup,
+    count_suggestions,
     is_checkbox_list,
     parse_checkbox_markers,
 )
@@ -35,6 +37,16 @@ DOCUMENT_FIELDS = (
     "title,"
     "tabs(tabProperties,documentTab(body,inlineObjects,lists,footnotes))"
 )
+
+# suggestions= param → Docs API suggestionsViewMode. The first call always uses
+# SUGGESTIONS_INLINE so unresolved suggestions are visible (and countable) as
+# suggestedInsertionIds/suggestedDeletionIds on text runs; preview modes come
+# from a second call made only when suggestions actually exist.
+_SUGGESTION_VIEW_MODES = {
+    "accepted": "PREVIEW_SUGGESTIONS_ACCEPTED",
+    "original": "PREVIEW_WITHOUT_SUGGESTIONS",
+    "markup": "SUGGESTIONS_INLINE",
+}
 
 
 def _build_tab(tab_data: dict[str, Any], index: int) -> DocTab:
@@ -103,51 +115,116 @@ def _apply_checkbox_states(client: Any, document_id: str, data: DocData) -> None
         data.adapter_warnings.append(warning)
 
 
+def _build_tabs(doc: dict[str, Any]) -> list[DocTab]:
+    """Normalize a documents.get response to a list of DocTab."""
+    tabs_data = doc.get("tabs", [])
+    if tabs_data:
+        return [_build_tab(tab, i) for i, tab in enumerate(tabs_data)]
+    return [_build_legacy_tab(doc)]
+
+
 @with_retry(max_attempts=3, delay_ms=1000)
-def fetch_document(document_id: str) -> DocData:
+def fetch_document(document_id: str, suggestions: str = "accepted") -> DocData:
     """
     Fetch complete document data.
 
     Handles both legacy (single-tab) and modern (multi-tab) document formats,
     normalizing both to DocData with a list of tabs.
 
+    Suggested edits: the first call fetches SUGGESTIONS_INLINE so unresolved
+    suggestions are countable. When none exist (the common case) that response
+    IS the document and no further call is made. When suggestions are present,
+    `suggestions=` decides the view:
+
+    - "accepted" (default): second call with PREVIEW_SUGGESTIONS_ACCEPTED —
+      the suggester's intended text, deletions honoured.
+    - "original": second call with PREVIEW_WITHOUT_SUGGESTIONS — the
+      pre-suggestion text.
+    - "markup": no second call; suggestion runs render as CriticMarkup
+      ({++ins++}/{--del--} with [sN] pairing tags).
+
+    Mirrors the checkbox-oracle pattern: the extra call is paid only when the
+    condition it resolves actually exists.
+
     Args:
         document_id: The document ID (from URL or API)
+        suggestions: 'accepted' | 'original' | 'markup'
 
     Returns:
-        DocData ready for the extractor
+        DocData ready for the extractor (suggestion_count/suggestions_mode set)
 
     Raises:
-        MiseError: On API failure (converted by @with_retry)
+        MiseError: On API failure — or an unknown suggestions mode (the raised
+            ValueError is converted at the @with_retry boundary; the router
+            pre-validates, so that path is defense-in-depth only)
     """
+    if suggestions not in _SUGGESTION_VIEW_MODES:
+        raise ValueError(
+            f"suggestions must be one of {sorted(_SUGGESTION_VIEW_MODES)} — got {suggestions!r}"
+        )
+
     client = get_sync_client()
 
-    # Fetch with modern multi-tab format
+    # First call: inline view, so unresolved suggestions are visible/countable
     doc = client.get_json(
         f"{_DOCS_API}/{document_id}",
         params={
             "includeTabsContent": "true",
             "fields": DOCUMENT_FIELDS,
+            "suggestionsViewMode": "SUGGESTIONS_INLINE",
         },
     )
 
     title = doc.get("title", "Untitled")
+    tabs = _build_tabs(doc)
+    suggestion_count = count_suggestions(tabs)
+    adapter_warnings: list[str] = []
 
-    # Check for modern multi-tab format
-    tabs_data = doc.get("tabs", [])
-
-    if tabs_data:
-        # Modern format: process each tab
-        tabs = [_build_tab(tab, i) for i, tab in enumerate(tabs_data)]
-    else:
-        # Legacy format: create single tab from document root
-        tabs = [_build_legacy_tab(doc)]
+    if suggestion_count > 0:
+        if suggestions == "markup":
+            annotate_suggestion_markup(tabs)
+            adapter_warnings.append(
+                f"Document carries {suggestion_count} unresolved suggested edit(s), "
+                "rendered as markup: {++inserted++} / {--deleted--}; matching [sN] "
+                "tags pair the delete+insert halves of one replace. The Docs API "
+                "does not expose who made each suggestion. Re-fetch with "
+                "suggestions='accepted' for the clean intended text."
+            )
+        else:
+            # Preview modes: let Google resolve the suggestions server-side
+            doc = client.get_json(
+                f"{_DOCS_API}/{document_id}",
+                params={
+                    "includeTabsContent": "true",
+                    "fields": DOCUMENT_FIELDS,
+                    "suggestionsViewMode": _SUGGESTION_VIEW_MODES[suggestions],
+                },
+            )
+            tabs = _build_tabs(doc)
+            if suggestions == "accepted":
+                adapter_warnings.append(
+                    f"Document carries {suggestion_count} unresolved suggested "
+                    "edit(s); content shows them as ACCEPTED (the suggester's "
+                    "intended text — suggested deletions are gone from this "
+                    "render). Re-fetch with suggestions='markup' to see the "
+                    "edits, or 'original' for the pre-suggestion text."
+                )
+            else:
+                adapter_warnings.append(
+                    f"Document carries {suggestion_count} unresolved suggested "
+                    "edit(s); content shows the ORIGINAL text with all "
+                    "suggestions ignored. Re-fetch with suggestions='markup' to "
+                    "see the edits, or 'accepted' for the intended text."
+                )
 
     doc_data = DocData(
         title=title,
         document_id=document_id,
         tabs=tabs,
+        suggestion_count=suggestion_count,
+        suggestions_mode=suggestions,
     )
+    doc_data.adapter_warnings.extend(adapter_warnings)
 
     # Checkbox checked-state isn't in the Docs API — resolve it via export oracle
     _apply_checkbox_states(client, document_id, doc_data)

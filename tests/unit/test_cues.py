@@ -545,6 +545,7 @@ class TestFetchDocCues:
         """Doc fetch cues include comment count and files."""
         mock_doc = MagicMock()
         mock_doc.tabs = [MagicMock()]
+        mock_doc.suggestion_count = 0
         mock_doc.warnings = ["Unknown element type"]
         mock_fetch.return_value = mock_doc
 
@@ -579,6 +580,7 @@ class TestFetchDocCues:
         """Email context in cues when file was pre-exfiltrated."""
         mock_doc = MagicMock()
         mock_doc.tabs = [MagicMock()]
+        mock_doc.suggestion_count = 0
         mock_doc.warnings = []
         mock_fetch.return_value = mock_doc
         mock_write.return_value = tmp_path / "content.md"

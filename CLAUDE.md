@@ -96,6 +96,7 @@ docs/           Design documents and references
 - `fetch` of a Gmail invite adds `cues.invite_state` — the **live** Calendar state (status/my_response/current_start/cancelled_at) resolved by iCalUID, not the email's frozen snapshot; a cancelled meeting also emits a warning. Best-effort (skipped silently without calendar scope). See `docs/2026-07-07-meduto-invite-event-state.md`.
 - `fetch` accepts optional `attachment` param for extracting specific Gmail attachments
 - `fetch` accepts optional `tabs` param (list of tab names) to fetch only specific tabs from spreadsheets
+- `fetch` accepts `suggestions=` for Google Docs carrying suggested edits: `accepted` (default — suggestions applied, the suggester's intended text, deletions honoured), `original` (pre-suggestion text), `markup` (`{++ins++}[s1]`/`{--del--}[s1]` CriticMarkup, shared `[sN]` = one replace). `cues.has_suggestions`/`suggestion_count`/`suggestions_mode` + a warning fire whenever suggestions exist. First call is always SUGGESTIONS_INLINE (countable); the preview modes cost a second `documents.get` only when suggestions are present (checkbox-oracle pattern). See mise-wofomu.
 - `fetch` accepts `recursive=True` on folder IDs — returns full indented tree (max depth 5, 1000 items)
 - `do` routes via `operation` param — `do(operation="create", ...)`
 - `do(move)`, `do(archive)`, `do(star)`, `do(label)` accept `file_id` as `str | list[str]` for batch operations — returns per-thread/file summary with `succeeded`/`failed` counts

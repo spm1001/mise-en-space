@@ -76,6 +76,7 @@ The fetch response includes a `cues` block with decision-tree signals — check 
 5. Read `content.md`
 6. For Gmail: check `cues.files` for `*.pdf.md` (extracted attachment text)
 7. For Gmail invites: if `cues.invite_state` is present, it's the **live** Calendar state, not the email's frozen snapshot — `{status, my_response, current_start, cancelled_at}`. A `status: "cancelled"` (with a warning) means the meeting is off even though the email body still reads as a live invitation; `current_start` reflects any reschedule. Trust this over the ICS in the body.
+8. For Google Docs: if `cues.has_suggestions` is true, the doc carries unresolved suggested edits (`suggestion_count` says how many, `suggestions_mode` says how they were treated). The default render is **accepted** — the suggester's intended text, with suggested deletions honoured. Don't treat that text as settled: the suggestions are still open in the Doc. See "Docs with suggested edits" under Workflow 1.
 
 `manifest.json` is still on disk for scripts/jq, but `cues` surfaces the actionable signals so you don't need to read it separately.
 
@@ -96,6 +97,31 @@ fetch("folder_id", base_path="...", recursive=True)        # Full folder tree (d
 **Gmail URL gotcha:** Browser URLs contain web-format IDs (`FMfcgz...`), not API IDs. The MCP converts automatically, but conversion fails for self-sent emails (~2018+). If fetch errors on a Gmail URL, ask the user for the thread ID.
 
 **What fetch can't take:** Only Workspace content is fetchable — `mail.google.com/#search/...` URLs and non-Google URLs (GitHub, docs sites) will 404. Run the query through `search` instead. And the 12-char ID fragment in a deposit folder name (`doc--title--1jinlqdtqLpw`) is a prefix, not a fetchable ID — the full ID is in that folder's `manifest.json`.
+
+### Docs with suggested edits (the mark-up loop)
+
+When a human marks up a Doc in **suggesting mode**, fetch handles the suggestions
+explicitly — `suggestions=` picks the view, and `cues.has_suggestions` +
+`suggestion_count` fire whenever any exist (with a warning naming the mode):
+
+```python
+fetch("1doc...", base_path="...")                          # default: suggestions ACCEPTED (the author's intended text)
+fetch("1doc...", suggestions="markup", base_path="...")    # see the edits: {++inserted++}[s1] / {--deleted--}[s1]
+fetch("1doc...", suggestions="original", base_path="...")  # pre-suggestion text
+```
+
+- **`accepted` (default)** — what the suggester intends the doc to say; suggested
+  deletions are gone from this render. The right view for folding feedback in.
+- **`markup`** — CriticMarkup spans; matching `[sN]` tags pair the delete+insert
+  halves of one replace. The right view when you need to discuss or selectively
+  apply edits. (The Docs API doesn't say who made each suggestion.)
+- **`original`** — the text as it was before any suggestions.
+
+**The fold-back loop:** human suggests + comments in the Doc → fetch with the
+default (their intended text) → fold changes into your working copy → reply via
+`comment_reply` / apply edits with `do()`. The API can't *create* suggestions, so
+your edits land as real edits — propose contentious wording in a comment instead,
+and let the human apply or approve it.
 
 Then follow the **After Every Fetch** checklist above.
 

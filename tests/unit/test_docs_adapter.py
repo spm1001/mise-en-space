@@ -9,7 +9,7 @@ import pytest
 import orjson
 from unittest.mock import patch, MagicMock
 
-from models import DocData
+from models import DocData, MiseError
 from adapters.docs import fetch_document, _build_tab, _build_legacy_tab
 from tests.conftest import load_fixture
 
@@ -143,3 +143,127 @@ class TestFetchDocument:
 
         assert result.title == "Untitled"
         assert len(result.tabs) == 1  # Legacy fallback
+
+
+# ============================================================================
+# SUGGESTED EDITS — the mode dance (mise-wofomu)
+# ============================================================================
+
+def _inline_view_doc() -> dict:
+    """Legacy-shape doc as SUGGESTIONS_INLINE returns it: suggestion runs tagged."""
+    return {
+        "documentId": "sugg123",
+        "title": "Firework",
+        "body": {"content": [
+            {"paragraph": {"elements": [
+                {"textRun": {"content": "Six feet under screams, "}},
+                {"textRun": {"content": "but no one cares about this song",
+                             "suggestedInsertionIds": ["suggest.abc"]}},
+                {"textRun": {"content": "but no one seems to hear a thing\n",
+                             "suggestedDeletionIds": ["suggest.abc"]}},
+            ]}},
+            {"paragraph": {"elements": [
+                {"textRun": {"content": "'Cause there's a spark in you\n",
+                             "suggestedDeletionIds": ["suggest.def"]}},
+            ]}},
+        ]},
+    }
+
+
+def _accepted_view_doc() -> dict:
+    """The same doc as PREVIEW_SUGGESTIONS_ACCEPTED returns it: resolved."""
+    return {
+        "documentId": "sugg123",
+        "title": "Firework",
+        "body": {"content": [
+            {"paragraph": {"elements": [
+                {"textRun": {"content": "Six feet under screams, but no one cares about this song\n"}},
+            ]}},
+        ]},
+    }
+
+
+class TestFetchDocumentSuggestions:
+    """fetch_document's suggestions= mode dance."""
+
+    @patch('adapters.docs.get_sync_client')
+    def test_clean_doc_is_single_call(self, mock_get_client) -> None:
+        """No suggestions → one API call, inline view requested, count 0."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
+            "documentId": "clean1", "title": "Clean",
+            "body": {"content": [{"paragraph": {"elements": [{"textRun": {"content": "Hello\n"}}]}}]},
+        }
+
+        with patch('retry.time.sleep'):
+            result = fetch_document("clean1")
+
+        assert mock_client.get_json.call_count == 1
+        params = mock_client.get_json.call_args.kwargs["params"]
+        assert params["suggestionsViewMode"] == "SUGGESTIONS_INLINE"
+        assert result.suggestion_count == 0
+        assert result.adapter_warnings == []
+
+    @patch('adapters.docs.get_sync_client')
+    def test_accepted_mode_second_call(self, mock_get_client) -> None:
+        """Suggestions present + accepted (default) → second call, resolved server-side."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = [_inline_view_doc(), _accepted_view_doc()]
+
+        with patch('retry.time.sleep'):
+            result = fetch_document("sugg123")
+
+        assert mock_client.get_json.call_count == 2
+        second_params = mock_client.get_json.call_args_list[1].kwargs["params"]
+        assert second_params["suggestionsViewMode"] == "PREVIEW_SUGGESTIONS_ACCEPTED"
+        assert result.suggestion_count == 2
+        assert result.suggestions_mode == "accepted"
+        assert any("ACCEPTED" in w for w in result.adapter_warnings)
+        # Content is the resolved body, not the inline mash
+        run = result.tabs[0].body["content"][0]["paragraph"]["elements"][0]["textRun"]
+        assert run["content"] == "Six feet under screams, but no one cares about this song\n"
+
+    @patch('adapters.docs.get_sync_client')
+    def test_original_mode_second_call(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = [_inline_view_doc(), _accepted_view_doc()]
+
+        with patch('retry.time.sleep'):
+            result = fetch_document("sugg123", suggestions="original")
+
+        second_params = mock_client.get_json.call_args_list[1].kwargs["params"]
+        assert second_params["suggestionsViewMode"] == "PREVIEW_WITHOUT_SUGGESTIONS"
+        assert any("ORIGINAL" in w for w in result.adapter_warnings)
+
+    @patch('adapters.docs.get_sync_client')
+    def test_markup_mode_single_call_annotates(self, mock_get_client) -> None:
+        """Markup mode keeps the inline body (no second call) and tags runs."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = _inline_view_doc()
+
+        with patch('retry.time.sleep'):
+            result = fetch_document("sugg123", suggestions="markup")
+
+        assert mock_client.get_json.call_count == 1
+        assert result.suggestion_count == 2
+        assert result.suggestions_mode == "markup"
+        assert any("markup" in w for w in result.adapter_warnings)
+        tagged = [
+            e["textRun"].get("_mise_suggestion_kind")
+            for p in result.tabs[0].body["content"]
+            for e in p["paragraph"]["elements"]
+            if "textRun" in e and e["textRun"].get("_mise_suggestion_kind")
+        ]
+        assert tagged == ["ins", "del", "del"]
+
+    @patch('adapters.docs.get_sync_client')
+    def test_invalid_mode_raises(self, mock_get_client) -> None:
+        """Defensive check fires before any API call (surfaces as MiseError via @with_retry)."""
+        with pytest.raises(MiseError, match="suggestions must be one of"):
+            with patch('retry.time.sleep'):
+                fetch_document("any", suggestions="bogus")
+        mock_get_client.return_value.get_json.assert_not_called()

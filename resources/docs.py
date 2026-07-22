@@ -295,6 +295,7 @@ Fetch content to filesystem. Writes to `.mise/` in current directory.
 |-------|------|-------------|
 | `file_id` | str | Drive file ID, Gmail thread ID, or Drive folder ID |
 | `tabs` | list[str] | Tab names to fetch from a spreadsheet (default: all tabs) |
+| `suggestions` | str | Google Docs suggested-edit view: `accepted` (default), `original`, `markup` |
 
 ## Tab Filtering (Sheets)
 
@@ -305,6 +306,21 @@ fetch("1spreadsheetId...", tabs=["Current", "Sky postcode database"])
 ```
 
 Only named tabs are fetched from the API. Missing tab names produce a warning in cues.
+
+## Suggested Edits (Docs)
+
+When a Doc carries unresolved suggesting-mode edits, `suggestions=` picks the view:
+
+- `accepted` (default) — suggestions applied: the suggester's intended text,
+  suggested deletions honoured
+- `original` — pre-suggestion text, all suggestions ignored
+- `markup` — explicit spans: `{++inserted++}[s1]` / `{--deleted--}[s1]`;
+  matching `[sN]` tags pair the delete+insert halves of one replace
+
+Whenever suggestions exist, cues carry `has_suggestions: true`, `suggestion_count`,
+`suggestions_mode`, and a warning — so a caller never acts on an ambiguous render
+unknowingly. Suggestion-free docs cost one API call as before; the mode dance only
+fires when suggestions are present.
 
 ## Supported Content Types
 

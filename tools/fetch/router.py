@@ -41,7 +41,7 @@ def detect_id_type(input_id: str) -> tuple[str, str]:
     return ("drive", input_id)
 
 
-def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None = None, recursive: bool = False, tabs: list[str] | None = None) -> FetchResult | FetchError:
+def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None = None, recursive: bool = False, tabs: list[str] | None = None, suggestions: str = "accepted") -> FetchResult | FetchError:
     """
     Main fetch entry point.
 
@@ -52,8 +52,19 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
         base_path: Base directory for deposits (defaults to cwd)
         attachment: Specific attachment filename to extract from Gmail thread
         recursive: For folder fetches, traverse subfolders recursively
+        suggestions: For Google Docs with suggested edits — 'accepted'
+            (default: suggestions applied), 'original' (suggestions ignored),
+            'markup' (explicit {++ins++}/{--del--} spans)
     """
     try:
+        if suggestions not in ("accepted", "original", "markup"):
+            return FetchError(
+                kind="invalid_input",
+                message=(
+                    "suggestions must be one of 'accepted', 'original', "
+                    f"'markup' — got {suggestions!r}"
+                ),
+            )
         # Pre-flight: catch the two input shapes agents reliably get wrong (a 12-char
         # deposit-folder prefix; a non-fetchable URL) with a teaching error, before they
         # fall through to a bare Google 404 (mise-dizupe).
@@ -77,7 +88,7 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
         if source == "gmail":
             return fetch_gmail(normalized_id, base_path=base_path)
         else:
-            return fetch_drive(normalized_id, base_path=base_path, recursive=recursive, tabs=tabs)
+            return fetch_drive(normalized_id, base_path=base_path, recursive=recursive, tabs=tabs, suggestions=suggestions)
 
     except MiseError as e:
         return FetchError(kind=e.kind.value, message=e.message)

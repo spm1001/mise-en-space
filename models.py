@@ -183,6 +183,13 @@ class DocData:
     # pass, so adapter-sourced warnings must live here and are merged in.
     adapter_warnings: list[str] = field(default_factory=list)
 
+    # Suggested-edit state (mise-wofomu). suggestion_count is the number of
+    # distinct unresolved suggestions found; suggestions_mode records which view
+    # the tabs hold ('accepted' | 'original' | 'markup') so cues can say how
+    # suggestions were treated.
+    suggestion_count: int = 0
+    suggestions_mode: str = "accepted"
+
 
 # ============================================================================
 # GMAIL TYPES

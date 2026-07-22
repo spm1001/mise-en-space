@@ -157,12 +157,13 @@ def _log_search_result(call_params: dict[str, Any], result: dict[str, Any]) -> N
 
 
 @mcp.tool()
-def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs: list[str] | None = None, recursive: bool = False) -> dict[str, Any]:
+def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs: list[str] | None = None, recursive: bool = False, suggestions: str = "accepted") -> dict[str, Any]:
     """
     Fetch content to .mise/ — auto-detects type (Drive file, Gmail thread, folder).
 
     Pass base_path=cwd. Use attachment= for specific Gmail attachments (Office/PDF/image).
     Use recursive=True on folders for full tree. Use tabs= to fetch specific spreadsheet tabs.
+    Docs with suggested edits: suggestions='accepted' (default, applied) | 'original' | 'markup'.
     """
     call_params: dict[str, Any] = {"file_id": file_id}
     if attachment:
@@ -171,16 +172,18 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs
         call_params["recursive"] = True
     if tabs:
         call_params["tabs"] = tabs
+    if suggestions != "accepted":
+        call_params["suggestions"] = suggestions
 
     if _REMOTE_MODE:
-        result = fetch_remote(file_id, base_path, attachment, recursive=recursive, tabs=tabs)
+        result = fetch_remote(file_id, base_path, attachment, recursive=recursive, tabs=tabs, suggestions=suggestions)
         _log_fetch_result(call_params, result)
         return result
 
     if not base_path:
         return {"error": True, "kind": "invalid_input",
                 "message": "base_path is required — pass your working directory so deposits land in your project, not the MCP server's directory"}
-    result = do_fetch(file_id, base_path=Path(base_path), attachment=attachment, recursive=recursive, tabs=tabs).to_dict()
+    result = do_fetch(file_id, base_path=Path(base_path), attachment=attachment, recursive=recursive, tabs=tabs, suggestions=suggestions).to_dict()
     _log_fetch_result(call_params, result)
     return result
 
