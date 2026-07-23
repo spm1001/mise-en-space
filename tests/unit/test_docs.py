@@ -649,3 +649,24 @@ Six feet under screams, {++but no one cares about this song++}[s1]{--but no one 
         data = _sugg_doc()
         result = extract_doc_content(data)
         assert "{++" not in result and "{--" not in result
+
+
+class TestInParagraphLineBreaks:
+    """\\v (Shift+Enter / imported hard break) must become a newline, and
+    per-line formatting must not swallow it (mise-sejule companion fix)."""
+
+    def test_plain_run_break_becomes_newline(self) -> None:
+        from extractors.docs import _apply_text_formatting
+
+        assert _apply_text_formatting("one\vtwo", {}) == "one\ntwo"
+
+    def test_monospace_run_breaks_into_per_line_spans(self) -> None:
+        from extractors.docs import _apply_text_formatting
+
+        style = {"weightedFontFamily": {"fontFamily": "Roboto Mono"}}
+        assert _apply_text_formatting("cmd-a\vcmd-b", style) == "`cmd-a`\n`cmd-b`"
+
+    def test_break_only_run_yields_newline(self) -> None:
+        from extractors.docs import _apply_text_formatting
+
+        assert _apply_text_formatting("\v", {}) == "\n"

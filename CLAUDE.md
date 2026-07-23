@@ -40,6 +40,7 @@ docs/           Design documents and references
 | File | Purpose | Used by |
 |------|---------|---------|
 | `html_convert.py` | HTML↔markdown: HTML→markdown via markitdown (needs tempfile — why it's not in extractors); markdown→HTML via python-markdown (`markdown_to_html`, for email draft bodies) | adapters, tools |
+| `markdown_import.py` | Pre-import rewrite for Drive's markdown→Doc engine (`convert_fenced_blocks`) — fenced code blocks become per-line inline-code spans (see Gotchas) | tools |
 | `filters.py` | Attachment filtering logic (`is_trivial_attachment`, `filter_attachments`) — holds two `lru_cache`s | adapters, tools |
 | `validation.py` | ID/URL validation (`validate_drive_id`, `validate_gmail_id`, etc.) | tools, adapters |
 | `retry.py` | Retry decorator with exponential backoff and jitter | adapters |
@@ -172,6 +173,7 @@ Data models have `warnings: list[str]` fields. Extractors populate them during p
 | Gotcha | Detail |
 |--------|--------|
 | **Overwrite uses Drive import** | Google Doc overwrite uses `files().update()` with `text/markdown` media type — same import engine as create. All markdown formatting (headings, bold, tables) renders automatically. No Docs API involved. |
+| **Fenced code blocks are rewritten before Doc import** | Google's markdown import engine mangles ALL code blocks (``` fences, ~~~, language-tagged, 4-space indented): every whitespace-delimited token becomes its own code-styled run — per-word pills in the UI, per-word backtick spans on re-export. Inline code imports clean. So `convert_fenced_blocks` (markdown_import.py) rewrites each fenced block into per-line inline-code spans joined by backslash hard breaks before `do(create)`/`do(overwrite)` upload — imports as one tight monospace paragraph (`\v` line breaks, which the extractor renders back as per-line spans). prepend/append use raw `insertText` (no markdown import), so they're untouched. Probed live 2026-07-23 (mise-sejule). |
 | **Gmail web IDs ≠ API IDs** | `FMfcgz...` web IDs need conversion. Works for `thread-f:` but fails for `thread-a:` (self-sent ~2018+). See `validation.py`. |
 | **No search snippets** | Drive API v3 has no `contentSnippet` field. `fullText` search finds files but doesn't explain why they matched. |
 | **Pre-exfil detection** | User runs background extractor to Drive. Value is that Drive fullText indexes PDF *content*. Check "Email Attachments" folder. |

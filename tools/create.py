@@ -24,6 +24,7 @@ from typing import Any
 from adapters.http_client import get_sync_client
 from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME, GOOGLE_FOLDER_MIME
 from adapters.sheets import add_sheet, update_sheet_values, rename_sheet
+from markdown_import import convert_fenced_blocks
 from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 from workspace import enrich_manifest
@@ -525,6 +526,8 @@ def _create_doc(
     This was discovered via about.get(fields='importFormats') - not in static docs!
     """
     client = get_sync_client()
+
+    content = convert_fenced_blocks(content)
 
     file_metadata = _mise_file_metadata(title, mime_type=GOOGLE_DOC_MIME, folder_id=folder_id)
 

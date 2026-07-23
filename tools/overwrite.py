@@ -20,6 +20,7 @@ from adapters.drive import (
     GOOGLE_SHEET_MIME,
     upload_file_content,
 )
+from markdown_import import convert_fenced_blocks
 from models import DoResult, MiseError
 from tools.common import resolve_source as _resolve_source
 from tools.form_edit import form_overwrite
@@ -153,6 +154,7 @@ def _overwrite_doc(
     Uses files().update() with text/markdown media type, which triggers the same
     import conversion as files().create() — headings, bold, tables, lists all render.
     """
+    markdown = convert_fenced_blocks(markdown)
     result = upload_file_content(file_id, markdown.encode("utf-8"), "text/markdown")
     doc_title = title or result.get("name", "Untitled")
 

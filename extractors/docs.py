@@ -777,6 +777,13 @@ def _format_inline_object(
 
 def _apply_text_formatting(content: str | None, text_style: dict[str, Any]) -> str:
     """Apply markdown formatting based on text style."""
+    if content and "\v" in content:
+        # In-paragraph line break (Shift+Enter, or markdown hard break at
+        # import). Format each visual line separately — a code/bold span
+        # must not swallow the break, and raw \v means nothing downstream.
+        return "\n".join(
+            _apply_text_formatting(part, text_style) for part in content.split("\v")
+        )
     if not content or not content.strip():
         return content or ""
 
