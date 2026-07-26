@@ -22,6 +22,8 @@ Mise ships as **two identity flavours** from this one source: `mise` (work — `
 
 and swaps `credentials.json`. **If you edit those identity strings in the hooks, `oauth_config.py`, the `plugin.json` identity/displayName, or the skill's `mcp__mise__` tool refs, know they get rewritten per-flavour and the transform's guard will fail the build on any un-rewritten `mcp__mise__` leftover or missing identity.** Full topology (three repos) + the coexistence-clarity work: `.bon/understanding.md` → "Identity flavours" — shipped suite 1.8.7.
 
+**Each flavour's rules shard is REGENERATED EVERY SESSION START.** `hooks/ensure-mise.sh` writes `~/.claude/rules/${NAME}.md` — a static routing rule naming both flavours and their tool prefixes, plus a per-flavour `<!-- mise flavour: … -->` stamp, then this repo's `instructions.md` — via temp+mv, on every single session. So **hand-editing `~/.claude/rules/mise*.md` is a no-op that survives until the next session and no further, silently.** The tell for a generated shard is its mtime: it equals the current session's start time. Fix the shard here (`instructions.md`) or in the hook, never in `rules/`. The routing rule is deliberately *static* — identical bytes in both builds, so there is nothing per-flavour to derive and no substitution rule for the transform to keep in step; the flavour's `identity` field still drives the **no-token warning**, which must say which flavour is unauthed and which sibling is fine.
+
 ## Architecture
 
 ```
