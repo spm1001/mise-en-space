@@ -1,21 +1,27 @@
 #!/bin/bash
 # SessionStart hook: ensure the mise MCP server can start, and install this
-# flavour's identity-stamped rules shard. Silent when all is well; helpful and
-# FLAVOUR-AWARE when it's not (mise-tatego). mise ships as two flavours from one
-# source — mise (work, ITV) and mise-home (personal, Planet Modha) — and this
-# hook is what lets a Claude tell them apart, instead of reading one flavour's
-# missing-token warning as "the other mise is broken".
+# flavour's rules shard. Silent when all is well; helpful and FLAVOUR-AWARE when
+# it's not (mise-tatego). mise ships as two flavours from one source — mise
+# (work, ITV) and mise-home (personal, Planet Modha) — and this hook is what
+# lets a Claude tell them apart, instead of reading one flavour's missing-token
+# warning as "the other mise is broken".
+#
+# THE SHARD IS REWRITTEN FROM HERE EVERY SESSION START (temp+mv, below). Editing
+# ~/.claude/rules/mise*.md by hand is therefore a no-op that survives until the
+# next session and no further — fix the shard HERE, or in instructions.md.
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _PLUGIN_ROOT="$(dirname "$HOOK_DIR")"
 PLUGIN_JSON="$_PLUGIN_ROOT/.claude-plugin/plugin.json"
 
 # --- Identity: read this flavour's stamped fields ONCE -----------------------
-# Both surfaces below (the rules-shard header and the no-token warning) speak
-# the flavour's identity. base mise ships identity "ITV (itv.com)" in its source
-# plugin.json; make-mise-flavour.sh overwrites it to "Planet Modha (planetmodha)"
-# for mise-home. Older installs lacking the field degrade to name-only wording
-# (IDENTITY empty → the identity/sibling clauses are omitted).
+# Used by the NO-TOKEN WARNING below, which must name which flavour is unauthed
+# and which sibling is fine. The rules shard no longer speaks in identity at all
+# — it carries a static routing rule (see there for why). base mise ships
+# identity "ITV (itv.com)" in its source plugin.json; make-mise-flavour.sh
+# overwrites it to "Planet Modha (planetmodha)" for mise-home. Older installs
+# lacking the field degrade to name-only wording (IDENTITY empty → the
+# identity/sibling clauses of the warning are omitted).
 _pj() { python3 -c "import json; print(json.load(open('$PLUGIN_JSON')).get('$1','') or '')" 2>/dev/null; }
 NAME="$(_pj name)";                NAME="${NAME:-mise}"
 DISPLAY_NAME="$(_pj displayName)"; DISPLAY_NAME="${DISPLAY_NAME:-$NAME}"
@@ -48,12 +54,26 @@ if [ -f "$_PLUGIN_ROOT/instructions.md" ]; then
     # mv -f replaces the entry atomically whatever it was, never following it.
     _tmp="$(mktemp "${RULES_DEST}.XXXXXX")"
     {
-        if [ -n "$IDENTITY" ]; then
-            printf '<!-- mise flavour: %s -->\n' "$DISPLAY_NAME"
-            printf 'You are **%s** — you act on the **%s** Google Workspace. ' "$DISPLAY_NAME" "$IDENTITY"
-            printf 'Your sibling **%s** acts on **%s**. ' "$SIBLING_DISPLAY" "$SIBLING_IDENTITY"
-            printf 'Reach for whichever matches the Workspace the content lives in.\n\n'
-        fi
+        # A ROUTING RULE, not an identity claim. Every rules/*.md loads
+        # unconditionally, so when both flavours are installed BOTH shards load
+        # — and a first-person "You are **Mise** … your sibling **Mise Home**"
+        # then told one session it was two different things at once. State the
+        # mapping in the third person and let the reader route by it.
+        #
+        # STATIC text, deliberately: there are only ever two flavours (see
+        # IDENTITY_BY_INSTANCE in make-mise-flavour.sh), so both halves are
+        # byte-identical in both builds — nothing to derive per flavour and no
+        # substitution rule for the transform to keep in step. The literal
+        # `mcp__mise__*` survives because the transform's mcp__mise__ rewrite
+        # scopes to *.md/*.py, and the "ITV (itv.com)" literal is why its
+        # identity guard is a FIELD check rather than a file-wide scan.
+        # Only the stamp below is per-flavour — it says which file this is.
+        printf '<!-- mise flavour: %s -->\n' "$DISPLAY_NAME"
+        printf '**Which Mise to reach for.** Mise ships one flavour per Google Workspace: '
+        printf '`mise` acts on **ITV (itv.com)** (tools `mcp__mise__*`), '
+        printf '`mise-home` on **Planet Modha (planetmodha)** (tools `mcp__mise-home__*`). '
+        printf 'Reach for whichever matches where the content lives — only the flavours whose '
+        printf 'tools are present in this session are installed.\n\n'
         cat "$_PLUGIN_ROOT/instructions.md"
     } > "$_tmp"
     mv -f "$_tmp" "$RULES_DEST"

@@ -1,6 +1,7 @@
 # Mise — Instruction Shard
 
-Auto-loaded via `~/.claude/rules/mise.md`.
+Auto-loaded from `~/.claude/rules/`, rewritten each session by this plugin's
+`hooks/ensure-mise.sh` — edit that or this file, never the copy in `rules/`.
 
 ## Overrides
 
