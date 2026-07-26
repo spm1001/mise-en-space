@@ -50,6 +50,17 @@ mise fetch 1abc123def456
 mise create "Title" --content "# Markdown content"
 ```
 
+## Skills
+
+<!-- GENERATED:SKILLS:START -->
+1 skill, tabled from `skills/*/SKILL.md` frontmatter by [render-skills.py](https://github.com/spm1001/batterie-de-savoir/blob/main/scripts/render-skills.py) — regenerate from this repo's root with
+`uv run --script ../batterie-de-savoir/scripts/render-skills.py .`
+
+| Skill | What it does |
+|-------|--------------|
+| `/mise` | Orchestrates content fetching via mcp__mise__ tools |
+<!-- GENERATED:SKILLS:END -->
+
 ## Supported Content Types
 
 | What's in the larder | What the chef gets |

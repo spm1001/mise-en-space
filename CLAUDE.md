@@ -275,3 +275,12 @@ Token storage: macOS Keychain (`mise-oauth-token`) is the source of truth. `~/.c
 ## Field Reports
 
 `docs/` contains field reports capturing real-world skill/tool gaps. Pattern: notice gap → write field report → fix → commit together.
+
+## README skill table is generated
+
+The Skills table in README.md (between `GENERATED:SKILLS` markers) is rendered from
+`skills/*/SKILL.md` frontmatter — never hand-edit it. After adding, removing or renaming
+a skill: `uv run --script ../batterie-de-savoir/scripts/render-skills.py .` from the repo
+root. CI re-checks it on every push (fetching the canonical script from batterie-de-savoir
+raw main), so a stale table fails the build. If a table one-liner reads badly, fix the
+SKILL.md description (skill-forge), not the table.
