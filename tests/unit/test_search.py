@@ -297,6 +297,77 @@ class TestDoSearch:
         assert "drive_truncated" not in result.cues
 
 
+class TestRawQuery:
+    """mise-decaza — Drive's query language, which one fullText clause can't say."""
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_raw_query_passes_through_unescaped(self, mock_drive, mock_write) -> None:
+        """The whole point: `or` survives. escape_drive_query would have turned
+        this into a literal search for the string \"name contains 'PCA'\"."""
+        mock_drive.return_value = DriveSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        do_search(raw_query="name contains 'PCA' or name contains 'GeoX'", sources=["drive"])
+
+        sent = mock_drive.call_args.args[0]
+        assert "name contains 'PCA' or name contains 'GeoX'" in sent
+        assert "\\'" not in sent          # not escaped
+        assert "fullText contains" not in sent   # replaced the clause, not wrapped by it
+        assert "trashed = false" in sent  # still ANDed on
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_raw_query_is_parenthesised(self, mock_drive, mock_write) -> None:
+        """A top-level `or` inside raw_query must not rebind against the clauses
+        we AND on — `trashed = false and a or b` would match trashed files."""
+        mock_drive.return_value = DriveSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        do_search(raw_query="name contains 'a' or name contains 'b'", sources=["drive"])
+
+        sent = mock_drive.call_args.args[0]
+        assert "(name contains 'a' or name contains 'b')" in sent
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_raw_query_composes_with_type(self, mock_drive, mock_write) -> None:
+        mock_drive.return_value = DriveSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        do_search(raw_query="name contains 'PCA'", sources=["drive"], type="slides")
+
+        sent = mock_drive.call_args.args[0]
+        assert "name contains 'PCA'" in sent
+        assert "application/vnd.google-apps.presentation" in sent
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
+    def test_raw_query_scopes_to_drive(self, mock_drive, mock_gmail, mock_write) -> None:
+        """Load-bearing, not tidy: `query` is empty alongside raw_query, and an
+        empty Gmail query matches the whole mailbox rather than nothing."""
+        mock_drive.return_value = DriveSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search(raw_query="name contains 'PCA'")
+
+        assert result.sources == ["drive"]
+        mock_gmail.assert_not_called()
+        assert "raw_query scopes to Drive only" in result.cues["sources_note"]
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_raw_query_labels_the_deposit(self, mock_drive, mock_write) -> None:
+        """Otherwise an empty slug lands on disk, since `query` is unset."""
+        mock_drive.return_value = DriveSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search(raw_query="name contains 'PCA'")
+
+        assert result.query == "name contains 'PCA'"
+
+
 class TestPreviewPartialCue:
     """The preview is the only thing an LLM caller reliably reads, so it must
     advertise its own incompleteness. Distinct from drive_truncated: this is
@@ -1279,3 +1350,48 @@ class TestSearchMCPValidation:
         assert "base_path" in result.get("message", "")
         mock_do.assert_not_called()
 
+
+    def test_drive_syntax_in_query_is_refused_not_keyword_searched(self) -> None:
+        """mise-decaza. Before the guard this returned ten plausible-looking wrong
+        files — a 1:1 doc and a probation review among them — because the escaped
+        string became a fullText search for the words name, contains and PCA. A
+        wrong answer with no warning is worse than a refusal."""
+        import server
+        from server import search
+        with patch.object(server, "_REMOTE_MODE", False), \
+             patch("server.do_search") as mock_do:
+            result = search(query="name contains 'PCA'", base_path="/tmp")
+        assert result.get("kind") == "invalid_input"
+        assert "raw_query" in result.get("message", "")
+        mock_do.assert_not_called()
+
+    def test_ordinary_query_still_reaches_do_search(self) -> None:
+        """Positive control for the guard — without it, the test above would pass
+        against a guard that rejected everything."""
+        import server
+        from server import search
+        with patch.object(server, "_REMOTE_MODE", False), \
+             patch("server.do_search") as mock_do:
+            mock_do.return_value.to_dict.return_value = {"ok": True}
+            search(query="ViewersLogic post campaign analysis", base_path="/tmp")
+        mock_do.assert_called_once()
+
+    def test_query_and_raw_query_together_are_refused(self) -> None:
+        import server
+        from server import search
+        with patch.object(server, "_REMOTE_MODE", False), \
+             patch("server.do_search") as mock_do:
+            result = search(query="PCA", raw_query="name contains 'PCA'", base_path="/tmp")
+        assert result.get("kind") == "invalid_input"
+        assert "not both" in result.get("message", "")
+        mock_do.assert_not_called()
+
+    def test_raw_query_alone_satisfies_the_something_to_search_gate(self) -> None:
+        import server
+        from server import search
+        with patch.object(server, "_REMOTE_MODE", False), \
+             patch("server.do_search") as mock_do:
+            mock_do.return_value.to_dict.return_value = {"ok": True}
+            search(raw_query="name contains 'PCA'", base_path="/tmp")
+        mock_do.assert_called_once()
+        assert mock_do.call_args.kwargs["raw_query"] == "name contains 'PCA'"

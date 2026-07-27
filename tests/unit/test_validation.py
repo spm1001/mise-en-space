@@ -13,6 +13,7 @@ from validation import (
     detect_fetch_input_problem,
     is_gmail_web_id,
     is_gmail_api_id,
+    looks_like_drive_query,
     sanitize_gmail_query,
     sanitize_title,
     validate_drive_id,
@@ -355,3 +356,47 @@ class TestDetectFetchInputProblem:
     def test_empty_input_not_flagged(self) -> None:
         assert detect_fetch_input_problem("") is None
         assert detect_fetch_input_problem("   ") is None
+
+
+class TestLooksLikeDriveQuery:
+    """mise-decaza. Drive syntax in `query` doesn't error — it becomes a keyword
+    search for the operator names and returns plausible wrong files. The guard
+    routes those to raw_query. Its precision matters in both directions: a false
+    negative is the old silent-wrong-answer, a false positive breaks ordinary
+    searching to protect a rare case.
+    """
+
+    @pytest.mark.parametrize("q", [
+        "name contains 'PCA'",
+        "fullText contains 'budget'",
+        "mimeType = 'application/pdf'",
+        "mimeType contains 'image/'",
+        "modifiedTime > '2025-01-01T00:00:00'",
+        "createdTime <= '2024-06-01'",
+        "'sameer.modha@itv.com' in owners",
+        "'1abc' in parents",
+        "trashed = true",
+        "starred = true",
+        "sharedWithMe",
+        "NAME CONTAINS 'pca'",           # case-insensitive
+    ])
+    def test_detects_drive_syntax(self, q: str) -> None:
+        assert looks_like_drive_query(q) is True
+
+    @pytest.mark.parametrize("q", [
+        "PCA",
+        "budget 2026",
+        "what the box contains",          # bare 'contains' is ordinary English
+        "revenue and costs",              # bare 'and'
+        "profit or loss",                 # bare 'or'
+        "O'Brien quarterly review",       # apostrophe
+        "Region:Lift GeoX",               # colon
+        "ViewersLogic post campaign analysis",
+        "shared drive migration notes",   # 'shared' without sharedWithMe
+        "name of the new product",        # 'name' without 'contains'
+    ])
+    def test_leaves_ordinary_search_terms_alone(self, q: str) -> None:
+        """The false-positive controls. Every one of these is a query someone
+        would really type, and rejecting any of them would be worse than the bug
+        the guard exists to prevent."""
+        assert looks_like_drive_query(q) is False

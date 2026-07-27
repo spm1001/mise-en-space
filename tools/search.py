@@ -184,6 +184,7 @@ def do_search(
     base_path: Path | None = None,
     folder_id: str | None = None,
     type: str | None = None,
+    raw_query: str | None = None,
 ) -> SearchResult:
     """
     Search across Drive, Gmail, Activity, and Calendar.
@@ -209,6 +210,13 @@ def do_search(
             Implies sources=['drive'] when provided.
         type: Optional Drive file type filter. Friendly names: folder, doc, spreadsheet,
             sheet, slides, presentation, pdf, image, video, form. Applies to Drive only.
+        raw_query: Drive query language, passed through unescaped — the power path.
+            Mutually exclusive with `query`. Gets Drive's `or`, `not`,
+            `name contains`, date and owner operators, none of which the single
+            fullText clause `query` builds can express. `trashed = false` is still
+            ANDed on (every mise surface excludes trash; a raw query silently
+            resurrecting deleted files would be a worse surprise than not being
+            able to search them), and `type`/`folder_id` still compose.
 
     Returns:
         SearchResult with path to deposited file and result counts
@@ -231,13 +239,19 @@ def do_search(
     if folder_id is not None:
         validate_drive_id(folder_id, "folder_id")
 
-    # folder_id scopes to Drive only — other sources have no folder concept
+    # folder_id and raw_query both scope to Drive only — the other sources have no
+    # folder concept and don't speak Drive's query language. For raw_query the
+    # scoping is load-bearing rather than tidy: `query` is usually empty alongside
+    # it, and an empty Gmail query is not a no-op, it matches the whole mailbox.
     excluded_sources: list[str] = []
-    if folder_id is not None:
+    drive_only_reason = "folder_id" if folder_id is not None else "raw_query"
+    if folder_id is not None or raw_query:
         excluded_sources = [s for s in sources if s != "drive"]
         sources = [s for s in sources if s == "drive"]
 
-    result = SearchResult(query=query, sources=sources)
+    # The raw query is what was actually asked, so it labels the result and the
+    # deposit filename; otherwise an empty slug lands on disk.
+    result = SearchResult(query=raw_query or query, sources=sources)
 
     # Scope notes — emitted unconditionally when folder_id is set
     if folder_id is not None:
@@ -245,9 +259,11 @@ def do_search(
             f"non-recursive — results limited to immediate children of folder '{folder_id}'; "
             "files in subfolders are not included"
         )
-        if excluded_sources:
-            names = ", ".join(s.capitalize() for s in excluded_sources)
-            result.cues["sources_note"] = f"{names} excluded — folder_id scopes to Drive only"
+    if excluded_sources:
+        names = ", ".join(s.capitalize() for s in excluded_sources)
+        result.cues["sources_note"] = (
+            f"{names} excluded — {drive_only_reason} scopes to Drive only"
+        )
 
     search_drive = "drive" in sources
     search_gmail = "gmail" in sources
@@ -259,7 +275,12 @@ def do_search(
 
     def _run_drive() -> DriveSearchResults:
         parts = ["trashed = false"]
-        if query.strip():
+        if raw_query and raw_query.strip():
+            # Unescaped by design — the caller owns the syntax, exactly as Gmail's
+            # `q` already works. Parenthesised so a top-level `or` inside it can't
+            # rebind against the clauses we AND on.
+            parts.append(f"({raw_query.strip()})")
+        elif query.strip():
             parts.append(f"fullText contains '{escape_drive_query(query)}'")
         if type_clause:
             parts.append(type_clause)

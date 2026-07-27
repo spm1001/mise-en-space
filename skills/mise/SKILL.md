@@ -171,11 +171,15 @@ Key operators: `from:`, `to:`, `filename:`, `has:attachment`, `after:`, `before:
 
 See `references/gmail-operators.md` for the full set and the search-asymmetry detail.
 
-### Drive: Keywords Only (Different Syntax!)
+### Drive: Two Query Paths — `query` and `raw_query`
 
-Drive search uses plain keywords — **not Gmail operators.** `from:`, `is:starred`, `subject:` will return 400 errors on Drive.
+**Gmail's operators don't work on Drive** — `from:`, `is:starred`, `subject:` are Gmail syntax
+and Drive returns a 400. But Drive has a rich query language of its own, and mise reaches it
+through a *different parameter*. (This section used to say "Drive search uses plain keywords";
+that described mise's limitation as though it were Drive's.)
 
 ```python
+# query= — plain search terms, wrapped in one fullText clause for you
 search("Q4 budget", sources=["drive"], base_path="...")     # Drive only
 search("budget 2026", base_path="...")                       # Both sources
 
@@ -184,6 +188,29 @@ search(type="spreadsheet", base_path="...")                  # All spreadsheets
 search("budget", type="spreadsheet", base_path="...")        # Budget spreadsheets only
 search(type="folder", sources=["drive"], base_path="...")    # List folders
 ```
+
+**`raw_query=` is Drive's own query language, passed through untouched.** Reach for it when one
+fullText clause can't say what you mean:
+
+```python
+# Match on the FILENAME, not the contents — a different instrument entirely.
+search(raw_query="name contains 'PCA'", base_path="...")            # 447 files *named* PCA
+search("PCA", base_path="...")                                      # everything mentioning PCA
+
+# OR across synonyms in one query — the only way to search a renamed product once
+search(raw_query="fullText contains 'Region:Lift' or fullText contains 'GeoX'", base_path="...")
+
+# Compound: named, recent, and a deck. Composes with type= and folder_id=.
+search(raw_query="name contains 'PCA' and modifiedTime > '2025-01-01T00:00:00'",
+       type="slides", base_path="...")
+
+# Also available: not, 'someone@x.com' in owners, 'folderId' in parents, starred = true
+```
+
+Rules: `raw_query` and `query` are mutually exclusive; `raw_query` searches **Drive only** (the
+other sources don't speak it); `trashed = false` is ANDed on for you. Typing Drive syntax into
+plain `query` is **refused with a pointer here** — it used to silently keyword-search the operator
+words and return confident nonsense.
 
 Type values: `folder`, `doc`, `spreadsheet` / `sheet`, `slides` / `presentation`, `pdf`, `image`, `video`, `form`. Type filter applies to Drive only — ignored for Gmail.
 
@@ -250,9 +277,17 @@ Two consequences worth internalising:
 
 - **Search the noun people file under, not the concept.** A long descriptive query doesn't rank
   badly, it *excludes*. If a search comes back suspiciously empty, drop terms rather than adding them.
-- **Synonyms need separate searches.** There is no way to OR alternatives in one query today, so an
-  old product name and its new one are two searches, not one. Harvest unfamiliar tokens out of the
-  first result set's filenames and re-query with those — that step alone rescues most stalled hunts.
+- **Synonyms want one `raw_query`, not two searches.** `fullText contains 'GeoX' or fullText
+  contains 'Region:Lift'` catches a renamed product in a single pass. Harvest unfamiliar tokens out
+  of the first result set's filenames and feed them back — that step alone rescues most stalled hunts.
+
+**Gmail is AND too, and there it fails harder — as a zero, not a bad ranking.** On Drive an
+over-stuffed query returns the wrong documents, which at least looks like a result; on Gmail it
+returns *nothing*, which reads like proof the correspondence doesn't exist. The discriminator that
+works is what a mail header actually *holds* — an email **domain** (`next-action.co.uk`), a surname,
+a subject-line fragment — not the descriptive name of the thing being discussed, which may appear
+nowhere in the headers. Never read an empty Gmail result as absence until you have re-queried that
+way two or three times.
 
 Gmail results carry a free `has_invite` flag (the thread contains a calendar invite). It costs no extra call, but it's only a flag — to know whether the meeting is still on, `fetch` the thread and read `cues.invite_state` (see "After Every Fetch"). Filter for invites with `jq '.gmail_results[] | select(.has_invite)'`.
 

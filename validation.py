@@ -397,6 +397,34 @@ def escape_drive_query(query: str) -> str:
     return escaped
 
 
+# Drive query-language shapes, precise enough not to fire on English. Each needs
+# an operator AND its syntax — bare words like "contains" or "and" are ordinary
+# in a search phrase ("what the box contains", "budget and forecast") and matching
+# them would break the common path to protect the rare one.
+_DRIVE_OPERATOR_PATTERNS = [
+    re.compile(r"\b(?:fullText|name|mimeType)\s+contains\b", re.I),
+    re.compile(r"\bmimeType\s*!?=", re.I),
+    re.compile(r"\b(?:modifiedTime|createdTime|viewedByMeTime)\s*[<>=]", re.I),
+    re.compile(r"'[^']*'\s+in\s+(?:parents|owners|writers|readers)\b", re.I),
+    re.compile(r"\btrashed\s*=", re.I),
+    re.compile(r"\bstarred\s*=", re.I),
+    re.compile(r"\bsharedWithMe\b", re.I),
+]
+
+
+def looks_like_drive_query(query: str) -> bool:
+    """Is this Drive query-language rather than search terms?
+
+    mise wraps `query` in a single `fullText contains '…'` clause, so Drive
+    syntax typed there doesn't error — it silently becomes a keyword search for
+    the operator names. Probed 2026-07-27: `name contains 'PCA'` returned ten
+    plausible files including a 1:1 doc and a probation review, because those
+    contain the words *name*, *contains* and *PCA*. A wrong answer with no
+    warning is worse than a refusal, so callers get routed to raw_query instead.
+    """
+    return any(p.search(query) for p in _DRIVE_OPERATOR_PATTERNS)
+
+
 def sanitize_gmail_query(query: str) -> str:
     """
     Sanitize user input for Gmail search queries.

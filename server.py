@@ -43,6 +43,7 @@ from tools import do_search, do_fetch
 from tools.dispatch import DO_DESCRIPTION_FULL, DO_DESCRIPTION_REMOTE, run_operation
 from tools.remote import REMOTE_ALLOWED_OPS, fetch_remote, search_remote
 from tools.search import VALID_TYPE_FILTERS, CANONICAL_TYPE_NAMES
+from validation import looks_like_drive_query
 from resources.docs import register_docs_resources
 from resources.tools import get_tool_registry
 
@@ -91,6 +92,7 @@ def search(
     base_path: str = "",
     folder_id: str | None = None,
     type: str | None = None,
+    raw_query: str | None = None,
 ) -> dict[str, Any]:
     """
     Search across Drive and Gmail.
@@ -108,6 +110,12 @@ def search(
             When set, forces sources=['drive'] (Gmail has no folder concept).
         type: Optional Drive file type filter. Applies to Drive only.
             Values: folder, doc, spreadsheet, sheet, slides, presentation, pdf, image, video, form
+        raw_query: Drive query language, unescaped (Drive only; excludes other sources).
+            Use instead of query when you need what one fullText clause can't say:
+            `name contains 'PCA'`, `or` between synonyms, `not`, `modifiedTime > '2025-01-01'`,
+            `'x@y.com' in owners`. `trashed = false` and any type/folder_id are ANDed on.
+            NB plain `query` is AND across words — every term must appear, so one word the
+            estate doesn't use returns zero.
 
     Returns:
         path: Path to deposited search results JSON
@@ -119,15 +127,32 @@ def search(
         calendar_count: Number of Calendar results
         cues: Scope notes and warnings
     """
-    if not query.strip() and type is None and folder_id is None:
+    if query.strip() and raw_query and raw_query.strip():
         return {"error": True, "kind": "invalid_input",
-                "message": "search requires at least one of: query, type, or folder_id"}
+                "message": "Pass either 'query' (search terms) or 'raw_query' (Drive query "
+                           "language), not both — they build the same clause two different ways."}
+
+    if not query.strip() and not (raw_query or "").strip() and type is None and folder_id is None:
+        return {"error": True, "kind": "invalid_input",
+                "message": "search requires at least one of: query, raw_query, type, or folder_id"}
+
+    # Drive syntax in `query` doesn't error, it silently keyword-searches the
+    # operator names and returns plausible wrong files (probed 2026-07-27:
+    # `name contains 'PCA'` returned a 1:1 doc and a probation review). Refusing
+    # is strictly better than answering wrongly, and the remedy is one param away.
+    if query.strip() and looks_like_drive_query(query):
+        return {"error": True, "kind": "invalid_input",
+                "message": "That looks like Drive query language, and `query` would search for "
+                           "the operator words themselves rather than running it — pass it as "
+                           "`raw_query=` instead. Use `query=` for plain search terms."}
 
     if type is not None and type not in VALID_TYPE_FILTERS:
         return {"error": True, "kind": "invalid_input",
                 "message": f"Unknown type '{type}'. Valid: {', '.join(sorted(CANONICAL_TYPE_NAMES))}"}
 
     call_params: dict[str, Any] = {"query": query, "sources": sources, "max_results": max_results}
+    if raw_query:
+        call_params["raw_query"] = raw_query
     if folder_id:
         call_params["folder_id"] = folder_id
     if type:
@@ -141,7 +166,8 @@ def search(
     if not base_path:
         return {"error": True, "kind": "invalid_input",
                 "message": "base_path is required — pass your working directory so deposits land in your project, not the MCP server's directory"}
-    result = do_search(query, sources, max_results, base_path=Path(base_path), folder_id=folder_id, type=type).to_dict()
+    result = do_search(query, sources, max_results, base_path=Path(base_path),
+                       folder_id=folder_id, type=type, raw_query=raw_query).to_dict()
     _log_search_result(call_params, result)
     return result
 
