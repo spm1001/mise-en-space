@@ -445,7 +445,19 @@ do(operation="move", file_id="1abc...", folder_id="1xyz...")
 # Batch move — validates destination once, returns per-file summary
 do(operation="move", file_id=["1abc...", "1def...", "1ghi..."], folder_id="1xyz...")
 # Returns: {batch: true, total: 3, succeeded: 2, failed: 1, results: [...]}
+
+# Copy — duplicates, originals untouched. Batch returns source_id → copy_id.
+do(operation="copy", file_id=["1abc...", "1def..."], folder_id="1xyz...")
+do(operation="copy", file_id="1abc...", folder_id="1xyz...", title="01 — Evidence")
+# Returns: {batch: true, succeeded: 2, blocked: 0, results: [{source_id, copy_id, ...}]}
 ```
+
+**Copy vs move, and why the distinction bites.** `move` relocates the original — everyone
+else's links now point into your folder. `copy` is what a snapshot job wants: an evidence
+pack, a board pack, anything you're about to share access to in bulk. Keep the
+`source_id → copy_id` mapping the batch returns; a copy carries no trace of where it came
+from, and reconstructing that later is miserable. `blocked` (as distinct from `failed`)
+means the owner has restricted copying — ask them, don't retry.
 
 **Create:** Without `folder_id`, the doc lands in Drive root. Response includes `cues.folder` showing where it landed. Use `doc_type="file"` for plain files (markdown, SVG, JSON, YAML, etc.) — MIME type is inferred from the title extension. The file stays as-is in Drive, no conversion to Google format. Response includes `cues.plain_file` and `cues.mime_type`.
 
