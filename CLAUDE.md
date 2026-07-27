@@ -93,11 +93,14 @@ docs/           Design documents and references
 
 **Key behaviors:**
 - `search` returns metadata only — Claude triages before fetching
-- `search` accepts `type=` for MIME filter: `folder`, `doc`, `spreadsheet`/`sheet`, `slides`, `pdf`, `image`, `video`, `form`. `query` is optional when `type` or `folder_id` is set.
+- `search` accepts `type=` for MIME filter: `folder`, `doc`, `spreadsheet`/`sheet`, `slides`, `pdf`, `image`, `video`, `form`. `query` is optional when `type`, `folder_id` or `raw_query` is set.
+- `search` **paginates** to `max_results` (10-page / 1000-result guard). Until suite 1.24.0 it silently capped at 100 whatever you passed — `nextPageToken` wasn't in `SEARCH_RESULT_FIELDS`, so the API never sent it (mise-werevi). Two cues answer different questions: `drive_truncated` = *fetched vs matched* (exact — a surviving page token, so it tells 25-of-25 from 25-of-1292), `preview_partial` = *shown vs fetched*, on every source. Both can fire.
+- `search` accepts `raw_query=` — Drive query language, unescaped, Drive-only, mutually exclusive with `query` (mise-decaza). Reaches `or`, `not`, `name contains`, `modifiedTime >`, `'x' in owners`; composes with `type`/`folder_id`; `trashed = false` still ANDed. Operator-shaped input in plain `query` is **refused** with a pointer, because it used to keyword-search the operator words and return plausible wrong files. Plain `query` is AND across words — one term the estate doesn't use returns zero.
 - `search` gmail results carry `has_invite` (thread has a calendar invite — free, from the parts mask) so triage can spot meetings
 - `fetch` auto-detects ID type (Drive file ID vs Gmail thread ID)
 - `fetch` of a Gmail invite adds `cues.invite_state` — the **live** Calendar state (status/my_response/current_start/cancelled_at) resolved by iCalUID, not the email's frozen snapshot; a cancelled meeting also emits a warning. Best-effort (skipped silently without calendar scope). See `docs/2026-07-07-meduto-invite-event-state.md`.
 - `fetch` accepts optional `attachment` param for extracting specific Gmail attachments
+- `fetch` accepts `raw=True` alongside `attachment=` — deposits the attachment's **original bytes** beside the extraction (mise-buzafo). PDFs and Office files are otherwise converted and the original discarded, so the document itself was unreachable; only images and plain text survived. Lands in `cues.files` automatically. Pairs with `do(create, doc_type='file', file_path=…)` to put a Gmail-only artefact into Drive. Rejected without `attachment=`, and in remote mode (binary can't ride back inline).
 - `fetch` accepts optional `tabs` param (list of tab names) to fetch only specific tabs from spreadsheets
 - `fetch` accepts `suggestions=` for Google Docs carrying suggested edits: `accepted` (default — suggestions applied, the suggester's intended text, deletions honoured), `original` (pre-suggestion text), `markup` (`{++ins++}[s1]`/`{--del--}[s1]` CriticMarkup, shared `[sN]` = one replace). `cues.has_suggestions`/`suggestion_count`/`suggestions_mode` + a warning fire whenever suggestions exist. First call is always SUGGESTIONS_INLINE (countable); the preview modes cost a second `documents.get` only when suggestions are present (checkbox-oracle pattern). See mise-wofomu.
 - `fetch` accepts `recursive=True` on folder IDs — returns full indented tree (max depth 5, 1000 items)
@@ -270,7 +273,9 @@ Token storage: macOS Keychain (`mise-oauth-token`) is the source of truth. `~/.c
 3. **Register** — Add name to `OPERATIONS` in `tools/__init__.py`
 4. **Export** — Add `do_{op}` to `tools/__init__.py` imports and `__all__`
 5. **Resource docs** — Update `docs_do()` in `resources/docs.py` with new operation
-6. **Tests** — Unit test for the implementation + `test_dispatch.py` verifies OPERATIONS/DISPATCH sync automatically
+6. **Advertise it, and check the budget** — add the op to `DO_DESCRIPTION_FULL` in `tools/dispatch.py`, then **measure**: that description is hard-capped at **2048 chars**, and over the line the API drops schema properties *silently* (`do()` has 26). Adding `copy` took it to 2036 — twelve characters — and only a manual measurement caught it. `tests/unit/test_tool_description_budget.py` now fails below 100 chars of headroom; when it does, move detail into `mise://docs/*` rather than trimming meaning. Also update the op **count** in CLAUDE.md, README.md and the SKILL.md table — those three drift silently (see `.bon/understanding.md`)
+7. **Decide remote mode deliberately** — `REMOTE_ALLOWED_OPS` in `tools/remote.py` is a whitelist audited Mar 2026. New ops are excluded by default; adding one is a security decision, not a wiring step. Assert the choice in a test either way
+8. **Tests** — Unit test for the implementation + `test_dispatch.py` verifies OPERATIONS/DISPATCH sync automatically
 
 ## Field Reports
 
