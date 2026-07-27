@@ -218,8 +218,20 @@ vendor-name search returned `drive_count: 25`; the preview held five contracts; 
 analyses sat at ranks 8 and 21–25. The preview was taken for the whole answer and the session
 reported "no such report exists" — then repeated the same mistake on a second vendor an hour later.
 
+**`drive_count` is a ceiling, not a population.** It reports how many results came back, and results
+stop at `max_results` (default 20). Search with `max_results=25` and you get `drive_count: 25` whether
+the true total is 25 or 1,130 — **Drive has no equivalent of `gmail_truncated`**, so nothing in the
+response distinguishes those two cases. When `drive_count` equals the `max_results` you passed, assume
+you are looking at a ceiling and raise it before drawing any conclusion from what's missing.
+
 **A null is only evidence once you have seen the full list.** Before telling anyone something doesn't
-exist, `jq` the names out of the deposit. One command separates "not there" from "not shown".
+exist, `jq` the names out of the deposit and check the count against your cap. One command separates
+"not there" from "not shown", and a second separates "not shown" from "never fetched".
+
+The same trap applies to hand-rolled Drive API queries: `pageSize` without a `nextPageToken` loop, and
+`orderBy: modifiedTime desc`, together mean an older matching file sorts below your cut and never
+appears. A narrower query that returns few enough results to fit one page is often more reliable than a
+broad one you only see the head of.
 
 Gmail results carry a free `has_invite` flag (the thread contains a calendar invite). It costs no extra call, but it's only a flag — to know whether the meeting is still on, `fetch` the thread and read `cues.invite_state` (see "After Every Fetch"). Filter for invites with `jq '.gmail_results[] | select(.has_invite)'`.
 
