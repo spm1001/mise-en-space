@@ -187,16 +187,39 @@ search(type="folder", sources=["drive"], base_path="...")    # List folders
 
 Type values: `folder`, `doc`, `spreadsheet` / `sheet`, `slides` / `presentation`, `pdf`, `image`, `video`, `form`. Type filter applies to Drive only — ignored for Gmail.
 
-### Triage Large Results
+### Search Returns Two Things: a `preview` and a Deposit
 
-When search returns 20+ results, don't read the full JSON. Filter first:
+**Read the counts before you read the results.** Every search writes *all* results to the deposited
+JSON and returns a **`preview` of the top 5 per source** — with the true totals alongside it in
+`drive_count` / `gmail_count`. Those two numbers are what tell you whether you are looking at the
+answer or at the first fifth of it.
 
-```bash
-jq '.drive_results[:5] | .[] | {name, id}' .mise/search--*.json
-jq '.drive_results[] | select(.name | test("framework"; "i"))' .mise/search--*.json
+```jsonc
+{
+  "path": ".mise/search--acme--2026-07-27T07-55-59.json",
+  "drive_count": 25,                            // ← the real number
+  "preview": { "drive": [ /* 5 items */ ] }     // ← what you are looking at
+}
 ```
 
-Rule of thumb: <10 results → just read. >15 → filter with jq first.
+*(This `preview` is unrelated to the `share` operation's confirm preview further down.)*
+
+When `count` exceeds what `preview` shows, `jq` the deposit — listing names is cheap:
+
+```bash
+jq -r '.drive_results[] | .name' .mise/search--*.json            # all names, one line each
+jq -r '.gmail_results[] | .subject' .mise/search--*.json
+jq '.drive_results[] | select(.name | test("PCA|debrief"; "i"))' .mise/search--*.json
+```
+
+**Ranking is not relevance to your question.** A supplier-name query ranks contracts, NDAs and press
+releases above the campaign reports you actually wanted — those sort to the bottom. Worked case: a
+vendor-name search returned `drive_count: 25`; the preview held five contracts; the post-campaign
+analyses sat at ranks 8 and 21–25. The preview was taken for the whole answer and the session
+reported "no such report exists" — then repeated the same mistake on a second vendor an hour later.
+
+**A null is only evidence once you have seen the full list.** Before telling anyone something doesn't
+exist, `jq` the names out of the deposit. One command separates "not there" from "not shown".
 
 Gmail results carry a free `has_invite` flag (the thread contains a calendar invite). It costs no extra call, but it's only a flag — to know whether the meeting is still on, `fetch` the thread and read `cues.invite_state` (see "After Every Fetch"). Filter for invites with `jq '.gmail_results[] | select(.has_invite)'`.
 
@@ -638,7 +661,9 @@ Both draft ops auto-append the user's Gmail signature (from their sendAs setting
 | Trusting short tokens (`PR`, `AI`) | API stricter than UI — false "not found" | Participants + date filters; confirm in Gmail UI |
 | Skip comments.md | Miss the real discussion | Check after every doc/sheet/slides fetch |
 | Ignore email_context | Miss the story behind the file | Follow the exploration loop |
-| Read full search JSON | Token waste on 35 results | Filter with jq first |
+| Reading the raw search JSON top to bottom | Token waste on 35 results | `jq` the fields you need — filter it, don't skip it |
+| Treating `preview` as the result set | Silently misses everything past rank 5 — the source of false "doesn't exist" claims | Read `drive_count`/`gmail_count` first; `jq` the deposit when they exceed 5 |
+| Declaring something absent from a preview | An unseen rank 8 reads exactly like a null | `jq -r '.drive_results[] \| .name'` before any "not found" |
 | Stop after first search | Shallow understanding | Loop: new terms → new searches |
 | Omit base_path | Deposits vanish into server directory | Always pass it |
 | Overwrite a doc with images/tables | Content destroyed, not recoverable | Use `prepend`/`append`/`replace_text` |
@@ -673,7 +698,8 @@ This skill works when:
 - Drive searches use keywords, not Gmail operators
 - `comments.md` is checked after every doc/sheet/slides fetch
 - `email_context` hints are followed to source emails
-- Large results are filtered before reading
+- Large results are filtered before reading — with `jq` against the deposit, not by reading `preview` and stopping
+- `drive_count` / `gmail_count` are checked before any "I couldn't find it" is reported to the user
 - Research tasks follow the exploration loop, not single-search-and-stop
 - Triage uses batch operations, not one-thread-at-a-time
 - `label` is used for mark_read/unread/unstar rather than seeking separate operations
