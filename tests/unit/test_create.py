@@ -78,10 +78,25 @@ class TestDoCreateValidation:
         assert result["error"] is True
         assert result["kind"] == "invalid_input"
 
-    def test_slides_not_implemented(self) -> None:
+    def test_slides_is_invalid_not_merely_unbuilt(self) -> None:
+        """mise-bacodi — deliberate contract change from not_implemented.
+
+        'not yet implemented' promises a thing mise will not deliver: Drive has
+        no text-to-Slides importFormat, so create can never reach Slides the way
+        it reaches Docs and Sheets. invalid_input is simply true.
+        """
         result = do_create("content", "Title", doc_type="slides")
         assert result["error"] is True
-        assert result["kind"] == "not_implemented"
+        assert result["kind"] == "invalid_input"
+
+    def test_invalid_doc_type_message_names_folder_and_form(self) -> None:
+        """The valid-types list must name what the CALLER can pass. folder and
+        form early-return before this validation, so listing only the types that
+        reach it would tell someone who typo'd 'forms' that forms don't exist."""
+        result = do_create("content", "Title", doc_type="forms")
+        assert result["kind"] == "invalid_input"
+        assert "folder" in result["message"]
+        assert "form" in result["message"]
 
     def test_rejects_bad_folder_id(self) -> None:
         result = do_create("content", "Title", folder_id="abc' OR '1'='1")
@@ -623,7 +638,12 @@ class TestDocTypeMapping:
     def test_all_types_mapped(self) -> None:
         assert "doc" in DOC_TYPE_TO_MIME
         assert "sheet" in DOC_TYPE_TO_MIME
-        assert "slides" in DOC_TYPE_TO_MIME
+
+    def test_slides_stays_out(self) -> None:
+        """Ratchet (mise-bacodi). This map doubles as the create allowlist, so a
+        re-added 'slides' key silently restores the advert — and the dead-end it
+        led callers into — without any other surface changing."""
+        assert "slides" not in DOC_TYPE_TO_MIME
 
 
 class TestReadSource:

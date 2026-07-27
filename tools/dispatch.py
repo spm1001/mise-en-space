@@ -126,7 +126,7 @@ DO_DESCRIPTION_FULL = """\
 Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail.
 
 Operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, trash, setup_oauth.
-Create: content + title + doc_type (doc/sheet/slides/file/folder/form). page_setup='pageless' for pageless docs. file_path= to read from disk. folder: title only, no content needed. form: content is YAML/JSON spec with title, description, questions.
+Create: content + title + doc_type (doc/sheet/file/folder/form). page_setup='pageless' for pageless docs. file_path= to read from disk. folder: title only, no content needed. form: content is YAML/JSON spec with title, description, questions.
 Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content). Sheets: overwrite=CSV replaces first tab; replace_text=cell find/replace. Forms: overwrite takes the same spec as create — fetch, tweak, overwrite (replaces all questions). Doc edits return cues.restore_point (pre-edit Version history anchor); overwrite also posts a restore-point comment (restore_comment=False to skip on shared docs).
 Email: draft (to + subject + content; file_id=draft_id updates that draft in place), reply_draft (file_id + content — refuses if the thread already carries a draft, naming it; supersede=True discards existing thread drafts first), archive/star/label. Drafts auto-append the user's Gmail signature — don't write a sign-off in content.
 Trash: file_id (single or list) — Drive files go to recoverable trash; Gmail draft IDs (r+digits) are discarded permanently.
@@ -143,7 +143,7 @@ Args:
     content: Text content (required for create, draft, reply_draft).
         Drafts auto-append the user's Gmail signature — don't write a sign-off.
     title: Document title (for create)
-    doc_type: 'doc' | 'sheet' | 'slides' | 'form' (for create). form: content is YAML/JSON spec
+    doc_type: 'doc' | 'sheet' | 'file' | 'folder' | 'form' (for create). form: content is YAML/JSON spec
     folder_id: Optional destination folder (for create)
     file_id: Target thread ID (for reply_draft, archive, star, label)
     to: Recipient email address(es), comma-separated (for draft)

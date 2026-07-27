@@ -452,7 +452,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `operation` | str | **required** | All |
 | `content` | str | None | create, overwrite, prepend, append, replace_text, draft (email body), comment |
 | `title` | str | None | create, rename |
-| `doc_type` | str | 'doc' | create ('doc', 'sheet', 'slides', 'file', 'folder', 'form'). 'file' uploads as-is — MIME inferred from title extension. 'folder' creates an empty folder (no content needed). 'form' creates a Google Form from a YAML/JSON spec. |
+| `doc_type` | str | 'doc' | create ('doc', 'sheet', 'file', 'folder', 'form'). 'file' uploads as-is — MIME inferred from title extension. 'folder' creates an empty folder (no content needed). 'form' creates a Google Form from a YAML/JSON spec. |
 | `folder_id` | str | None | create, move (target folder — canonical name) |
 | `file_id` | str | None | move, rename, share, overwrite, prepend, append, replace_text, trash (str or list), draft (draft ID — update in place) |
 | `destination_folder_id` | str | None | move (deprecated alias for `folder_id`) |

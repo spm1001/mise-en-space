@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from adapters.http_client import get_sync_client
-from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_SLIDES_MIME, GOOGLE_FOLDER_MIME
+from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_FOLDER_MIME
 from adapters.sheets import add_sheet, update_sheet_values, rename_sheet
 from markdown_import import convert_fenced_blocks
 from models import DoResult, MiseError, ErrorKind
@@ -129,11 +129,17 @@ def _create_folder(title: str | None, folder_id: str | None) -> DoResult | dict[
     )
 
 
-# Supported doc types and their target MIME types
+# Supported doc types and their target MIME types.
+#
+# No 'slides' (mise-bacodi). It was advertised as not_implemented from the first
+# create commit and can never ride the Drive-import trick that doc and sheet use:
+# Drive has no text-to-Slides importFormat, only PPTX/ODP. A real implementation
+# would be Slides-API deck construction, which is itv-slides-formatter's job, not
+# mise's. So 'slides' is not a pending feature — it's not a valid create type, and
+# saying not_implemented was promising something mise will not deliver.
 DOC_TYPE_TO_MIME = {
     "doc": GOOGLE_DOC_MIME,
     "sheet": GOOGLE_SHEET_MIME,
-    "slides": GOOGLE_SLIDES_MIME,
 }
 
 # Which content file to read from a deposit, per doc_type.
@@ -251,7 +257,7 @@ def do_create(
     Args:
         content: Inline content (markdown for doc, CSV for sheet)
         title: Document title (falls back to manifest title when using source)
-        doc_type: 'doc' | 'sheet' | 'slides' | 'file'
+        doc_type: 'doc' | 'sheet' | 'file' | 'folder' | 'form'
         folder_id: Optional destination folder ID
         source: Path to deposit folder to read content from
         base_path: Working directory for resolving relative source paths
@@ -342,12 +348,16 @@ def _do_create_internal(
     page_setup: str | None = None,
 ) -> DoResult | dict[str, Any]:
     """Internal create logic. Returns DoResult on success, error dict on failure."""
-    # Validate doc_type
+    # Validate doc_type. The message must name the types the CALLER can pass, not
+    # the ones that reach here — 'folder' and 'form' early-return above, so listing
+    # only this function's set would tell someone who typo'd 'forms' that forms
+    # aren't supported at all, and send them off course.
     valid_types = list(DOC_TYPE_TO_MIME.keys()) + ["file"]
     if doc_type not in valid_types:
         return _create_error(
             "invalid_input",
-            f"Unsupported doc_type: {doc_type}. Must be one of: {valid_types}",
+            f"Unsupported doc_type: {doc_type}. Must be one of: "
+            f"{valid_types + ['folder', 'form']}",
         )
 
     # Resolve content from source or inline
@@ -407,9 +417,13 @@ def _do_create_internal(
         elif doc_type == "sheet":
             result = _create_sheet(content, title, folder_id)
         else:
+            # Unreachable via the validation above — kept as a sync guard, not as
+            # dead code. Adding a key to DOC_TYPE_TO_MIME without a branch here
+            # would otherwise fall through to an UnboundLocalError on `result`.
             return _create_error(
-                "not_implemented",
-                f"Creating {doc_type} is not yet implemented. Currently supported: doc, sheet, file.",
+                "internal",
+                f"doc_type '{doc_type}' passed validation but has no create branch — "
+                "DOC_TYPE_TO_MIME and the dispatch below are out of sync.",
             )
 
         # Post-creation: set pageless mode if requested
