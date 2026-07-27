@@ -218,11 +218,22 @@ vendor-name search returned `drive_count: 25`; the preview held five contracts; 
 analyses sat at ranks 8 and 21–25. The preview was taken for the whole answer and the session
 reported "no such report exists" — then repeated the same mistake on a second vendor an hour later.
 
-**`drive_count` is a ceiling, not a population.** It reports how many results came back, and results
-stop at `max_results` (default 20). Search with `max_results=25` and you get `drive_count: 25` whether
-the true total is 25 or 1,130 — **Drive has no equivalent of `gmail_truncated`**, so nothing in the
-response distinguishes those two cases. When `drive_count` equals the `max_results` you passed, assume
-you are looking at a ceiling and raise it before drawing any conclusion from what's missing.
+**Two different numbers are hiding, and the response now names both.**
+
+- **`cues.drive_truncated`** — *fetched vs matched.* Fires when more files matched than were
+  returned. This is exact, not a guess: it comes from a live page token, so it can tell 25-of-25
+  from 25-of-1,292. **If it's there, an absence proves nothing** — raise `max_results` or narrow
+  the query before concluding anything isn't there. Gmail and calendar have their own
+  (`gmail_truncated`, `calendar_truncated`).
+- **`cues.preview_partial`** — *shown vs fetched.* Fires when the `preview` holds fewer items than
+  were actually retrieved, and names the deposit to read for the rest.
+
+Both can fire at once, and then there are three numbers: 5 shown, of 100 fetched, of more-than-that
+matched. You need all three to reason about what's missing.
+
+`max_results` is now honoured past 100 — search paginates internally, up to a 1,000-result guard.
+(Before suite 1.22, it silently capped at 100 no matter what you passed: `max_results=300` returned
+100, with nothing in the response saying so. That is what produced the worked case above.)
 
 **A null is only evidence once you have seen the full list.** Before telling anyone something doesn't
 exist, `jq` the names out of the deposit and check the count against your cap. One command separates
@@ -230,8 +241,18 @@ exist, `jq` the names out of the deposit and check the count against your cap. O
 
 The same trap applies to hand-rolled Drive API queries: `pageSize` without a `nextPageToken` loop, and
 `orderBy: modifiedTime desc`, together mean an older matching file sorts below your cut and never
-appears. A narrower query that returns few enough results to fit one page is often more reliable than a
-broad one you only see the head of.
+appears.
+
+**Every word you add is a hard constraint — Drive full-text is AND, not OR.** A file must contain
+*all* your terms to match at all; one word the estate doesn't use returns **zero**, and zero reads
+exactly like "doesn't exist". Measured: `ViewersLogic` → 1,292 files; `ViewersLogic zqxjkbrtplm` → 0.
+Two consequences worth internalising:
+
+- **Search the noun people file under, not the concept.** A long descriptive query doesn't rank
+  badly, it *excludes*. If a search comes back suspiciously empty, drop terms rather than adding them.
+- **Synonyms need separate searches.** There is no way to OR alternatives in one query today, so an
+  old product name and its new one are two searches, not one. Harvest unfamiliar tokens out of the
+  first result set's filenames and re-query with those — that step alone rescues most stalled hunts.
 
 Gmail results carry a free `has_invite` flag (the thread contains a calendar invite). It costs no extra call, but it's only a flag — to know whether the meeting is still on, `fetch` the thread and read `cues.invite_state` (see "After Every Fetch"). Filter for invites with `jq '.gmail_results[] | select(.has_invite)'`.
 
@@ -684,8 +705,10 @@ Both draft ops auto-append the user's Gmail signature (from their sendAs setting
 | Skip comments.md | Miss the real discussion | Check after every doc/sheet/slides fetch |
 | Ignore email_context | Miss the story behind the file | Follow the exploration loop |
 | Reading the raw search JSON top to bottom | Token waste on 35 results | `jq` the fields you need — filter it, don't skip it |
-| Treating `preview` as the result set | Silently misses everything past rank 5 — the source of false "doesn't exist" claims | Read `drive_count`/`gmail_count` first; `jq` the deposit when they exceed 5 |
+| Treating `preview` as the result set | Silently misses everything past rank 5 — the source of false "doesn't exist" claims | `cues.preview_partial` says when there's more; `jq` the deposit |
 | Declaring something absent from a preview | An unseen rank 8 reads exactly like a null | `jq -r '.drive_results[] \| .name'` before any "not found" |
+| Declaring something absent while `drive_truncated` is set | You searched a ceiling, not the estate | Raise `max_results` or narrow the query, then look again |
+| Adding words to a search that found nothing | Drive full-text is AND — more words match *fewer* files, often zero | Drop terms, not add them; try the house noun |
 | Stop after first search | Shallow understanding | Loop: new terms → new searches |
 | Omit base_path | Deposits vanish into server directory | Always pass it |
 | Overwrite a doc with images/tables | Content destroyed, not recoverable | Use `prepend`/`append`/`replace_text` |

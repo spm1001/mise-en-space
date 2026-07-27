@@ -19,6 +19,7 @@ import re
 
 from models import (
     DriveSearchResult,
+    DriveSearchResults,
     EmailContext,
     FolderItem,
     FolderFile,
@@ -101,6 +102,11 @@ FILE_METADATA_FIELDS = (
 # Note: Drive API v3 doesn't support contentSnippet - fullText search returns
 # matching files but not why they matched. Snippet will be None.
 SEARCH_RESULT_FIELDS = (
+    # nextPageToken is load-bearing, not decoration: without it in the mask the
+    # API never sends it, so the truncation signal wasn't ignored — it was never
+    # asked for, and Drive search silently capped at one page for a year
+    # (mise-werevi). Shadow-field-mask trap; assert on the mask, not the caller.
+    "nextPageToken,"
     "files("
     "id,"
     "name,"
@@ -112,6 +118,13 @@ SEARCH_RESULT_FIELDS = (
     "description"  # Contains Message ID for exfil'd email attachments
     ")"
 )
+
+
+# Runaway guard: 10 pages × 100 = 1,000 results. Generous (the largest real query
+# in this estate returns ~1,300) and bounded, so a pathological max_results can't
+# turn one search into a thousand round-trips. Hitting it sets truncated, so the
+# caller is told rather than quietly served a ceiling — the whole point of werevi.
+_MAX_SEARCH_PAGES = 10
 
 
 def _parse_datetime(dt_str: str | None) -> datetime | None:
@@ -275,19 +288,21 @@ def search_files(
     max_results: int = 20,
     include_shared_drives: bool = True,
     folder_id: str | None = None,
-) -> list[DriveSearchResult]:
+) -> DriveSearchResults:
     """
-    Search for files in Drive.
+    Search for files in Drive, paginating to max_results.
 
     Args:
         query: Drive search query (e.g., "fullText contains 'budget'")
-        max_results: Maximum number of results
+        max_results: Maximum number of results. Honoured past 100 — the API's
+            per-page ceiling is 100, so anything larger is fetched page by page.
         include_shared_drives: Whether to search shared drives
         folder_id: Optional folder ID to scope results to immediate children only.
             Non-recursive — only files directly inside this folder are returned.
 
     Returns:
-        List of DriveSearchResult objects
+        DriveSearchResults — results plus an EXACT `truncated` flag (a surviving
+        nextPageToken means more matched, whatever the result count says).
 
     Raises:
         MiseError: On API failure
@@ -297,41 +312,58 @@ def search_files(
 
     client = get_sync_client()
 
-    params: dict[str, Any] = {
-        "q": query,
-        "pageSize": str(min(max_results, 100)),  # API max is 100
-        "fields": SEARCH_RESULT_FIELDS,
-        "supportsAllDrives": str(include_shared_drives).lower(),
-        "includeItemsFromAllDrives": str(include_shared_drives).lower(),
-    }
-
-    response = client.get_json(f"{_DRIVE_API}", params=params)
-
     results: list[DriveSearchResult] = []
-    for file in response.get("files", [])[:max_results]:
-        owners = [
-            o.get("displayName", o.get("emailAddress", ""))
-            for o in file.get("owners", [])
-        ]
-        description = file.get("description")
-        email_context = parse_email_context(description)
+    page_token: str | None = None
+    pages = 0
+    truncated = False
 
-        results.append(
-            DriveSearchResult(
-                file_id=file["id"],
-                name=file.get("name", ""),
-                mime_type=file.get("mimeType", ""),
-                created_time=_parse_datetime(file.get("createdTime")),
-                modified_time=_parse_datetime(file.get("modifiedTime")),
-                snippet=file.get("contentSnippet"),
-                owners=owners,
-                web_view_link=file.get("webViewLink"),
-                description=description,
-                email_context=email_context,
+    while True:
+        params: dict[str, Any] = {
+            "q": query,
+            # Per-PAGE size, not the total. Asking for more than 100 is silently
+            # clamped by the API, which is how max_results used to lie.
+            "pageSize": str(min(max_results - len(results), 100)),
+            "fields": SEARCH_RESULT_FIELDS,
+            "supportsAllDrives": str(include_shared_drives).lower(),
+            "includeItemsFromAllDrives": str(include_shared_drives).lower(),
+        }
+        if page_token:
+            params["pageToken"] = page_token
+
+        response = client.get_json(f"{_DRIVE_API}", params=params)
+        pages += 1
+
+        for file in response.get("files", []):
+            owners = [
+                o.get("displayName", o.get("emailAddress", ""))
+                for o in file.get("owners", [])
+            ]
+            description = file.get("description")
+            email_context = parse_email_context(description)
+
+            results.append(
+                DriveSearchResult(
+                    file_id=file["id"],
+                    name=file.get("name", ""),
+                    mime_type=file.get("mimeType", ""),
+                    created_time=_parse_datetime(file.get("createdTime")),
+                    modified_time=_parse_datetime(file.get("modifiedTime")),
+                    snippet=file.get("contentSnippet"),
+                    owners=owners,
+                    web_view_link=file.get("webViewLink"),
+                    description=description,
+                    email_context=email_context,
+                )
             )
-        )
 
-    return results
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break                      # exhausted: this IS the whole population
+        if len(results) >= max_results or pages >= _MAX_SEARCH_PAGES:
+            truncated = True           # a live token means more genuinely matched
+            break
+
+    return DriveSearchResults(results=results[:max_results], truncated=truncated)
 
 
 # Common MIME types for reference

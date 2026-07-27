@@ -20,6 +20,8 @@ from models import (
     CalendarSearchResult,
     CommentActivity,
     DriveSearchResult,
+    DriveSearchResults,
+    SearchResult,
     GmailSearchResult,
     GmailSearchResults,
     EmailContext,
@@ -218,9 +220,9 @@ class TestDoSearch:
     @patch('tools.search.search_files')
     def test_both_sources_default(self, mock_drive, mock_gmail, mock_write) -> None:
         """Default searches both Drive and Gmail."""
-        mock_drive.return_value = [
+        mock_drive.return_value = DriveSearchResults(results=[
             DriveSearchResult(file_id="d1", name="Doc", mime_type="text/plain"),
-        ]
+        ])
         mock_gmail.return_value = GmailSearchResults(results=[
             GmailSearchResult(thread_id="t1", subject="Email", snippet="..."),
         ])
@@ -242,7 +244,7 @@ class TestDoSearch:
     @patch('tools.search.search_files')
     def test_gmail_truncated_adds_cue(self, mock_drive, mock_gmail, mock_write) -> None:
         """Truncated Gmail results add a warning cue."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_gmail.return_value = GmailSearchResults(
             results=[
                 GmailSearchResult(thread_id="t1", subject="Email", snippet="..."),
@@ -259,9 +261,84 @@ class TestDoSearch:
     @patch('tools.search.write_search_results')
     @patch('tools.search.search_threads')
     @patch('tools.search.search_files')
+    def test_drive_truncated_adds_cue(self, mock_drive, mock_gmail, mock_write) -> None:
+        """Drive now reports a ceiling the way Gmail always has (mise-werevi).
+
+        The asymmetry was the whole bug: Gmail said 'more exist', Drive said
+        nothing, and the silent one is what produced a false 'no such document'
+        in a regulatory filing record.
+        """
+        mock_drive.return_value = DriveSearchResults(
+            results=[DriveSearchResult(file_id="d1", name="Doc", mime_type="text/plain")],
+            truncated=True,
+        )
+        mock_gmail.return_value = GmailSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test")
+
+        assert "drive_truncated" in result.cues
+        assert "ceiling, not a population" in result.cues["drive_truncated"]
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
+    def test_untruncated_drive_gains_no_cue(self, mock_drive, mock_gmail, mock_write) -> None:
+        """Regression guard: a complete result set must not cry wolf."""
+        mock_drive.return_value = DriveSearchResults(
+            results=[DriveSearchResult(file_id="d1", name="Doc", mime_type="text/plain")],
+            truncated=False,
+        )
+        mock_gmail.return_value = GmailSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test")
+
+        assert "drive_truncated" not in result.cues
+
+
+class TestPreviewPartialCue:
+    """The preview is the only thing an LLM caller reliably reads, so it must
+    advertise its own incompleteness. Distinct from drive_truncated: this is
+    'shown vs fetched', that is 'fetched vs matched'."""
+
+    def _results(self, n: int) -> SearchResult:
+        r = SearchResult(query="q", sources=["drive"])
+        r.drive_results = [
+            {"id": f"d{i}", "name": f"Doc {i}", "mimeType": "text/plain", "modified": None}
+            for i in range(n)
+        ]
+        r.path = "/tmp/fake/search-results.json"
+        return r
+
+    def test_preview_shorter_than_count_says_so(self) -> None:
+        d = self._results(25).to_dict()
+        assert len(d["preview"]["drive"]) == 5
+        assert d["drive_count"] == 25
+        assert "showing 5 of 25" in d["cues"]["preview_partial"]
+        assert "/tmp/fake/search-results.json" in d["cues"]["preview_partial"]
+
+    def test_fully_previewed_search_gains_no_cue(self) -> None:
+        """Positive control — without this the cue could be unconditional."""
+        d = self._results(3).to_dict()
+        assert len(d["preview"]["drive"]) == 3
+        assert "preview_partial" not in d["cues"]
+
+    def test_both_cues_can_fire_together(self) -> None:
+        """5 shown of 100 fetched of more-than-that matched — three different
+        numbers, and the caller needs all three to reason about absence."""
+        r = self._results(100)
+        r.cues["drive_truncated"] = "Results capped at 100 — MORE MATCHED."
+        d = r.to_dict()
+        assert "showing 5 of 100" in d["cues"]["preview_partial"]
+        assert "MORE MATCHED" in d["cues"]["drive_truncated"]
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
     def test_drive_only(self, mock_drive, mock_gmail, mock_write) -> None:
         """Only Drive searched when sources=['drive']."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result = do_search("test", sources=["drive"])
@@ -283,7 +360,7 @@ class TestDoSearch:
         search must not attempt Gmail (mise-kivane).
         """
         mock_override.return_value = Path("/tmp/guest-token.json")
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result = do_search("test")
@@ -301,7 +378,7 @@ class TestDoSearch:
     ) -> None:
         """Explicit sources override the guest-mode default — opt-in still works."""
         mock_override.return_value = Path("/tmp/guest-token.json")
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_gmail.return_value = GmailSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
@@ -375,9 +452,9 @@ class TestDoSearch:
     @patch('tools.search.search_files')
     def test_gmail_error_doesnt_block_drive(self, mock_drive, mock_gmail, mock_write) -> None:
         """Gmail failure still returns Drive results."""
-        mock_drive.return_value = [
+        mock_drive.return_value = DriveSearchResults(results=[
             DriveSearchResult(file_id="d1", name="Doc", mime_type="text/plain"),
-        ]
+        ])
         mock_gmail.side_effect = Exception("connection reset")
         mock_write.return_value = "/tmp/fake/search-results.json"
 
@@ -392,7 +469,7 @@ class TestDoSearch:
     @patch('tools.search.search_files')
     def test_gmail_mise_error_captured(self, mock_drive, mock_gmail, mock_write) -> None:
         """Gmail MiseError uses e.message in error string."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_gmail.side_effect = MiseError(ErrorKind.RATE_LIMITED, "quota exceeded")
         mock_write.return_value = "/tmp/fake/search-results.json"
 
@@ -420,7 +497,7 @@ class TestDoSearch:
     @patch('tools.search.search_files')
     def test_max_results_passed_through(self, mock_drive, mock_write) -> None:
         """max_results parameter forwarded to adapter."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         do_search("test", sources=["drive"], max_results=5)
@@ -432,7 +509,7 @@ class TestDoSearch:
     @patch('tools.search.search_files')
     def test_query_escaped_for_drive(self, mock_drive, mock_write) -> None:
         """Drive query has single quotes escaped."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         do_search("user's report", sources=["drive"])
@@ -446,7 +523,7 @@ class TestDoSearch:
     @patch('tools.search.search_files')
     def test_results_deposited_to_file(self, mock_drive, mock_gmail, mock_write) -> None:
         """Results written to filesystem via write_search_results."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_gmail.return_value = GmailSearchResults(results=[])
         mock_write.return_value = "/workspace/mise/search-results.json"
 
@@ -468,7 +545,7 @@ class TestScopedSearch:
     @patch('tools.search.search_files')
     def test_folder_id_passed_to_adapter(self, mock_drive, mock_write) -> None:
         """folder_id is forwarded to search_files."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         do_search("GA4", sources=["drive"], folder_id="abc123")
@@ -481,7 +558,7 @@ class TestScopedSearch:
     @patch('tools.search.search_files')
     def test_folder_id_forces_drive_only(self, mock_drive, mock_gmail, mock_write) -> None:
         """When folder_id set, Gmail is excluded even if in sources."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result = do_search("GA4", sources=["drive", "gmail"], folder_id="abc123")
@@ -493,9 +570,9 @@ class TestScopedSearch:
     @patch('tools.search.search_files')
     def test_scope_note_in_cues_with_results(self, mock_drive, mock_write) -> None:
         """Scope note present in cues even when results are found."""
-        mock_drive.return_value = [
+        mock_drive.return_value = DriveSearchResults(results=[
             DriveSearchResult(file_id="f1", name="tv-conversions.md", mime_type="text/markdown"),
-        ]
+        ])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result = do_search("GA4", sources=["drive"], folder_id="folder123")
@@ -508,7 +585,7 @@ class TestScopedSearch:
     @patch('tools.search.search_files')
     def test_scope_note_in_cues_zero_results(self, mock_drive, mock_write) -> None:
         """Scope note present in cues even on zero results."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result = do_search("GA4", sources=["drive"], folder_id="folder456")
@@ -521,7 +598,7 @@ class TestScopedSearch:
     @patch('tools.search.search_files')
     def test_no_scope_note_without_folder_id(self, mock_drive, mock_gmail, mock_write) -> None:
         """No cues when folder_id not set (unscoped search)."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_gmail.return_value = GmailSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
@@ -533,7 +610,7 @@ class TestScopedSearch:
     @patch('tools.search.search_files')
     def test_cues_in_to_dict_output(self, mock_drive, mock_write) -> None:
         """Cues appear in the MCP response dict when set."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result = do_search("GA4", sources=["drive"], folder_id="folder789")
@@ -547,7 +624,7 @@ class TestScopedSearch:
     @patch('tools.search.search_files')
     def test_sources_note_when_gmail_dropped(self, mock_drive, mock_gmail, mock_write) -> None:
         """sources_note present in cues when Gmail is excluded due to folder_id."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result = do_search("GA4", sources=["drive", "gmail"], folder_id="folder123")
@@ -559,7 +636,7 @@ class TestScopedSearch:
     @patch('tools.search.search_files')
     def test_no_sources_note_when_drive_only_from_start(self, mock_drive, mock_write) -> None:
         """No sources_note when caller already requested drive-only with folder_id."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result = do_search("GA4", sources=["drive"], folder_id="folder123")
@@ -571,7 +648,7 @@ class TestScopedSearch:
     @patch('tools.search.search_files')
     def test_unscoped_search_unchanged(self, mock_drive, mock_gmail, mock_write) -> None:
         """folder_id=None produces identical behaviour to omitting it."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_gmail.return_value = GmailSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
@@ -675,9 +752,9 @@ class TestActivitySearch:
     @patch('tools.search.search_files')
     def test_activity_with_drive_and_gmail(self, mock_drive, mock_gmail, mock_activity, mock_write) -> None:
         """All three sources can run together."""
-        mock_drive.return_value = [
+        mock_drive.return_value = DriveSearchResults(results=[
             DriveSearchResult(file_id="d1", name="Doc", mime_type="text/plain"),
-        ]
+        ])
         mock_gmail.return_value = GmailSearchResults(results=[
             GmailSearchResult(thread_id="t1", subject="Email", snippet="..."),
         ])
@@ -737,7 +814,7 @@ class TestActivitySearch:
     @patch('tools.search.search_files')
     def test_activity_excluded_by_folder_id(self, mock_drive, mock_activity, mock_write) -> None:
         """Activity source dropped when folder_id is set."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result = do_search("test", sources=["drive", "activity"], folder_id="folder123")
@@ -752,9 +829,9 @@ class TestActivitySearch:
     @patch('tools.search.search_files')
     def test_activity_error_doesnt_block_others(self, mock_drive, mock_gmail, mock_activity, mock_write) -> None:
         """Activity failure doesn't block Drive/Gmail results."""
-        mock_drive.return_value = [
+        mock_drive.return_value = DriveSearchResults(results=[
             DriveSearchResult(file_id="d1", name="Doc", mime_type="text/plain"),
-        ]
+        ])
         mock_gmail.return_value = GmailSearchResults(results=[
             GmailSearchResult(thread_id="t1", subject="Email", snippet="..."),
         ])
@@ -1030,9 +1107,9 @@ class TestCalendarSearch:
     @patch('tools.search.search_files')
     def test_drive_enriched_with_calendar(self, mock_drive, mock_calendar, mock_write) -> None:
         """Drive results get meeting_context when calendar has matching attachments."""
-        mock_drive.return_value = [
+        mock_drive.return_value = DriveSearchResults(results=[
             DriveSearchResult(file_id="doc1", name="Agenda", mime_type="text/plain"),
-        ]
+        ])
         mock_calendar.return_value = CalendarSearchResult(
             events=[
                 _make_calendar_event(
@@ -1055,9 +1132,9 @@ class TestCalendarSearch:
     @patch('tools.search.search_files')
     def test_no_enrichment_when_no_matches(self, mock_drive, mock_calendar, mock_write) -> None:
         """No meeting_context added when calendar has no matching attachments."""
-        mock_drive.return_value = [
+        mock_drive.return_value = DriveSearchResults(results=[
             DriveSearchResult(file_id="doc1", name="Random", mime_type="text/plain"),
-        ]
+        ])
         mock_calendar.return_value = CalendarSearchResult(
             events=[_make_calendar_event()],  # No attachments
         )
@@ -1084,7 +1161,7 @@ class TestCalendarSearch:
     @patch('tools.search.search_files')
     def test_calendar_excluded_by_folder_id(self, mock_drive, mock_calendar, mock_write) -> None:
         """Calendar source dropped when folder_id is set."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result = do_search("test", sources=["drive", "calendar"], folder_id="folder123")
@@ -1100,7 +1177,7 @@ class TestTypeFilter:
     @patch("tools.search.write_search_results")
     @patch("tools.search.search_files")
     def test_type_spreadsheet_adds_mime_clause(self, mock_drive, mock_write) -> None:
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/results.json"
 
         do_search("budget", sources=["drive"], type="spreadsheet")
@@ -1112,7 +1189,7 @@ class TestTypeFilter:
     @patch("tools.search.write_search_results")
     @patch("tools.search.search_files")
     def test_type_sheet_alias(self, mock_drive, mock_write) -> None:
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/results.json"
 
         do_search("q4", sources=["drive"], type="sheet")
@@ -1124,7 +1201,7 @@ class TestTypeFilter:
     @patch("tools.search.search_files")
     def test_type_image_uses_contains_clause(self, mock_drive, mock_write) -> None:
         """image type uses 'contains' not '=' since MIME prefix match."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/results.json"
 
         do_search("logo", sources=["drive"], type="image")
@@ -1136,7 +1213,7 @@ class TestTypeFilter:
     @patch("tools.search.search_files")
     def test_type_without_query(self, mock_drive, mock_write) -> None:
         """type without query omits fullText clause — lists all of that type."""
-        mock_drive.return_value = []
+        mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/results.json"
 
         do_search(type="folder", sources=["drive"])

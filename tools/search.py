@@ -19,6 +19,7 @@ from models import (
     CalendarSearchResult,
     CommentActivity,
     DriveSearchResult,
+    DriveSearchResults,
     GmailSearchResult,
     GmailSearchResults,
     MiseError,
@@ -256,7 +257,7 @@ def do_search(
     if type is not None and not search_drive:
         result.cues["type_note"] = f"type='{type}' applies to Drive only — Drive not in sources, filter ignored"
 
-    def _run_drive() -> list[DriveSearchResult]:
+    def _run_drive() -> DriveSearchResults:
         parts = ["trashed = false"]
         if query.strip():
             parts.append(f"fullText contains '{escape_drive_query(query)}'")
@@ -300,7 +301,14 @@ def do_search(
     # Collect results (errors are independent — one failing doesn't block the other)
     if "drive" in futures:
         try:
-            result.drive_results = [format_drive_result(r) for r in futures["drive"].result()]
+            drive_search = futures["drive"].result()
+            result.drive_results = [format_drive_result(r) for r in drive_search.results]
+            if drive_search.truncated:
+                result.cues["drive_truncated"] = (
+                    f"Results capped at {len(drive_search.results)} — MORE MATCHED. "
+                    "This is a ceiling, not a population: do not read an absence here "
+                    "as proof a file doesn't exist. Narrow the query or raise max_results."
+                )
         except MiseError as e:
             result.errors.append(f"Drive search failed: {e.message}")
         except Exception as e:

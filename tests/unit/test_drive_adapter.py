@@ -237,15 +237,15 @@ class TestSearchFiles:
         with patch('retry.time.sleep'):
             results = search_files("fullText contains 'budget'")
 
-        assert len(results) == 2
-        assert all(isinstance(r, DriveSearchResult) for r in results)
-        assert results[0].file_id == "doc1"
-        assert results[0].name == "Budget 2026"
-        assert results[0].owners == ["Alice"]
-        assert results[0].modified_time is not None
-        assert results[0].modified_time.year == 2026
-        assert results[1].file_id == "sheet1"
-        assert results[1].modified_time is None  # No modifiedTime
+        assert len(results.results) == 2
+        assert all(isinstance(r, DriveSearchResult) for r in results.results)
+        assert results.results[0].file_id == "doc1"
+        assert results.results[0].name == "Budget 2026"
+        assert results.results[0].owners == ["Alice"]
+        assert results.results[0].modified_time is not None
+        assert results.results[0].modified_time.year == 2026
+        assert results.results[1].file_id == "sheet1"
+        assert results.results[1].modified_time is None  # No modifiedTime
 
     @patch('adapters.drive.get_sync_client')
     def test_empty_search(self, mock_get_client) -> None:
@@ -257,7 +257,8 @@ class TestSearchFiles:
         with patch('retry.time.sleep'):
             results = search_files("nonexistent")
 
-        assert results == []
+        assert results.results == []
+        assert results.truncated is False
 
     @patch('adapters.drive.get_sync_client')
     def test_exfil_file_includes_email_context(self, mock_get_client) -> None:
@@ -281,14 +282,20 @@ class TestSearchFiles:
         with patch('retry.time.sleep'):
             results = search_files("report")
 
-        assert len(results) == 1
-        assert results[0].email_context is not None
-        assert results[0].email_context.message_id == "18f4a5b6c7d8e9f0"
-        assert results[0].email_context.from_address == "sender@example.com"
+        assert len(results.results) == 1
+        assert results.results[0].email_context is not None
+        assert results.results[0].email_context.message_id == "18f4a5b6c7d8e9f0"
+        assert results.results[0].email_context.from_address == "sender@example.com"
 
     @patch('adapters.drive.get_sync_client')
-    def test_max_results_capped_at_100(self, mock_get_client) -> None:
-        """API pageSize capped at 100 even if max_results is higher."""
+    def test_page_size_capped_at_100_but_max_results_is_not(self, mock_get_client) -> None:
+        """pageSize is a PER-PAGE cap; max_results above it is paginated, not clipped.
+
+        Renamed from test_max_results_capped_at_100 — that name described the bug
+        (mise-werevi: max_results=300 returned 100, silently). The API ceiling of
+        100 per page is still real; what changed is that it no longer terminates
+        the search.
+        """
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
         mock_client.get_json.return_value = {"files": []}
@@ -298,6 +305,83 @@ class TestSearchFiles:
 
         call_kwargs = mock_client.get_json.call_args.kwargs["params"]
         assert call_kwargs["pageSize"] == str(100)
+
+    @patch('adapters.drive.get_sync_client')
+    def test_paginates_past_one_page(self, mock_get_client) -> None:
+        """The regression that mattered: 300 requested, 250 available, 250 returned.
+
+        Before mise-werevi no value of max_results could reach result 101 —
+        pageSize clamped at the API max and nextPageToken was never even in the
+        fields mask, so it was never sent.
+        """
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        def page(n: int, token: str | None):
+            body = {"files": [
+                {"id": f"f{n}-{i}", "name": f"File {n}-{i}", "mimeType": "application/pdf"}
+                for i in range(100 if token else 50)
+            ]}
+            if token:
+                body["nextPageToken"] = token
+            return body
+
+        mock_client.get_json.side_effect = [page(1, "t2"), page(2, "t3"), page(3, None)]
+
+        with patch('retry.time.sleep'):
+            results = search_files("test", max_results=300)
+
+        assert len(results.results) == 250
+        assert results.truncated is False   # exhausted — this IS the population
+        assert mock_client.get_json.call_count == 3
+
+    @patch('adapters.drive.get_sync_client')
+    def test_surviving_page_token_sets_truncated(self, mock_get_client) -> None:
+        """A live nextPageToken at the cap is EXACT evidence more matched —
+        which len(results) == max_results could never distinguish from an
+        exactly-full result set."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
+            "files": [
+                {"id": f"f{i}", "name": f"File {i}", "mimeType": "application/pdf"}
+                for i in range(100)
+            ],
+            "nextPageToken": "more",
+        }
+
+        with patch('retry.time.sleep'):
+            results = search_files("test", max_results=100)
+
+        assert len(results.results) == 100
+        assert results.truncated is True
+
+    @patch('adapters.drive.get_sync_client')
+    def test_exact_fit_is_not_truncated(self, mock_get_client) -> None:
+        """Positive control for the test above — without it, `truncated` could be
+        hardwired True and both would pass. 100 results, no token, not truncated."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
+            "files": [
+                {"id": f"f{i}", "name": f"File {i}", "mimeType": "application/pdf"}
+                for i in range(100)
+            ],
+        }
+
+        with patch('retry.time.sleep'):
+            results = search_files("test", max_results=100)
+
+        assert len(results.results) == 100
+        assert results.truncated is False
+
+    def test_next_page_token_is_in_the_fields_mask(self) -> None:
+        """Assert on the MASK, not on a mock's reply. A mock returns whatever you
+        tell it regardless of which fields were requested, so every pagination
+        test above would pass against a mask that never asks for the token — and
+        in production the API would send none. That was the actual bug."""
+        from adapters.drive import SEARCH_RESULT_FIELDS
+        assert "nextPageToken" in SEARCH_RESULT_FIELDS
 
 
 # ============================================================================
@@ -1157,10 +1241,10 @@ class TestSearchFilesCreatedTime:
         with patch("adapters.drive.get_sync_client", return_value=mock_client):
             results = search_files("trashed = false")
 
-        assert results[0].created_time is not None
-        assert results[0].created_time.year == 2025
-        assert results[0].created_time.month == 12
-        assert results[0].modified_time is not None
+        assert results.results[0].created_time is not None
+        assert results.results[0].created_time.year == 2025
+        assert results.results[0].created_time.month == 12
+        assert results.results[0].modified_time is not None
 
 
 class TestSearchFilesScoped:

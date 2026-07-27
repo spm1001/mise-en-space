@@ -453,6 +453,21 @@ class GmailSearchResults:
     truncated: bool = False  # True when more results exist beyond max_results
 
 
+@dataclass
+class DriveSearchResults:
+    """Wrapper for Drive search results with pagination metadata.
+
+    Mirrors GmailSearchResults deliberately: Gmail has reported truncation since
+    samono while Drive silently capped, and the one source that under-reported
+    was the one that produced a false "no such document exists" (mise-werevi).
+    `truncated` here is EXACT, not inferred — it's a surviving nextPageToken, so
+    it distinguishes 25-of-25 from 25-of-1292, which `len(results) == max_results`
+    never could.
+    """
+    results: list[DriveSearchResult]
+    truncated: bool = False
+
+
 # ============================================================================
 # TOOL RESPONSE TYPES
 # ============================================================================
@@ -619,6 +634,27 @@ class SearchResult:
             preview = self._build_preview()
             if preview:
                 result["preview"] = preview
+                # The preview is the only thing an LLM caller reliably reads, so it
+                # has to advertise its own incompleteness or it reads as exhaustive.
+                # A vendor-name search showed 5 contracts out of 25 results and the
+                # post-campaign analyses at ranks 8 and 21-25 were reported as
+                # non-existent — into a regulatory filing record (mise-werevi).
+                # Distinct from drive_truncated: this is "shown vs fetched", that is
+                # "fetched vs matched". Both can fire, and together they say
+                # 5 shown of 100 fetched of more-than-that matched.
+                withheld = [
+                    f"{source}: showing {len(items)} of {len(getattr(self, f'{source}_results'))}"
+                    for source, items in preview.items()
+                    if len(items) < len(getattr(self, f"{source}_results"))
+                ]
+                if withheld:
+                    # self.cues, not result["cues"] — the latter is assigned below,
+                    # after with_identity() wraps this dict.
+                    self.cues["preview_partial"] = (
+                        f"{'; '.join(withheld)}. The rest are in the deposit, not "
+                        f"in this response — read {self.path} before concluding "
+                        "anything is absent."
+                    )
             if self.errors:
                 result["errors"] = self.errors
             result["cues"] = with_identity(self.cues)
