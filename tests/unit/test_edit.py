@@ -4,6 +4,7 @@ from unittest.mock import patch, MagicMock
 
 from models import DoResult, MiseError, ErrorKind
 from server import do
+from tools.common import NO_MATCH_WARNING
 from tools.edit import do_prepend, do_append, do_replace_text
 
 
@@ -263,6 +264,45 @@ class TestDoReplaceText:
 
         assert isinstance(result, DoResult)
         assert result.cues["occurrences_changed"] == 0
+        # mise-nacolu — a zero match returned a success-shaped payload and an
+        # external-facing doc went unedited for a day. The count alone was there
+        # all along; what was missing was something a caller can't skim past.
+        assert result.cues["warning"].startswith("NO CHANGE")
+
+    @patch("retry.time.sleep")
+    @patch("tools.edit.get_sync_client")
+    def test_zero_match_diagnoses_a_rendering_marker(self, mock_get_client, _sleep) -> None:
+        """A find string copied out of content.md carries formatting the Doc
+        doesn't contain, so it can never match. Diagnose it on the failing call
+        rather than gating beforehand — an edge check would miss mid-string
+        emphasis and hand back false confidence."""
+        mock_client = _mock_sync_client()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
+            "replies": [{"replaceAllText": {"occurrencesChanged": 0}}],
+        }
+
+        result = do_replace_text("doc123", "the **bold** bit", "x")
+
+        assert isinstance(result, DoResult)
+        assert result.cues["warning"].startswith("NO CHANGE")
+        assert "**" in result.cues["warning"]
+
+    @patch("retry.time.sleep")
+    @patch("tools.edit.get_sync_client")
+    def test_zero_match_stays_quiet_on_ordinary_prose(self, mock_get_client, _sleep) -> None:
+        """Negative control — snake_case and lone underscores are ordinary text.
+        A hint that cries wolf stops being read."""
+        mock_client = _mock_sync_client()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
+            "replies": [{"replaceAllText": {"occurrencesChanged": 0}}],
+        }
+
+        result = do_replace_text("doc123", "the file_id column", "x")
+
+        assert isinstance(result, DoResult)
+        assert result.cues["warning"] == NO_MATCH_WARNING
 
 
 # =============================================================================

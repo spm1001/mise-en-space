@@ -28,6 +28,7 @@ from adapters.sheets import (
     update_sheet_values,
 )
 from models import DoResult, MiseError
+from tools.common import NO_MATCH_WARNING
 
 logger = logging.getLogger(__name__)
 
@@ -118,5 +119,5 @@ def sheet_replace_text(
         "occurrences_changed": count,
     }
     if count == 0:
-        cues["warning"] = "Text not found"
+        cues["warning"] = NO_MATCH_WARNING
     return _sheet_result(file_id, metadata, "replace_text", cues)

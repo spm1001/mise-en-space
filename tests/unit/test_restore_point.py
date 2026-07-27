@@ -196,3 +196,64 @@ class TestEditWiring:
         from tools.edit import do_append
         do_append(file_id="f1", content="x", metadata={"mimeType": "text/markdown"})
         mock_capture.assert_not_called()
+
+
+class TestZeroMatchDropsAnchor:
+    """mise-nacolu: a replace_text that matched nothing writes no revision, so
+    the captured anchor still points at the LIVE doc — accurate, but reading
+    exactly like the anchor of an edit that landed. It must not be returned.
+
+    The positive control below is load-bearing: test_edit.py stubs capture to
+    {}, so an 'anchor absent' assertion is vacuous there. Here capture returns
+    a real anchor, and the matched case proves it would have survived.
+    """
+
+    _ANCHOR = {"restore_point": {"revision_id": "7", "modified_time": "t"}}
+
+    def _client(self, occurrences: int) -> MagicMock:
+        client = MagicMock()
+        client.get_json.return_value = {
+            "title": "My Doc",
+            "body": {"content": [{"endIndex": 10}]},
+        }
+        client.post_json.return_value = {
+            "replies": [{"replaceAllText": {"occurrencesChanged": occurrences}}],
+        }
+        return client
+
+    @patch("retry.time.sleep")
+    @patch("tools.edit.get_sync_client")
+    @patch("tools.edit.capture_restore_point", return_value=dict(_ANCHOR))
+    def test_matched_replace_keeps_anchor(self, _cap, mock_client, _sleep) -> None:
+        """Positive control — without this, the test below proves nothing."""
+        from tools.edit import do_replace_text
+        mock_client.return_value = self._client(2)
+        result = do_replace_text(file_id="doc1", find="a", content="b", metadata=_doc_meta())
+        assert result.cues["restore_point"]["revision_id"] == "7"
+        assert "warning" not in result.cues
+
+    @patch("retry.time.sleep")
+    @patch("tools.edit.get_sync_client")
+    @patch("tools.edit.capture_restore_point", return_value=dict(_ANCHOR))
+    def test_zero_match_drops_anchor_and_warns(self, _cap, mock_client, _sleep) -> None:
+        from tools.edit import do_replace_text
+        mock_client.return_value = self._client(0)
+        result = do_replace_text(file_id="doc1", find="ghost", content="b", metadata=_doc_meta())
+        assert "restore_point" not in result.cues
+        assert result.cues["occurrences_changed"] == 0
+        assert result.cues["warning"].startswith("NO CHANGE")
+
+    @patch("retry.time.sleep")
+    @patch("tools.edit.get_sync_client")
+    @patch(
+        "tools.edit.capture_restore_point",
+        return_value={"warnings": ["Restore point unavailable (could not read revisions)"]},
+    )
+    def test_capture_failure_warning_survives_zero_match(self, _cap, mock_client, _sleep) -> None:
+        """Dropping the anchor must not drop a failed-capture warning with it —
+        a revisions read that failed is still worth telling the caller about."""
+        from tools.edit import do_replace_text
+        mock_client.return_value = self._client(0)
+        result = do_replace_text(file_id="doc1", find="ghost", content="b", metadata=_doc_meta())
+        assert "restore_point" not in result.cues
+        assert any("Restore point unavailable" in w for w in result.cues["warnings"])

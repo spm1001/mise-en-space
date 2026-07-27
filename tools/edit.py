@@ -19,6 +19,7 @@ from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME
 from adapters.http_client import get_sync_client
 from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
+from tools.common import NO_MATCH_WARNING, markdown_marker_hint
 from tools.plain_file import plain_prepend, plain_append, plain_replace_text
 from tools.restore_point import capture_restore_point, merge_restore_cues
 from tools.sheet_edit import sheet_replace_text
@@ -116,9 +117,16 @@ def do_replace_text(
         return plain_replace_text(file_id, find, content, metadata)
     restore_cues = capture_restore_point(file_id)
     try:
-        return merge_restore_cues(_replace_text(file_id, find, content), restore_cues)
+        result = _replace_text(file_id, find, content)
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
+    # A no-op edit creates no revision, so the anchor captured above still points
+    # at the LIVE document — accurate, but indistinguishable from the anchor of an
+    # edit that landed, which is exactly the false reassurance nacolu is about.
+    # Capture warnings stay: a failed read is still worth saying.
+    if isinstance(result, DoResult) and result.cues.get("occurrences_changed") == 0:
+        restore_cues.pop("restore_point", None)
+    return merge_restore_cues(result, restore_cues)
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
@@ -184,14 +192,21 @@ def _replace_text(file_id: str, find: str, replace: str) -> DoResult:
     replies = result.get("replies", [{}])
     occurrences = replies[0].get("replaceAllText", {}).get("occurrencesChanged", 0) if replies else 0
 
+    cues: dict[str, Any] = {
+        "find": find,
+        "replace": replace,
+        "occurrences_changed": occurrences,
+    }
+    if occurrences == 0:
+        # Docs only: content.md is a *rendering*, so its markers aren't document
+        # text. A plain .md file or a sheet cell holds them literally, which is
+        # why the sibling paths take the bare warning.
+        cues["warning"] = NO_MATCH_WARNING + markdown_marker_hint(find)
+
     return DoResult(
         file_id=file_id,
         title=meta["title"],
         web_link=f"https://docs.google.com/document/d/{file_id}/edit",
         operation="replace_text",
-        cues={
-            "find": find,
-            "replace": replace,
-            "occurrences_changed": occurrences,
-        },
+        cues=cues,
     )

@@ -17,7 +17,7 @@ from adapters.drive import (
 )
 from models import DoResult
 from retry import with_retry
-from tools.common import resolve_source as _resolve_source
+from tools.common import NO_MATCH_WARNING, resolve_source as _resolve_source
 
 
 # Large file warning threshold (5MB)
@@ -164,7 +164,7 @@ def plain_replace_text(
             "find": find,
             "replace": replace,
             "occurrences_changed": 0,
-            "warning": "Text not found",
+            "warning": NO_MATCH_WARNING,
         })
 
     new_text = text.replace(find, replace)

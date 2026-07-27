@@ -429,7 +429,17 @@ do(operation="replace_text", file_id="1abc...", find="Q3", content="Q4", base_pa
 do(operation="replace_text", file_id="1abc...", find="DRAFT — ", content="", base_path="...")
 ```
 
-`replace_text` response includes `cues.occurrences_changed` — check it to confirm the replacement happened.
+`replace_text` response includes `cues.occurrences_changed`. A zero-match call now also
+carries `cues.warning` starting **`NO CHANGE`** — it is not a success, and no
+`restore_point` is returned, because nothing was written.
+
+**The commonest cause of a zero match is copying the find string out of a fetch.**
+`content.md` is a *rendering* of the document, not the document: `**bold**`, `` `code` ``,
+the `~~` on ticked checkboxes, and `{++suggested++}` spans are all formatting the Doc
+itself doesn't contain. Copy a sentence spanning one of those and the find can never
+match. Search the plain words instead — the warning names the marker it spotted. (A plain
+`.md` file or a sheet cell *does* hold those characters literally, so this applies to
+Google Docs only.)
 
 ### Sheet Creation
 
@@ -679,7 +689,8 @@ Both draft ops auto-append the user's Gmail signature (from their sendAs setting
 | Stop after first search | Shallow understanding | Loop: new terms → new searches |
 | Omit base_path | Deposits vanish into server directory | Always pass it |
 | Overwrite a doc with images/tables | Content destroyed, not recoverable | Use `prepend`/`append`/`replace_text` |
-| `replace_text` without checking cues | Silent no-op if text not found | Check `cues.occurrences_changed > 0` |
+| `replace_text` without checking cues | No longer silent, but still a no-op | Read `cues.warning` for `NO CHANGE`, or `cues.occurrences_changed > 0` |
+| A find string copied from `content.md` | `**`, `` ` ``, `~~`, `{++` are rendering, not document text — can never match | Search the plain words; the `NO CHANGE` warning names the marker |
 | Share with `confirm=True` without preview | Bypasses user approval | Always call without confirm first, show preview, then confirm |
 | Archive/star one thread at a time | Slow — one tool call per thread | Pass `file_id` as a list for batch operations |
 | Looking for a `mark_read` operation | Doesn't exist | Use `label` with `label="UNREAD"`, `remove=True` |

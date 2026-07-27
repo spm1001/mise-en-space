@@ -3,6 +3,7 @@
 from unittest.mock import patch, MagicMock
 
 from models import DoResult
+from tools.common import NO_MATCH_WARNING
 from tools.overwrite import do_overwrite
 from tools.edit import do_replace_text
 from tools.sheet_edit import sheet_overwrite, sheet_replace_text, _quote_tab
@@ -82,7 +83,7 @@ class TestSheetReplaceText:
         mock_fr.return_value = 0
         result = sheet_replace_text("s1", "ghost", "x", _META)
         assert isinstance(result, DoResult)
-        assert result.cues["warning"] == "Text not found"
+        assert result.cues["warning"] == NO_MATCH_WARNING
 
 
 class TestRouting:
