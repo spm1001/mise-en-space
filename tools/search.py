@@ -382,7 +382,9 @@ def do_search(
             _enrich_drive_results_with_meetings(result.drive_results, meeting_index)
 
     # Deposit results to file (filesystem-first pattern)
-    path = write_search_results(query, result.full_results(), base_path=base_path)
+    # result.query, not query — it already resolves raw_query-or-query, and `query`
+    # is empty on the raw path, which slugs every raw search to "untitled".
+    path = write_search_results(result.query, result.full_results(), base_path=base_path)
     result.path = str(path)
 
     return result

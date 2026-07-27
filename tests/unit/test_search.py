@@ -359,13 +359,21 @@ class TestRawQuery:
     @patch('tools.search.write_search_results')
     @patch('tools.search.search_files')
     def test_raw_query_labels_the_deposit(self, mock_drive, mock_write) -> None:
-        """Otherwise an empty slug lands on disk, since `query` is unset."""
+        """Otherwise an empty slug lands on disk, since `query` is unset.
+
+        Both halves matter, and the second one shipped broken in 1.25.0: the
+        SearchResult was labelled correctly while write_search_results still got
+        the raw `query` param, so every raw search deposited as 'search--untitled'.
+        Caught by looking at a real filename, not by any test — which is why the
+        filename is asserted here and not just the label.
+        """
         mock_drive.return_value = DriveSearchResults(results=[])
         mock_write.return_value = "/tmp/fake/search-results.json"
 
         result = do_search(raw_query="name contains 'PCA'")
 
         assert result.query == "name contains 'PCA'"
+        assert mock_write.call_args.args[0] == "name contains 'PCA'"
 
 
 class TestPreviewPartialCue:
