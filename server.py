@@ -183,13 +183,17 @@ def _log_search_result(call_params: dict[str, Any], result: dict[str, Any]) -> N
 
 
 @mcp.tool()
-def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs: list[str] | None = None, recursive: bool = False, suggestions: str = "accepted") -> dict[str, Any]:
+def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs: list[str] | None = None, recursive: bool = False, suggestions: str = "accepted", raw: bool = False) -> dict[str, Any]:
     """
     Fetch content to .mise/ — auto-detects type (Drive file, Gmail thread, folder).
 
     Pass base_path=cwd. Use attachment= for specific Gmail attachments (Office/PDF/image).
     Use recursive=True on folders for full tree. Use tabs= to fetch specific spreadsheet tabs.
     Docs with suggested edits: suggestions='accepted' (default, applied) | 'original' | 'markup'.
+    raw=True with attachment= also deposits the untouched original bytes — PDFs and Office
+    files are otherwise converted and the original discarded, so the document itself was
+    unreachable. Pairs with do(create, doc_type='file', file_path=...) to put a Gmail-only
+    attachment into Drive.
     """
     call_params: dict[str, Any] = {"file_id": file_id}
     if attachment:
@@ -200,8 +204,21 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs
         call_params["tabs"] = tabs
     if suggestions != "accepted":
         call_params["suggestions"] = suggestions
+    if raw:
+        call_params["raw"] = True
+
+    if raw and not attachment:
+        return {"error": True, "kind": "invalid_input",
+                "message": "raw=True only applies with attachment= — it deposits that "
+                           "attachment's original bytes alongside its extraction."}
 
     if _REMOTE_MODE:
+        # Remote returns content inline in JSON; raw bytes can't be text-encoded,
+        # the same reason image fetches carry metadata only in remote mode.
+        if raw:
+            return {"error": True, "kind": "invalid_input",
+                    "message": "raw=True is not available in remote mode — binary content "
+                               "cannot be returned inline."}
         result = fetch_remote(file_id, base_path, attachment, recursive=recursive, tabs=tabs, suggestions=suggestions)
         _log_fetch_result(call_params, result)
         return result
@@ -209,7 +226,7 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs
     if not base_path:
         return {"error": True, "kind": "invalid_input",
                 "message": "base_path is required — pass your working directory so deposits land in your project, not the MCP server's directory"}
-    result = do_fetch(file_id, base_path=Path(base_path), attachment=attachment, recursive=recursive, tabs=tabs, suggestions=suggestions).to_dict()
+    result = do_fetch(file_id, base_path=Path(base_path), attachment=attachment, recursive=recursive, tabs=tabs, suggestions=suggestions, raw=raw).to_dict()
     _log_fetch_result(call_params, result)
     return result
 

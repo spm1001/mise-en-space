@@ -41,7 +41,7 @@ def detect_id_type(input_id: str) -> tuple[str, str]:
     return ("drive", input_id)
 
 
-def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None = None, recursive: bool = False, tabs: list[str] | None = None, suggestions: str = "accepted") -> FetchResult | FetchError:
+def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None = None, recursive: bool = False, tabs: list[str] | None = None, suggestions: str = "accepted", raw: bool = False) -> FetchResult | FetchError:
     """
     Main fetch entry point.
 
@@ -51,6 +51,8 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
         file_id: Drive file ID or Gmail thread ID
         base_path: Base directory for deposits (defaults to cwd)
         attachment: Specific attachment filename to extract from Gmail thread
+        raw: With attachment=, also deposit the untouched original bytes (PDFs and
+            Office files are otherwise converted and the original discarded)
         recursive: For folder fetches, traverse subfolders recursively
         suggestions: For Google Docs with suggested edits — 'accepted'
             (default: suggestions applied), 'original' (suggestions ignored),
@@ -82,7 +84,7 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
                     kind="invalid_input",
                     message="attachment parameter only works with Gmail thread/message IDs",
                 )
-            return fetch_attachment(normalized_id, attachment, base_path=base_path)
+            return fetch_attachment(normalized_id, attachment, base_path=base_path, raw=raw)
 
         # Route to appropriate fetcher
         if source == "gmail":

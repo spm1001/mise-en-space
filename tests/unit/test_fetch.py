@@ -559,7 +559,9 @@ class TestFetchAttachment:
                 format="markdown", type="xlsx", metadata={},
             )
             result = do_fetch("thread_xyz", attachment="report.xlsx")
-            mock_fetch_att.assert_called_once_with("thread_xyz", "report.xlsx", base_path=None)
+            mock_fetch_att.assert_called_once_with(
+                "thread_xyz", "report.xlsx", base_path=None, raw=False,
+            )
 
     def test_rejects_non_gmail(self):
         """attachment param with Drive/web ID returns error."""
@@ -2971,3 +2973,59 @@ class TestSuggestionsParamValidation:
             for mode in ("accepted", "original", "markup"):
                 do_fetch("1abcDEF", suggestions=mode)
                 assert mock_drive.call_args.kwargs["suggestions"] == mode
+
+
+class TestRawAttachmentBytes:
+    """mise-buzafo — a PDF or Office attachment's original bytes were downloaded,
+    converted to markdown, and discarded. You could read the extraction and never
+    the document, and a Gmail-only artefact had no route into Drive.
+    """
+
+    def test_raw_requires_attachment(self):
+        """raw= is meaningless on a whole-thread or Drive fetch; say so rather
+        than accepting it and doing nothing."""
+        import server
+        from server import fetch
+        with patch.object(server, "_REMOTE_MODE", False), \
+             patch("server.do_fetch") as mock_do:
+            result = fetch("t1", base_path="/tmp", raw=True)
+        assert result["kind"] == "invalid_input"
+        assert "attachment=" in result["message"]
+        mock_do.assert_not_called()
+
+    def test_raw_rejected_in_remote_mode(self):
+        """Remote returns content inline as JSON; raw bytes can't be text-encoded
+        — same constraint that makes remote image fetches metadata-only."""
+        import server
+        from server import fetch
+        with patch.object(server, "_REMOTE_MODE", True), \
+             patch("server.fetch_remote") as mock_remote:
+            result = fetch("t1", base_path="/tmp", attachment="a.pdf", raw=True)
+        assert result["kind"] == "invalid_input"
+        assert "remote mode" in result["message"]
+        mock_remote.assert_not_called()
+
+    def test_raw_reaches_fetch_attachment(self):
+        """The seam: a new param is only real if it survives every layer."""
+        with patch("tools.fetch.router.detect_id_type", return_value=("gmail", "t1")), \
+             patch("tools.fetch.router.fetch_attachment") as mock_att:
+            mock_att.return_value = FetchResult(
+                path="/tmp/t", content_file="/tmp/t/content.md",
+                format="markdown", type="pdf", metadata={},
+            )
+            do_fetch("t1", attachment="a.pdf", raw=True)
+        assert mock_att.call_args.kwargs["raw"] is True
+
+    def test_deposit_raw_writes_bytes_and_names_the_file(self, tmp_path):
+        from tools.fetch.gmail import _deposit_raw
+        extras = _deposit_raw(tmp_path, b"%PDF-1.7 fake", "Report.pdf")
+        assert extras["raw_file"] == "Report.pdf"
+        assert (tmp_path / "Report.pdf").read_bytes() == b"%PDF-1.7 fake"
+
+    def test_deposit_raw_warns_rather_than_failing_when_bytes_missing(self, tmp_path):
+        """Best-effort: the extraction is what the caller asked for, so a missing
+        original degrades to a warning instead of losing the whole fetch."""
+        from tools.fetch.gmail import _deposit_raw
+        extras = _deposit_raw(tmp_path, None, "Report.pdf")
+        assert "raw_file" not in extras
+        assert extras["warnings"]

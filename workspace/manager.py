@@ -185,6 +185,30 @@ def write_page_thumbnail(
     return file_path
 
 
+def write_raw(
+    folder: Path,
+    data: bytes,
+    filename: str,
+) -> Path:
+    """
+    Write bytes verbatim into a deposit folder.
+
+    The general binary deposit: an attachment's untouched original alongside its
+    extraction (mise-buzafo), an image, a chart. No conversion, no encoding.
+
+    Args:
+        folder: Deposit folder from get_deposit_folder()
+        data: Bytes to write
+        filename: Output filename
+
+    Returns:
+        Path to the written file
+    """
+    file_path = folder / filename
+    file_path.write_bytes(data)
+    return file_path
+
+
 def write_image(
     folder: Path,
     image_bytes: bytes,
@@ -192,6 +216,9 @@ def write_image(
 ) -> Path:
     """
     Write image file to deposit folder.
+
+    Named alias for write_raw — kept because image call sites read better with it,
+    and because the image path has its own resize/format contract upstream.
 
     Args:
         folder: Deposit folder from get_deposit_folder()
@@ -201,9 +228,7 @@ def write_image(
     Returns:
         Path to the written file
     """
-    file_path = folder / filename
-    file_path.write_bytes(image_bytes)
-    return file_path
+    return write_raw(folder, image_bytes, filename)
 
 
 def write_chart(

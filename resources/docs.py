@@ -406,6 +406,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | Operation | Description | Required params |
 |-----------|-------------|-----------------|
 | `create` | Create Doc/Sheet/plain file/folder from content, deposit, or file_path | `content`+`title` OR `source` OR `file_path`; folder: `title` only |
+| `copy` | Duplicate file(s) into a folder — originals untouched | `file_id` (str or list), `folder_id` (optional), `title` (optional) |
 | `move` | Move file to different folder | `file_id`, `folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
 | `share` | Share file with people by email | `file_id`, `to` |
@@ -451,10 +452,10 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 |-------|------|---------|---------|
 | `operation` | str | **required** | All |
 | `content` | str | None | create, overwrite, prepend, append, replace_text, draft (email body), comment |
-| `title` | str | None | create, rename |
+| `title` | str | None | create, rename, copy (rename the copy; single-file only) |
 | `doc_type` | str | 'doc' | create ('doc', 'sheet', 'file', 'folder', 'form'). 'file' uploads as-is — MIME inferred from title extension. 'folder' creates an empty folder (no content needed). 'form' creates a Google Form from a YAML/JSON spec. |
-| `folder_id` | str | None | create, move (target folder — canonical name) |
-| `file_id` | str | None | move, rename, share, overwrite, prepend, append, replace_text, trash (str or list), draft (draft ID — update in place) |
+| `folder_id` | str | None | create, move, copy (target folder — canonical name; optional for copy) |
+| `file_id` | str | None | copy (str or list), move, rename, share, overwrite, prepend, append, replace_text, trash (str or list), draft (draft ID — update in place) |
 | `destination_folder_id` | str | None | move (deprecated alias for `folder_id`) |
 | `source` | str | None | create, overwrite (path to deposit folder) |
 | `file_path` | str | None | create, overwrite (any readable local path — `/tmp`, `~/scratch` etc. all fine; no deposit needed) |

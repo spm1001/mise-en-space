@@ -21,6 +21,7 @@ from tools import (
     do_archive,
     do_comment,
     do_comment_reply,
+    do_copy,
     do_create,
     do_draft,
     do_label,
@@ -41,6 +42,7 @@ from tools import (
 # Conditional requirements (create needs content OR source) stay in handlers.
 REQUIRED_PARAMS: dict[str, set[str]] = {
     "create": set(),  # content OR source — handler validates
+    "copy": {"file_id"},  # folder_id optional — Drive defaults to beside the original
     "move": {"file_id"},  # folder_id OR destination_folder_id (alias) — handler validates
     "rename": {"file_id", "title"},
     "share": {"file_id", "to"},
@@ -69,6 +71,9 @@ DISPATCH: dict[str, Any] = {
         content=p["content"], title=p["title"], doc_type=p["doc_type"],
         folder_id=p["folder_id"], source=p["source"], base_path=p["base_path"],
         file_path=p.get("file_path"), page_setup=p.get("page_setup"),
+    ),
+    "copy": lambda p: do_copy(
+        file_id=p["file_id"], folder_id=p["folder_id"], title=p["title"],
     ),
     "move": lambda p: do_move(
         file_id=p["file_id"], folder_id=p["folder_id"],
@@ -125,15 +130,16 @@ DISPATCH: dict[str, Any] = {
 DO_DESCRIPTION_FULL = """\
 Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail.
 
-Operations: create, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, trash, setup_oauth.
-Create: content + title + doc_type (doc/sheet/file/folder/form). page_setup='pageless' for pageless docs. file_path= to read from disk. folder: title only, no content needed. form: content is YAML/JSON spec with title, description, questions.
-Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content). Sheets: overwrite=CSV replaces first tab; replace_text=cell find/replace. Forms: overwrite takes the same spec as create — fetch, tweak, overwrite (replaces all questions). Doc edits return cues.restore_point (pre-edit Version history anchor); overwrite also posts a restore-point comment (restore_comment=False to skip on shared docs).
+Operations: create, copy, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, trash, setup_oauth.
+Create: content + title + doc_type (doc/sheet/file/folder/form). page_setup='pageless'. file_path= to read from disk. folder: title only. form: content is YAML/JSON spec with title, description, questions.
+Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content). Sheets: overwrite=CSV replaces first tab; replace_text=cell find/replace. Forms: overwrite takes the same spec as create — fetch, tweak, overwrite (replaces all questions). Doc edits return cues.restore_point (pre-edit Version history anchor); overwrite also posts a restore-point comment (restore_comment=False skips).
 Email: draft (to + subject + content; file_id=draft_id updates that draft in place), reply_draft (file_id + content — refuses if the thread already carries a draft, naming it; supersede=True discards existing thread drafts first), archive/star/label. Drafts auto-append the user's Gmail signature — don't write a sign-off in content.
 Trash: file_id (single or list) — Drive files go to recoverable trash; Gmail draft IDs (r+digits) are discarded permanently.
 Comments: comment (file_id + content — opens a NEW thread), comment_reply (file_id + comment_id [from comments.md] + content and/or action=resolve|reopen). Both auto-prefix '[agent] '.
 Share: file_id + to + role (reader/writer/commenter), confirm=True to execute.
+Copy: file_id (single or list) + folder_id + optional title. Originals untouched; returns source_id→copy_id. Copy-restricted files report blocked.
 Move: file_id (single or list) + folder_id (alias: destination_folder_id).
-setup_oauth: bootstrap Google credentials when none exist. Opens a browser for consent; saves token to Keychain. force=true to re-auth."""
+setup_oauth: bootstrap Google credentials. Opens a browser; saves to Keychain. force=true to re-auth."""
 
 DO_DESCRIPTION_REMOTE = """\
 Act on Google Workspace (remote mode — safe operations only).

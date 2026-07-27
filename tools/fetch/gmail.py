@@ -13,7 +13,7 @@ from adapters.pdf import convert_pdf_content, render_pdf_pages
 from extractors.gmail import extract_thread_content, parse_ics_uid
 from extractors.image import resize_image_bytes
 from models import FetchResult, FetchError, InviteState
-from workspace import get_deposit_folder, write_content, write_manifest, write_image
+from workspace import get_deposit_folder, write_content, write_manifest, write_image, write_raw
 
 from .common import _build_cues, _deposit_pdf_thumbnails
 from .gmail_attachments import (
@@ -326,16 +326,42 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
     )
 
 
+def _deposit_raw(folder: Path, data: bytes | None, filename: str) -> dict[str, Any]:
+    """Deposit an attachment's untouched original beside its extraction.
+
+    Best-effort by design (mise-buzafo): the extraction is what the caller asked
+    for, so a failed raw write degrades to a warning rather than losing the fetch.
+    The filename needs no separate cue — _build_cues lists the folder, so writing
+    before it runs puts the file in cues.files for free.
+    """
+    if data is None:
+        return {"warnings": ["raw=True requested but the original bytes were unavailable"]}
+    try:
+        write_raw(folder, data, filename)
+        return {"raw_file": filename}
+    except OSError as e:
+        return {"warnings": [f"raw=True requested but writing {filename} failed: {e}"]}
+
+
 def fetch_attachment(
     thread_id: str,
     attachment_name: str,
     base_path: Path | None = None,
+    raw: bool = False,
 ) -> FetchResult | FetchError:
     """
     Fetch a single named attachment from a Gmail thread.
 
     Supports all extractable types including Office files (DOCX/XLSX/PPTX)
     that are skipped during eager thread extraction.
+
+    Args:
+        raw: Also deposit the attachment's ORIGINAL bytes, not just the text
+            extracted from them. PDFs and Office files are otherwise converted
+            and the original discarded, so the actual document was unreachable
+            through mise — you could read its markdown and never the file. Pairs
+            with do(create, doc_type='file', file_path=...) to materialise a
+            Gmail-only artefact into Drive.
     """
     # 1. Fetch thread to find the attachment
     thread_data = fetch_thread(thread_id)
@@ -418,11 +444,25 @@ def fetch_attachment(
         output_format = "csv" if office_type == "xlsx" else "markdown"
         content_filename = f"content.{result.extension}"
 
+        # The Drive-exfil path converts server-side and never downloads, so for
+        # raw= the bytes have to be fetched deliberately — otherwise raw silently
+        # does nothing on exactly the attachments the optimisation applies to.
+        if raw and content_bytes is None:
+            try:
+                content_bytes = _download_attachment_bytes(target_msg, target_att, mime_type)
+            except Exception as e:
+                warnings.append(f"raw=True requested but the download failed: {e}")
+
         folder = get_deposit_folder(office_type, title, thread_id, base_path=base_path)
         content_path = write_content(folder, result.content, filename=content_filename)
 
-        all_warnings = warnings + result.warnings
+        # Before _build_cues so the raw filename lands in cues.files.
+        raw_extras = _deposit_raw(folder, content_bytes, attachment_name) if raw else {}
+
+        all_warnings = warnings + result.warnings + raw_extras.get("warnings", [])
         extra: dict[str, Any] = {"source": source_label, "gmail_thread_id": thread_id}
+        if raw_extras.get("raw_file"):
+            extra["raw_file"] = raw_extras["raw_file"]
         if all_warnings:
             extra["warnings"] = all_warnings
         write_manifest(folder, office_type, title, thread_id, extra=extra)
@@ -477,7 +517,10 @@ def fetch_attachment(
         # Deposit thumbnails via shared helper
         thumb_extras = _deposit_pdf_thumbnails(folder, pdf_result)
 
-        all_warnings = warnings + pdf_result.warnings
+        # Before _build_cues so the raw filename lands in cues.files.
+        raw_extras = _deposit_raw(folder, content_bytes, attachment_name) if raw else {}
+
+        all_warnings = warnings + pdf_result.warnings + raw_extras.get("warnings", [])
         extra = {
             "source": source_label,
             "gmail_thread_id": thread_id,
@@ -485,6 +528,8 @@ def fetch_attachment(
             "char_count": pdf_result.char_count,
             **thumb_extras,
         }
+        if raw_extras.get("raw_file"):
+            extra["raw_file"] = raw_extras["raw_file"]
         if all_warnings:
             extra["warnings"] = all_warnings
         write_manifest(folder, "pdf", title, thread_id, extra=extra)

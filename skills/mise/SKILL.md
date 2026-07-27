@@ -91,8 +91,25 @@ fetch("1abc...", base_path="...")                          # Drive file
 fetch("https://docs.google.com/...", base_path="...")      # Drive URL
 fetch("18f3a4b...", base_path="...")                       # Gmail thread
 fetch("thread_id", attachment="budget.xlsx", base_path="...")  # Single attachment
+fetch("thread_id", attachment="report.pdf", raw=True, base_path="...")  # + the original bytes
 fetch("folder_id", base_path="...", recursive=True)        # Full folder tree (depth 5, 1000 items max)
 ```
+
+**`raw=True` gets you the actual file, not just its text.** A PDF or Office attachment is
+normally downloaded, converted to markdown, and the original *discarded* — so you can read the
+extraction and never the document itself. `raw=True` deposits the untouched bytes alongside, and
+they show up in `cues.files`. Two reasons to reach for it: you need to *see* the document (figures,
+layout, anything the text export loses), or you want to put a Gmail-only artefact into Drive —
+
+```python
+r = fetch("thread_id", attachment="report.pdf", raw=True, base_path="...")
+do(operation="create", doc_type="file", file_path=f"{r['path']}/report.pdf",
+   title="report.pdf", folder_id="1abc...", base_path="...")
+```
+
+That two-step is the whole gather-scattered-artefacts-into-one-folder workflow; pair it with
+`do(operation="copy")` for the things already in Drive. `raw=` needs `attachment=` and isn't
+available in remote mode (binary can't ride back inline).
 
 **Gmail URL gotcha:** Browser URLs contain web-format IDs (`FMfcgz...`), not API IDs. The MCP converts automatically, but conversion fails for self-sent emails (~2018+). If fetch errors on a Gmail URL, ask the user for the thread ID.
 
@@ -326,6 +343,7 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 | Operation | What it does | Key params |
 |-----------|-------------|------------|
 | `create` | New Doc/Sheet/Slides/plain file | `content`+`title` OR `source` |
+| `copy` | Duplicate file(s) into a folder, originals untouched — single or batch | `file_id` (str or list), `folder_id`, `title` |
 | `move` | Move file(s) between folders — single or batch | `file_id` (str or list), `folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
 | `share` | Share file with people (confirm gate) | `file_id`, `to`, `confirm=True` |
