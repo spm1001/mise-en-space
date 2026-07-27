@@ -33,6 +33,7 @@ REMOTE_ALLOWED_OPS = {"create", "draft", "reply_draft", "archive", "star", "labe
 def search_remote(
     query: str, sources: list[str] | None, max_results: int,
     base_path: str, folder_id: str | None, type: str | None = None,
+    raw_query: str | None = None,
 ) -> dict[str, Any]:
     """
     Remote search: deposit to temp dir, return full results inline.
@@ -48,7 +49,8 @@ def search_remote(
         temp_dir = tempfile.mkdtemp(prefix="mise-remote-search-")
         effective_base = Path(temp_dir)
     try:
-        result = do_search(query, sources, max_results, base_path=effective_base, folder_id=folder_id, type=type)
+        result = do_search(query, sources, max_results, base_path=effective_base,
+                           folder_id=folder_id, type=type, raw_query=raw_query)
         # Strip the path — remote clients can't read it. This triggers
         # SearchResult.to_dict() to return full results inline.
         result.path = None

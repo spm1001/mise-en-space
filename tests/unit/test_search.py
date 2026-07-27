@@ -1403,3 +1403,20 @@ class TestSearchMCPValidation:
             search(raw_query="name contains 'PCA'", base_path="/tmp")
         mock_do.assert_called_once()
         assert mock_do.call_args.kwargs["raw_query"] == "name contains 'PCA'"
+
+    def test_raw_query_reaches_remote_mode(self) -> None:
+        """Caught during /close. raw_query was accepted at the tool boundary and
+        never passed to search_remote, so a remote caller asking for
+        `name contains 'PCA'` fell through to query="" — which builds
+        `trashed = false` with no clause and returns an arbitrary slice of the
+        WHOLE Drive, presented as results. Same disease as the rest of the day:
+        a param accepted and silently dropped, producing confident nonsense.
+
+        Threaded rather than rejected: raw_query is a read-side refinement, and
+        the remote whitelist exists to gate WRITES."""
+        import server
+        from server import search
+        with patch.object(server, "_REMOTE_MODE", True), \
+             patch("server.search_remote", return_value={"ok": True}) as mock_remote:
+            search(raw_query="name contains 'PCA'", base_path="/tmp")
+        assert "name contains 'PCA'" in mock_remote.call_args.args

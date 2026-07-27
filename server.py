@@ -159,7 +159,7 @@ def search(
         call_params["type"] = type
 
     if _REMOTE_MODE:
-        result = search_remote(query, sources, max_results, base_path, folder_id, type)
+        result = search_remote(query, sources, max_results, base_path, folder_id, type, raw_query)
         _log_search_result(call_params, result)
         return result
 
