@@ -127,7 +127,7 @@ docs/           Design documents and references
 | Aspect | stdio (default) | remote (`--remote`) |
 |--------|----------------|---------------------|
 | Transport | stdin/stdout | StreamableHTTP on `/mcp` |
-| `do()` operations | All 17 | 6 safe ops: create, draft, reply_draft, archive, star, label |
+| `do()` operations | All 18 | 6 safe ops: create, draft, reply_draft, archive, star, label |
 | Content delivery | Filesystem deposits | Inline in JSON-RPC response (`content` + `comments` fields) |
 | `base_path` | Required | Optional (temp dir) |
 | Tool description | Full | Restricted (only safe ops + relevant params) |
@@ -172,6 +172,19 @@ Data models have `warnings: list[str]` fields. Extractors populate them during p
 ```
 
 **Folder naming:** `{type}--{title-slug}--{id-prefix}/` (ID first 12 chars for readability).
+
+## Design Decisions and Their Consequences
+
+*Facts about this codebase are recoverable by reading it; grep beats any list we could write. What is **not** recoverable is the reasoning that made a fact deliberate. This section holds only consequences that are expensive to re-derive and cheap to get wrong — if an entry here could be answered by a one-minute grep, it belongs somewhere else or nowhere.*
+
+**Deposits keep content out of context. `Read` is where context is spent.** In stdio mode `fetch` returns `path`, `content_file`, `format`, `type`, `metadata` and `cues` — `FetchResult.content` is `None` except in remote mode, where the client has no filesystem. So the fetch itself costs almost no context; the cost lands later, when the caller reads the deposit. Two things follow, and both have been got wrong in practice:
+
+- **Depositing more is nearly free, so never narrow a fetch to save context.** The lever is what the caller is *pointed at*, not what is *written to disk*. When a URL names a tab, heading, slide or comment, the right move is to deposit everything as usual and make the cue name the artefact holding it (`content_<tab-slug>.csv`, a `comments.md` entry, a line offset into `content.md`). That delivers the saving with nothing withheld — so a caller who ignores the cue still has the whole document, and the silent-partial-answer failure cannot occur. A whole design argument was had on the wrong axis before this was noticed (mise-dogape, 2026-07-27).
+- **Remote mode is the exception.** There `content` *is* inline, so payload size is a genuine cost — but only there.
+
+**Three verbs is a budget, not minimalism.** `do()`'s description is hard-capped at 2048 characters and the API silently drops schema properties above it (see the MCP description ceiling in `.bon/understanding.md`). Every new operation name spends that budget three times over: description, dispatch table, and the model's reasoning about which verb to pick. This is why the standing rule is to check whether an existing op already covers a need with different parameters before minting a new one — it is a resource constraint, not an aesthetic.
+
+**`mcp[cli]` is pinned `<2.0.0` on purpose.** The 2026-07-28 MCP spec (stateless core, MRTR, header routing, Tasks as an extension) will land in SDK 2.x. mise uses **none** of the deprecated surfaces — no sampling, elicitation, roots, MCP logging or session id — its remote path is parked, and its `tools/list` ordering is already deterministic. There is a twelve-month deprecation window and nothing measured to gain, so the ceiling is a deliberate hold. **Treat a Dependabot PR raising it to 2.x as a spec migration, not a dependency bump.** Full adjudication: bon `mise-veraja`.
 
 ## Gotchas
 
