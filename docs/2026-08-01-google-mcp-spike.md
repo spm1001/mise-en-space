@@ -62,6 +62,39 @@ ranking + truncation honesty (their fan-out is inside Google's network, so expec
 latency floor; ranking and honesty are the real questions); (b) `read_file_content`
 (includeComments=true) vs mise `fetch` on the same commented Doc — extraction fidelity.
 
+## Complete tool map (all eight servers, harvested live 2026-08-01)
+
+All `*mcp` services are now enabled on `mit-workspace-mcp-server` (413373784317), so
+`tools/list` works everywhere; only `tools/call` awaits preview acceptance.
+
+| Server | Tools |
+|---|---|
+| workspacemcp (1) | search_corpus |
+| gmailmcp (13) | create_draft, list_drafts, get_thread, get_message, search_threads, label/unlabel_thread, label/unlabel_message, apply_sensitive_thread/message_label, list_labels, create_label |
+| drivemcp (8) | search_files, read_file_content, download_file_content, get_file_metadata, get_file_permissions, list_recent_files, copy_file, create_file |
+| calendarmcp (9) | search_events, list_events, get_event, list_calendars, **suggest_time**, create_event, update_event, delete_event, **respond_to_event** |
+| sheetsmcp (9) | get_values, get_spreadsheet, update_values, **update_formulas**, append_values, insert_dimension, batch_clear_values, copy_sheet_to_another_spreadsheet, update_spreadsheet |
+| chatmcp (4) | search_conversations, search_messages, list_messages, **send_message** |
+| docsmcp (2) | read_doc, update_doc |
+| slidesmcp (2) | read_presentation, update_presentation |
+
+Revisions this forces to the "thin views" verdict:
+
+- **Calendar is where Google's MCP beats mise outright**: full event CRUD, RSVP
+  (`respond_to_event` — the write mise deliberately declined in pinodi), and
+  `suggest_time` (find-mutual-availability — with universal search, one of only two
+  genuinely *composed* tools in the estate). Mise's calendar is search-only, ±7 days.
+  Under the two-tier strategy, calendar-write is Google's slot; mise should not grow it.
+- **Sheets MCP lands on two open board items**: range-addressed, formula-aware editing
+  (update_values/update_formulas/append_values/insert_dimension) is `mise-vadoko`'s
+  entire ask and half of `mise-bazuvo`'s. Both briefs now carry the cross-reference —
+  decide route-vs-build when the preview clears (and probe whether their write path
+  produces rich-text links/smart chips, bazuvo's actual want).
+- **Chat's send_message is the only direct send anywhere in the estate** — Gmail
+  stays drafts-only while Chat sends. A deliberate asymmetry worth remembering
+  when reasoning about their safety posture.
+- Docs and Slides stay thin (read + raw batchUpdate).
+
 ## Ergonomics findings from the live schemas (`gmcp-tools-*.json`)
 
 Worth stealing:
