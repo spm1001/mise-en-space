@@ -56,18 +56,67 @@ The one place relevance-ranked Gmail could exist is `search_corpus` re-ranking s
 which this bench now decides; disclosing the ordering semantics on mise's own surface is
 tracked as bon mise-hovugo.
 
-**Google side (staged, blocked on gate 2):** driver is `2026-08-01-google-mcp-spike/gmcp.py`
-(refreshes mise's token in-memory from the plugin-data token.json, never prints it;
-`GMCP_BASE` env selects the server). Resume with:
+**Google side — MEASURED 2026-08-01 (preview acceptance landed same day; four ITV projects
+blessed: mit-dev 1018230309720, mit-workspace-mcp-server 413373784317, itv-mit-slides-formatter
+780647236756, itv-mit-shared 959051780527).** Driver: `2026-08-01-google-mcp-spike/gmcp.py`
+(`GMCP_BASE` env selects the server; refreshes mise's token in-memory, never prints it).
 
-```bash
-python3 docs/2026-08-01-google-mcp-spike/gmcp.py call search_corpus '{"query": "ViewersLogic", "pageSize": 20}' 2
-```
+### Head-to-head results
 
-Planned legs once unblocked: (a) `search_corpus` vs mise composed search — latency +
-ranking + truncation honesty (their fan-out is inside Google's network, so expect a lower
-latency floor; ranking and honesty are the real questions); (b) `read_file_content`
-(includeComments=true) vs mise `fetch` on the same commented Doc — extraction fidelity.
+**Latency: a wash.** `search_corpus` 1.15–3.33s across 4 queries × 2 runs vs mise composed
+1.32–3.40s. Google's in-network fan-out buys no wall-clock advantage.
+
+**Gmail ranking: Google wins decisively — `search_corpus` relevance-ranks Gmail, measured.**
+Mise's recency artefact (one fresh broad thread topping 3 of 4 queries) vs Google's
+per-query on-topic tops ("Hillary's x WPP - Region Lift", "Fwd: Clean Room Agreement - ITV",
+"Document shared: ViewersLogic × Outcome Planner" promoted from mise's 3rd/recency).
+Non-monotonic in time → ranker, not cursor. **This is the capability mise structurally
+cannot build client-side** (whole-corpus candidate recall needs the index; the API exports
+a filter). Second clear win: **calendar recall 4/4 queries vs mise 0/4** — mise's ±7-day
+calendar window is useless for content queries.
+
+**Payload economics: mise wins massively.** 205–264KB inline JSON per search (30 items ×
+~2–27KB each, full message snippets) vs mise's ~2KB cued summary + deposit.
+
+**Metadata: mise wins.** Their gmail message objects carry `subject, sender, snippet,
+recipients, viewUrl` — **no timestamp, no labels, no unread, no has_invite**. An agent
+cannot tell fresh from stale without another call.
+
+**Honesty: mise wins, and their gaps are the accept-and-drop pattern measured externally:**
+`pageSize: 20` silently ignored (fixed ~30 back, ~10/corpus); no truncation signal, no
+totals, no pagination (declared unsupported while `pageToken` sits in the schema); and
+`read_file_content(includeComments=true)` **returned zero comment content on a doc with 10
+open comments** — a silent no-op on the exact surface mise treats as first-class.
+
+### Fetch fidelity (same docs, both fetchers)
+
+Text extraction is **near-identical** — Google's `fileContent` (8,324ch) vs mise content.md
+(8,388ch) on the bon-estate doc; both almost certainly ride the same `text/markdown` export
+engine. Differences: mise adds tab headings, blockquote recovery, deposits + manifest +
+metadata; JSON escaping ~2×'s their payload. **Smart chips fumbled by both, differently**:
+mise drops people-chips silently (empty cell), Google renders each as the literal word
+"Person" (presence without identity). **Checkbox loss in table cells: both lose them; only
+mise warned** (count-mismatch guard). Tick-state face-off inconclusive (doc had 0 ticked
+boxes; both rendered 67 `[ ]` consistently). read_file_content is fast: 0.21–0.29s.
+
+### Sheets write probe (vadoko/bazuvo evidence)
+
+`update_values` runs **USER_ENTERED semantics** (undocumented): `=HYPERLINK(...)` strings
+become real formulas (live link), bare URLs auto-link. Markdown links stay literal; embedded
+URLs stay dead; **no chipRuns, no textFormatRuns — rich-text/smart-chip writing does not
+exist on their surface**. So bazuvo mechanisms 3/4 need REST `batchUpdate` wherever they're
+built; their MCP only proves the vadoko range-write semantics. `suggest_time` works (0.22s)
+but returns raw freebusy gaps incl. a 900-minute overnight "slot" — not meeting-shaped
+without the unexplored `preferences` param.
+
+### Architecture conclusion the data wrote
+
+**Their ranker inside our envelope.** Mise `search` gains an optional `search_corpus`
+backend for candidate discovery: take their ranked IDs, hydrate top-K with mise's own
+metadata (dates/labels/unread — one cheap batch), deposit, return the 2KB cued summary.
+Google supplies what only Google can (whole-corpus ranking, all-time calendar recall);
+mise supplies everything they left out (economics, metadata, honesty, comments). Calendar
+*content search* should also ride this backend — it beats extending mise's ±7d window.
 
 ## Complete tool map (all eight servers, harvested live 2026-08-01)
 
