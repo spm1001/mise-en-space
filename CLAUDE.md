@@ -243,7 +243,7 @@ convert) — fine for Cornichon, whose PDFs come from the user's own Drive.
 
 ### Call Log
 
-Every MCP tool call is logged to `~/.local/share/mise/calls.jsonl` (5 MB rotation, 3 backups). Fields: `ts`, `tool`, `params`, `ok`, `error` (on failure), `result` (key summary fields). Useful for debugging ghost docs, bad params, or unexpected tool behaviour without adding print statements.
+Every MCP tool call is logged to `~/.local/share/mise/calls.jsonl` (5 MB rotation, 3 backups). Fields: `ts`, `tool`, `params`, `ok`, `error` (on failure), `result` (key summary fields). Useful for debugging ghost docs, bad params, or unexpected tool behaviour without adding print statements. **`params` is a summary that omits `base_path`** — an all-absent base_path in the log is the logger, not the callers (the 2026-08-01 usage review nearly minted that phantom; cwd distribution needs transcripts).
 
 ```bash
 # Last 10 calls
