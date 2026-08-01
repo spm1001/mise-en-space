@@ -37,9 +37,15 @@ one command (below). Tracked as a bon on this repo's board (search `bon list` fo
    `gcloud services enable workspacemcp.googleapis.com gmailmcp.googleapis.com drivemcp.googleapis.com --project=413373784317`
    (all three now enabled on `mit-workspace-mcp-server`).
 2. Bare `"The caller does not have permission"` on every `tools/call` → **Developer Preview
-   Program enrolment** (application at developers.google.com/workspace/preview; acceptance
-   pending as of writing). `tools/list` gating is inconsistent: free on workspacemcp
-   pre-enablement, 403 on calendarmcp/docsmcp without their services enabled.
+   Program enrolment** (application at developers.google.com/workspace/preview; accepted
+   same day — four ITV projects blessed, see Bench state). `tools/list` gating is
+   inconsistent: free on workspacemcp pre-enablement, 403 on calendarmcp/docsmcp without
+   their services enabled.
+3. **Project footprint change, deliberate (2026-08-01):** all eight MCP services
+   (`workspacemcp`, `gmailmcp`, `drivemcp`, `docsmcp`, `sheetsmcp`, `slidesmcp`,
+   `calendarmcp`, `chatmcp`) are now **enabled on `mit-workspace-mcp-server`**
+   (413373784317), by Sameer's authorisation, for this spike and the mise-gofuvu work.
+   An auditor finding them unexplained should read this doc.
 3. Note: preview Program Terms forbid shipping Pre-GA features in public applications.
 
 ## Bench state
