@@ -7,6 +7,7 @@ and the adapter functions with mocked httpx client.
 
 from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
+from urllib.parse import parse_qsl, urlsplit
 
 import pytest
 
@@ -172,6 +173,22 @@ class TestExtractDriveLinks:
         )
         links = _extract_drive_links(text)
         assert len(links) == 2
+
+    def test_html_entity_escaped_link_yields_clean_query_keys(self) -> None:
+        # Comment-notification emails carry Drive links ONLY in the HTML part
+        # (measured 2026-07-27: 8/8 real threads), where & arrives as &amp;.
+        # Without unescaping, parse_qsl yields ['disco', 'amp;usp', 'amp;tab']
+        # and the tab half of the pointer is destroyed (mise-livano).
+        html_body = (
+            '<a href="https://docs.google.com/document/d/1XyzDocId/edit'
+            "?disco=AAABcDeFgHi&amp;usp=comment_email&amp;tab=t.0"
+            '#heading=h.abc123">Open</a>'
+        )
+        links = _extract_drive_links(html_body)
+        assert len(links) == 1
+        query = urlsplit(links[0]["url"]).query
+        keys = [k for k, _ in parse_qsl(query)]
+        assert keys == ["disco", "usp", "tab"]
 
     def test_no_links(self) -> None:
         assert _extract_drive_links("No links here") == []

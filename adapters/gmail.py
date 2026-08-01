@@ -10,6 +10,7 @@ MiseHttpClient (async) when the tools/server layer goes async.
 """
 
 import base64
+import html
 import logging
 import re
 import tempfile
@@ -177,7 +178,10 @@ def _extract_drive_links(text: str | None) -> list[dict[str, str]]:
 
     links: list[dict[str, str]] = []
     for match in DRIVE_LINK_PATTERN.finditer(text):
-        url = match.group(0)
+        # Links harvested from HTML parts arrive entity-escaped (&amp;), which
+        # parses to garbage query keys downstream. Unescape the match, not the
+        # whole body — body text content must stay untouched (mise-livano).
+        url = html.unescape(match.group(0))
         links.append({"url": url})
 
     return links
