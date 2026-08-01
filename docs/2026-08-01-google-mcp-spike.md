@@ -48,6 +48,13 @@ one command (below). Tracked as a bon on this repo's board (search `bon list` fo
 search via `do_search`, 4 estate queries × 2 runs: cold 1.8–3.4s, warm 1.3–1.7s, 20+20
 results with truncation cues. Quality note against ourselves: **Gmail results are
 recency-ordered, not relevance-ordered** — one fresh broad thread topped 3 of 4 queries.
+Attribution (verified 2026-08-01): this is a **platform ceiling, not a mise choice** — the
+Gmail API has no ordering parameter (newest-first is all it sells), and Google's own gmailmcp
+`search_threads` carries the identical constraint. Drive is unaffected: mise passes no
+`orderBy` on fullText queries, so Drive results already carry Google's relevance ranking.
+The one place relevance-ranked Gmail could exist is `search_corpus` re-ranking server-side —
+which this bench now decides; disclosing the ordering semantics on mise's own surface is
+tracked as bon mise-hovugo.
 
 **Google side (staged, blocked on gate 2):** driver is `2026-08-01-google-mcp-spike/gmcp.py`
 (refreshes mise's token in-memory from the plugin-data token.json, never prints it;
