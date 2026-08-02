@@ -171,7 +171,7 @@ class TestGmailFragmentSegments:
         assert diagnose_gmail_url(self.ALL_URL) is None
 
 
-class TestGmailIdExtractionExtras:
+class TestGmailIdExtraction:
     def test_extract_gmail_id_returns_api_id(self):
         """Return API ID unchanged."""
         api_id = "19b0e7fe6f653f69"
