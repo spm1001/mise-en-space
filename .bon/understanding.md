@@ -2,7 +2,7 @@
 
 Mise-en-space is a Google Workspace MCP server that gives Claude access to Drive and Gmail through three verbs: search, fetch, and do. The architecture follows a strict layering — extractors (pure functions), adapters (thin API wrappers), tools (MCP wiring) — and this separation is load-bearing, not cosmetic.
 
-*Compacted 2026-08-02, 14,828 words → 8,480 words. Pre-compaction copy: `git show 7ddbb82:.bon/understanding.md`. The seam is **live invariant vs settled history** — a claim that breaks something if contradicted in code today stays; which suite shipped what, which brief was falsified, which incident got resolved goes to git and the board. If this file passes ~9,000 words again, run the same pass (mise-sijozi).*
+*Compacted 2026-08-02, 14,828 words → ≈8,500. Pre-compaction copy: `git show 7ddbb82:.bon/understanding.md`. The seam is **live invariant vs settled history** — a claim that breaks something if contradicted in code today stays; which suite shipped what, which brief was falsified, which incident got resolved goes to git and the board. If this file passes **~10,000 words**, run the same pass. That threshold is deliberately not 9,000: a trigger that fires on a file you just compacted is a crying-wolf trigger, and those get ignored rather than obeyed. 10,000 leaves roughly a week of runway at recent growth (~1,100 words in the five days before this pass), so when it fires it means something.*
 
 ## Mass accumulates where mechanical enforcement can't see
 
