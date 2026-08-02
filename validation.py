@@ -22,8 +22,9 @@ GOOGLE_FILE_ID_PATTERN = re.compile(r'^[a-zA-Z0-9_-]+$')
 
 # Gmail patterns
 GMAIL_API_ID_PATTERN = re.compile(r'^[0-9a-f]{16}$')
-GMAIL_WEB_URL_PATTERN = re.compile(r'https?://mail\.google\.com/mail/.*#[^/]+/([a-zA-Z0-9_-]+)')
 GMAIL_WEB_ID_PREFIXES = ('FM', 'KtbxL', 'QgrcJHs', 'CLL', 'Gtj')
+# Gmail draft ids, as they appear in mise's own draft links and in drafts.list.
+GMAIL_DRAFT_ID_PATTERN = re.compile(r'^r-?\d+$')
 
 
 
@@ -216,6 +217,21 @@ def convert_gmail_web_id(web_id: str) -> str | None:
     return _extract_api_id_from_decoded(decoded)
 
 
+def gmail_fragment_segments(url: str) -> list[str]:
+    """
+    Split a Gmail web URL's fragment into its '/'-separated segments.
+
+    The thread token is always the LAST segment, however many precede it:
+    '#all/FMfcgz…' has two, '#search/from%3Aalice+lantern/FMfcgz…' has three,
+    '#chat/space/<id>/<topic>/<msg>' has five. Splitting is deliberate — the
+    previous implementation used a regex capturing the *second* segment, so
+    every 3+ segment fragment extracted the wrong thing, and widening the
+    regex is the kind of fix that silently re-breaks on the next shape.
+    """
+    _, _, fragment = url.partition('#')
+    return [seg for seg in fragment.split('/') if seg]
+
+
 def extract_gmail_id_from_url(url: str) -> str | None:
     """
     Extract and convert Gmail thread/message ID from a Gmail web URL.
@@ -226,7 +242,9 @@ def extract_gmail_id_from_url(url: str) -> str | None:
         url: Gmail web URL (e.g., "https://mail.google.com/mail/u/0/#inbox/FMfcgz...")
 
     Returns:
-        API thread/message ID (16-char hex) or None if extraction/conversion fails
+        API thread/message ID (16-char hex) or None if extraction/conversion fails.
+        Use diagnose_gmail_url() to find out WHY a None happened — the reason is
+        the difference between a refusal a caller can act on and a dead end.
 
     Example:
         >>> extract_gmail_id_from_url("https://mail.google.com/mail/u/0/#inbox/FMfcgzQdzmSkKHmvSJPBLDSZTbfWQwph")
@@ -235,12 +253,106 @@ def extract_gmail_id_from_url(url: str) -> str | None:
     if not url or 'mail.google.com' not in url:
         return None
 
-    match = GMAIL_WEB_URL_PATTERN.search(url)
-    if not match:
+    segments = gmail_fragment_segments(url)
+    if not segments:
         return None
 
-    web_id = match.group(1)
-    return convert_gmail_web_id(web_id)
+    # Google Chat is served from mail.google.com but is a different product with
+    # its own id space — its ids must never reach the mail thread decoder.
+    if segments[0].lower() == 'chat':
+        return None
+
+    token = segments[-1]
+    # The prefix allowlist is the validity gate on the captured token, so a label
+    # name or a search term landing last never gets decoded as a thread.
+    if not token.startswith(GMAIL_WEB_ID_PREFIXES):
+        return None
+
+    return convert_gmail_web_id(token)
+
+
+_SHOW_ORIGINAL_ROUTE = (
+    "The reliable route is the Message-ID: open the message in Gmail, choose "
+    "More > Show original, copy the Message-ID, and pass it to fetch() — or "
+    "search('rfc822msgid:<message-id>'), which resolves to exactly one thread."
+)
+
+
+def diagnose_gmail_url(url: str) -> str | None:
+    """
+    Explain WHY a Gmail web URL cannot be resolved, naming a concrete next move.
+
+    Returns None when the URL does resolve. Otherwise returns teaching text for
+    the specific class of failure, because the classes have different remedies
+    and one generic refusal invites the caller to freelance: on 2026-07-31 a bare
+    (correct) refusal led a session to search the inbox, pick the newest unread
+    thread, and analyse the wrong email as though it were the requested one —
+    while the right thread sat at rank 2 of that same search. Measured the same
+    week: refusals that teach get obeyed in seconds; refusals that don't cost
+    minutes.
+
+    Pure function, no I/O — it runs before any API call.
+    """
+    if not url or 'mail.google.com' not in url:
+        return None
+
+    segments = gmail_fragment_segments(url)
+    if not segments:
+        return (
+            "This Gmail URL has no fragment, so it names a mailbox view rather "
+            "than a thread. fetch() retrieves one specific thread. "
+            "Use search('from:… subject:…') to find it."
+        )
+
+    if segments[0].lower() == 'chat':
+        return (
+            "This is a Google Chat link, not a mail thread. Chat is served from "
+            "mail.google.com but is a different product with its own id space, so "
+            "mise cannot read it — there is no mail thread behind this URL."
+        )
+
+    token = segments[-1]
+
+    if GMAIL_DRAFT_ID_PATTERN.match(token):
+        return (
+            f"This is a Gmail draft link (draft id '{token}'). Drafts are not "
+            f"fetchable as threads — the draft is a separate object. To read the "
+            f"conversation it belongs to, fetch the thread id, which appears in "
+            f"the draft listing alongside the draft."
+        )
+
+    if not token.startswith(GMAIL_WEB_ID_PREFIXES):
+        if len(segments) == 1:
+            what = f"names the '{token[:30]}' mailbox view"
+        else:
+            what = (
+                f"ends in '{token[:30]}', which is not a Gmail thread token — it is "
+                f"still the '{segments[0]}' view"
+            )
+        return (
+            f"This URL {what} rather than an open conversation. Open the message "
+            f"itself so the URL ends in a thread token, or use "
+            f"search('from:… subject:…') to find the thread."
+        )
+
+    # The token IS a thread token. Decode it to tell a convertible thread-f from a
+    # thread-a, rather than pattern-matching the prefix: resolve, don't validate.
+    decoded = _decode_gmail_web_token(token)
+    if decoded and 'thread-a:' in decoded:
+        return (
+            f"This is a self-sent thread (thread-a format, roughly 2018 onward). "
+            f"Its web token decodes cleanly but the number it carries is not the "
+            f"API thread id and no transform is known, so the URL alone cannot "
+            f"reach it. {_SHOW_ORIGINAL_ROUTE}"
+        )
+
+    if convert_gmail_web_id(token) is None:
+        return (
+            f"This Gmail token ('{token[:25]}…') could not be decoded to an API "
+            f"thread id. {_SHOW_ORIGINAL_ROUTE}"
+        )
+
+    return None
 
 
 def is_gmail_web_id(id_value: str) -> bool:
@@ -331,12 +443,9 @@ def extract_gmail_id(input_value: str) -> str:
             if api_id:
                 return api_id
             raise ValueError(
-                f"Could not convert Gmail URL to API ID.\n\n"
-                f"This can happen with:\n"
-                f"- Self-sent emails (thread-a format, ~2018+)\n"
-                f"- Malformed URLs\n\n"
-                f"Try searching by subject or sender instead:\n"
-                f"  search('from:... subject:...')"
+                diagnose_gmail_url(input_value)
+                or "Could not convert this Gmail URL to an API ID. "
+                   "Use search('from:… subject:…') to find the thread."
             )
         raise ValueError(f"Not a Gmail URL: {input_value}")
 
@@ -544,12 +653,13 @@ def detect_fetch_input_problem(file_id: str) -> str | None:
         if "mail.google.com" in s:
             if extract_gmail_id_from_url(s) is not None:
                 return None  # genuine thread URL — let it through
+            reason = diagnose_gmail_url(s)
+            if reason:
+                return f"'{head}' cannot be fetched. {reason}"
             return (
                 f"'{head}' is a Gmail web URL that doesn't point at a single fetchable "
-                f"thread (search, label, and self-sent thread-a URLs can't be resolved "
-                f"to an API ID). To read a conversation, use "
-                f"search('from:… subject:…') to find the thread — fetch retrieves a "
-                f"specific thread, not a Gmail query."
+                f"thread. Use search('from:… subject:…') to find the thread — fetch "
+                f"retrieves a specific thread, not a Gmail query."
             )
 
         # Workspace file URLs are fine if an ID is extractable from the path/query.

@@ -111,9 +111,45 @@ That two-step is the whole gather-scattered-artefacts-into-one-folder workflow; 
 `do(operation="copy")` for the things already in Drive. `raw=` needs `attachment=` and isn't
 available in remote mode (binary can't ride back inline).
 
-**Gmail URL gotcha:** Browser URLs contain web-format IDs (`FMfcgz...`), not API IDs. The MCP converts automatically, but conversion fails for self-sent emails (~2018+). If fetch errors on a Gmail URL, ask the user for the thread ID.
+### Pass the WHOLE URL — don't extract the ID first
 
-**What fetch can't take:** Only Workspace content is fetchable — `mail.google.com/#search/...` URLs and non-Google URLs (GitHub, docs sites) will 404. Run the query through `search` instead. And the 12-char ID fragment in a deposit folder name (`doc--title--1jinlqdtqLpw`) is a prefix, not a fetchable ID — the full ID is in that folder's `manifest.json`.
+When someone pastes a Workspace URL, **hand the entire string to `fetch()`**. Do not helpfully
+pull the 44-character ID out of `/d/<id>/` and pass that instead. Measured across 5,909 session
+transcripts: roughly **two pasted URLs in three get stripped**, and doing so destroyed 38
+meaningful decorations that the person had deliberately included.
+
+The reason it matters is that the tail of the URL is often the *point*. `?gid=` names a sheet tab,
+`?tab=` a Doc tab, `#heading=` a heading, `#slide=` a slide, `?disco=` a specific comment. Someone
+who sends you `…/edit#gid=1466289902` is saying "this tab", and an ID alone cannot say that.
+Stripping is irreversible at the caller: once you've thrown the fragment away, mise never had it.
+
+Be honest about the current state: **mise does not yet act on the Drive decorations** — wiring them
+into the returned cues is in progress (`mise-dogape`). But passing them costs nothing, they are
+already parsed on the Gmail side, and the habit has to land before the feature can be worth
+anything. So: whole URL, always.
+
+**Gmail URLs work harder than they look.** The thread token is the **last** fragment segment, so a
+search-scoped URL like `#search/from%3Aalice+lantern/FMfcgz…` resolves fine — mise reads the token
+at the end, not the search terms in the middle. Three things genuinely can't resolve, and each says
+so by name rather than 404ing at you:
+
+- **Google Chat links** (`#chat/dm/…`, `#chat/space/…`) — Chat is served from `mail.google.com` but
+  is a different product with its own ID space. There is no mail thread behind them.
+- **Self-sent threads** (`KtbxL…`, decoding to `thread-a:`, roughly 2018 onward) — the token decodes
+  but the number isn't the API thread ID and no transform is known. **The reliable route is the
+  Message-ID:** open the message, More ▸ Show original, copy the `Message-ID`, and either pass it to
+  `fetch()` or run `search("rfc822msgid:<message-id>")`, which resolves to exactly one thread.
+- **Bare mailbox views** (`#inbox`, `#label/Finance`) — a view, not a conversation. Use `search`.
+
+**When a fetch is refused, do not substitute.** A bare refusal is an invitation to freelance, and
+that has already gone wrong here: a session handed an unresolvable self-sent URL searched the inbox,
+picked the newest unread thread, and produced 1,500 words analysing the wrong email as though it
+were the requested one — while the right thread sat at rank 2 of that same search. If you can't
+confirm which candidate is correct, **say so and ask**, rather than picking.
+
+**What fetch can't take:** non-Google URLs (GitHub, docs sites) aren't fetchable — mise is not a
+generic web fetcher. And the 12-char ID fragment in a deposit folder name (`doc--title--1jinlqdtqLpw`)
+is a prefix, not a fetchable ID — the full ID is in that folder's `manifest.json`.
 
 ### Docs with suggested edits (the mark-up loop)
 

@@ -11,6 +11,8 @@ from validation import (
     extract_gmail_id_from_url,
     convert_gmail_web_id,
     detect_fetch_input_problem,
+    diagnose_gmail_url,
+    gmail_fragment_segments,
     is_gmail_web_id,
     is_gmail_api_id,
     looks_like_drive_query,
@@ -97,6 +99,79 @@ class TestGmailIdConversion:
         assert api_id is not None
         assert len(api_id) == 16
 
+class TestGmailFragmentSegments:
+    """
+    The thread token is the LAST fragment segment, not the second.
+
+    Fixtures are the five real URLs recorded on mise-jujoti — measured, not
+    invented, because a probe you built yourself fails most convincingly on the
+    case you invented.
+    """
+
+    # 3 segments: the old regex captured 'from' here and the fetch was refused.
+    SEARCH_URL = (
+        "https://mail.google.com/mail/u/0/#search/"
+        "from%3AStefano.Figoni%40itv.com+lantern/FMfcgzQhVNfMCxqltVrdVFJgqxZhgmhM"
+    )
+    # 2 segments: worked before and must keep working.
+    ALL_URL = "https://mail.google.com/mail/u/0/#all/FMfcgzQgMgKRTRzJtcVbpdRDPZKZGgrW"
+    # Self-sent: decodes cleanly to thread-a:, which has no known transform.
+    THREAD_A_URL = "https://mail.google.com/mail/u/0/#all/KtbxLwghjwWScTGNNHctnzRVJkLPKbVvSB"
+    # Google Chat — different product, different id space, same hostname.
+    CHAT_DM_URL = "https://mail.google.com/mail/u/0/#chat/dm/2GLKWSAAAAE"
+    CHAT_SPACE_URL = (
+        "https://mail.google.com/mail/u/0/#chat/space/AAAAfTECEtQ/kmGYPtDEvdw/GPCeWeXV2XI"
+    )
+
+    def test_segments_split_on_slash(self):
+        assert gmail_fragment_segments(self.ALL_URL) == [
+            "all", "FMfcgzQgMgKRTRzJtcVbpdRDPZKZGgrW"
+        ]
+        assert len(gmail_fragment_segments(self.CHAT_SPACE_URL)) == 5
+
+    def test_search_url_resolves_to_a_thread(self):
+        """The headline defect: a 3-segment fragment used to capture 'from'."""
+        api_id = extract_gmail_id_from_url(self.SEARCH_URL)
+        assert api_id is not None, "search URL must resolve — the id is the last segment"
+        assert len(api_id) == 16
+        assert diagnose_gmail_url(self.SEARCH_URL) is None
+
+    def test_two_segment_url_still_resolves(self):
+        """Regression: the shape that already worked must not break."""
+        assert extract_gmail_id_from_url(self.ALL_URL) == "19f1ff83e58c0567"
+
+    def test_chat_links_refused_by_name(self):
+        for url in (self.CHAT_DM_URL, self.CHAT_SPACE_URL):
+            assert extract_gmail_id_from_url(url) is None
+            reason = diagnose_gmail_url(url)
+            assert reason is not None
+            assert "Chat" in reason, "a Chat link must be refused AS a Chat link"
+
+    def test_thread_a_names_the_show_original_route(self):
+        assert extract_gmail_id_from_url(self.THREAD_A_URL) is None
+        reason = diagnose_gmail_url(self.THREAD_A_URL)
+        assert reason is not None
+        assert "self-sent" in reason.lower()
+        assert "rfc822msgid" in reason, "the refusal must name the deterministic route"
+
+    def test_draft_link_named_as_a_draft(self):
+        """mise emits #drafts/<id> itself — it should not be a mystery to mise."""
+        reason = diagnose_gmail_url("https://mail.google.com/mail/#drafts/r8287431168042343092")
+        assert reason is not None
+        assert "draft" in reason.lower()
+        assert "r8287431168042343092" in reason
+
+    def test_label_view_is_not_decoded_as_a_thread(self):
+        """The prefix allowlist gates the captured token."""
+        url = "https://mail.google.com/mail/u/0/#label/Finance"
+        assert extract_gmail_id_from_url(url) is None
+        assert "search(" in (diagnose_gmail_url(url) or "")
+
+    def test_resolvable_url_gets_no_diagnosis(self):
+        assert diagnose_gmail_url(self.ALL_URL) is None
+
+
+class TestGmailIdExtractionExtras:
     def test_extract_gmail_id_returns_api_id(self):
         """Return API ID unchanged."""
         api_id = "19b0e7fe6f653f69"
