@@ -67,12 +67,7 @@ def format_drive_result(result: DriveSearchResult) -> dict[str, Any]:
 
     # Add email context for exfil'd files (cross-source linkage)
     if result.email_context:
-        output["email_context"] = {
-            "message_id": result.email_context.message_id,
-            "from": result.email_context.from_address,
-            "subject": result.email_context.subject,
-            "hint": f"Use fetch('{result.email_context.message_id}') to get source email",
-        }
+        output["email_context"] = result.email_context.to_cue()
 
     return output
 

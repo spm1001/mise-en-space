@@ -7,12 +7,13 @@ from typing import Any
 
 from adapters.drive import download_file, lookup_exfiltrated
 from adapters.calendar import get_event_by_ical_uid
-from adapters.gmail import fetch_thread
+from adapters.gmail import fetch_thread, get_thread_id_for_message
 from adapters.office import convert_office_content, get_office_type_from_mime
 from adapters.pdf import convert_pdf_content, render_pdf_pages
 from extractors.gmail import extract_thread_content, parse_ics_uid
 from extractors.image import resize_image_bytes
-from models import FetchResult, FetchError, InviteState
+from models import FetchResult, FetchError, InviteState, MiseError, ErrorKind
+from validation import is_gmail_api_id, diagnose_fetch_404
 from workspace import get_deposit_folder, write_content, write_manifest, write_image, write_raw
 
 from .common import _build_cues, _deposit_pdf_thumbnails
@@ -82,8 +83,36 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
     Office files (DOCX/XLSX/PPTX) are skipped due to slow extraction (5-10s each).
     They're listed in metadata so Claude can fetch explicitly if needed.
     """
-    # Fetch thread data
-    thread_data = fetch_thread(thread_id)
+    # Fetch thread data. A 16-hex id that 404s here is most often a MESSAGE id whose
+    # message doesn't HEAD its thread: Gmail gives threads and messages the same id
+    # shape, so a caller cannot tell them apart and the bare 404 explains nothing —
+    # one cost a 7-minute detour on 2026-07-31 (mise-saroca). Resolve once and retry.
+    #
+    # Never silently, though. The rescue is disclosed as a warning cue below, because
+    # a fetch that quietly hands back a different id than the one you asked for is
+    # exactly the accept-and-drop shape this repo is named for, wearing a helpful face.
+    resolved_from_message_id: str | None = None
+    try:
+        thread_data = fetch_thread(thread_id)
+    except MiseError as exc:
+        if exc.kind is not ErrorKind.NOT_FOUND or not is_gmail_api_id(thread_id):
+            raise
+        try:
+            actual_thread_id = get_thread_id_for_message(thread_id)
+        except MiseError:
+            # Not a live message either. Re-raise with advice that stops recommending
+            # the message lookup we have just done and failed.
+            raise MiseError(
+                ErrorKind.NOT_FOUND,
+                diagnose_fetch_404(thread_id, tried_message_lookup=True) or str(exc),
+                # Tells the router's funnel this is already diagnosed, so it doesn't
+                # append the generic 16-hex advice on top — that advice recommends the
+                # very message lookup we just tried and failed.
+                details={"diagnosed": True},
+            ) from exc
+        resolved_from_message_id = thread_id
+        thread_id = actual_thread_id
+        thread_data = fetch_thread(thread_id)
 
     # Extract thread text content
     content = extract_thread_content(thread_data)
@@ -104,6 +133,16 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
     extracted_attachments: list[dict[str, Any]] = []
     extraction_warnings: list[str] = []
     extracted_count = 0
+
+    # Disclose the message→thread rescue (see the fetch_thread call above). This rides
+    # extraction_warnings so it reaches both the manifest and the cues.
+    if resolved_from_message_id:
+        extraction_warnings.append(
+            f"'{resolved_from_message_id}' is a Gmail MESSAGE id, not a thread id, and "
+            f"that message does not head its thread — so mise resolved it to thread "
+            f"'{thread_id}' and fetched that. The deposit is the whole thread; the "
+            f"message you named is one of the messages inside it."
+        )
 
     # Pre-exfil lookup: check if attachments already exist in Drive
     # (indexed by fullText, faster than Gmail download + extraction)

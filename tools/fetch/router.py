@@ -4,8 +4,8 @@ Fetch routing — ID detection and do_fetch entry point.
 
 from pathlib import Path
 
-from models import MiseError, FetchResult, FetchError
-from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id, GMAIL_WEB_ID_PREFIXES, detect_fetch_input_problem
+from models import MiseError, ErrorKind, FetchResult, FetchError
+from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id, GMAIL_WEB_ID_PREFIXES, detect_fetch_input_problem, diagnose_fetch_404
 
 from .gmail import fetch_gmail, fetch_attachment
 from .drive import fetch_drive
@@ -93,6 +93,16 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
             return fetch_drive(normalized_id, base_path=base_path, recursive=recursive, tabs=tabs, suggestions=suggestions)
 
     except MiseError as e:
+        # A 404 reaching here is the largest untaught failure class in the call log —
+        # 6 of 23 lifetime failures, and the only class with no recovery route in the
+        # error, so callers either retry a permanent 404 or detour by hand (mise-tuveda).
+        # Name the likely id type and the next move, keyed on the shape of what was
+        # actually passed. Deliberately additive: Google's own text stays, because it
+        # sometimes carries detail the shape cannot know.
+        if e.kind is ErrorKind.NOT_FOUND and not e.details.get("diagnosed"):
+            advice = diagnose_fetch_404(file_id)
+            if advice:
+                return FetchError(kind=e.kind.value, message=f"{e.message} {advice}")
         return FetchError(kind=e.kind.value, message=e.message)
     except ValueError as e:
         return FetchError(kind="invalid_input", message=str(e))

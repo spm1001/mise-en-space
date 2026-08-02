@@ -402,6 +402,34 @@ class EmailContext:
     subject: str | None = None
     date: str | None = None
 
+    def to_cue(self) -> dict[str, Any]:
+        """Render the `email_context` cue block — the SINGLE source for it.
+
+        tools/search.py and tools/fetch/common.py held byte-identical copies of this
+        dict until 2026-08-02, and the `hint` was wrong in both, so it had to be
+        corrected in both. One mint site now, per this repo's classify_attachment()
+        precedent (mise-saroca).
+
+        On the hint's wording: `message_id` is a Gmail MESSAGE id, regexed out of the
+        Drive file's `description` by the apps-script exfil at capture time — there is
+        no Gmail API call anywhere in this path and no threadId in hand. A message id
+        only resolves as a thread when that message HEADS its thread, so the old text
+        ("Use fetch(...) to get source email") sent callers at a 404 with nothing to
+        diagnose it by — one such cost a 7-minute detour on 2026-07-31. Naming the id
+        TYPE is the load-bearing part of the fix: it stays true whether or not fetch's
+        mid-thread fallback is in place, and it is what a caller needs to recognise the
+        failure if it is not.
+        """
+        return {
+            "message_id": self.message_id,
+            "from": self.from_address,
+            "subject": self.subject,
+            "hint": (
+                f"Gmail message id of the source email (a message id, not a thread id); "
+                f"pass it to fetch('{self.message_id}')"
+            ),
+        }
+
 
 @dataclass
 class DriveSearchResult:

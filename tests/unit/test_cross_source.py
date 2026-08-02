@@ -6,6 +6,7 @@ from datetime import datetime
 from models import EmailContext, DriveSearchResult
 from adapters.drive import parse_email_context
 from tools.search import format_drive_result, format_gmail_result
+from tools.fetch.common import _build_email_context_metadata
 from models import GmailSearchResult
 
 
@@ -97,6 +98,55 @@ class TestFormatDriveResultWithEmailContext:
         assert formatted["email_context"]["subject"] == "Budget analysis"
         assert "hint" in formatted["email_context"]
         assert "fetch('18f4a5b6c7d8e9f0')" in formatted["email_context"]["hint"]
+
+    def test_hint_names_the_id_type_not_merely_the_call(self):
+        """The hint must say WHICH id this is — mise-saroca.
+
+        `message_id` here is a Gmail MESSAGE id, regexed out of a Drive file's
+        description by the apps-script exfil. A message id resolves as a thread only
+        when that message HEADS its thread, so the old hint — "Use fetch('<id>') to
+        get source email" — promised a fetch that 404s mid-thread and left the caller
+        nothing to recognise the failure by. One such 404 cost a 7-minute detour on
+        2026-07-31 (docs/2026-08-01-usage-review.md, finding 2).
+
+        The pre-existing test above asserts only that the hint contains
+        `fetch('<id>')`, which the OLD wording satisfied too — so it could never have
+        caught this. Naming the id type is the load-bearing half of the fix and is
+        pinned here so a future reword cannot quietly drop it.
+        """
+        ctx = EmailContext(message_id="18fe27655760c61b", from_address="a@b.com")
+
+        hint = ctx.to_cue()["hint"].lower()
+
+        assert "message id" in hint
+        assert "not a thread id" in hint
+        assert "fetch('18fe27655760c61b')" in hint
+
+    def test_both_mint_sites_emit_an_identical_cue(self):
+        """search and fetch must not drift apart on this block — mise-saroca.
+
+        Both layers held byte-identical hand-rolled copies of the email_context dict
+        until 2026-08-02, and the hint was wrong in both, so it had to be corrected in
+        both. They now share EmailContext.to_cue(); this goes red if either grows its
+        own copy back.
+        """
+        ctx = EmailContext(
+            message_id="18f4a5b6c7d8e9f0",
+            from_address="alice@example.com",
+            subject="Budget analysis",
+        )
+        search_side = format_drive_result(
+            DriveSearchResult(
+                file_id="abc123",
+                name="budget.xlsx",
+                mime_type="application/pdf",
+                email_context=ctx,
+            )
+        )["email_context"]
+
+        fetch_side = _build_email_context_metadata(ctx)
+
+        assert search_side == fetch_side
 
     def test_omits_email_context_when_absent(self):
         """Drive result without email_context doesn't include field."""

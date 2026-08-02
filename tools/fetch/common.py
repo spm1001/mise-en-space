@@ -194,12 +194,11 @@ def is_text_file(mime_type: str) -> bool:
 
 
 def _build_email_context_metadata(email_context: EmailContext | None) -> dict[str, Any] | None:
-    """Build email_context dict for FetchResult metadata."""
+    """Build email_context dict for FetchResult metadata.
+
+    Shape and hint text live on EmailContext.to_cue() — the search path mints the same
+    block and the two copies drifted apart in wording risk until 2026-08-02 (mise-saroca).
+    """
     if not email_context:
         return None
-    return {
-        "message_id": email_context.message_id,
-        "from": email_context.from_address,
-        "subject": email_context.subject,
-        "hint": f"Use fetch('{email_context.message_id}') to get source email",
-    }
+    return email_context.to_cue()

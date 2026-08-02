@@ -691,3 +691,83 @@ def detect_fetch_input_problem(file_id: str) -> str | None:
 
     return None
 
+
+def diagnose_fetch_404(file_id: str, *, tried_message_lookup: bool = False) -> str | None:
+    """
+    Explain a fetch 404 by the SHAPE of the id that produced it — mise-tuveda.
+
+    Everything else in this section runs *before* the call and can only judge inputs
+    that are wrong on their face. This runs *after*, on ids that looked plausible and
+    still 404'd, which is a different and larger class: the 2026-08-01 usage review
+    found raw 404s to be the only failure class carrying no recovery route, 6 of 23
+    lifetime failures, and the week's single real detour (7 minutes on a mid-thread
+    message id). The same review measured why this pays: every teaching-shaped failure
+    that week was obeyed to the letter within ~30 seconds.
+
+    Pure function, no I/O — the caller has already made the failing call and tells us
+    what it tried.
+
+    Args:
+        file_id: The id that 404'd.
+        tried_message_lookup: True when the caller already attempted the Gmail
+            thread→message fallback (messages.get) and that 404'd too. Changes the
+            16-hex advice from "this is probably a mid-thread message id" to "it is
+            neither a live thread nor a live message here", because after the fallback
+            the first message would be actively misleading.
+
+    Returns:
+        Teaching text naming the likely id type and a concrete next move, or None when
+        the shape says nothing useful (let the plain not-found stand).
+    """
+    if not file_id:
+        return None
+    s = file_id.strip()
+
+    # Gmail draft ids: 'r' + digits. Two of these were passed to fetch in the review
+    # window, each retried once against a permanent 404, then abandoned.
+    if GMAIL_DRAFT_ID_PATTERN.match(s):
+        return (
+            f"'{s}' is a Gmail DRAFT id, and drafts are not fetchable as threads — a "
+            f"draft is a separate object with its own id space. Retrying will 404 "
+            f"forever. To read the conversation it belongs to, use the thread id that "
+            f"appears alongside the draft in the draft listing; to edit the draft "
+            f"itself, use do(draft, file_id='{s}')."
+        )
+
+    # 16-hex: the Gmail API id band. Thread ids and message ids are indistinguishable
+    # by shape, and a message id only resolves as a thread when it HEADS that thread.
+    if GMAIL_API_ID_PATTERN.match(s):
+        if tried_message_lookup:
+            return (
+                f"'{s}' is a 16-hex Gmail id, but it is neither a live thread nor a "
+                f"live message on this account — mise tried it both ways. It may be "
+                f"deleted, may belong to a different account, or may not be a Gmail id "
+                f"at all. Find the conversation with search('subject:…') or "
+                f"search('rfc822msgid:<message-id>')."
+            )
+        return (
+            f"'{s}' is a 16-hex Gmail id that 404s as a thread. Gmail thread ids and "
+            f"MESSAGE ids share this shape, and a message id only resolves as a thread "
+            f"when that message heads the thread — so this is most likely a mid-thread "
+            f"message id. {_SHOW_ORIGINAL_ROUTE}"
+        )
+
+    # Gmail web tokens that reached the API layer un-converted.
+    if s.startswith(GMAIL_WEB_ID_PREFIXES):
+        return (
+            f"'{s[:40]}' is a Gmail WEB id (the token from a mail.google.com URL), not "
+            f"an API id, so it cannot be fetched directly. {_SHOW_ORIGINAL_ROUTE}"
+        )
+
+    # Drive-shaped: the id is well-formed, so 404 means genuinely absent or unreadable
+    # — a real answer, and saying so stops the caller retrying a shape question.
+    if _DRIVE_ID_RE.match(s):
+        return (
+            f"'{s}' is a well-formed Drive id, so this 404 means the file does not "
+            f"exist, is in the trash, or is not shared with this account — not that "
+            f"the id is malformed. Check sharing, or search() for the file by name. If "
+            f"it lives on a Shared Drive you cannot see, ask the owner for access."
+        )
+
+    return None
+
