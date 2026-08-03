@@ -99,6 +99,8 @@ docs/           Design documents and references
 - `search` gmail results carry `has_invite` (thread has a calendar invite — free, from the parts mask) so triage can spot meetings
 - `fetch` auto-detects ID type (Drive file ID vs Gmail thread ID)
 - `fetch` of a Gmail invite adds `cues.invite_state` — the **live** Calendar state (status/my_response/current_start/cancelled_at) resolved by iCalUID, not the email's frozen snapshot; a cancelled meeting also emits a warning. Best-effort (skipped silently without calendar scope). See `docs/2026-07-07-meduto-invite-event-state.md`.
+- `fetch` on a 16-hex Gmail id that 404s as a thread **resolves it as a MESSAGE id and refetches its thread** (`messages.get` → `threadId`, fields-masked, failure path only) — Gmail gives threads and messages one id shape, and a message id only resolves as a thread when that message *heads* the thread. The rescue is **always disclosed** in `cues.warnings`, naming both ids; it is never silent. If the id is neither, the error says so rather than re-suggesting the lookup that just failed. See mise-saroca.
+- **A `fetch` 404 names the likely id type and the next move** — `diagnose_fetch_404()` in `validation.py` classifies four shapes (Gmail draft id, 16-hex message-vs-thread, un-converted Gmail web token, well-formed Drive id) and the router's funnel appends the advice *additively*, keeping Google's own text. Raw 404s were the only failure class with no recovery route (6 of 23 lifetime failures). See mise-tuveda.
 - `fetch` accepts optional `attachment` param for extracting specific Gmail attachments
 - `fetch` accepts `raw=True` alongside `attachment=` — deposits the attachment's **original bytes** beside the extraction (mise-buzafo). PDFs and Office files are otherwise converted and the original discarded, so the document itself was unreachable; only images and plain text survived. Lands in `cues.files` automatically. Pairs with `do(create, doc_type='file', file_path=…)` to put a Gmail-only artefact into Drive. Rejected without `attachment=`, and in remote mode (binary can't ride back inline).
 - `fetch` accepts optional `tabs` param (list of tab names) to fetch only specific tabs from spreadsheets
@@ -199,7 +201,7 @@ Data models have `warnings: list[str]` fields. Extractors populate them during p
 | **No purpose parameter** | This MCP always prepares for LLM consumption. No archival/editing modes. |
 | **Image size skip vs format skip asymmetry** | `att.size > 4.5MB` no longer causes a pre-download skip — oversized images are downloaded and resized. Unsupported MIME types (not in `SUPPORTED_IMAGE_MIME_TYPES`) still skip pre-download. Reason: size is fixable by resizing; unsupported format is not. Don't restore the size check without also removing the resize logic. |
 | **get_deposit_folder wipes on re-fetch** | Every call to `get_deposit_folder` deletes existing files in that folder before returning it. This prevents stale files from previous fetches. Do NOT call `get_deposit_folder` twice for the same folder mid-operation (e.g. inside a retry loop) — the second call will wipe files the first call's writes produced. |
-| **MCP server must restart after code changes** | The MCP server loads code at session start. Edits to `extractors/`, `adapters/`, `tools/`, `workspace/` are not live until the next Claude Code session. Smoke-test new features in a fresh session. |
+| **A working-tree edit is NOT reachable from the MCP envelope — and restarting does not help** | The plugin spawns the server with `--project ${CLAUDE_PLUGIN_ROOT}`, i.e. `~/.claude/plugins/cache/batterie/mise/<version>/`. It runs the **published plugin**, never this repo. So a change here is invisible to `mcp__*` calls no matter how many times the session restarts — what's needed is a new *published version*, not a new session. **This row said "smoke-test new features in a fresh session" until 2026-08-03, which is false and cost a session real confusion.** That makes "smoke through the envelope, then publish" circular. Break it with `scripts/smoke_stdio.py`, which spawns `server.py` from the working tree over real stdio MCP — same FastMCP stack, same tool wrapper, same JSON on the wire, just not spawned by Claude Code. After publishing, re-verify against the *installed artefact* under the cache, not the working tree. Corollary worth knowing: a long-running session keeps whatever version it started with, so an old session can be many releases behind with no signal (bds-sawalu). |
 | **Share requires confirm gate** | `do(operation="share")` without `confirm=True` returns a preview — the API won't execute. Call once to preview, show user, call again with `confirm=True`. Non-Google emails (iCloud, Outlook) automatically fall back to notification email (Google requires it); check `cues.notified` to see which recipients were notified. |
 | **`_REMOTE_MODE` is early** | Set at module load, not in `__main__`. Required because `@mcp.tool(description=...)` fires at decoration time. Don't "clean up" by moving to argparse — breaks conditional tool descriptions. For containers, use `MISE_REMOTE=1` env var (not `--remote` flag) — `sys.argv` is fragile under process managers. |
 | **Remote fetch retry risk** | `get_deposit_folder` wipes on re-call (see above). In remote mode, HTTP client retries or Kube probes can trigger double-wipe. Don't add automatic retry at the HTTP level for fetch operations. |
@@ -220,9 +222,20 @@ uv run python server.py --help                      # CLI help
 uv run --all-extras python -m pytest                # Run tests (suite ASSUMES the full build)
 uv run --all-extras python -m pytest tests/unit     # Unit tests only (fast, mocked)
 uv run --all-extras python -m mypy models.py extractors/ adapters/ validation.py workspace/
+uv run --all-extras python scripts/smoke_stdio.py   # drive the WORKING TREE over real stdio MCP
 ```
 
 Integration tests require `-m integration` flag and real credentials.
+
+**`scripts/smoke_stdio.py` is how you exercise the MCP envelope before publishing.** Unit
+tests can't reach the FastMCP registration, the `@mcp.tool` wrapper, schema coercion or the
+shape of what actually crosses the wire — and the live `mcp__*` tools can't reach your working
+tree (see the Gotchas row above). This spawns `server.py` from the repo and speaks real MCP to
+it, closing that gap. Add a case when you change fetch's failure surface.
+
+**mypy currently emits 16 errors on a clean tree** (14 in `adapters/http_client.py`, 2 in
+`adapters/conversion.py`) — so the command cannot report a *new* one without hand-counting.
+Group by file and compare against the files you touched. Tracked as `mise-bunuvu`.
 
 ### Build flavours (mise-hibere, 0.7.9)
 
