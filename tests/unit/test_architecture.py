@@ -56,6 +56,46 @@ FILE_RULES = {
 # 1,318 lines when CLAUDE.md still claimed it "just registers tools").
 SERVER_MAX_LINES = 500
 
+# Every module under the layer directories gets the SAME number, so there is one
+# standard in the repo rather than a special case for server.py (mise-nebewe).
+MODULE_MAX_LINES = 500
+POLICED_DIRS = ("extractors", "adapters", "tools", "workspace", "resources")
+
+# Grandfathered debt, measured 2026-08-03. These eleven modules were already over
+# the cap when it was extended repo-wide, and splitting them is deliberately NOT
+# part of that change — it would make the diff unreviewable. So they are frozen at
+# the size they were, and may only come DOWN.
+#
+# Why a ratchet and not a flat cap: the two alternatives were splitting eleven
+# modules at once, or granting eleven open-ended exemptions. The first is separate
+# work; the second decays into permission. A ratchet needs neither — existing mass
+# is pinned, new growth is refused, and the numbers only fall.
+#
+# Why this is not the enumeration trap it looks like: what is enumerated here is
+# MEASUREMENTS, not rules. Any module absent from this dict — including every
+# module added in future — is governed by MODULE_MAX_LINES via the glob, so
+# discovery still decides who is policed. This dict only records who already owed.
+_LEGACY_SIZE_BASELINE = {
+    "adapters/drive.py": 1151,
+    "adapters/gmail.py": 1113,
+    "tools/create.py": 952,
+    "extractors/docs.py": 892,
+    "tools/fetch/drive.py": 824,
+    "resources/docs.py": 818,
+    "tools/fetch/gmail.py": 694,
+    "adapters/http_client.py": 683,
+    "extractors/slides.py": 600,
+    "adapters/pdf.py": 551,
+    "extractors/talon_signature.py": 518,
+}
+
+# A real shrink should tighten the ratchet, or the baseline silently becomes
+# permission to grow back — adapters/gmail.py could fall to 600 and return to
+# 1113 unobserved. But demanding bookkeeping for every three-line edit would breed
+# ignoring the test, so ordinary churn is tolerated and only a substantial shrink
+# is banked.
+_SHRINK_TOLERANCE = 50
+
 
 def get_imports_from_file(filepath: Path) -> set[str]:
     """Extract all import names from a Python file."""
@@ -204,6 +244,115 @@ class TestPackageStructure:
         init_file = PROJECT_ROOT / "fixtures" / "__init__.py"
         assert not init_file.exists(), (
             "fixtures/__init__.py should not exist — it's a data directory"
+        )
+
+
+class TestModuleSize:
+    """
+    Every module under the layer directories is size-policed, not just server.py.
+
+    Why this exists (mise-nebewe). understanding.md's lead section argues that mass
+    accumulates exactly where mechanical enforcement cannot see, and cites the
+    jimohe shrink — server.py 1,318 → 424 — as the fix. But SERVER_MAX_LINES capped
+    server.py ALONE, so server.py was the only file in the repo actually held to it
+    while eleven modules under tools/, adapters/, extractors/ and resources/ sat
+    over the same number, the largest at 1,151. The lesson the repo draws about
+    itself is that the remedy is extending the RULE, not cleaning the module:
+    cleaning without a rule resets a counter nothing watches.
+
+    The growth is not hypothetical. Between the item being filed on 2026-08-01 and
+    this test being written on 2026-08-03, adapters/gmail.py went 1059 → 1113 and
+    tools/fetch/gmail.py went 655 → 694 — 93 lines in two days, in the modules the
+    previous session had worked in, with nothing to notice.
+
+    If this test trips on a module you are growing, the answer is to move code into
+    a sibling rather than to raise the number. Raising a baseline entry is a
+    deliberate act that should be argued for in the commit message.
+    """
+
+    @staticmethod
+    def _line_count(path: Path) -> int:
+        return len(path.read_text().splitlines())
+
+    def _policed_modules(self) -> list[Path]:
+        found: list[Path] = []
+        for directory in POLICED_DIRS:
+            found.extend(sorted((PROJECT_ROOT / directory).rglob("*.py")))
+        return found
+
+    def test_baseline_entries_are_all_above_the_default(self) -> None:
+        """
+        A baseline entry at or below MODULE_MAX_LINES is dead weight — the default
+        already covers it, and leaving it in place would GRANT room rather than
+        remove it. This asserts the config is well-formed, because a ratchet whose
+        own bookkeeping is never checked is the next silent gap.
+        """
+        redundant = {
+            name: cap for name, cap in _LEGACY_SIZE_BASELINE.items()
+            if cap <= MODULE_MAX_LINES
+        }
+        assert not redundant, (
+            "These baseline entries are at or below the default cap of "
+            f"{MODULE_MAX_LINES} and should be DELETED from _LEGACY_SIZE_BASELINE "
+            f"— they now grant room instead of removing it: {redundant}"
+        )
+
+    def test_baseline_names_real_files(self) -> None:
+        """A baseline entry for a file that no longer exists is stale permission."""
+        missing = [
+            name for name in _LEGACY_SIZE_BASELINE
+            if not (PROJECT_ROOT / name).exists()
+        ]
+        assert not missing, (
+            "_LEGACY_SIZE_BASELINE names files that no longer exist — delete these "
+            f"entries: {missing}"
+        )
+
+    def test_no_module_exceeds_its_ceiling(self) -> None:
+        """No module may grow past its cap — the default, or its baselined size."""
+        violations = []
+
+        for path in self._policed_modules():
+            rel = path.relative_to(PROJECT_ROOT).as_posix()
+            ceiling = _LEGACY_SIZE_BASELINE.get(rel, MODULE_MAX_LINES)
+            actual = self._line_count(path)
+            if actual > ceiling:
+                grandfathered = rel in _LEGACY_SIZE_BASELINE
+                how = (
+                    f"baselined at {ceiling}" if grandfathered
+                    else f"default cap {MODULE_MAX_LINES}"
+                )
+                violations.append(f"{rel}: {actual} lines, {how}")
+
+        assert not violations, (
+            "Modules over their size ceiling:\n"
+            + "\n".join(f"  - {v}" for v in violations)
+            + "\n\nMove code into a sibling module rather than raising the number. "
+            "server.py hit 1,318 lines this way while CLAUDE.md still claimed it "
+            '"just registers tools" (mise-jimohe).'
+        )
+
+    def test_shrunk_modules_tighten_the_ratchet(self) -> None:
+        """
+        A module that has genuinely shrunk must have its baseline lowered, or the
+        entry becomes permission to grow back. Tolerance is _SHRINK_TOLERANCE lines
+        so ordinary editing does not demand bookkeeping.
+        """
+        stale = []
+
+        for rel, recorded in sorted(_LEGACY_SIZE_BASELINE.items()):
+            path = PROJECT_ROOT / rel
+            if not path.exists():
+                continue  # covered by test_baseline_names_real_files
+            actual = self._line_count(path)
+            if actual < recorded - _SHRINK_TOLERANCE:
+                stale.append(f'    "{rel}": {actual},  # was {recorded}')
+
+        assert not stale, (
+            "These modules have shrunk by more than "
+            f"{_SHRINK_TOLERANCE} lines — bank the win by lowering their entries in "
+            "_LEGACY_SIZE_BASELINE, or the ratchet lets them grow back:\n"
+            + "\n".join(stale)
         )
 
 

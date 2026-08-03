@@ -62,6 +62,7 @@ docs/           Design documents and references
 - server.py registers tools/resources and holds the thin @mcp.tool wrappers — nothing else (capped at 500 lines)
 - Shared utilities live at root level — they sit BELOW the layers and never import upward (retry.py's `adapters.http_client` import is the one documented exception)
 - ALL of the above is mechanically enforced by `tests/unit/test_architecture.py` (`LAYER_RULES` for directories, `FILE_RULES` for server.py + root utilities). When adding a module tier, extend the rules — unpoliced tiers are where mass accumulates (server.py hit 1,318 lines before mise-jimohe)
+- **Module size is policed repo-wide since 2026-08-03, not just on server.py** (mise-nebewe). Every `*.py` under `extractors/`, `adapters/`, `tools/`, `workspace/`, `resources/` is capped at **500 lines**, discovered by glob so a new file is covered automatically. The eleven modules already over that when the rule landed are frozen at their then-size in `_LEGACY_SIZE_BASELINE` — a **ratchet, not an exemption**: they may only shrink, and a shrink of more than 50 lines fails the test until the number is lowered, so the debt cannot grow back. If this trips on code you're adding, move it to a sibling; raising a baseline entry is a deliberate act to argue for in the commit message. Splitting the eleven is separate work and deliberately not bundled here
 
 ### Adapter Specializations
 
