@@ -58,7 +58,7 @@ mise create "Title" --content "# Markdown content"
 
 | Skill | What it does |
 |-------|--------------|
-| `/mise` | Orchestrates content fetching via mcp__mise__ tools |
+| `/mise` | Orchestrates content fetching via the mise MCP server's search/fetch/do tools |
 <!-- GENERATED:SKILLS:END -->
 
 ## Supported Content Types

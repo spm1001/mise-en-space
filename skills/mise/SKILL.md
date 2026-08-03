@@ -1,7 +1,7 @@
 ---
 name: mise
-description: Orchestrates content fetching via mcp__mise__ tools. Load before using search/fetch/do — invoke first when you see 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace', 'move this file', 'create a doc', 'triage my inbox', 'archive these', 'draft an email'. Covers research loops, Gmail triage with batch ops, email drafting, and result filtering the tools alone don't know. (user)
-allowed-tools: [Bash, Read, "mcp__mise__*"]
+description: Orchestrates content fetching via the mise MCP server's search/fetch/do tools. Load before using search/fetch/do — invoke first when you see 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace', 'move this file', 'create a doc', 'triage my inbox', 'archive these', 'draft an email'. Covers research loops, Gmail triage with batch ops, email drafting, and result filtering the tools alone don't know. (user)
+allowed-tools: [Bash, Read, "mcp__plugin_mise_mise__*", "mcp__mise__*"]
 ---
 
 # mise

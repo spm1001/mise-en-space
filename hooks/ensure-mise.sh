@@ -63,17 +63,29 @@ if [ -f "$_PLUGIN_ROOT/instructions.md" ]; then
         # STATIC text, deliberately: there are only ever two flavours (see
         # IDENTITY_BY_INSTANCE in make-mise-flavour.sh), so both halves are
         # byte-identical in both builds — nothing to derive per flavour and no
-        # substitution rule for the transform to keep in step. The literal
-        # `mcp__mise__*` survives because the transform's mcp__mise__ rewrite
-        # scopes to *.md/*.py, and the "ITV (itv.com)" literal is why its
-        # identity guard is a FIELD check rather than a file-wide scan.
+        # substitution rule for the transform to keep in step. The "ITV (itv.com)"
+        # literal is why the transform's identity guard is a FIELD check rather
+        # than a file-wide scan.
+        #
+        # The bare `mcp__mise__` below is a deliberate example of the form a
+        # PLUGIN session does NOT have, so it must survive the transform
+        # unrewritten — it does, because that rewrite scopes to *.md/*.py and
+        # this is a .sh. Do not "fix" it to mcp__mise-home__ for the home build:
+        # the sentence is about install method, not about which flavour.
         # Only the stamp below is per-flavour — it says which file this is.
         printf '<!-- mise flavour: %s -->\n' "$DISPLAY_NAME"
         printf '**Which Mise to reach for.** Mise ships one flavour per Google Workspace: '
-        printf '`mise` acts on **ITV (itv.com)** (tools `mcp__mise__*`), '
-        printf '`mise-home` on **Planet Modha (planetmodha)** (tools `mcp__mise-home__*`). '
+        printf '`mise` acts on **ITV (itv.com)**, '
+        printf '`mise-home` on **Planet Modha (planetmodha)**. '
         printf 'Reach for whichever matches where the content lives — only the flavours whose '
         printf 'tools are present in this session are installed.\n\n'
+        printf '**Matching the tool names.** Under the plugin install — the normal case — the '
+        printf 'harness prefixes them `mcp__plugin_mise_mise__` and '
+        printf '`mcp__plugin_mise-home_mise-home__` (so `…__search`, `…__fetch`, `…__do`); '
+        printf 'wired as a bare MCP server instead, the `plugin_<name>_` part is absent. '
+        printf 'Match on the server name INSIDE the tool name rather than on a fixed prefix — '
+        printf 'a grep for `mcp__mise__` returns zero in a plugin session, and that zero is '
+        printf 'the harness naming scheme, not a missing mise.\n\n'
         cat "$_PLUGIN_ROOT/instructions.md"
     } > "$_tmp"
     mv -f "$_tmp" "$RULES_DEST"

@@ -227,15 +227,27 @@ uv run --all-extras python scripts/smoke_stdio.py   # drive the WORKING TREE ove
 
 Integration tests require `-m integration` flag and real credentials.
 
+**pytest prints no `N passed` summary line here** — `addopts` in `pyproject.toml` carries `-q`,
+and `-m 'not integration'` is baked in. So the run's evidence is its **exit code**, and a count
+comes from `python -m pytest --co -q --no-cov` (per-file counts; sum them — 2,105 across 76 files
+on 2026-08-03). Don't go looking for a summary line that was never going to print, and don't
+estimate from the progress dots.
+
 **`scripts/smoke_stdio.py` is how you exercise the MCP envelope before publishing.** Unit
 tests can't reach the FastMCP registration, the `@mcp.tool` wrapper, schema coercion or the
 shape of what actually crosses the wire — and the live `mcp__*` tools can't reach your working
 tree (see the Gotchas row above). This spawns `server.py` from the repo and speaks real MCP to
 it, closing that gap. Add a case when you change fetch's failure surface.
 
-**mypy currently emits 16 errors on a clean tree** (14 in `adapters/http_client.py`, 2 in
-`adapters/conversion.py`) — so the command cannot report a *new* one without hand-counting.
-Group by file and compare against the files you touched. Tracked as `mise-bunuvu`.
+**mypy currently emits 18 errors on a clean tree** — 14 in `adapters/http_client.py`, 2 in
+`adapters/conversion.py`, 2 in `extractors/image.py` — so the command cannot report a *new* one
+without hand-counting. Group by file and compare against the files you touched. Tracked as
+`mise-bunuvu`, and this paragraph is that item's own best evidence: it said **16** across two
+files when written on 2026-08-03 and measured **18** across three the next day, with
+`extractors/image.py` untouched since 2026-03-02. The two `image.py` errors are **stubs-only,
+not a runtime bug** — `Image.LANCZOS` still resolves to `1` on Pillow 12.3.0 and the path is
+test-covered; a tightened Pillow stub is the likely cause of the count moving, but that is a
+hypothesis and nobody has proved it. Verified independent of `--all-extras`: 18 either way.
 
 ### Build flavours (mise-hibere, 0.7.9)
 
