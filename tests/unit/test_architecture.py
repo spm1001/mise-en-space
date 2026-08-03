@@ -205,3 +205,112 @@ class TestPackageStructure:
         assert not init_file.exists(), (
             "fixtures/__init__.py should not exist — it's a data directory"
         )
+
+
+class TestProbeScriptsSeeTheWorkingTree:
+    """
+    A script under scripts/ that imports a root-tier module must put the repo
+    root on sys.path FIRST — otherwise it silently imports a STALE COPY.
+
+    Why (measured 2026-08-03, mise-fogede). pyproject's
+    [tool.hatch.build.targets.wheel.force-include] lists the root-tier modules so
+    the built wheel is complete for library consumers (glaneur). force-include has
+    no notion of a source mapping, so it copies those files PHYSICALLY even into
+    the editable install, while the layer directories ride the .pth and always
+    resolve live. site-packages precedes the .pth entry in sys.path, so the copies
+    WIN for any process whose sys.path[0] is not the repo root — and `uv sync`
+    does not refresh them (it reports the editable install satisfied and rebuilds
+    nothing; only `uv sync --reinstall-package mise-en-space` does). Measured
+    once at 222 changed lines behind, missing the two functions the session had
+    just shipped.
+
+    Three execution modes, measured with real script files rather than emulated:
+    a script at the repo root resolves LIVE (which is the only reason
+    smoke_stdio.py's spawned server.py is honest); a script under scripts/ and a
+    script in /tmp both resolve to the STALE COPY.
+
+    This rule is preventive — scripts/capture_fixtures.py already does the right
+    thing at its lines 18-19 and nothing enforced it. The failure mode is silent
+    and lands in the repo's most-used instrument, since the whole methodology
+    here is probe-before-building.
+    """
+
+    # Discovered, not enumerated — same principle as FILE_RULES above, so adding
+    # a root module cannot quietly fall outside the rule.
+    ROOT_MODULES = {path.stem for path in PROJECT_ROOT.glob("*.py")}
+
+    REMEDY = (
+        "Put the repo root on sys.path before the import:\n"
+        "    import sys\n"
+        "    from pathlib import Path\n"
+        "    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))\n"
+        "…or move the script to the repo root, where sys.path[0] already is the "
+        "repo. See mise-fogede and .bon/understanding.md "
+        '"Which code does your probe actually reach?".'
+    )
+
+    @staticmethod
+    def _first_sys_path_mutation(tree: ast.AST) -> int | None:
+        """Line of the first sys.path.insert/append call, or None."""
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr in {"insert", "append"}
+                and isinstance(func.value, ast.Attribute)
+                and func.value.attr == "path"
+                and isinstance(func.value.value, ast.Name)
+                and func.value.value.id == "sys"
+            ):
+                return node.lineno
+        return None
+
+    def _root_imports(self, tree: ast.AST) -> list[tuple[str, int]]:
+        """(module, lineno) for every import of a root-tier module."""
+        found = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    top = alias.name.split(".")[0]
+                    if top in self.ROOT_MODULES:
+                        found.append((top, node.lineno))
+            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                top = node.module.split(".")[0]
+                if top in self.ROOT_MODULES:
+                    found.append((top, node.lineno))
+        return found
+
+    def test_scripts_importing_root_modules_fix_sys_path_first(self) -> None:
+        scripts_dir = PROJECT_ROOT / "scripts"
+        violations = []
+
+        for filepath in sorted(scripts_dir.glob("*.py")):
+            try:
+                tree = ast.parse(filepath.read_text(), filename=str(filepath))
+            except SyntaxError:
+                continue
+
+            root_imports = self._root_imports(tree)
+            if not root_imports:
+                continue
+
+            fix_line = self._first_sys_path_mutation(tree)
+            for module, lineno in root_imports:
+                if fix_line is None or fix_line >= lineno:
+                    where = "no sys.path fix at all" if fix_line is None else (
+                        f"sys.path fixed too late, at line {fix_line}"
+                    )
+                    violations.append(
+                        f"{filepath.relative_to(PROJECT_ROOT)}:{lineno} "
+                        f"imports root module '{module}' — {where}"
+                    )
+
+        assert not violations, (
+            "These scripts would import STALE copies from .venv/…/site-packages, "
+            "not the working tree:\n"
+            + "\n".join(f"  - {v}" for v in violations)
+            + "\n\n"
+            + self.REMEDY
+        )
