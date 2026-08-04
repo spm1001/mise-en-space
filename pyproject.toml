@@ -21,7 +21,7 @@ dependencies = [
     # Markdown→HTML for email draft bodies (GFM tables + bold). Core because
     # draft/reply_draft are remote-safe ops and must render in the slim build —
     # pure-Python, tiny (~250K), no compiled deps. See html_convert.markdown_to_html.
-    "markdown>=3.5",
+    "markdown>=3.10.3",
 ]
 
 [project.scripts]
@@ -45,7 +45,7 @@ macos = [
 dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
-    "ruff>=0.16.0",
+    "ruff>=0.16.1",
     "mypy>=2.3.0",
     # Stubs for the core `markdown` dep so html_convert.markdown_to_html types
     # cleanly (markdown ships no py.typed).
