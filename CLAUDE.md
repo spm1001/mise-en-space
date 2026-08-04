@@ -230,9 +230,15 @@ Integration tests require `-m integration` flag and real credentials.
 
 **pytest prints no `N passed` summary line here** — `addopts` in `pyproject.toml` carries `-q`,
 and `-m 'not integration'` is baked in. So the run's evidence is its **exit code**, and a count
-comes from `python -m pytest --co -q --no-cov` (per-file counts; sum them — 2,105 across 76 files
-on 2026-08-03). Don't go looking for a summary line that was never going to print, and don't
+comes from `python -m pytest --co -q --no-cov` (per-file counts; sum them — 2,110 across 76 files
+on 2026-08-04). Don't go looking for a summary line that was never going to print, and don't
 estimate from the progress dots.
+
+**And the corollary that caught this very paragraph:** `-v` does not restore the summary, because
+`addopts`' `-q` and your `-v` cancel to zero verbosity. Use `-vv` for per-test `PASSED`/`FAILED`
+lines — and validate that against a clean tree *before* trusting a red, because the failure mode
+here is an **empty result with exit code 0**, which reads exactly like "nothing went wrong" and
+just as easily like "nothing was checked". Three probes returned that silence in one session.
 
 **`scripts/smoke_stdio.py` is how you exercise the MCP envelope before publishing.** Unit
 tests can't reach the FastMCP registration, the `@mcp.tool` wrapper, schema coercion or the
