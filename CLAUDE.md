@@ -228,17 +228,24 @@ uv run --all-extras python scripts/smoke_stdio.py   # drive the WORKING TREE ove
 
 Integration tests require `-m integration` flag and real credentials.
 
-**pytest prints no `N passed` summary line here** — `addopts` in `pyproject.toml` carries `-q`,
-and `-m 'not integration'` is baked in. So the run's evidence is its **exit code**, and a count
-comes from `python -m pytest --co -q --no-cov` (per-file counts; sum them — 2,110 across 76 files
-on 2026-08-04). Don't go looking for a summary line that was never going to print, and don't
-estimate from the progress dots.
+**The count IS printed — it is just at the bottom of a long scroll.** `uv run --all-extras python
+-m pytest` ends with `2110 passed, 100 deselected in 26.06s` as the last line of ~92, because
+`addopts` in `pyproject.toml` carries `-q` (which suppresses the *per-test* lines, not the summary)
+plus a ~85-line coverage table that pushes the summary off the top of a truncated view.
+`-m 'not integration'` is baked in too, hence the 100 deselected.
 
-**And the corollary that caught this very paragraph:** `-v` does not restore the summary, because
-`addopts`' `-q` and your `-v` cancel to zero verbosity. Use `-vv` for per-test `PASSED`/`FAILED`
-lines — and validate that against a clean tree *before* trusting a red, because the failure mode
-here is an **empty result with exit code 0**, which reads exactly like "nothing went wrong" and
-just as easily like "nothing was checked". Three probes returned that silence in one session.
+**This paragraph said the opposite until 2026-08-04, and the correction is the lesson.** It read
+"pytest prints no `N passed` summary line here", told readers the run's evidence was its exit code,
+and sent them to `python -m pytest --co -q --no-cov` to sum per-file counts by hand. That was false
+when written: a session that had just been burned by `-v` cancelling against `-q` saw a screen with
+no `PASSED` lines and generalised to a screen with no summary — then corrected the `-v` clause in
+the very next sentence and left the wrong headline standing. **A correction covers what it names
+and nothing adjacent**; re-run the thing the claim is about, not the thing your correction is about.
+
+**The `-v` corollary is real and still holds:** `-v` does not restore per-test lines, because
+`addopts`' `-q` and your `-v` cancel to zero verbosity. Use `-vv` — and validate it against a clean
+tree *before* trusting a red, because the failure mode here is an **empty result with exit code 0**,
+which reads exactly like "nothing went wrong" and just as easily like "nothing was checked".
 
 **`scripts/smoke_stdio.py` is how you exercise the MCP envelope before publishing.** Unit
 tests can't reach the FastMCP registration, the `@mcp.tool` wrapper, schema coercion or the
