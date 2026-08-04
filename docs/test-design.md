@@ -33,7 +33,9 @@ Hand-crafted JSON in `fixtures/` designed to exercise specific edge cases:
 
 ### Real Fixtures
 
-Captured from live APIs via `scripts/capture_fixtures.py`, sanitized via `scripts/sanitize_fixtures.py`. These catch issues synthetic fixtures miss — real API quirks, unexpected field combinations.
+Real API responses, sanitized via `scripts/sanitize_fixtures.py`. These catch issues synthetic fixtures miss — real API quirks, unexpected field combinations.
+
+**They are captured ad hoc, not by a script** (updated 2026-08-04, `mise-sowepo`). `scripts/capture_fixtures.py` used to bulk-fetch these from a standing list of test-document IDs; it broke on 2026-03-18 when the httpx migration deleted `adapters/services.py`, went unnoticed for four and a half months, and was deleted rather than ported — every fixture added in that window had been hand-built for a specific bug, so the workflow had already moved. Note what these fixtures are actually *for*: `tests/unit/test_real_fixtures.py` asserts what **mise makes of** a real response (headings, tab names, titles), not what Google sends. Being frozen is therefore a feature — the test measures our code, not Google's current mood. Detecting Google's own drift is a different job, and it belongs in `tests/integration/`, which hits live APIs but is not run by CI.
 
 | Fixture | Source |
 |---------|--------|

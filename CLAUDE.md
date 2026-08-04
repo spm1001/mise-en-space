@@ -8,7 +8,7 @@ mise ships as part of the **Batterie de Savoir** suite, which carries **one suit
 
 - **Do NOT hand-bump `.claude-plugin/plugin.json` to release.** This repo's own `plugin.json` version is **local-dev-only** — the assembler stamps every published plugin to the suite version, overwriting it.
 - **Release via `/batterie:publish`** from this working tree — it bumps the suite version centrally and ships the change (a 2-repo push: this repo + the central suite bump). Never hand-run the assemble.
-- **mise is vendored full-source** (it's the MCP plugin) — so *any* source edit here, plus `CLAUDE.md` / `instructions.md` / `skills/` / `hooks/`, is vendored content that must ride a suite bump (a publish) to ship, or the assembler quarantines the plugin. `docs/` / `.bon/` / `tests/` edits are free (excluded from the vendor).
+- **mise is vendored full-source** (it's the MCP plugin) — so *any* source edit here, plus `CLAUDE.md` / `instructions.md` / `skills/` / `hooks/` / **`scripts/`**, is vendored content that must ride a suite bump (a publish) to ship, or the assembler quarantines the plugin. `docs/` / `.bon/` / `tests/` edits are free (excluded from the vendor) — **that free list is exhaustive, so read anything absent from it as shipped.** `scripts/` is named explicitly because it reads like local tooling and is not: the shipped plugin carries it, which is how a `capture_fixtures.py` that had been broken since March 2026 went on being distributed to every user for four and a half months (mise-sowepo).
 
 Full picture: `spm1001/batterie-de-savoir` → `CLAUDE.md` "Versioning convention" + `.bon/understanding.md`.
 
@@ -302,7 +302,7 @@ Token storage: macOS Keychain (`mise-oauth-token`) is the source of truth. `~/.c
 2. **Extractor** — Create `extractors/{type}.py` with pure extraction function (data in, markdown out)
 3. **Wire in tools** — Add handler in `tools/fetch/` and route in `tools/fetch/router.py`
 4. **Model** — Add data model in `models.py` if needed
-5. **Fixture** — Add to `fixtures/{type}/`, capture via `scripts/capture_fixtures.py`
+5. **Fixture** — Add to `fixtures/{type}/`. **Build the smallest thing that exercises what you're testing, by hand** — realism matters less than minimalism, and a fixture you can read in one screen is one you can reason about when it fails. Worked examples: `fixtures/gmail/outlook_reply_url_dense_quote.txt` and its two siblings, each written for one specific signature-stripping bug. If you need a real Google response, fetch that one document ad hoc and sanitise with `scripts/sanitize_fixtures.py`. There is deliberately no bulk-capture script — `scripts/capture_fixtures.py` held a standing list of test-document IDs, broke on 2026-03-18 when the httpx migration deleted `adapters/services.py`, and was **never missed in the four and a half months before anyone noticed**, because every fixture added in that window was hand-built for a specific bug. Deleted 2026-08-04, `mise-sowepo`; recover with `git show 91d4222:scripts/capture_fixtures.py` if a real need appears
 6. **Tests** — Unit test for extractor (fixture → expected output), adapter mock test
 
 ## How to Add a New do() Operation

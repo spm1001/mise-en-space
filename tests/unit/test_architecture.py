@@ -378,10 +378,19 @@ class TestProbeScriptsSeeTheWorkingTree:
     smoke_stdio.py's spawned server.py is honest); a script under scripts/ and a
     script in /tmp both resolve to the STALE COPY.
 
-    This rule is preventive — scripts/capture_fixtures.py already does the right
-    thing at its lines 18-19 and nothing enforced it. The failure mode is silent
-    and lands in the repo's most-used instrument, since the whole methodology
-    here is probe-before-building.
+    This rule is PURELY preventive, and honestly so: as of 2026-08-04 no script
+    under scripts/ imports a root-tier module at all, so the violating branch is
+    not exercised by any current file. It codified a convention that
+    scripts/capture_fixtures.py had followed correctly since March — that script
+    was deleted the same day (mise-sowepo, it had been broken since the httpx
+    migration), which is what left this test without a live worked example. The
+    controls are therefore the only evidence it works: see the commit that added
+    it, where an unfixed script reddens it by name and moving a path fix to after
+    its import reddens it with "sys.path fixed too late".
+
+    Keep it anyway. The failure mode is silent and it lands in the repo's
+    most-used instrument, since the whole methodology here is probe-before-
+    building — smoke_stdio.py is one `from validation import …` away from it.
     """
 
     # Discovered, not enumerated — same principle as FILE_RULES above, so adding
