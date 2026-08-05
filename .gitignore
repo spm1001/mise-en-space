@@ -63,3 +63,6 @@ uv.lock
 
 # macOS
 .DS_Store
+
+# Claude Code per-repo config, incl. the billing-lane pin (personal Vertex pot id — must never be committed)
+.claude/
