@@ -3125,7 +3125,9 @@ class TestSelfSentCandidates:
         ])
 
     def test_candidates_attached_to_the_refusal(self):
-        with patch("tools.fetch.router.search_threads",
+        with patch("tools.fetch.router.resolve_gmail_url_via_browser",
+                   return_value=None), \
+             patch("tools.fetch.router.search_threads",
                    return_value=self._sent_results()) as mock_search:
             result = do_fetch(self.KTBX_URL)
 
@@ -3148,7 +3150,9 @@ class TestSelfSentCandidates:
         assert result.to_dict()["candidates"] == result.candidates
 
     def test_candidates_failure_never_doubles_the_error(self):
-        with patch("tools.fetch.router.search_threads",
+        with patch("tools.fetch.router.resolve_gmail_url_via_browser",
+                   return_value=None), \
+             patch("tools.fetch.router.search_threads",
                    side_effect=MiseError(ErrorKind.NETWORK_ERROR, "boom")):
             result = do_fetch(self.KTBX_URL)
 
@@ -3164,3 +3168,62 @@ class TestSelfSentCandidates:
         assert isinstance(result, FetchError)
         mock_search.assert_not_called()
         assert result.candidates is None
+
+
+class TestBrowserResolvedSelfSentUrl:
+    """Where a logged-in CDP browser answers, an a-family URL resolves and
+    fetches instead of erroring (mise-johata). Disclosure cue mandatory;
+    candidates path skipped; msg-a Show-original URLs never attempt it."""
+
+    KTBX_URL = "https://mail.google.com/mail/u/0/#all/KtbxLwghjwWScTGNNHctnzRVJkLPKbVvSB"
+    MSG_A_URL = ("https://mail.google.com/mail/u/0/"
+                 "?ik=2bb48b24a5&view=om&permmsgid=msg-a:r-8125895545114462359")
+
+    def _resolution(self):
+        from adapters.gmail_browser import BrowserResolution
+        return BrowserResolution(
+            thread_id="19fd641a90e83369",
+            subject="Typical client and agency contract samples",
+        )
+
+    def _fetch_result(self):
+        return FetchResult(
+            path="p", content_file="c", format="markdown", type="gmail",
+            metadata={}, cues={},
+        )
+
+    def test_browser_hit_fetches_the_resolved_thread_with_cue(self):
+        with patch("tools.fetch.router.resolve_gmail_url_via_browser",
+                   return_value=self._resolution()) as mock_resolve, \
+             patch("tools.fetch.router.search_threads") as mock_search, \
+             patch("tools.fetch.router.fetch_gmail",
+                   return_value=self._fetch_result()) as mock_fetch:
+            result = do_fetch(self.KTBX_URL)
+
+        mock_resolve.assert_called_once_with(self.KTBX_URL)
+        mock_search.assert_not_called()  # candidates path skipped on a hit
+        assert mock_fetch.call_args[0][0] == "19fd641a90e83369"
+        assert isinstance(result, FetchResult)
+        warnings = result.cues.get("warnings", [])
+        assert any("19fd641a90e83369" in w and "browser" in w for w in warnings), \
+            f"browser resolution must be disclosed, got {warnings!r}"
+
+    def test_browser_hit_composes_with_attachment(self):
+        with patch("tools.fetch.router.resolve_gmail_url_via_browser",
+                   return_value=self._resolution()), \
+             patch("tools.fetch.router.fetch_attachment",
+                   return_value=self._fetch_result()) as mock_att:
+            result = do_fetch(self.KTBX_URL, attachment="contract.docx")
+
+        assert mock_att.call_args[0][0] == "19fd641a90e83369"
+        assert isinstance(result, FetchResult)
+
+    def test_msg_a_show_original_url_never_attempts_the_browser(self):
+        with patch("tools.fetch.router.resolve_gmail_url_via_browser") as mock_resolve, \
+             patch("tools.fetch.router.search_threads",
+                   side_effect=MiseError(ErrorKind.NETWORK_ERROR, "no candidates")):
+            result = do_fetch(self.MSG_A_URL)
+
+        mock_resolve.assert_not_called()
+        assert isinstance(result, FetchError)
+        assert "Message-ID" in result.message  # the teaching text stands

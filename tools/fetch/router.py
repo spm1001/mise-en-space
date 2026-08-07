@@ -5,9 +5,10 @@ Fetch routing — ID detection and do_fetch entry point.
 from pathlib import Path
 
 from adapters.gmail import search_threads
+from adapters.gmail_browser import resolve_gmail_url_via_browser
 from adapters.gmail_ids import get_thread_id_for_rfc822_message_id
 from models import MiseError, ErrorKind, FetchResult, FetchError
-from validation import extract_drive_file_id, extract_gmail_id, extract_rfc822_message_id, is_gmail_api_id, is_self_sent_gmail_url, GMAIL_WEB_ID_PREFIXES, detect_fetch_input_problem, diagnose_fetch_404
+from validation import extract_drive_file_id, extract_gmail_id, extract_gmail_permmsgid, extract_rfc822_message_id, is_gmail_api_id, is_self_sent_gmail_url, GMAIL_WEB_ID_PREFIXES, detect_fetch_input_problem, diagnose_fetch_404
 
 from .gmail import fetch_gmail, fetch_attachment
 from .drive import fetch_drive
@@ -102,39 +103,66 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
         # Pre-flight: catch the two input shapes agents reliably get wrong (a 12-char
         # deposit-folder prefix; a non-fetchable URL) with a teaching error, before they
         # fall through to a bare Google 404 (mise-dizupe).
+        resolution_note: str | None = None
+        source: str | None = None
+        normalized_id: str | None = None
+
         problem = detect_fetch_input_problem(file_id)
         if problem:
-            error = FetchError(kind="invalid_input", message=problem)
-            # Self-sent URLs name a thread that exists but is unreachable from
-            # the URL — attach recent sent threads so the caller confirms a
-            # candidate (or says they can't) instead of silently substituting.
-            if is_self_sent_gmail_url(file_id):
-                error.candidates = _self_sent_candidates()
-                if error.candidates:
-                    error.message += (
-                        " Recent sent threads are attached as `candidates` — "
-                        "if one of them is clearly this thread, fetch it by "
-                        "its thread_id; if you cannot tell which, say so "
-                        "rather than picking."
-                    )
-            return error
+            # Self-sent (a-family) FRAGMENT permalinks name a thread that
+            # exists but is unreachable from the URL alone. Where a logged-in
+            # CDP browser is available, Gmail's own UI performs the mapping —
+            # open the URL there and read the rendered thread id (mise-johata;
+            # evidence in docs/2026-08-07-gilojo-a-family-verdict.md).
+            # Fail-open: no browser, lapsed session, timeout — all fall
+            # through to the teaching error + candidates. msg-a Show-original
+            # URLs are excluded: the UI renders an error page for those, so
+            # an attempt could only burn the timeout.
+            resolution = None
+            if is_self_sent_gmail_url(file_id) and extract_gmail_permmsgid(file_id) is None:
+                resolution = resolve_gmail_url_via_browser(file_id)
+            if resolution is None:
+                error = FetchError(kind="invalid_input", message=problem)
+                # Attach recent sent threads so the caller confirms a
+                # candidate (or says they can't) instead of silently
+                # substituting.
+                if is_self_sent_gmail_url(file_id):
+                    error.candidates = _self_sent_candidates()
+                    if error.candidates:
+                        error.message += (
+                            " Recent sent threads are attached as `candidates` — "
+                            "if one of them is clearly this thread, fetch it by "
+                            "its thread_id; if you cannot tell which, say so "
+                            "rather than picking."
+                        )
+                return error
+            source, normalized_id = "gmail", resolution.thread_id
+            subject_part = f" ('{resolution.subject}')" if resolution.subject else ""
+            resolution_note = (
+                f"This URL carries a self-sent (a-family) token that no API can "
+                f"convert, so mise resolved it by opening the URL in the logged-in "
+                f"browser and reading Gmail's rendered thread id: "
+                f"'{resolution.thread_id}'{subject_part}. If this route stops "
+                f"working, the browser session has likely lapsed — the Message-ID "
+                f"route (More > Show original) always works."
+            )
 
         # A Message-ID (from Gmail's Show original view) resolves via one
         # exact-match rfc822msgid: search — the deterministic route into
         # self-sent threads whose web tokens cannot be converted (mise-lerulo).
         # Runs after the URL pre-flight, so URL-shaped inputs never reach it.
-        resolution_note: str | None = None
-        rfc822_id = extract_rfc822_message_id(file_id)
-        if rfc822_id:
-            thread_id = get_thread_id_for_rfc822_message_id(rfc822_id)
-            source, normalized_id = "gmail", thread_id
-            resolution_note = (
-                f"Resolved Message-ID '<{rfc822_id}>' to thread "
-                f"'{thread_id}' via an exact-match rfc822msgid: search."
-            )
-        else:
-            # Detect ID type and normalize
-            source, normalized_id = detect_id_type(file_id)
+        if source is None:
+            rfc822_id = extract_rfc822_message_id(file_id)
+            if rfc822_id:
+                thread_id = get_thread_id_for_rfc822_message_id(rfc822_id)
+                source, normalized_id = "gmail", thread_id
+                resolution_note = (
+                    f"Resolved Message-ID '<{rfc822_id}>' to thread "
+                    f"'{thread_id}' via an exact-match rfc822msgid: search."
+                )
+            else:
+                # Detect ID type and normalize
+                source, normalized_id = detect_id_type(file_id)
 
         # Single-attachment fetch (Gmail only)
         if attachment:
@@ -149,8 +177,9 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
         else:
             result = fetch_drive(normalized_id, base_path=base_path, recursive=recursive, tabs=tabs, suggestions=suggestions)
 
-        # Disclose the Message-ID→thread resolution as a cue — resolve-and-cue,
-        # never silently (the mise-saroca discipline).
+        # Disclose any resolution (Message-ID→thread, or browser-resolved
+        # a-family URL) as a cue — resolve-and-cue, never silently (the
+        # mise-saroca discipline).
         if resolution_note and isinstance(result, FetchResult):
             result.cues.setdefault("warnings", []).append(resolution_note)
         return result

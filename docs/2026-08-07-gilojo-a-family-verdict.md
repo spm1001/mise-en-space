@@ -40,3 +40,7 @@ The ids exist only in the rendered SPA DOM (or behind the internal sync API). Th
 ## What shipped instead (suite 1.36.0, mise-lerulo)
 
 The deterministic routes that need no browser: `fetch()` now accepts RFC 822 Message-IDs (resolved via `rfc822msgid:`) and `msg-f` Show-original URLs (decimal→hex), and a-family refusals attach recent `in:sent` candidates. The browser recipe above is only for the residue: an a-family URL whose thread isn't in the candidates and whose Message-ID nobody has copied.
+
+## Addendum, same day: the recipe is now wired (mise-johata)
+
+`adapters/gmail_browser.py` implements the DOM harvest as an automatic fetch fallback — a-family fragment URLs resolve zero-click where a logged-in CDP Chrome answers (proven live: the matched-pair URL above resolved and deposited in 6.8s through `do_fetch`, disclosure cue attached). Fail-open throughout, so machines without a browser keep the refusal + candidates unchanged. Two implementation traps hit live and recorded in the module: Chrome's `/json/new` HTTP endpoint takes its URL raw after the `?` (a `url=` key-value silently leaves the tab on `about:blank`) — navigate via `Page.navigate` over the websocket instead; and an SSO-wall verdict needs a persistent streak of observations, because a healthy silent refresh legitimately bounces through `accounts.google.com` mid-load.

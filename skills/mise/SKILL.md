@@ -144,10 +144,13 @@ Three things genuinely can't resolve, and each says so by name rather than 404in
 - **Google Chat links** (`#chat/dm/…`, `#chat/space/…`) — Chat is served from `mail.google.com` but
   is a different product with its own ID space. There is no mail thread behind them.
 - **Self-sent threads** (`KtbxL…` or `QgrcJHs…`, decoding to `thread-a:`, roughly 2018 onward) — the
-  token decodes but the number isn't the API thread ID and no transform is known. **The reliable
-  route is the Message-ID:** open the message, More ▸ Show original, copy the `Message-ID`, and pass
-  it to `fetch()`. The refusal also attaches recent sent threads as a `candidates` array —
-  a shortcut when one of them is obviously the thread the URL names.
+  token decodes but the number isn't the API thread ID and no transform is known. **Where a
+  logged-in CDP Chrome is available, mise resolves these automatically** — it opens the URL in a
+  background tab, reads Gmail's rendered thread id, and discloses the route as a cue; you'll just
+  get the thread. Without a browser (or with a lapsed session) the refusal stands, and **the
+  reliable route is the Message-ID:** open the message, More ▸ Show original, copy the
+  `Message-ID`, and pass it to `fetch()`. The refusal also attaches recent sent threads as a
+  `candidates` array — a shortcut when one of them is obviously the thread the URL names.
 - **Bare mailbox views** (`#inbox`, `#label/Finance`) — a view, not a conversation. Use `search`.
 
 **When a fetch is refused, do not substitute.** A bare refusal is an invitation to freelance, and
