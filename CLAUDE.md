@@ -73,6 +73,8 @@ docs/           Design documents and references
 | `sheets.py` | Sheets API (batchGet for values) |
 | `slides.py` | Slides API + thumbnail fetching |
 | `gmail.py` | Gmail threads and messages |
+| `gmail_ids.py` | Alternate Gmail identifiers → thread id (message ids, rfc822 Message-IDs) — fields-masked failure-path resolvers |
+| `gmail_browser.py` | a-family (self-sent) URL resolution via a logged-in CDP Chrome — background tab, DOM harvest, fail-open |
 | `activity.py` | Drive Activity API v2 |
 | `calendar.py` | Calendar events with meeting context (attendees, attachments, Meet links); `get_event_by_ical_uid` for live invite-state (`showDeleted=true` load-bearing) |
 | `forms.py` | Google Forms API v1 (structure: questions, sections, options) |
@@ -233,7 +235,7 @@ uv run --all-extras python scripts/smoke_stdio.py   # drive the WORKING TREE ove
 Integration tests require `-m integration` flag and real credentials.
 
 **The count IS printed — it is just at the bottom of a long scroll.** `uv run --all-extras python
--m pytest` ends with `2110 passed, 100 deselected in 26.06s` as the last line of ~92, because
+-m pytest` ends with `2165 passed, 100 deselected in 24.89s` (count as of 2026-08-07) as the last line of ~92, because
 `addopts` in `pyproject.toml` carries `-q` (which suppresses the *per-test* lines, not the summary)
 plus a ~85-line coverage table that pushes the summary off the top of a truncated view.
 `-m 'not integration'` is baked in too, hence the 100 deselected.
