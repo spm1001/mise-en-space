@@ -3029,3 +3029,138 @@ class TestRawAttachmentBytes:
         extras = _deposit_raw(tmp_path, None, "Report.pdf")
         assert "raw_file" not in extras
         assert extras["warnings"]
+
+
+class TestMessageIdFetch:
+    """fetch() accepts an RFC 822 Message-ID and resolves it via rfc822msgid:
+    search (mise-lerulo steps 1-2). Resolution is disclosed as a cue — never
+    silent — matching the message→thread rescue discipline (mise-saroca)."""
+
+    MID = "CALWvZAA=weBi2-S=c3Zbs-96zgjjkvgz6_y4f8oqJRvT_d6HSA@mail.gmail.com"
+
+    def _fetch_result(self):
+        return FetchResult(
+            path="p", content_file="c", format="markdown", type="gmail",
+            metadata={}, cues={},
+        )
+
+    def test_angle_bracketed_message_id_resolves_and_fetches(self):
+        with patch("tools.fetch.router.get_thread_id_for_rfc822_message_id",
+                   return_value="19fdaeed11138ef2") as mock_resolve, \
+             patch("tools.fetch.router.fetch_gmail",
+                   return_value=self._fetch_result()) as mock_fetch:
+            result = do_fetch(f"<{self.MID}>")
+
+        mock_resolve.assert_called_once_with(self.MID)
+        assert mock_fetch.call_args[0][0] == "19fdaeed11138ef2"
+        assert isinstance(result, FetchResult)
+
+    def test_resolution_is_disclosed_in_cues(self):
+        with patch("tools.fetch.router.get_thread_id_for_rfc822_message_id",
+                   return_value="19fdaeed11138ef2"), \
+             patch("tools.fetch.router.fetch_gmail",
+                   return_value=self._fetch_result()):
+            result = do_fetch(self.MID)
+
+        warnings = result.cues.get("warnings", [])
+        assert any("Message-ID" in w and "19fdaeed11138ef2" in w for w in warnings), \
+            f"resolution must be disclosed, got {warnings!r}"
+
+    def test_unknown_message_id_is_a_teaching_not_found(self):
+        with patch("tools.fetch.router.get_thread_id_for_rfc822_message_id",
+                   side_effect=MiseError(
+                       ErrorKind.NOT_FOUND,
+                       "No message with Message-ID '<x@y.example.com>' in this mailbox.",
+                   )):
+            result = do_fetch("<x@y.example.com>")
+
+        assert isinstance(result, FetchError)
+        assert result.kind == "not_found"
+        assert "Message-ID" in result.message
+
+    def test_message_id_composes_with_attachment_param(self):
+        with patch("tools.fetch.router.get_thread_id_for_rfc822_message_id",
+                   return_value="19fdaeed11138ef2"), \
+             patch("tools.fetch.router.fetch_attachment",
+                   return_value=self._fetch_result()) as mock_att:
+            result = do_fetch(f"<{self.MID}>", attachment="report.pdf")
+
+        assert mock_att.call_args[0][0] == "19fdaeed11138ef2"
+        assert isinstance(result, FetchResult)
+
+
+class TestShowOriginalUrlFetch:
+    """A Show-original URL (?view=om&permmsgid=msg-f:…) is a fetchable input:
+    the decimal converts to a hex MESSAGE id, and the existing message→thread
+    machinery in fetch_gmail does the rest (mise-lerulo, pojoro follow-up)."""
+
+    URL_F = ("https://mail.google.com/mail/u/0/"
+             "?ik=2bb48b24a5&view=om&permmsgid=msg-f:1872845353272970994")
+
+    def test_show_original_url_routes_to_gmail_with_hex_id(self):
+        source, normalized = detect_id_type(self.URL_F)
+        assert source == "gmail"
+        assert normalized == "19fdaeed11138ef2"
+
+
+class TestSelfSentCandidates:
+    """An unreachable self-sent URL carries recent sent threads as candidates
+    (mise-lerulo step 4) — the rail against silent substitution."""
+
+    KTBX_URL = "https://mail.google.com/mail/u/0/#all/KtbxLwghjwWScTGNNHctnzRVJkLPKbVvSB"
+
+    def _sent_results(self):
+        from models import GmailSearchResult, GmailSearchResults
+        from datetime import datetime, timezone
+        return GmailSearchResults(results=[
+            GmailSearchResult(
+                thread_id="19f0000000000001", subject="Innovid Clean Room Redlines?",
+                snippet="…", date=datetime(2026, 7, 30, tzinfo=timezone.utc),
+                from_address="Sameer Modha <sameer.modha@itv.com>",
+            ),
+            GmailSearchResult(
+                thread_id="19f0000000000002", subject="Weekly review",
+                snippet="…", date=None, from_address=None,
+            ),
+        ])
+
+    def test_candidates_attached_to_the_refusal(self):
+        with patch("tools.fetch.router.search_threads",
+                   return_value=self._sent_results()) as mock_search:
+            result = do_fetch(self.KTBX_URL)
+
+        assert isinstance(result, FetchError)
+        assert mock_search.call_args[0][0] == "in:sent"
+        assert result.candidates is not None
+        assert result.candidates[0] == {
+            "thread_id": "19f0000000000001",
+            "subject": "Innovid Clean Room Redlines?",
+            "from": "Sameer Modha <sameer.modha@itv.com>",
+            "date": "2026-07-30",
+        }
+        # Missing date/from degrade to empty strings, never a crash
+        assert result.candidates[1]["date"] == ""
+        assert result.candidates[1]["from"] == ""
+        # The message names the candidates and the don't-guess rule
+        assert "candidates" in result.message
+        assert "say so" in result.message
+        # And the serialized payload carries them
+        assert result.to_dict()["candidates"] == result.candidates
+
+    def test_candidates_failure_never_doubles_the_error(self):
+        with patch("tools.fetch.router.search_threads",
+                   side_effect=MiseError(ErrorKind.NETWORK_ERROR, "boom")):
+            result = do_fetch(self.KTBX_URL)
+
+        assert isinstance(result, FetchError)
+        assert result.kind == "invalid_input"
+        assert result.candidates is None
+        assert "candidates" not in result.to_dict()
+
+    def test_chat_link_refusal_carries_no_candidates(self):
+        with patch("tools.fetch.router.search_threads") as mock_search:
+            result = do_fetch("https://mail.google.com/mail/u/0/#chat/dm/2GLKWSAAAAE")
+
+        assert isinstance(result, FetchError)
+        mock_search.assert_not_called()
+        assert result.candidates is None

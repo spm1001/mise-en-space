@@ -10,6 +10,7 @@ Patterns adopted from mcp-google-workspace.
 
 import re
 from base64 import b64decode
+from urllib.parse import parse_qs, urlsplit
 
 # =============================================================================
 # PATTERNS
@@ -100,6 +101,15 @@ def _decode_gmail_web_token(token: str) -> str | None:
 
     Reference:
         https://github.com/ArsenalRecon/GmailURLDecoder
+
+    Negative results, recorded so nobody re-derives them (mise-lerulo step 6):
+    naive base64 does NOT decode these tokens — neither the standard nor the
+    urlsafe alphabet, at offsets 0/4/6, yields bytes containing the known API
+    thread id (probed 2026-07-31 against a matched pair). The vowel-less
+    transform below is the only known decode. And for thread-a tokens, the
+    decoded r-number is NOT a draft id in disguise: drafts.get on a live
+    example's r-number 404s (probed 2026-08-07). thread-a numbers reach no
+    API surface at all — the Message-ID via rfc822msgid: is the way in.
     """
     charset_full = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
     charset_reduced = "BCDFGHJKLMNPQRSTVWXZbcdfghjklmnpqrstvwxz"
@@ -217,6 +227,68 @@ def convert_gmail_web_id(web_id: str) -> str | None:
     return _extract_api_id_from_decoded(decoded)
 
 
+RFC822_MESSAGE_ID_BODY_RE = re.compile(r'^[^\s<>@]+@[^\s<>@/]+\.[^\s<>@/]+$')
+
+
+def extract_rfc822_message_id(input_value: str) -> str | None:
+    """
+    Recognise an RFC 822 Message-ID passed as a fetch input, bare or <bracketed>.
+
+    The Message-ID (from Gmail's Show original view) is the one deterministic
+    route into threads whose web tokens decode to thread-a — self-sent mail,
+    where no arithmetic transform to an API id exists. fetch() resolves it via
+    an exact-match rfc822msgid: search so callers don't need to know the
+    operator (mise-lerulo).
+
+    Deliberately shape-only and pure: a plain email address also matches, and
+    that is fine — an email address is never a valid fetch input, and the
+    NOT_FOUND from the lookup names that possibility. Brackets must balance;
+    the domain part must carry a dot and no '/', so URL fragments containing
+    a bare '@' never match.
+
+    Returns:
+        The Message-ID without angle brackets, or None if the shape says
+        this isn't one.
+    """
+    if not input_value:
+        return None
+    s = input_value.strip()
+    if s.startswith('<') != s.endswith('>'):
+        return None  # unbalanced brackets
+    if s.startswith('<'):
+        s = s[1:-1]
+    if not RFC822_MESSAGE_ID_BODY_RE.match(s):
+        return None
+    return s
+
+
+def extract_gmail_permmsgid(url: str) -> tuple[str, str] | None:
+    """
+    Parse the permmsgid parameter from a Gmail Show-original URL.
+
+    Show original's own URL (?view=om&permmsgid=…) carries a second
+    machine-usable identifier alongside the Message-ID the page displays:
+    msg-f:<decimal> converts to the hex API MESSAGE id by the same transform
+    as thread-f (confirmed live 2026-08-07: msg-f:1872845353272970994 →
+    19fdaeed11138ef2, the very thread its FMfcgz token names). msg-a:r-…
+    (self-sent) has no transform — same family as thread-a.
+
+    Returns:
+        (family, value) — ('f', '1872…') or ('a', 'r-812…') — or None when
+        the URL carries no parseable permmsgid.
+    """
+    if not url or 'mail.google.com' not in url:
+        return None
+    query = urlsplit(url).query
+    values = parse_qs(query).get('permmsgid')
+    if not values:
+        return None
+    match = re.match(r'^msg-([fa]):(.+)$', values[0])
+    if not match:
+        return None
+    return (match.group(1), match.group(2))
+
+
 def gmail_fragment_segments(url: str) -> list[str]:
     """
     Split a Gmail web URL's fragment into its '/'-separated segments.
@@ -252,6 +324,17 @@ def extract_gmail_id_from_url(url: str) -> str | None:
     """
     if not url or 'mail.google.com' not in url:
         return None
+
+    # Show-original URLs carry the id in the QUERY, not the fragment. msg-f
+    # decimals convert like thread-f; the result is a MESSAGE id, which the
+    # gmail fetcher's message→thread machinery resolves (head message ids ARE
+    # their thread id, so the common case costs no extra call).
+    permmsgid = extract_gmail_permmsgid(url)
+    if permmsgid:
+        family, value = permmsgid
+        if family == 'f' and value.isdigit():
+            return _extract_api_id_from_decoded(f"msg-f:{value}")
+        return None  # msg-a (self-sent) — diagnose_gmail_url names the route
 
     segments = gmail_fragment_segments(url)
     if not segments:
@@ -295,6 +378,25 @@ def diagnose_gmail_url(url: str) -> str | None:
     """
     if not url or 'mail.google.com' not in url:
         return None
+
+    permmsgid = extract_gmail_permmsgid(url)
+    if permmsgid and permmsgid[0] == 'a':
+        return (
+            "This Show-original URL carries permmsgid=msg-a:…, which marks a "
+            "SELF-SENT message — msg-a numbers have no known transform to an "
+            "API id (msg-f ones convert; msg-a is the same dead end as "
+            "thread-a). But the page this URL opens displays the answer: copy "
+            "the Message-ID header shown there and pass it to fetch(), or run "
+            "search('rfc822msgid:<message-id>')."
+        )
+    if permmsgid:
+        # family 'f' reaching diagnosis means the decimal didn't convert —
+        # malformed value rather than a known class.
+        return (
+            f"This Show-original URL carries permmsgid=msg-{permmsgid[0]}:"
+            f"{permmsgid[1][:25]}, which could not be converted to an API id. "
+            f"{_SHOW_ORIGINAL_ROUTE}"
+        )
 
     segments = gmail_fragment_segments(url)
     if not segments:
@@ -353,6 +455,31 @@ def diagnose_gmail_url(url: str) -> str | None:
         )
 
     return None
+
+
+def is_self_sent_gmail_url(url: str) -> bool:
+    """
+    True when a Gmail URL names a thread that EXISTS but cannot be reached from
+    the URL alone — the self-sent class (thread-a token, or msg-a permmsgid).
+
+    This is the one refusal class that earns a candidates search: the thread is
+    real and probably recent, so recency in the sent folder finds it. Chat
+    links, mailbox views, and draft links stay out — there is no single mail
+    thread behind those, and candidates would only dignify the wrong question.
+    """
+    if not url or 'mail.google.com' not in url:
+        return False
+    permmsgid = extract_gmail_permmsgid(url)
+    if permmsgid and permmsgid[0] == 'a':
+        return True
+    segments = gmail_fragment_segments(url)
+    if not segments or segments[0].lower() == 'chat':
+        return False
+    token = segments[-1]
+    if not token.startswith(GMAIL_WEB_ID_PREFIXES):
+        return False
+    decoded = _decode_gmail_web_token(token)
+    return bool(decoded and 'thread-a:' in decoded)
 
 
 def is_gmail_web_id(id_value: str) -> bool:

@@ -1,0 +1,112 @@
+"""
+Gmail id resolution — alternate identifiers → the thread id fetch needs.
+
+Gmail gives one conversation several names: the thread id, per-message ids
+sharing the thread id's shape, the RFC 822 Message-ID header, and the web
+UI's encoded tokens. fetch() speaks thread ids; these helpers resolve the
+others to one. Both are failure-path helpers, fields-masked to the single
+id they exist to learn.
+
+Split from adapters/gmail.py 2026-08-07 (module-size ratchet, mise-nebewe):
+the id-resolution concern is separable from thread/message content fetching.
+"""
+
+from adapters.gmail import _GMAIL_API
+from adapters.http_client import get_sync_client
+from models import MiseError, ErrorKind
+from retry import with_retry
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def get_thread_id_for_message(message_id: str) -> str:
+    """
+    Resolve a Gmail MESSAGE id to the id of the thread that holds it.
+
+    Gmail thread ids and message ids share one shape (16 hex) and one id space, but
+    a message id only resolves against threads.get when that message HEADS its
+    thread. Mid-conversation, a perfectly valid message id 404s as a thread with
+    nothing in the error to say why — that cost a 7-minute detour on 2026-07-31 and
+    is the whole of mise-saroca.
+
+    Deliberately fields-masked to `threadId`. This runs only on a failure path, and
+    fetch_message's format=full would download an entire message body — attachments
+    metadata, both MIME parts — to learn one id.
+
+    Args:
+        message_id: A Gmail message id.
+
+    Returns:
+        The id of the thread holding that message.
+
+    Raises:
+        MiseError: NOT_FOUND when the id is not a live message either. Callers read
+            that as "neither a thread nor a message on this account" and should pass
+            tried_message_lookup=True to validation.diagnose_fetch_404, so the advice
+            stops suggesting a message lookup that has already failed.
+    """
+    client = get_sync_client()
+
+    msg = client.get_json(
+        f"{_GMAIL_API}/messages/{message_id}",
+        params={"fields": "threadId"},
+    )
+
+    # Defensive: list endpoints under a fields mask can return an empty body rather
+    # than {} (drafts.list does exactly that — see list_thread_drafts), so don't
+    # assume a dict came back just because the status was 2xx.
+    thread_id = msg.get("threadId") if isinstance(msg, dict) else None
+    if not thread_id:
+        raise MiseError(
+            ErrorKind.NOT_FOUND,
+            f"messages.get returned no threadId for '{message_id}'",
+        )
+
+    return str(thread_id)
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def get_thread_id_for_rfc822_message_id(message_id: str) -> str:
+    """
+    Resolve an RFC 822 Message-ID header to the id of the thread holding it.
+
+    rfc822msgid: is an exact-match operator — a Message-ID names one message in
+    one mailbox, so this returns 0 or 1 hits, never a ranking. It is the
+    deterministic route into threads whose web tokens decode to thread-a
+    (self-sent, ~2018+), where no arithmetic transform exists (mise-lerulo;
+    the negatives are recorded on validation._decode_gmail_web_token).
+
+    Fields-masked to id+threadId — one id is all this call exists to learn.
+
+    Args:
+        message_id: The Message-ID without angle brackets.
+
+    Returns:
+        The id of the thread holding that message.
+
+    Raises:
+        MiseError: NOT_FOUND when no message in this mailbox carries the id.
+    """
+    client = get_sync_client()
+
+    result = client.get_json(
+        f"{_GMAIL_API}/messages",
+        params={
+            "q": f"rfc822msgid:{message_id}",
+            "maxResults": 1,
+            "fields": "messages(id,threadId)",
+        },
+    )
+
+    messages = result.get("messages") if isinstance(result, dict) else None
+    thread_id = messages[0].get("threadId") if messages else None
+    if not thread_id:
+        raise MiseError(
+            ErrorKind.NOT_FOUND,
+            f"No message with Message-ID '{message_id}' in this mailbox. The "
+            f"rfc822msgid: lookup is exact-match — check the id was copied "
+            f"whole from Show original (everything between the angle "
+            f"brackets). If this is an email ADDRESS rather than a "
+            f"Message-ID, use search('from:…') instead.",
+        )
+
+    return str(thread_id)

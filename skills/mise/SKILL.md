@@ -130,22 +130,33 @@ anything. So: whole URL, always.
 
 **Gmail URLs work harder than they look.** The thread token is the **last** fragment segment, so a
 search-scoped URL like `#search/from%3Aalice+lantern/FMfcgz…` resolves fine — mise reads the token
-at the end, not the search terms in the middle. Three things genuinely can't resolve, and each says
-so by name rather than 404ing at you:
+at the end, not the search terms in the middle. Two more identifier shapes resolve directly:
+
+- **A Message-ID, bare or `<angle-bracketed>`** — from More ▸ Show original on any message. Pass it
+  straight to `fetch()`; mise resolves it internally via an exact-match `rfc822msgid:` search and
+  discloses the resolution as a cue. This is THE reliable route into any email, whatever its URL.
+- **A Show-original URL** (`?view=om&permmsgid=msg-f:…`) — fetchable as pasted; the `msg-f` decimal
+  converts to the API message id. (`permmsgid=msg-a:…` marks a self-sent message and cannot convert —
+  but the page that URL opens displays the Message-ID, which can.)
+
+Three things genuinely can't resolve, and each says so by name rather than 404ing at you:
 
 - **Google Chat links** (`#chat/dm/…`, `#chat/space/…`) — Chat is served from `mail.google.com` but
   is a different product with its own ID space. There is no mail thread behind them.
-- **Self-sent threads** (`KtbxL…`, decoding to `thread-a:`, roughly 2018 onward) — the token decodes
-  but the number isn't the API thread ID and no transform is known. **The reliable route is the
-  Message-ID:** open the message, More ▸ Show original, copy the `Message-ID`, and either pass it to
-  `fetch()` or run `search("rfc822msgid:<message-id>")`, which resolves to exactly one thread.
+- **Self-sent threads** (`KtbxL…` or `QgrcJHs…`, decoding to `thread-a:`, roughly 2018 onward) — the
+  token decodes but the number isn't the API thread ID and no transform is known. **The reliable
+  route is the Message-ID:** open the message, More ▸ Show original, copy the `Message-ID`, and pass
+  it to `fetch()`. The refusal also attaches recent sent threads as a `candidates` array —
+  a shortcut when one of them is obviously the thread the URL names.
 - **Bare mailbox views** (`#inbox`, `#label/Finance`) — a view, not a conversation. Use `search`.
 
 **When a fetch is refused, do not substitute.** A bare refusal is an invitation to freelance, and
 that has already gone wrong here: a session handed an unresolvable self-sent URL searched the inbox,
 picked the newest unread thread, and produced 1,500 words analysing the wrong email as though it
-were the requested one — while the right thread sat at rank 2 of that same search. If you can't
-confirm which candidate is correct, **say so and ask**, rather than picking.
+were the requested one — while the right thread sat at rank 2 of that same search. The `candidates`
+array exists for exactly this moment: confirm one **by its subject and date against what you know of
+the thread you were asked for**, and if you can't confirm which candidate is correct, **say so and
+ask**, rather than picking.
 
 **What fetch can't take:** non-Google URLs (GitHub, docs sites) aren't fetchable — mise is not a
 generic web fetcher. And the 12-char ID fragment in a deposit folder name (`doc--title--1jinlqdtqLpw`)

@@ -326,53 +326,6 @@ def fetch_message(message_id: str) -> EmailMessage:
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
-def get_thread_id_for_message(message_id: str) -> str:
-    """
-    Resolve a Gmail MESSAGE id to the id of the thread that holds it.
-
-    Gmail thread ids and message ids share one shape (16 hex) and one id space, but
-    a message id only resolves against threads.get when that message HEADS its
-    thread. Mid-conversation, a perfectly valid message id 404s as a thread with
-    nothing in the error to say why — that cost a 7-minute detour on 2026-07-31 and
-    is the whole of mise-saroca.
-
-    Deliberately fields-masked to `threadId`. This runs only on a failure path, and
-    fetch_message's format=full would download an entire message body — attachments
-    metadata, both MIME parts — to learn one id.
-
-    Args:
-        message_id: A Gmail message id.
-
-    Returns:
-        The id of the thread holding that message.
-
-    Raises:
-        MiseError: NOT_FOUND when the id is not a live message either. Callers read
-            that as "neither a thread nor a message on this account" and should pass
-            tried_message_lookup=True to validation.diagnose_fetch_404, so the advice
-            stops suggesting a message lookup that has already failed.
-    """
-    client = get_sync_client()
-
-    msg = client.get_json(
-        f"{_GMAIL_API}/messages/{message_id}",
-        params={"fields": "threadId"},
-    )
-
-    # Defensive: list endpoints under a fields mask can return an empty body rather
-    # than {} (drafts.list does exactly that — see list_thread_drafts), so don't
-    # assume a dict came back just because the status was 2xx.
-    thread_id = msg.get("threadId") if isinstance(msg, dict) else None
-    if not thread_id:
-        raise MiseError(
-            ErrorKind.NOT_FOUND,
-            f"messages.get returned no threadId for '{message_id}'",
-        )
-
-    return str(thread_id)
-
-
-@with_retry(max_attempts=3, delay_ms=1000)
 def search_threads(
     query: str,
     max_results: int = 20,

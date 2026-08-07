@@ -7,7 +7,8 @@ from typing import Any
 
 from adapters.drive import download_file, lookup_exfiltrated
 from adapters.calendar import get_event_by_ical_uid
-from adapters.gmail import fetch_thread, get_thread_id_for_message
+from adapters.gmail import fetch_thread
+from adapters.gmail_ids import get_thread_id_for_message
 from adapters.office import convert_office_content, get_office_type_from_mime
 from adapters.pdf import convert_pdf_content, render_pdf_pages
 from extractors.gmail import extract_thread_content, parse_ics_uid

@@ -4,8 +4,10 @@ Fetch routing — ID detection and do_fetch entry point.
 
 from pathlib import Path
 
+from adapters.gmail import search_threads
+from adapters.gmail_ids import get_thread_id_for_rfc822_message_id
 from models import MiseError, ErrorKind, FetchResult, FetchError
-from validation import extract_drive_file_id, extract_gmail_id, is_gmail_api_id, GMAIL_WEB_ID_PREFIXES, detect_fetch_input_problem, diagnose_fetch_404
+from validation import extract_drive_file_id, extract_gmail_id, extract_rfc822_message_id, is_gmail_api_id, is_self_sent_gmail_url, GMAIL_WEB_ID_PREFIXES, detect_fetch_input_problem, diagnose_fetch_404
 
 from .gmail import fetch_gmail, fetch_attachment
 from .drive import fetch_drive
@@ -41,6 +43,36 @@ def detect_id_type(input_id: str) -> tuple[str, str]:
     return ("drive", input_id)
 
 
+def _self_sent_candidates() -> list[dict[str, str]] | None:
+    """
+    Recent sent threads, as candidates for an unreachable self-sent URL.
+
+    The anti-freelancing rail (mise-lerulo): on 2026-07-31 a bare (correct)
+    refusal led a session to search the inbox, pick the newest unread thread,
+    and analyse the wrong email as the requested one — while the right thread
+    sat at rank 2 of that same search. Candidates make the next move explicit:
+    confirm one, or say you cannot. Self-sent means the user wrote it, so
+    in:sent is where it lives.
+
+    Fail-open by design: candidates are a bonus on an error path, and a failed
+    search must never turn one error into two.
+    """
+    try:
+        results = search_threads("in:sent", max_results=10)
+    except Exception:
+        return None
+    candidates = [
+        {
+            "thread_id": r.thread_id,
+            "subject": r.subject,
+            "from": r.from_address or "",
+            "date": r.date.strftime("%Y-%m-%d") if r.date else "",
+        }
+        for r in results.results
+    ]
+    return candidates or None
+
+
 def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None = None, recursive: bool = False, tabs: list[str] | None = None, suggestions: str = "accepted", raw: bool = False) -> FetchResult | FetchError:
     """
     Main fetch entry point.
@@ -72,10 +104,37 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
         # fall through to a bare Google 404 (mise-dizupe).
         problem = detect_fetch_input_problem(file_id)
         if problem:
-            return FetchError(kind="invalid_input", message=problem)
+            error = FetchError(kind="invalid_input", message=problem)
+            # Self-sent URLs name a thread that exists but is unreachable from
+            # the URL — attach recent sent threads so the caller confirms a
+            # candidate (or says they can't) instead of silently substituting.
+            if is_self_sent_gmail_url(file_id):
+                error.candidates = _self_sent_candidates()
+                if error.candidates:
+                    error.message += (
+                        " Recent sent threads are attached as `candidates` — "
+                        "if one of them is clearly this thread, fetch it by "
+                        "its thread_id; if you cannot tell which, say so "
+                        "rather than picking."
+                    )
+            return error
 
-        # Detect ID type and normalize
-        source, normalized_id = detect_id_type(file_id)
+        # A Message-ID (from Gmail's Show original view) resolves via one
+        # exact-match rfc822msgid: search — the deterministic route into
+        # self-sent threads whose web tokens cannot be converted (mise-lerulo).
+        # Runs after the URL pre-flight, so URL-shaped inputs never reach it.
+        resolution_note: str | None = None
+        rfc822_id = extract_rfc822_message_id(file_id)
+        if rfc822_id:
+            thread_id = get_thread_id_for_rfc822_message_id(rfc822_id)
+            source, normalized_id = "gmail", thread_id
+            resolution_note = (
+                f"Resolved Message-ID '<{rfc822_id}>' to thread "
+                f"'{thread_id}' via an exact-match rfc822msgid: search."
+            )
+        else:
+            # Detect ID type and normalize
+            source, normalized_id = detect_id_type(file_id)
 
         # Single-attachment fetch (Gmail only)
         if attachment:
@@ -84,13 +143,17 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
                     kind="invalid_input",
                     message="attachment parameter only works with Gmail thread/message IDs",
                 )
-            return fetch_attachment(normalized_id, attachment, base_path=base_path, raw=raw)
-
-        # Route to appropriate fetcher
-        if source == "gmail":
-            return fetch_gmail(normalized_id, base_path=base_path)
+            result = fetch_attachment(normalized_id, attachment, base_path=base_path, raw=raw)
+        elif source == "gmail":
+            result = fetch_gmail(normalized_id, base_path=base_path)
         else:
-            return fetch_drive(normalized_id, base_path=base_path, recursive=recursive, tabs=tabs, suggestions=suggestions)
+            result = fetch_drive(normalized_id, base_path=base_path, recursive=recursive, tabs=tabs, suggestions=suggestions)
+
+        # Disclose the Message-ID→thread resolution as a cue — resolve-and-cue,
+        # never silently (the mise-saroca discipline).
+        if resolution_note and isinstance(result, FetchResult):
+            result.cues.setdefault("warnings", []).append(resolution_note)
+        return result
 
     except MiseError as e:
         # A 404 reaching here is the largest untaught failure class in the call log —

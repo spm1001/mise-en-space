@@ -9,12 +9,14 @@ from validation import (
     extract_drive_file_id,
     extract_gmail_id,
     extract_gmail_id_from_url,
+    extract_rfc822_message_id,
     convert_gmail_web_id,
     detect_fetch_input_problem,
     diagnose_gmail_url,
     gmail_fragment_segments,
     is_gmail_web_id,
     is_gmail_api_id,
+    is_self_sent_gmail_url,
     looks_like_drive_query,
     sanitize_gmail_query,
     sanitize_title,
@@ -475,3 +477,121 @@ class TestLooksLikeDriveQuery:
         would really type, and rejecting any of them would be worse than the bug
         the guard exists to prevent."""
         assert looks_like_drive_query(q) is False
+
+
+class TestRfc822MessageIdExtraction:
+    """extract_rfc822_message_id — fetch() accepting Message-IDs (mise-lerulo).
+
+    The Message-ID comes from Gmail's Show original view and is the one
+    deterministic route into threads whose web tokens decode to thread-a
+    (self-sent, no known transform).
+    """
+
+    def test_angle_bracketed_exchange_id(self):
+        mid = ("<VI0PR01MB11914227C6036AFC7DC888B59E8D12"
+               "@VI0PR01MB11914.eurprd01.prod.exchangelabs.com>")
+        assert extract_rfc822_message_id(mid) == mid[1:-1]
+
+    def test_bare_gmail_id_with_specials(self):
+        # Gmail-originated Message-IDs carry '=', '+', '-' in the local part
+        mid = "CALWvZAA=weBi2-S=c3Zbs-96zgjjkvgz6_y4f8oqJRvT+d6HSA@mail.gmail.com"
+        assert extract_rfc822_message_id(mid) == mid
+
+    def test_surrounding_whitespace_stripped(self):
+        assert extract_rfc822_message_id("  <a.b@c.example.com> ") == "a.b@c.example.com"
+
+    @pytest.mark.parametrize("not_a_message_id", [
+        "19fdaeed11138ef2",                                    # Gmail API id
+        "1OepZjuwi2emuHPAP-LWxWZnw9g0SbkjhkBJh9ta1rqU",        # Drive id
+        "FMfcgzQhVhjbJVgnGqBkMTktjRNBlvCQ",                    # Gmail web token
+        "https://mail.google.com/mail/u/0/#inbox/FMfcgzQhV",   # URL
+        "two words@example.com",                               # space
+        "<half@open",                                          # unbalanced bracket
+        "no-at-sign.example.com",                              # no @
+        "user@localhost",                                      # dotless domain
+        "a@b@c.example.com",                                   # two @
+        "",
+    ])
+    def test_rejects_non_message_ids(self, not_a_message_id):
+        assert extract_rfc822_message_id(not_a_message_id) is None
+
+
+class TestShowOriginalUrl:
+    """Show-original URLs (?view=om&permmsgid=…) as fetch inputs (mise-lerulo).
+
+    msg-f decimals convert to hex API message ids by the same transform as
+    thread-f (confirmed live: 1872845353272970994 → 19fdaeed11138ef2, the very
+    thread its FMfcgz token names). msg-a (self-sent) has no transform — but the
+    page the URL names displays the Message-ID, so the teaching text says so.
+    """
+
+    URL_F = ("https://mail.google.com/mail/u/0/"
+             "?ik=2bb48b24a5&view=om&permmsgid=msg-f:1872845353272970994")
+    URL_A = ("https://mail.google.com/mail/u/0/"
+             "?ik=2bb48b24a5&view=om&permmsgid=msg-a:r-8125895545114462359")
+
+    def test_msg_f_converts_to_hex_message_id(self):
+        assert extract_gmail_id_from_url(self.URL_F) == "19fdaeed11138ef2"
+
+    def test_msg_f_with_urlencoded_colon(self):
+        url = self.URL_F.replace("msg-f:", "msg-f%3A")
+        assert extract_gmail_id_from_url(url) == "19fdaeed11138ef2"
+
+    def test_msg_f_passes_preflight(self):
+        assert detect_fetch_input_problem(self.URL_F) is None
+
+    def test_msg_f_resolves_via_extract_gmail_id(self):
+        assert extract_gmail_id(self.URL_F) == "19fdaeed11138ef2"
+
+    def test_msg_a_returns_none(self):
+        assert extract_gmail_id_from_url(self.URL_A) is None
+
+    def test_msg_a_teaching_text_names_the_message_id_on_the_page(self):
+        diag = diagnose_gmail_url(self.URL_A)
+        assert diag is not None
+        assert "msg-a" in diag
+        assert "Message-ID" in diag
+
+    def test_msg_a_preflight_carries_the_diagnosis(self):
+        problem = detect_fetch_input_problem(self.URL_A)
+        assert problem is not None
+        assert "Message-ID" in problem
+
+    def test_plain_mailbox_view_diagnosis_unchanged(self):
+        # A no-fragment URL without permmsgid still gets the mailbox-view text
+        diag = diagnose_gmail_url("https://mail.google.com/mail/u/0/")
+        assert diag is not None
+        assert "mailbox view" in diag
+
+
+class TestIsSelfSentGmailUrl:
+    """is_self_sent_gmail_url — the one refusal class that earns candidates."""
+
+    @pytest.mark.parametrize("url", [
+        # Ktbx token in a mailbox view (the 2026-07-31 original defect URL shape)
+        "https://mail.google.com/mail/u/0/#all/KtbxLwghjwWScTGNNHctnzRVJkLPKbVvSB",
+        # Qgrc token behind a search (decodes to thread-a — probed 2026-08-07)
+        "https://mail.google.com/mail/u/0/#search/hasan.patel%40itv.com/"
+        "QgrcJHsbdJTGBvvQznvJDWRjKHcsnKvmpKQ",
+        # msg-a Show-original URL
+        "https://mail.google.com/mail/u/0/"
+        "?ik=2bb48b24a5&view=om&permmsgid=msg-a:r-8125895545114462359",
+    ])
+    def test_self_sent_shapes(self, url):
+        assert is_self_sent_gmail_url(url) is True
+
+    @pytest.mark.parametrize("url", [
+        # Convertible thread-f URL — resolves, never refused
+        "https://mail.google.com/mail/u/0/#inbox/FMfcgzQhVhjbJVgnGqBkMTktjRNBlvCQ",
+        # msg-f Show-original URL — converts
+        "https://mail.google.com/mail/u/0/"
+        "?ik=2bb48b24a5&view=om&permmsgid=msg-f:1872845353272970994",
+        # Chat link — different product, no mail thread to find
+        "https://mail.google.com/mail/u/0/#chat/dm/2GLKWSAAAAE",
+        # Bare mailbox view — a view, not a thread
+        "https://mail.google.com/mail/u/0/#inbox",
+        # Not Gmail at all
+        "https://docs.google.com/document/d/1ABC123/edit",
+    ])
+    def test_other_shapes_stay_out(self, url):
+        assert is_self_sent_gmail_url(url) is False

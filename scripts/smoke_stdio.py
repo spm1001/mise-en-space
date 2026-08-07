@@ -53,6 +53,28 @@ CASES = [
         "18fe27655760c61b",
         ["18fd8caa12fed511", "is a Gmail MESSAGE id, not a thread id"],
     ),
+    (
+        "REAL Message-ID (from Show original) — resolves via rfc822msgid: "
+        "and the resolution is disclosed (mise-lerulo)",
+        "<VI0PR01MB11914227C6036AFC7DC888B59E8D12"
+        "@VI0PR01MB11914.eurprd01.prod.exchangelabs.com>",
+        ["19fdaeed11138ef2", "rfc822msgid"],
+    ),
+    (
+        "REAL Show-original URL — permmsgid=msg-f decimal converts to the hex "
+        "message id, whose message heads its thread (mise-lerulo). A direct hit "
+        "carries no cue, so the deposit path (12-char id prefix) is the evidence",
+        "https://mail.google.com/mail/u/0/"
+        "?ik=2bb48b24a5&view=om&permmsgid=msg-f:1872845353272970994",
+        ["gmail--your-first-gtd-weekly-review--19fdaeed1113"],
+    ),
+    (
+        "Show-original URL for a SELF-SENT message (msg-a) — refused with the "
+        "copy-the-Message-ID-from-the-page teaching text",
+        "https://mail.google.com/mail/u/0/"
+        "?ik=2bb48b24a5&view=om&permmsgid=msg-a:r-8125895545114462359",
+        ["msg-a", "Message-ID"],
+    ),
 ]
 
 

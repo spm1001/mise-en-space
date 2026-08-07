@@ -541,6 +541,12 @@ class FetchError:
     message: str = ""
     file_id: str | None = None
     name: str | None = None
+    # Recent-thread candidates attached when a Gmail URL names a thread that
+    # exists but cannot be reached from the URL alone (self-sent class). A bare
+    # refusal invites the caller to substitute silently — candidates make the
+    # next move explicit and checkable (mise-lerulo). Never a guess: the caller
+    # must confirm a candidate or say they cannot.
+    candidates: list[dict[str, Any]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result = {"error": self.error, "kind": self.kind, "message": self.message}
@@ -548,6 +554,8 @@ class FetchError:
             result["file_id"] = self.file_id
         if self.name:
             result["name"] = self.name
+        if self.candidates:
+            result["candidates"] = self.candidates
         return result
 
 
