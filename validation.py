@@ -445,7 +445,11 @@ def diagnose_gmail_url(url: str) -> str | None:
             f"This is a self-sent thread (thread-a format, roughly 2018 onward). "
             f"Its web token decodes cleanly but the number it carries is not the "
             f"API thread id and no transform is known, so the URL alone cannot "
-            f"reach it. {_SHOW_ORIGINAL_ROUTE}"
+            f"reach it. {_SHOW_ORIGINAL_ROUTE} If this session has browser tools "
+            f"attached to a Chrome where this Gmail account is signed in (e.g. "
+            f"Claude in Chrome), you can also open the URL there yourself, read "
+            f"the thread's data-legacy-thread-id attribute from the page, and "
+            f"fetch that id directly."
         )
 
     if convert_gmail_web_id(token) is None:

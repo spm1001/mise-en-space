@@ -147,10 +147,13 @@ Three things genuinely can't resolve, and each says so by name rather than 404in
   token decodes but the number isn't the API thread ID and no transform is known. **Where a
   logged-in CDP Chrome is available, mise resolves these automatically** — it opens the URL in a
   background tab, reads Gmail's rendered thread id, and discloses the route as a cue; you'll just
-  get the thread. Without a browser (or with a lapsed session) the refusal stands, and **the
-  reliable route is the Message-ID:** open the message, More ▸ Show original, copy the
-  `Message-ID`, and pass it to `fetch()`. The refusal also attaches recent sent threads as a
-  `candidates` array — a shortcut when one of them is obviously the thread the URL names.
+  get the thread. Without one, **you may still hold the browser yourself**: if this session has
+  browser tools attached to a Chrome signed into this Gmail account (e.g. Claude in Chrome), open
+  the URL there, read the thread's `data-legacy-thread-id` attribute from the page (any message's
+  `data-legacy-message-id` works too), and `fetch()` that id. Failing both, **the reliable route is
+  the Message-ID:** open the message, More ▸ Show original, copy the `Message-ID`, and pass it to
+  `fetch()`. The refusal also attaches recent sent threads as a `candidates` array — a shortcut
+  when one of them is obviously the thread the URL names.
 - **Bare mailbox views** (`#inbox`, `#label/Finance`) — a view, not a conversation. Use `search`.
 
 **When a fetch is refused, do not substitute.** A bare refusal is an invitation to freelance, and
