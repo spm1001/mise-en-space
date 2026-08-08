@@ -1027,6 +1027,53 @@ class TestMultiTabSheetCreation:
     @patch("tools.create.add_sheet", return_value=1)
     @patch("tools.create.update_sheet_values", return_value=4)
     @patch("tools.create.get_sync_client")
+    def test_single_tab_deposit_routes_multi_tab_and_keeps_name(
+        self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
+    ) -> None:
+        """A single-tab deposit takes the multi-tab route — DELIBERATE since mise-dogape.
+
+        Fetch manifests now always carry a `tabs` array (single-tab entries point
+        at content.csv, carrying the sheet_id that ?gid= resolution needs), so
+        the presence-of-tabs routing check fires for single-tab deposits too.
+        Measured consequence: same CSV-import engine as the old single-tab path
+        (identical data and type inference), plus the tab keeps its real name,
+        which the old path lost. This test makes that routing a contract; if it
+        reddens, someone changed which creator single-tab deposits reach.
+        """
+        (tmp_path / "content.csv").write_text("Product,Amount\nWidgets,1000\n")
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "type": "sheet",
+            "title": "Single",
+            "id": "draft-456",
+            "tabs": [
+                {"name": "Ledger", "sheet_id": 77, "filename": "content.csv"},
+            ],
+        }))
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="sheet2",
+            webViewLink="https://docs.google.com/spreadsheets/d/sheet2/edit",
+            name="Single",
+        )
+
+        result = do_create(title="Single", doc_type="sheet", source=str(tmp_path), base_path=str(tmp_path))
+
+        assert isinstance(result, DoResult)
+        # Tab 1 renamed to the deposit's real tab name — the improvement the
+        # new routing buys; the old path left the CSV-upload default.
+        mock_rename.assert_called_once_with("sheet2", sheet_id=0, new_title="Ledger")
+        # No second tab: nothing added, no values written beyond the upload.
+        mock_add.assert_not_called()
+        mock_update.assert_not_called()
+        assert result.cues["tab_names"] == ["Ledger"]
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.rename_sheet")
+    @patch("tools.create.add_sheet", return_value=1)
+    @patch("tools.create.update_sheet_values", return_value=4)
+    @patch("tools.create.get_sync_client")
     def test_multi_tab_cues_include_tab_info(
         self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
     ) -> None:
