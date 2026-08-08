@@ -293,7 +293,7 @@ answer or at the first fifth of it.
 
 ```jsonc
 {
-  "path": ".mise/search--acme--2026-07-27T07-55-59.json",
+  "path": ".mise/search--acme--drive-gmail--2026-07-27T07-55-59.json",
   "drive_count": 25,                            // ← the real number
   "preview": { "drive": [ /* 5 items */ ] }     // ← what you are looking at
 }

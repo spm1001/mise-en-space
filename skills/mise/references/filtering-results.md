@@ -5,11 +5,11 @@ When search returns many results, you don't need to Read the entire JSON file. F
 ## The Problem
 
 ```python
-# Search returns: {"path": ".mise/search--lantern--2026-01-31.json", "drive_count": 20, "gmail_count": 15}
+# Search returns: {"path": ".mise/search--lantern--drive-gmail--2026-01-31T21-12-53.json", "drive_count": 20, "gmail_count": 15}
 # That's 35 results across ~24KB of JSON
 
 # BAD: Read everything, consume 6K+ tokens
-Read(".mise/search--lantern--2026-01-31.json")
+Read(".mise/search--lantern--drive-gmail--2026-01-31T21-12-53.json")
 ```
 
 ## Filter Patterns

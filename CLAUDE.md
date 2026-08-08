@@ -41,7 +41,7 @@ docs/           Design documents and references
 
 | File | Purpose | Used by |
 |------|---------|---------|
-| `html_convert.py` | HTML↔markdown: HTML→markdown via markitdown (needs tempfile — why it's not in extractors); markdown→HTML via python-markdown (`markdown_to_html`, for email draft bodies) | adapters, tools |
+| `html_convert.py` | HTML↔markdown: HTML→markdown via markitdown (needs tempfile — why it's not in extractors); markdown→HTML via python-markdown (`markdown_to_html`, for email draft bodies); Gmail body-selection policy (`select_body_text`, `has_data_table` — see Key behaviors) | adapters, tools |
 | `markdown_import.py` | Pre-import rewrite for Drive's markdown→Doc engine (`convert_fenced_blocks`) — fenced code blocks become per-line inline-code spans (see Gotchas) | tools |
 | `filters.py` | Attachment filtering logic (`is_trivial_attachment`, `filter_attachments`) — holds two `lru_cache`s | adapters, tools |
 | `validation.py` | ID/URL validation (`validate_drive_id`, `validate_gmail_id`, etc.) | tools, adapters |
@@ -236,7 +236,7 @@ uv run --all-extras python scripts/smoke_stdio.py   # drive the WORKING TREE ove
 Integration tests require `-m integration` flag and real credentials.
 
 **The count IS printed — it is just at the bottom of a long scroll.** `uv run --all-extras python
--m pytest` ends with `2179 passed, 100 deselected in 24.63s` (count as of 2026-08-08) as the last line of ~92, because
+-m pytest` ends with `2191 passed, 100 deselected in 25.38s` (count as of 2026-08-08, evening — it moved three times that day) as the last line of ~92, because
 `addopts` in `pyproject.toml` carries `-q` (which suppresses the *per-test* lines, not the summary)
 plus a ~85-line coverage table that pushes the summary off the top of a truncated view.
 `-m 'not integration'` is baked in too, hence the 100 deselected.
