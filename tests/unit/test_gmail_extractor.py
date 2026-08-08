@@ -492,6 +492,19 @@ class TestMessageExtraction:
         assert result == ""
         assert "no body content" in warnings[0].lower()  # Should warn about empty body
 
+    def test_adapter_warnings_merged(self):
+        """Adapter-layer notes on the message ride into the warnings list
+        (mise-voteki: the HTML-body-swap disclosure must reach cues)."""
+        msg = EmailMessage(
+            message_id="test1",
+            from_address="alice@example.com",
+            to_addresses=["bob@example.com"],
+            body_text="| Legal | Ella |",
+            warnings=["Body taken from the HTML part: test disclosure."],
+        )
+        result, warnings = extract_message_content(msg, strip_signature=False)
+        assert any("HTML part" in w for w in warnings)
+
 
 class TestThreadExtraction:
     """Tests for extracting full thread content."""

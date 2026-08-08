@@ -389,6 +389,63 @@ class TestBuildMessage:
         msg2 = _build_message(fixture["messages"][1])
         assert len(msg2.drive_links) > 0  # Has Pet resume link
 
+    @staticmethod
+    def _multipart_msg(plain: str, html: str) -> dict:
+        """Minimal multipart/alternative payload — both parts, hand-built."""
+        import base64
+
+        def b64(s: str) -> str:
+            return base64.urlsafe_b64encode(s.encode()).decode()
+
+        return {
+            "id": "multipart1",
+            "payload": {
+                "headers": [
+                    {"name": "From", "value": "nicola@example.com"},
+                    {"name": "Subject", "value": "Follow up"},
+                ],
+                "mimeType": "multipart/alternative",
+                "parts": [
+                    {"mimeType": "text/plain", "body": {"data": b64(plain)}},
+                    {"mimeType": "text/html", "body": {"data": b64(html)}},
+                ],
+            },
+        }
+
+    def test_tabular_html_preferred_over_flattened_plain(self) -> None:
+        """mise-voteki: Outlook's plain alternative flattens tables to bare
+        lines; when the HTML part holds the grid, the body comes from HTML
+        and the swap is disclosed."""
+        msg = self._multipart_msg(
+            plain="CATEGORY\nOWNERS\nLegal\nElla / Fiona / Rachel",
+            html=(
+                '<table><tr><td>CATEGORY</td><td>OWNERS</td></tr>'
+                '<tr><td>Legal</td><td>Ella / Fiona / Rachel</td></tr></table>'
+            ),
+        )
+        result = _build_message(msg)
+
+        assert result.body_text is not None
+        # Row structure survives: category and owner on ONE line
+        row_lines = [
+            line for line in result.body_text.splitlines()
+            if "Legal" in line and "Ella / Fiona / Rachel" in line
+        ]
+        assert row_lines, f"no intact table row in: {result.body_text!r}"
+        assert len(result.warnings) == 1
+        assert "HTML part" in result.warnings[0]
+
+    def test_prose_multipart_keeps_plain(self) -> None:
+        """No table in the HTML — the sender's own plain rendering stands."""
+        msg = self._multipart_msg(
+            plain="Just a friendly note.",
+            html="<p>Just a <b>friendly</b> note.</p>",
+        )
+        result = _build_message(msg)
+
+        assert result.body_text == "Just a friendly note."
+        assert result.warnings == []
+
     def test_minimal_message(self) -> None:
         """Message with minimal fields — body decoded from base64."""
         msg = {

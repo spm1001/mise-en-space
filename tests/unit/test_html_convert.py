@@ -5,8 +5,10 @@ from unittest.mock import patch
 from html_convert import (
     clean_html_for_conversion,
     convert_html_to_markdown,
+    has_data_table,
     html_to_text_with_links,
     markdown_to_html,
+    select_body_text,
     strip_html_tags,
 )
 
@@ -49,10 +51,26 @@ class TestCleanHtmlForConversion:
         assert "Before" in result
         assert "After" in result
 
-    def test_removes_spacer_cells(self) -> None:
-        html = '<table><tr><td>Real</td><td>&nbsp;</td></tr></table>'
+    def test_preserves_empty_data_cells(self) -> None:
+        """Empty <td>s survive cleaning — mise-hisubi regression.
+
+        A spacer-cell strip used to delete them, shifting every later cell
+        left one column: in the live case (Gmail thread 19fb9faca1565748)
+        the OWNERS names rendered under DEADLINES. Minimal fixture mirrors
+        that shape: a 4-column row with an empty third cell, plus a row
+        empty in all but the first and last cells.
+        """
+        html = (
+            '<table>'
+            '<tr><td>CATEGORY</td><td>ACTIONS</td><td>DEADLINES</td><td>OWNERS</td></tr>'
+            '<tr><td>Legal</td><td>Prepare governance document</td><td>\n</td>'
+            '<td>Ella / Fiona / Rachel</td></tr>'
+            '<tr><td>Regroup</td><td>&nbsp;</td><td></td><td>Nicola</td></tr>'
+            '</table>'
+        )
         result = clean_html_for_conversion(html)
-        assert "Real" in result
+        assert result.count('<td') == 12  # every cell survives, empty or not
+        assert "Ella / Fiona / Rachel" in result
 
     def test_removes_empty_paragraphs(self) -> None:
         html = '<p>Content</p><p>&nbsp;</p><p>More</p>'
@@ -71,6 +89,86 @@ class TestCleanHtmlForConversion:
         result = clean_html_for_conversion(html)
         assert "Hello" in result
         assert "world" in result
+
+
+class TestHasDataTable:
+    """has_data_table — the grid heuristic gating the HTML body swap (mise-voteki)."""
+
+    def test_grid_detected(self) -> None:
+        html = (
+            '<table><tr><td>A</td><td>B</td></tr>'
+            '<tr><td>1</td><td>2</td></tr></table>'
+        )
+        assert has_data_table(html)
+
+    def test_th_header_row_counts(self) -> None:
+        html = (
+            '<table><tr><th>A</th><th>B</th></tr>'
+            '<tr><td>1</td><td>2</td></tr></table>'
+        )
+        assert has_data_table(html)
+
+    def test_no_table_is_false(self) -> None:
+        assert not has_data_table('<p>Just prose</p>')
+        assert not has_data_table(None)
+        assert not has_data_table('')
+
+    def test_single_row_strip_is_false(self) -> None:
+        """A one-row layout strip (logo | nav | spacer) is not a data grid."""
+        html = '<table><tr><td>Logo</td><td>Nav</td><td>Spacer</td></tr></table>'
+        assert not has_data_table(html)
+
+    def test_single_column_stack_is_false(self) -> None:
+        """Newsletter-style stacked rows, one cell each — layout, not data."""
+        html = (
+            '<table><tr><td>Header</td></tr><tr><td>Story</td></tr>'
+            '<tr><td>Footer</td></tr></table>'
+        )
+        assert not has_data_table(html)
+
+
+class TestSelectBodyText:
+    """select_body_text — plain wins except when HTML holds a data grid."""
+
+    _TABLE_HTML = (
+        '<p>Intro</p>'
+        '<table><tr><td>CATEGORY</td><td>OWNERS</td></tr>'
+        '<tr><td>Legal</td><td>Ella</td></tr></table>'
+    )
+
+    def test_plain_only(self) -> None:
+        assert select_body_text("Hello", None) == ("Hello", [])
+
+    def test_neither(self) -> None:
+        assert select_body_text(None, None) == (None, [])
+
+    def test_html_only_converted(self) -> None:
+        body, warnings = select_body_text(None, '<p>Hello <b>world</b></p>')
+        assert body is not None
+        assert "Hello" in body
+        assert warnings == []
+
+    def test_both_prose_keeps_plain(self) -> None:
+        body, warnings = select_body_text("Plain words", '<p>HTML words</p>')
+        assert body == "Plain words"
+        assert warnings == []
+
+    def test_both_with_table_swaps_and_warns(self) -> None:
+        body, warnings = select_body_text(
+            "CATEGORY\nOWNERS\nLegal\nElla", self._TABLE_HTML
+        )
+        assert body is not None
+        assert "|" in body  # a pipe table survived
+        assert len(warnings) == 1
+        assert "HTML part" in warnings[0]
+
+    def test_fallback_keeps_plain(self) -> None:
+        """Slim build (no markitdown): tag stripping would lose the table
+        too, so the plain part stands and nothing is claimed."""
+        with patch("markitdown.MarkItDown", side_effect=Exception("absent")):
+            body, warnings = select_body_text("Plain words", self._TABLE_HTML)
+        assert body == "Plain words"
+        assert warnings == []
 
 
 class TestConvertHtmlToMarkdown:

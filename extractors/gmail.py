@@ -60,7 +60,9 @@ def extract_message_content(
         Tuple of (clean_text_content, warnings_list)
         Prefers plain text over HTML conversion.
     """
-    warnings: list[str] = []
+    # Adapter-layer notes ride in on the message (e.g. body swapped to the
+    # HTML part because the plain alternative flattened a table).
+    warnings: list[str] = list(message.warnings)
 
     # Prefer plain text if available
     if message.body_text:

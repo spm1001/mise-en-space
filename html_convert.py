@@ -100,7 +100,7 @@ def clean_html_for_conversion(html: str) -> str:
 
     Email HTML is notoriously messy — this pre-filter removes patterns
     that cause artifacts in markdown conversion: tracking pixels, MSO
-    conditionals, hidden elements, spacer cells, empty paragraphs.
+    conditionals, hidden elements, empty paragraphs.
 
     Pure function (no I/O). Called before convert_html_to_markdown.
     """
@@ -148,13 +148,11 @@ def clean_html_for_conversion(html: str) -> str:
             flags=re.IGNORECASE
         )
 
-    # Spacer cells with just &nbsp;
-    html = re.sub(
-        r'<td[^>]*>\s*(&nbsp;|\s)*\s*</td>',
-        '',
-        html,
-        flags=re.IGNORECASE
-    )
+    # NOTE: empty <td>s are deliberately KEPT. A strip lived here until 2026-08
+    # (mise-hisubi) and silently corrupted data tables: deleting an empty cell
+    # shifts every later cell in the row left one column, so owners rendered
+    # under DEADLINES. A surviving spacer cell costs only an empty markdown
+    # column — cosmetic. Corruption beats cosmetics; don't reintroduce it.
 
     # Empty paragraphs and divs (collapse whitespace)
     html = re.sub(
@@ -165,6 +163,63 @@ def clean_html_for_conversion(html: str) -> str:
     )
 
     return html
+
+
+_TABLE_ROW_RE = re.compile(r'<tr[\s>].*?</tr>', re.IGNORECASE | re.DOTALL)
+_TABLE_CELL_RE = re.compile(r'<t[dh][\s>]', re.IGNORECASE)
+
+
+def has_data_table(html_body: str | None) -> bool:
+    """True when the HTML holds a plausible DATA table, not a layout wrapper.
+
+    Cheap structural heuristic: at least two rows each carrying at least two
+    cells — a grid. Marketing-email layout tables are typically single-column
+    stacks or single-row strips, which stay False; a wide layout grid can
+    still trip this, an accepted (and disclosed) false positive. Pure, no I/O.
+    """
+    if not html_body or '<table' not in html_body.lower():
+        return False
+    grid_rows = 0
+    for row in _TABLE_ROW_RE.finditer(html_body):
+        if len(_TABLE_CELL_RE.findall(row.group(0))) >= 2:
+            grid_rows += 1
+            if grid_rows >= 2:
+                return True
+    return False
+
+
+def select_body_text(
+    plain: str | None, html_body: str | None
+) -> tuple[str | None, list[str]]:
+    """Choose the body text for an email from its MIME alternatives.
+
+    Plain text wins when both parts exist — it is the sender's own rendering,
+    free of conversion noise — with one exception: a plain-text alternative
+    cannot carry a table. Outlook (and most composers) flatten each row to
+    bare lines of cell text, so row structure is destroyed before the message
+    is ever sent (mise-voteki, live case thread 19fb9faca1565748). When the
+    HTML part holds a data grid, the converted HTML is used instead and the
+    swap is disclosed as a warning. The swap requires full markdown
+    conversion — the slim build's tag-stripping fallback would lose the
+    table too, so there the plain part stands.
+
+    Returns (body_text, warnings). body_text is None when neither part exists.
+    """
+    if not html_body:
+        return plain, []
+    if not plain:
+        cleaned = clean_html_for_conversion(html_body)
+        converted, _ = convert_html_to_markdown(cleaned)
+        return converted, []
+    if has_data_table(html_body):
+        cleaned = clean_html_for_conversion(html_body)
+        converted, used_fallback = convert_html_to_markdown(cleaned)
+        if converted.strip() and not used_fallback:
+            return converted, [
+                "Body taken from the HTML part: the plain-text alternative "
+                "flattens the message's table(s) into bare lines of cell text."
+            ]
+    return plain, []
 
 
 class _TextWithLinksParser(HTMLParser):

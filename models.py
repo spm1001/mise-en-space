@@ -252,6 +252,10 @@ class EmailMessage:
     # Gmail label IDs (INBOX, UNREAD, STARRED, IMPORTANT, user labels, etc.)
     label_ids: list[str] = field(default_factory=list)
 
+    # Adapter-layer processing notes (e.g. body taken from the HTML part) —
+    # extract_message_content merges these into its per-message warnings.
+    warnings: list[str] = field(default_factory=list)
+
 
 @dataclass
 class GmailThreadData:

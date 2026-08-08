@@ -32,7 +32,7 @@ from retry import with_retry
 from adapters.http_client import get_sync_client
 from cues_util import current_user_email
 from extractors.gmail import parse_message_payload, parse_attachments_from_payload, parse_forwarded_messages
-from html_convert import clean_html_for_conversion, convert_html_to_markdown
+from html_convert import select_body_text
 from filters import is_trivial_attachment, filter_attachments
 
 logger = logging.getLogger(__name__)
@@ -195,15 +195,12 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
     payload = msg.get("payload", {})
     headers = _parse_headers(payload.get("headers", []))
 
-    # Parse body
+    # Parse body, then pick which MIME alternative to trust (plain unless the
+    # HTML holds a data table — select_body_text documents the policy). This
+    # keeps the extractor layer pure — by the time it sees the EmailMessage,
+    # body_text is already populated and any swap is disclosed in warnings.
     body_text, body_html = parse_message_payload(payload)
-
-    # Pre-convert HTML to markdown if no plain text available.
-    # This keeps the extractor layer pure — by the time it sees the
-    # EmailMessage, body_text is already populated.
-    if body_html and not body_text:
-        cleaned = clean_html_for_conversion(body_html)
-        body_text, _ = convert_html_to_markdown(cleaned)
+    body_text, body_warnings = select_body_text(body_text, body_html)
 
     # Parse attachments (filtered - hide trivials from Claude)
     attachments_raw = parse_attachments_from_payload(payload)
@@ -237,11 +234,12 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
 
     # Extract forwarded messages (MIME message/rfc822 parts)
     # The extractor does pure MIME parsing; we handle any HTML conversion here.
+    # (_parse_rfc822_part only sets body_html when body_text is absent, so the
+    # table-swap branch of select_body_text can't fire here — this is the
+    # plain html-only conversion, warnings discarded as before.)
     forwarded = parse_forwarded_messages(payload)
     for fwd in forwarded:
-        if not fwd.body_text and fwd.body_html:
-            cleaned = clean_html_for_conversion(fwd.body_html)
-            fwd.body_text, _ = convert_html_to_markdown(cleaned)
+        fwd.body_text = select_body_text(fwd.body_text or None, fwd.body_html)[0] or ''
 
     return EmailMessage(
         message_id=msg.get("id", ""),
@@ -261,6 +259,7 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
         drive_links=drive_links,
         forwarded_messages=forwarded,
         label_ids=msg.get("labelIds", []),
+        warnings=body_warnings,
     )
 
 
