@@ -178,6 +178,129 @@ class TestSheetOverwriteRange:
         assert "spreadsheets" in result["message"]
 
 
+class TestParseCell:
+    """[label](url) → rich-text runs; @url → chip; everything else untouched
+    (mise-bazuvo)."""
+
+    def test_plain_text_untouched(self) -> None:
+        from tools.sheet_edit import _parse_cell
+        assert _parse_cell("Widgets, 2024") == ("Widgets, 2024", None, None)
+
+    def test_bare_url_stays_a_url(self) -> None:
+        """A bare URL must NOT become a chip — chips replace the cell value
+        with the target's title, which would corrupt URL-consuming columns.
+        USER_ENTERED auto-links it anyway."""
+        from tools.sheet_edit import _parse_cell
+        url = "https://drive.google.com/file/d/abc/view"
+        assert _parse_cell(url) == (url, None, None)
+
+    def test_single_link_with_surrounding_text(self) -> None:
+        from tools.sheet_edit import _parse_cell
+        plain, runs, chip = _parse_cell("Debrief: [Nov report](https://x.com/r) (final)")
+        assert plain == "Debrief: Nov report (final)"
+        assert chip is None
+        assert runs == [
+            {"startIndex": 9, "format": {"link": {"uri": "https://x.com/r"}}},
+            {"startIndex": 19, "format": {}},
+        ]
+
+    def test_two_links_one_cell(self) -> None:
+        """The multi-artefact index row — the case =HYPERLINK can't do."""
+        from tools.sheet_edit import _parse_cell
+        plain, runs, chip = _parse_cell("[A](https://x.com/a) · [B](https://x.com/b)")
+        assert plain == "A · B"
+        assert runs == [
+            {"startIndex": 0, "format": {"link": {"uri": "https://x.com/a"}}},
+            {"startIndex": 1, "format": {}},
+            {"startIndex": 4, "format": {"link": {"uri": "https://x.com/b"}}},
+        ]
+
+    def test_link_at_cell_end_has_no_zero_width_run(self) -> None:
+        from tools.sheet_edit import _parse_cell
+        plain, runs, chip = _parse_cell("See [report](https://x.com/r)")
+        assert plain == "See report"
+        assert runs[-1] == {"startIndex": 4, "format": {"link": {"uri": "https://x.com/r"}}}
+
+    def test_chip_syntax(self) -> None:
+        from tools.sheet_edit import _parse_cell
+        plain, runs, chip = _parse_cell("@https://drive.google.com/file/d/abc/view")
+        assert plain == "@"
+        assert runs is None
+        assert chip == "https://drive.google.com/file/d/abc/view"
+
+    def test_non_url_after_at_untouched(self) -> None:
+        from tools.sheet_edit import _parse_cell
+        assert _parse_cell("@handle") == ("@handle", None, None)
+
+
+class TestA1Anchor:
+    def test_defaults(self) -> None:
+        from tools.sheet_edit import _a1_anchor
+        assert _a1_anchor(None) == (0, 0)
+        assert _a1_anchor("A1") == (0, 0)
+
+    def test_cell_and_range(self) -> None:
+        from tools.sheet_edit import _a1_anchor
+        assert _a1_anchor("F9") == (8, 5)
+        assert _a1_anchor("F9:F15") == (8, 5)
+        assert _a1_anchor("AA10") == (9, 26)
+
+    def test_column_only_range(self) -> None:
+        from tools.sheet_edit import _a1_anchor
+        assert _a1_anchor("F:F") == (0, 5)
+
+
+class TestSheetOverwriteLinks:
+    _TABS = [
+        {"sheetId": 0, "title": "Summary", "index": 0},
+        {"sheetId": 42, "title": "Costs", "index": 1},
+    ]
+
+    @patch("tools.sheet_edit.batch_update")
+    @patch("tools.sheet_edit.update_sheet_values")
+    @patch("tools.sheet_edit.clear_sheet_values")
+    @patch("tools.sheet_edit.get_sheet_properties")
+    def test_links_and_chips_overlay_after_grid_write(
+        self, mock_props, mock_clear, mock_update, mock_batch,
+    ) -> None:
+        mock_props.return_value = self._TABS
+        mock_update.return_value = 4
+
+        csv_content = ('label,"[A](https://x.com/a) · [B](https://x.com/b)"\n'
+                       "plain,@https://drive.google.com/file/d/abc/view")
+        result = sheet_overwrite("s1", csv_content, _META, "Costs!F9")
+
+        assert isinstance(result, DoResult)
+        # Grid write carries the PLAIN text, anchored at the range
+        grid = mock_update.call_args[0][2]
+        assert grid == [["label", "A · B"], ["plain", "@"]]
+        # Overlay: absolute offsets from the F9 anchor (row 8, col 5)
+        reqs = mock_batch.call_args[0][1]
+        starts = [q["updateCells"]["start"] for q in reqs]
+        assert {"sheetId": 42, "rowIndex": 8, "columnIndex": 6} in starts
+        assert {"sheetId": 42, "rowIndex": 9, "columnIndex": 6} in starts
+        fields = {q["updateCells"]["fields"] for q in reqs}
+        assert fields == {"textFormatRuns", "userEnteredValue,chipRuns"}
+        assert result.cues["links_written"] == 1
+        assert result.cues["chips_written"] == 1
+
+    @patch("tools.sheet_edit.batch_update")
+    @patch("tools.sheet_edit.update_sheet_values")
+    @patch("tools.sheet_edit.clear_sheet_values")
+    @patch("tools.sheet_edit.get_sheet_properties")
+    def test_no_decorations_no_batch_update(
+        self, mock_props, mock_clear, mock_update, mock_batch,
+    ) -> None:
+        mock_props.return_value = [{"sheetId": 0, "title": "Data", "index": 0}]
+        mock_update.return_value = 2
+
+        result = sheet_overwrite("s1", "a,b\n1,2", _META)
+
+        assert isinstance(result, DoResult)
+        mock_batch.assert_not_called()
+        assert "links_written" not in result.cues
+
+
 class TestSplitRange:
     def test_bare_tab(self) -> None:
         from tools.sheet_edit import _split_range

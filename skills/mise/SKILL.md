@@ -567,7 +567,18 @@ do(operation="overwrite", file_id="1abc...", content="100\n101\n102\n103\n104\n1
 do(operation="overwrite", file_id="1abc...", content="a,b\nc,d", range="Costs!F9", base_path="...")
 ```
 
-Writes use USER_ENTERED semantics: formulas parse, bare URLs auto-link, and `=HYPERLINK("https://...","label")` in a cell renders a clickable labelled link — the working fallback for link-bearing cells until real rich-text/chip writing exists (mise-bazuvo).
+Writes use USER_ENTERED semantics: formulas parse, bare URLs auto-link, and `=HYPERLINK("https://...","label")` renders a labelled link (one per cell).
+
+**Cell values carry link syntax** — this is how an index of artefacts arrives usable, not as bare URLs:
+
+```python
+# [label](url) → real rich-text link, several per cell; @url alone → smart chip
+do(operation="overwrite", file_id="1abc...", range="Index!B2", base_path="...",
+   content='"Lantern debrief","[Nov report](https://example.com/nov) · [Dec report](https://example.com/dec)"\n'
+           '"Signed SOW",@https://drive.google.com/file/d/1AbC.../view')
+```
+
+A **smart chip** (`@url` as the entire cell) replaces the cell text with the target's live title — rename-proof and icon-bearing, the right form for a Drive-artefact index. Because the URL stops being cell text, chips are explicit opt-in: a **bare URL stays a URL** (auto-linked), safe for columns that formulas read. Doc writes take ordinary markdown links; Sheets cells take this `[label](url)`/`@url` syntax — same intent, per-surface spelling.
 
 **Without `range=`, a multi-tab sheet refuses** (naming its tabs) rather than silently clearing the first tab — pass the range to say what you meant. A single-tab sheet still gets the whole-tab replace, symmetric with `create`.
 

@@ -25,9 +25,11 @@ Semantics:
 import csv
 import io
 import logging
+import re
 from typing import Any
 
 from adapters.sheets import (
+    batch_update,
     clear_sheet_values,
     find_replace_cells,
     get_sheet_properties,
@@ -37,6 +39,15 @@ from models import DoResult, MiseError
 from tools.common import NO_MATCH_WARNING
 
 logger = logging.getLogger(__name__)
+
+# Link decorations in CSV cell values (mise-bazuvo). [label](url) becomes a
+# real rich-text link via textFormatRuns — several per cell work. A whole
+# cell of @url becomes a smart chip, which REPLACES the cell text with the
+# target's title server-side — that value change is why chips are explicit
+# opt-in syntax and a bare URL stays a URL (USER_ENTERED auto-links it).
+_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
+_CHIP_RE = re.compile(r"^@(https?://\S+)$")
+_A1_CELL_RE = re.compile(r"^([A-Za-z]{1,3})(\d*)")
 
 
 def _quote_tab(title: str) -> str:
@@ -67,6 +78,87 @@ def _split_range(range_: str) -> tuple[str, str | None]:
         tab, _, cell = range_.partition("!")
         return tab, cell or None
     return range_, None
+
+
+def _a1_anchor(cell_part: str | None) -> tuple[int, int]:
+    """Zero-based (row, col) of a range's first cell. None or no digits → A1."""
+    if not cell_part:
+        return 0, 0
+    m = _A1_CELL_RE.match(cell_part)
+    if not m:
+        return 0, 0
+    col = 0
+    for ch in m.group(1).upper():
+        col = col * 26 + (ord(ch) - ord("A") + 1)
+    row = int(m.group(2)) - 1 if m.group(2) else 0
+    return max(row, 0), col - 1
+
+
+def _parse_cell(value: str) -> tuple[str, list[dict[str, Any]] | None, str | None]:
+    """Extract link decorations from one CSV cell value.
+
+    Returns (plain_text, text_format_runs, chip_uri). Runs use the plain
+    text's indices (markdown syntax stripped); at most one of runs/chip.
+    """
+    chip = _CHIP_RE.match(value)
+    if chip:
+        return "@", None, chip.group(1)
+
+    if not _MD_LINK_RE.search(value):
+        return value, None, None
+
+    plain: list[str] = []
+    runs: list[dict[str, Any]] = []
+    pos = 0
+    plain_len = 0
+    for m in _MD_LINK_RE.finditer(value):
+        before = value[pos:m.start()]
+        plain.append(before)
+        plain_len += len(before)
+        label, uri = m.group(1), m.group(2)
+        runs.append({"startIndex": plain_len,
+                     "format": {"link": {"uri": uri}}})
+        plain.append(label)
+        plain_len += len(label)
+        runs.append({"startIndex": plain_len, "format": {}})
+        pos = m.end()
+    tail = value[pos:]
+    plain.append(tail)
+    if not tail and runs and runs[-1]["format"] == {}:
+        runs.pop()  # link runs to end of text; a zero-width run would 400
+    return "".join(plain), runs, None
+
+
+def _overlay_requests(
+    sheet_id: int,
+    row0: int,
+    col0: int,
+    decorations: dict[tuple[int, int], tuple[list[dict[str, Any]] | None, str | None]],
+) -> list[dict[str, Any]]:
+    """updateCells requests overlaying links/chips onto already-written cells.
+
+    Link cells touch ONLY textFormatRuns (the value from the grid write
+    stands); chip cells rewrite the value too — the '@' placeholder is what
+    Google replaces with the target's title.
+    """
+    requests = []
+    for (r, c), (runs, chip_uri) in sorted(decorations.items()):
+        if chip_uri:
+            cell: dict[str, Any] = {
+                "userEnteredValue": {"stringValue": "@"},
+                "chipRuns": [{"chip": {"richLinkProperties": {"uri": chip_uri}}}],
+            }
+            fields = "userEnteredValue,chipRuns"
+        else:
+            cell = {"textFormatRuns": runs}
+            fields = "textFormatRuns"
+        requests.append({"updateCells": {
+            "start": {"sheetId": sheet_id,
+                      "rowIndex": row0 + r, "columnIndex": col0 + c},
+            "rows": [{"values": [cell]}],
+            "fields": fields,
+        }})
+    return requests
 
 
 def _sheet_result(
@@ -105,6 +197,19 @@ def sheet_overwrite(
             "message": "overwrite on a Spreadsheet: content parsed to zero CSV cells.",
         }
 
+    # Strip link decorations (mise-bazuvo): the plain grid rides values.update
+    # so numbers/formulas keep USER_ENTERED parsing; links/chips overlay after.
+    plain_rows: list[list[str]] = []
+    decorations: dict[tuple[int, int], tuple[list[dict[str, Any]] | None, str | None]] = {}
+    for r, row in enumerate(rows):
+        prow = []
+        for c, cell in enumerate(row):
+            plain, runs, chip_uri = _parse_cell(cell)
+            prow.append(plain)
+            if runs or chip_uri:
+                decorations[(r, c)] = (runs, chip_uri)
+        plain_rows.append(prow)
+
     try:
         tabs = get_sheet_properties(file_id)
         if not tabs:
@@ -128,52 +233,45 @@ def sheet_overwrite(
                         "anchor (range=\"Costs!F9\") writes the CSV's shape from there."
                     ),
                 }
-            only = tabs[0]
-            tab_ref = _quote_tab(only.get("title", "Sheet1"))
-            clear_sheet_values(file_id, tab_ref)
-            updated = update_sheet_values(file_id, f"{tab_ref}!A1", rows)
-            cues: dict[str, Any] = {
-                "tab": only.get("title", ""),
-                "rows_written": len(rows),
-                "cells_updated": updated,
-            }
-            return _sheet_result(file_id, metadata, "overwrite", cues)
-
-        tab_name, cell_part = _split_range(range_)
-        match = next((t for t in tabs if t.get("title") == tab_name), None)
-        if match is None:  # Sheets' own range parsing is case-insensitive; mirror it
-            match = next(
-                (t for t in tabs if t.get("title", "").lower() == tab_name.lower()),
-                None,
-            )
-        if match is None:
-            quoted = ", ".join(f"'{t}'" for t in titles)
-            return {
-                "error": True, "kind": "invalid_input",
-                "message": f"No tab named '{tab_name}' in this spreadsheet. "
-                           f"Tabs: {quoted}.",
-            }
-        tab_ref = _quote_tab(match.get("title", ""))
-
-        if cell_part is None:
-            # Bare tab name = tab-scoped wholesale replace: clear, then write
-            clear_sheet_values(file_id, tab_ref)
-            updated = update_sheet_values(file_id, f"{tab_ref}!A1", rows)
-            cues = {
-                "tab": match.get("title", ""),
-                "tab_replaced": True,
-                "rows_written": len(rows),
-                "cells_updated": updated,
-            }
+            target, cell_part = tabs[0], None
+            cues: dict[str, Any] = {"tab": target.get("title", "")}
         else:
-            # Ranged write: nothing cleared, cells outside the write untouched
-            updated = update_sheet_values(file_id, f"{tab_ref}!{cell_part}", rows)
-            cues = {
-                "tab": match.get("title", ""),
-                "range": f"{match.get('title', '')}!{cell_part}",
-                "rows_written": len(rows),
-                "cells_updated": updated,
-            }
+            tab_name, cell_part = _split_range(range_)
+            target = next((t for t in tabs if t.get("title") == tab_name), None)
+            if target is None:  # Sheets' own range parsing is case-insensitive
+                target = next(
+                    (t for t in tabs if t.get("title", "").lower() == tab_name.lower()),
+                    None,
+                )
+            if target is None:
+                quoted = ", ".join(f"'{t}'" for t in titles)
+                return {
+                    "error": True, "kind": "invalid_input",
+                    "message": f"No tab named '{tab_name}' in this spreadsheet. "
+                               f"Tabs: {quoted}.",
+                }
+            title = target.get("title", "")
+            cues = ({"tab": title, "tab_replaced": True} if cell_part is None
+                    else {"tab": title, "range": f"{title}!{cell_part}"})
+
+        tab_ref = _quote_tab(target.get("title", ""))
+        if cell_part is None:
+            clear_sheet_values(file_id, tab_ref)  # whole-tab replace grain
+        write_range = f"{tab_ref}!{cell_part}" if cell_part else f"{tab_ref}!A1"
+        updated = update_sheet_values(file_id, write_range, plain_rows)
+        cues.update({"rows_written": len(rows), "cells_updated": updated})
+
+        if decorations:
+            row0, col0 = _a1_anchor(cell_part)
+            batch_update(file_id, _overlay_requests(
+                int(target.get("sheetId", 0)), row0, col0, decorations,
+            ))
+            links = sum(1 for runs, _ in decorations.values() if runs)
+            chips = len(decorations) - links
+            if links:
+                cues["links_written"] = links
+            if chips:
+                cues["chips_written"] = chips
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
 

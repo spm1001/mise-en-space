@@ -316,6 +316,26 @@ def update_sheet_values(
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
+def batch_update(spreadsheet_id: str, requests: list[dict[str, Any]]) -> dict[str, Any]:
+    """
+    Run a raw spreadsheets.batchUpdate — the only write surface for rich
+    text runs and smart chips (values.update cannot carry either).
+
+    Args:
+        spreadsheet_id: Target spreadsheet
+        requests: batchUpdate request objects (e.g. updateCells)
+
+    Returns:
+        The API response dict (replies etc.)
+    """
+    client = get_sync_client()
+    return dict(client.post_json(
+        f"{_SHEETS_API}/{spreadsheet_id}:batchUpdate",
+        json_body={"requests": requests},
+    ))
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
 def rename_sheet(spreadsheet_id: str, sheet_id: int, new_title: str) -> None:
     """
     Rename the first sheet (created by CSV upload, defaults to the CSV filename).
