@@ -151,6 +151,24 @@ class TestSheetOverwriteRange:
         mock_clear.assert_not_called()
         mock_update.assert_not_called()
 
+    @patch("tools.sheet_edit.update_sheet_values")
+    @patch("tools.sheet_edit.clear_sheet_values")
+    @patch("tools.sheet_edit.get_sheet_properties")
+    def test_tabless_range_does_not_fall_through_to_first_tab(self, mock_props, mock_clear, mock_update) -> None:
+        """To Google, a tabless "A1:B2" is valid and means the FIRST tab —
+        the exact silent default the multi-tab refusal exists to kill.
+        Tab-first parsing reads it as a tab name, fails the lookup, and
+        teaches; nothing may be written."""
+        mock_props.return_value = self._TABS
+
+        result = sheet_overwrite("s1", "a,b", _META, "A1:B2")
+
+        assert result["error"] is True
+        assert "A1:B2" in result["message"]
+        assert "Summary" in result["message"] and "Costs" in result["message"]
+        mock_clear.assert_not_called()
+        mock_update.assert_not_called()
+
     def test_range_on_non_sheet_rejected(self) -> None:
         doc_meta = {"name": "D", "mimeType": "application/vnd.google-apps.document"}
         result = do_overwrite(
