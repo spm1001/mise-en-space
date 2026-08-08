@@ -32,22 +32,50 @@ _FLAT_NUMERIC_RATIO = 0.15   # lines containing digits
 # distinction is what kept the bakeoff false-positive-free (mise-columi).
 _NUMERIC_TOKEN_RE = re.compile(r"[£$€(]?[\d,]+(?:\.\d+)?[%)]?")
 
+# Undecorated figures only — no paren or currency forms. Runs of these are
+# the table fingerprint; decorated numbers also run in address directories
+# ("(26) 321 ... CA 90212"), which is why runs exclude them (mise-hasati).
+_BARE_NUMERIC_RE = re.compile(r"[\d,]+(?:\.\d+)?%?")
+
+# En-dash and friends fill empty cells in financial tables — at a row's
+# tail a nil marker is a cell value, not punctuation.
+_NIL_TOKENS = frozenset({"–", "—", "-", "n/a"})
+
 _ROW_MIN_NUMERICS = 3   # bakeoff-validated: >=3 bare numerics on one line
 _ROW_MIN_COUNT = 3      # a table implies several rows; one line proves nothing
+_ROW_MIN_RUN = 4        # consecutive bare figures prose essentially never makes
 
 
 def _is_numeric_token(token: str) -> bool:
     return bool(_NUMERIC_TOKEN_RE.fullmatch(token))
 
 
+def _is_data_token(token: str) -> bool:
+    return _is_numeric_token(token) or token.lower() in _NIL_TOKENS
+
+
+def _is_run_token(token: str) -> bool:
+    return bool(_BARE_NUMERIC_RE.fullmatch(token)) or token.lower() in _NIL_TOKENS
+
+
 def _is_stripped_row(line: str) -> bool:
     """One line that is a delimiter-stripped table row.
 
-    >=3 bare numeric tokens AND the line ends with >=2 consecutive numeric
-    tokens — data rows right-align their figures, while prose quoting
-    numbers interleaves words ("grew from 1,200 to 1,500 in 2024" ends
-    word-then-number and stays clean). TOC lines ("1.2 Overview 14") fail
-    the >=3 floor.
+    Gate: >=3 numeric tokens (TOC lines like "1.2 Overview 14" fail here).
+    Then either signal fires:
+
+    - **end-cluster** — the line ends with >=2 consecutive data tokens
+      (numeric or nil): data rows right-align their figures, and "… 13
+      140 –" ends in a nil *cell*, while prose quoting numbers interleaves
+      words ("grew from 1,200 to 1,500 in 2024" ends word-then-number).
+    - **figure run** — >=4 consecutive bare-numeric/nil tokens anywhere:
+      the stripped cell sequence itself, which survives when a two-column
+      layout bleeds prose onto the row's tail ("Males 27.7 22.9 27.1 22.3
+      swap had a nil valuation…") or the row ends in vesting dates.
+
+    Recalibrated against the real ITV FY2025 annual report (mise-hasati):
+    on table-dense pages the end-cluster alone caught 75-84%, both signals
+    together 86-100%, with zero prose/TOC/address-directory false fires.
     """
     if "|" in line:
         return False
@@ -55,7 +83,14 @@ def _is_stripped_row(line: str) -> bool:
     numerics = sum(1 for t in tokens if _is_numeric_token(t))
     if numerics < _ROW_MIN_NUMERICS:
         return False
-    return len(tokens) >= 2 and _is_numeric_token(tokens[-1]) and _is_numeric_token(tokens[-2])
+    if len(tokens) >= 2 and _is_data_token(tokens[-1]) and _is_data_token(tokens[-2]):
+        return True
+    run = 0
+    for token in tokens:
+        run = run + 1 if _is_run_token(token) else 0
+        if run >= _ROW_MIN_RUN:
+            return True
+    return False
 
 
 def looks_like_flattened_tables(content: str) -> bool:

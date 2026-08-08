@@ -622,6 +622,52 @@ class TestFlattenedTableDetection:
         lines.extend([f"| Ch{i} | {i*100} | £{i*10} |" for i in range(30)])
         assert not looks_like_flattened_tables("\n".join(lines))
 
+    # --- mise-hasati recalibration: shapes measured on the FY2025 corpus ---
+
+    def test_nil_tailed_rows_detected(self) -> None:
+        """Financial rows end in en-dash nil markers as often as figures —
+        a nil is a cell value, not punctuation (FY2025 p108, directors'
+        remuneration change table)."""
+        lines = [
+            "Salman Amin 2,4 3 (49) – 3 (34) – 4 – – – 51 – 13 140 –",
+            "Dawn Allen 2, 5 3 (14) – 3 – – – – – – – – – –",
+            "Graham Cooke 2, 8 19 35 – 3 (43) – 4 – – 6 51 – 15 – –",
+        ] * 2
+        assert looks_like_flattened_tables("\n".join(lines))
+
+    def test_date_tailed_dense_rows_detected(self) -> None:
+        """Share-scheme rows end in vesting dates (word-number tails), but
+        their long consecutive figure runs are unmistakable (FY2025 p113)."""
+        lines = [
+            "28 March 2022 2 1,338,577 – 1,338,577 – – 1,338,577 96.17 – – 28 March 2025 28 March 2027",
+            "28 March 2023 2 1,643,105 – – – – 1,643,105 81.48 – – 28 March 2026 28 March 2028",
+            "13 May 2021 2 1,013,062 – – – – 1,013,062 123.37 – – 13 May 2024 13 May 2026",
+        ] * 2
+        assert looks_like_flattened_tables("\n".join(lines))
+
+    def test_column_merged_rows_detected(self) -> None:
+        """Two-column layouts bleed prose onto data-row tails when text is
+        extracted — the row's figure run survives even though the line ends
+        in words (FY2025 p16 KPI sidebar, p162 mortality table)."""
+        lines = [
+            "2023 498 2023 12.5 2023 1,506 2023 1.3 approach as new data and methodologies",
+            "2025 614 2025 16.5 2025 2,304 2025 0.9 content where we can reliably and robustly",
+            "Males 27.7 22.9 27.1 22.3 swap had a nil valuation at inception",
+        ] * 2
+        assert looks_like_flattened_tables("\n".join(lines))
+
+    def test_address_directory_not_detected(self) -> None:
+        """An address key is dense with decorated numbers — '(26)' refs,
+        street numbers, postcodes — but its figures never run bare and
+        consecutive, and lines end in words (FY2025 p196)."""
+        lines = [
+            "(8) 4 Roger Street, 2nd Floor, London, WC1X 2JX, United Kingdom (31) Hämeentie 15A, 00500 Helsinki,",
+            "(9) 124 Horseferry Road, London, SW1P 2TX, United Kingdom (32) Familie de Mollaan 1, 1217 ZB, Hilversum",
+            "(11) 200 Gray's Inn Road, London, WC1X 8HF, United Kingdom (34) Haarlemmer Houttuinen, 21 1013 GL,",
+            "(26) 321 Southern Beverly Drive, Suite M, Beverly Hills, CA 90212, USA (52) C/O Dentons UK First Floor",
+        ] * 6
+        assert not looks_like_flattened_tables("\n".join(lines))
+
     # --- Integration: convert_pdf_content triggers Drive fallback ---
 
     @patch("adapters.pdf.convert_via_drive")
