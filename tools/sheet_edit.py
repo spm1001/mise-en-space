@@ -8,10 +8,16 @@ These ops used to dead-end with "different API path" and no alternative
 this is wiring, not a consent change.
 
 Semantics:
-- overwrite: content is parsed as CSV and replaces ALL values on the FIRST
-  (grid) tab — clear, then write from A1. Other tabs are untouched (cue
-  warning when they exist). Symmetric with do(create, doc_type='sheet'),
-  which uploads CSV.
+- overwrite without range=: content is parsed as CSV and replaces ALL
+  values on the sheet's only tab — clear, then write from A1. Symmetric
+  with do(create, doc_type='sheet'), which uploads CSV. On a MULTI-tab
+  sheet this REFUSES and teaches range= — an aimless wholesale replace on
+  a shared multi-tab sheet is a footgun, not a feature (mise-vadoko).
+- overwrite with range=: three grains, all A1 notation. A bare tab name
+  ("Costs") clears and replaces that whole tab; a bounded range
+  ("Costs!F9:F15") writes exactly those cells, nothing cleared; an anchor
+  ("Costs!F9") writes the CSV's shape starting there. USER_ENTERED
+  semantics — formulas parse, bare URLs auto-link.
 - replace_text: literal substring find/replace across every tab's cell
   values, formulas excluded. Mirrors the plain-file contract.
 """
@@ -38,6 +44,31 @@ def _quote_tab(title: str) -> str:
     return "'" + title.replace("'", "''") + "'"
 
 
+def _split_range(range_: str) -> tuple[str, str | None]:
+    """Split A1 notation into (tab name, cell part or None).
+
+    Accepts quoted tabs ("'Bob''s Tab'!A1"), unquoted ("Costs!F9:F15"),
+    and bare tab names ("Costs"). The returned tab name is unquoted with
+    doubled apostrophes undone; the cell part is None for a bare tab.
+    """
+    if range_.startswith("'"):
+        i, n = 1, len(range_)
+        while i < n:
+            if range_[i] == "'":
+                if i + 1 < n and range_[i + 1] == "'":
+                    i += 2
+                    continue
+                break
+            i += 1
+        tab = range_[1:i].replace("''", "'")
+        rest = range_[i + 1:]
+        return tab, (rest[1:] or None) if rest.startswith("!") else None
+    if "!" in range_:
+        tab, _, cell = range_.partition("!")
+        return tab, cell or None
+    return range_, None
+
+
 def _sheet_result(
     file_id: str, metadata: dict[str, Any], operation: str, cues: dict[str, Any],
 ) -> DoResult:
@@ -56,8 +87,9 @@ def sheet_overwrite(
     file_id: str,
     content: str | None,
     metadata: dict[str, Any],
+    range_: str | None = None,
 ) -> DoResult | dict[str, Any]:
-    """Replace the first tab's values with CSV-parsed content."""
+    """Write CSV-parsed content to a tab or range (whole-tab when unranged)."""
     if not content:
         return {
             "error": True, "kind": "invalid_input",
@@ -80,24 +112,71 @@ def sheet_overwrite(
                 "error": True, "kind": "invalid_input",
                 "message": "Spreadsheet has no grid tabs to overwrite.",
             }
-        first = min(tabs, key=lambda t: t.get("index", 0))
-        tab_ref = _quote_tab(first.get("title", "Sheet1"))
-        clear_sheet_values(file_id, tab_ref)
-        updated = update_sheet_values(file_id, f"{tab_ref}!A1", rows)
+        titles = [t.get("title", "") for t in tabs]
+
+        if range_ is None:
+            if len(tabs) > 1:
+                quoted = ", ".join(f"'{t}'" for t in titles)
+                return {
+                    "error": True, "kind": "invalid_input",
+                    "message": (
+                        f"Spreadsheet has {len(tabs)} tabs ({quoted}) — an un-ranged "
+                        "overwrite would silently clear and replace only the first. "
+                        "Aim it with range=: a bare tab name (range=\"Costs\") clears "
+                        "and replaces that whole tab; a bounded range "
+                        "(range=\"Costs!F9:F15\") writes exactly those cells; an "
+                        "anchor (range=\"Costs!F9\") writes the CSV's shape from there."
+                    ),
+                }
+            only = tabs[0]
+            tab_ref = _quote_tab(only.get("title", "Sheet1"))
+            clear_sheet_values(file_id, tab_ref)
+            updated = update_sheet_values(file_id, f"{tab_ref}!A1", rows)
+            cues: dict[str, Any] = {
+                "tab": only.get("title", ""),
+                "rows_written": len(rows),
+                "cells_updated": updated,
+            }
+            return _sheet_result(file_id, metadata, "overwrite", cues)
+
+        tab_name, cell_part = _split_range(range_)
+        match = next((t for t in tabs if t.get("title") == tab_name), None)
+        if match is None:  # Sheets' own range parsing is case-insensitive; mirror it
+            match = next(
+                (t for t in tabs if t.get("title", "").lower() == tab_name.lower()),
+                None,
+            )
+        if match is None:
+            quoted = ", ".join(f"'{t}'" for t in titles)
+            return {
+                "error": True, "kind": "invalid_input",
+                "message": f"No tab named '{tab_name}' in this spreadsheet. "
+                           f"Tabs: {quoted}.",
+            }
+        tab_ref = _quote_tab(match.get("title", ""))
+
+        if cell_part is None:
+            # Bare tab name = tab-scoped wholesale replace: clear, then write
+            clear_sheet_values(file_id, tab_ref)
+            updated = update_sheet_values(file_id, f"{tab_ref}!A1", rows)
+            cues = {
+                "tab": match.get("title", ""),
+                "tab_replaced": True,
+                "rows_written": len(rows),
+                "cells_updated": updated,
+            }
+        else:
+            # Ranged write: nothing cleared, cells outside the write untouched
+            updated = update_sheet_values(file_id, f"{tab_ref}!{cell_part}", rows)
+            cues = {
+                "tab": match.get("title", ""),
+                "range": f"{match.get('title', '')}!{cell_part}",
+                "rows_written": len(rows),
+                "cells_updated": updated,
+            }
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
 
-    cues: dict[str, Any] = {
-        "tab": first.get("title", ""),
-        "rows_written": len(rows),
-        "cells_updated": updated,
-    }
-    if len(tabs) > 1:
-        others = [t.get("title", "?") for t in tabs if t is not first]
-        cues["warning"] = (
-            f"Spreadsheet has {len(tabs)} tabs; overwrite replaced only "
-            f"'{first.get('title', '')}'. Untouched: {', '.join(others)}."
-        )
     return _sheet_result(file_id, metadata, "overwrite", cues)
 
 

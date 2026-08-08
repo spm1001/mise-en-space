@@ -38,6 +38,7 @@ def do_overwrite(
     metadata: dict[str, Any] | None = None,
     file_path: str | None = None,
     restore_comment: bool = True,
+    range_: str | None = None,
 ) -> DoResult | dict[str, Any]:
     """
     Replace full content of a Google Doc or plain file.
@@ -52,6 +53,9 @@ def do_overwrite(
         restore_comment: Google Docs only — post a '[agent]' comment naming the
             pre-edit Version history entry before overwriting (default True;
             pass False on shared docs where the comment notification is noise)
+        range_: Spreadsheets only — A1 notation aiming the write: a bare tab
+            name replaces that tab, "Tab!F9:F15" writes exactly those cells,
+            "Tab!F9" anchors the CSV's shape there (mise-vadoko)
 
     Returns:
         DoResult on success, error dict on failure
@@ -115,7 +119,14 @@ def do_overwrite(
     # batchUpdate from spec (mise-wemuki), Google Docs → Drive import,
     # plain files → Drive Files API
     if metadata and metadata.get("mimeType") == GOOGLE_SHEET_MIME:
-        return sheet_overwrite(file_id, content, metadata)
+        return sheet_overwrite(file_id, content, metadata, range_)
+    if range_:
+        mime = metadata.get("mimeType", "unknown") if metadata else "unknown"
+        return {
+            "error": True, "kind": "invalid_input",
+            "message": f"range= applies only to spreadsheets — this file is "
+                       f"{mime}. For a Doc, use replace_text/prepend/append.",
+        }
     if metadata and metadata.get("mimeType") == GOOGLE_FORM_MIME:
         return form_overwrite(file_id, content, metadata)
     if metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:

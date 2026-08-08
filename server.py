@@ -274,6 +274,7 @@ def do(
     force: bool = False,
     restore_comment: bool = True,
     supersede: bool = False,
+    range: str | None = None,  # noqa: A002 — MCP property name; A1 notation for Sheets
 ) -> dict[str, Any]:
     """Act on Google Workspace."""
     # Build log params — include operation and non-None values that matter,
@@ -286,7 +287,7 @@ def do(
         ("cc", cc), ("label", label), ("role", role), ("remove", remove),
         ("reply_all", reply_all), ("confirm", confirm),
         ("comment_id", comment_id), ("action", action), ("force", force),
-        ("supersede", supersede),
+        ("supersede", supersede), ("range", range),
     ]:
         if v is not None and v is not False:
             call_params[k] = v
@@ -337,6 +338,7 @@ def do(
         "comment_id": comment_id, "action": action,
         "page_setup": page_setup, "force": force,
         "restore_comment": restore_comment, "supersede": supersede,
+        "range": range,
     }
 
     # Validation, metadata prefetch, and execution live in tools/dispatch.py.

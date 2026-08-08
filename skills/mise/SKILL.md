@@ -400,7 +400,7 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 | `move` | Move file(s) between folders — single or batch | `file_id` (str or list), `folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
 | `share` | Share file with people (confirm gate) | `file_id`, `to`, `confirm=True` |
-| `overwrite` | Replace full file content (Google Doc or plain file; Sheets: CSV content replaces the first tab; Forms: YAML/JSON spec replaces all questions) | `file_id`, `content` OR `source` |
+| `overwrite` | Replace full file content (Google Doc or plain file; Sheets: CSV content, `range=` aims a tab or cells; Forms: YAML/JSON spec replaces all questions) | `file_id`, `content` OR `source` |
 | `prepend` | Insert at start of file | `file_id`, `content` |
 | `append` | Insert at end of file | `file_id`, `content` |
 | `replace_text` | Find-and-replace in file (Sheets: across cell values, all tabs) | `file_id`, `find`, `content` |
@@ -551,6 +551,25 @@ do(operation="overwrite", file_id="1abc...", source=".mise/doc--q4-report--1abc/
 For Google Docs: uses Drive's import engine — all markdown formatting (headings, bold, tables, lists) renders automatically. Response includes `cues.char_count`.
 
 For plain files: content is uploaded as-is. Response includes `cues.plain_file: true` and `cues.mime_type`.
+
+### Sheets: aim the write with `range=`
+
+On a spreadsheet, `overwrite` takes CSV content and an optional `range=` in A1 notation — this is how you write one tab, or a handful of cells, without touching anything else:
+
+```python
+# Replace ONE named tab wholesale (cleared, then written from A1)
+do(operation="overwrite", file_id="1abc...", content="item,cost\nwidgets,10", range="Costs", base_path="...")
+
+# Write exactly F9:F15 on the Costs tab — nothing cleared, everything else untouched
+do(operation="overwrite", file_id="1abc...", content="100\n101\n102\n103\n104\n105\n106", range="Costs!F9:F15", base_path="...")
+
+# Anchor write: CSV's shape lands starting at F9 (spills right/down as needed)
+do(operation="overwrite", file_id="1abc...", content="a,b\nc,d", range="Costs!F9", base_path="...")
+```
+
+Writes use USER_ENTERED semantics: formulas parse, bare URLs auto-link, and `=HYPERLINK("https://...","label")` in a cell renders a clickable labelled link — the working fallback for link-bearing cells until real rich-text/chip writing exists (mise-bazuvo).
+
+**Without `range=`, a multi-tab sheet refuses** (naming its tabs) rather than silently clearing the first tab — pass the range to say what you meant. A single-tab sheet still gets the whole-tab replace, symmetric with `create`.
 
 ### Surgical Edits
 
