@@ -22,6 +22,7 @@ except ImportError:  # slim/embedded build — PDF text falls back to Drive conv
     MarkItDown = None  # type: ignore[assignment,misc]
 
 from adapters.conversion import convert_via_drive
+from extractors.text_quality import looks_like_flattened_tables
 from adapters.drive import download_file, download_file_to_temp, get_file_size, STREAMING_THRESHOLD_BYTES
 
 log = logging.getLogger(__name__)
@@ -38,10 +39,6 @@ DEFAULT_MIN_CHARS_THRESHOLD = 500
 
 # Flattened-table detection thresholds (empirical, Jan 2026).
 # See plan cozy-gliding-mccarthy.md for false-positive analysis.
-_FLAT_MIN_LINES = 20
-_FLAT_SHORT_RATIO = 0.60   # lines with 1-3 tokens
-_FLAT_SENTENCE_RATIO = 0.10  # lines with 6+ tokens
-_FLAT_NUMERIC_RATIO = 0.15   # lines containing digits
 
 
 # --- Thumbnail rendering constants ---
@@ -129,7 +126,7 @@ def convert_pdf_content(
 
     # 2. If markitdown produced enough content, check structural quality
     if char_count >= min_chars_threshold:
-        if _looks_like_flattened_tables(content):
+        if looks_like_flattened_tables(content):
             warnings.append(
                 f"Markitdown extracted {char_count} chars but content looks like "
                 "flattened tables (no row/column structure), "
@@ -235,50 +232,6 @@ def _fetch_and_convert_pdf_large(
         return result
     finally:
         tmp_path.unlink(missing_ok=True)
-
-
-def _looks_like_flattened_tables(content: str) -> bool:
-    """
-    Detect markitdown output that looks like flattened table data.
-
-    Three-signal heuristic — all must fire:
-    - high short_ratio: 60%+ lines are 1-3 tokens (one cell per line)
-    - low sentence_ratio: <10% lines with 6+ tokens (no prose)
-    - high numeric_ratio: 15%+ lines contain digits (data values)
-
-    Guards: skip if <20 non-empty lines or content already has markdown
-    table syntax (pipes), meaning markitdown preserved structure.
-    """
-    lines = [ln for ln in content.splitlines() if ln.strip()]
-    if len(lines) < _FLAT_MIN_LINES:
-        return False
-
-    # If markitdown already produced table syntax, structure is preserved
-    if any(ln.strip().startswith("|") and "|" in ln[1:] for ln in lines):
-        return False
-
-    short = sum(1 for ln in lines if len(ln.split()) <= 3)
-    sentences = sum(1 for ln in lines if len(ln.split()) >= 6)
-    numeric = sum(1 for ln in lines if re.search(r"\d", ln))
-
-    n = len(lines)
-    short_ratio = short / n
-    sentence_ratio = sentences / n
-    numeric_ratio = numeric / n
-
-    is_flattened = (
-        short_ratio >= _FLAT_SHORT_RATIO
-        and sentence_ratio <= _FLAT_SENTENCE_RATIO
-        and numeric_ratio >= _FLAT_NUMERIC_RATIO
-    )
-
-    if is_flattened:
-        log.info(
-            "Flattened table detected: short=%.2f sentence=%.2f numeric=%.2f (%d lines)",
-            short_ratio, sentence_ratio, numeric_ratio, n,
-        )
-
-    return is_flattened
 
 
 def _calculate_dpi(page_w_pts: float, page_h_pts: float) -> int:

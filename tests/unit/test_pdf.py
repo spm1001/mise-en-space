@@ -12,8 +12,8 @@ from adapters.pdf import (
     PdfConversionResult,
     DEFAULT_MIN_CHARS_THRESHOLD,
     STREAMING_THRESHOLD_BYTES,
-    _looks_like_flattened_tables,
 )
+from extractors.text_quality import looks_like_flattened_tables
 from adapters.drive import STREAMING_THRESHOLD_BYTES as DRIVE_STREAMING_THRESHOLD
 from tools.fetch import fetch_pdf
 
@@ -457,7 +457,7 @@ class TestConvertViaDriveValidation:
 
 
 class TestFlattenedTableDetection:
-    """Tests for _looks_like_flattened_tables() heuristic.
+    """Tests for looks_like_flattened_tables() heuristic.
 
     Uses a real fixture (sanitized media rate-card) plus synthetic content
     to verify detection triggers on flattened data and doesn't false-positive
@@ -474,7 +474,7 @@ class TestFlattenedTableDetection:
 
     def test_fixture_detected_as_flattened(self, rate_card_content: str) -> None:
         """Real rate-card fixture triggers the heuristic."""
-        assert _looks_like_flattened_tables(rate_card_content)
+        assert looks_like_flattened_tables(rate_card_content)
 
     def test_fixture_passes_char_count_gate(self, rate_card_content: str) -> None:
         """Fixture passes the char-count gate — that's the whole problem."""
@@ -493,7 +493,7 @@ class TestFlattenedTableDetection:
                 "Peak",
             ])
         content = "\n".join(lines)
-        assert _looks_like_flattened_tables(content)
+        assert looks_like_flattened_tables(content)
 
     # --- Should NOT trigger ---
 
@@ -506,7 +506,7 @@ class TestFlattenedTableDetection:
             "Management expects continued momentum through the remainder of the fiscal year.",
             "Key performance indicators remain above target for most business units.",
         ] * 10
-        assert not _looks_like_flattened_tables("\n".join(lines))
+        assert not looks_like_flattened_tables("\n".join(lines))
 
     def test_code_content(self) -> None:
         """Source code doesn't trigger (mixed line lengths, low numeric)."""
@@ -527,7 +527,7 @@ class TestFlattenedTableDetection:
             "        self.config = config",
             "        self.logger = logging.getLogger(__name__)",
         ] * 5
-        assert not _looks_like_flattened_tables("\n".join(lines))
+        assert not looks_like_flattened_tables("\n".join(lines))
 
     def test_poetry(self) -> None:
         """Poetry has high short_ratio but very low numeric_ratio."""
@@ -543,7 +543,7 @@ class TestFlattenedTableDetection:
             "darling buds",
             "of May",
         ] * 5
-        assert not _looks_like_flattened_tables("\n".join(lines))
+        assert not looks_like_flattened_tables("\n".join(lines))
 
     def test_numbered_list(self) -> None:
         """Numbered lists have digits but high sentence_ratio."""
@@ -551,12 +551,67 @@ class TestFlattenedTableDetection:
             f"{i}. This is a detailed action item that describes what needs to happen next in the project."
             for i in range(1, 30)
         ]
-        assert not _looks_like_flattened_tables("\n".join(lines))
+        assert not looks_like_flattened_tables("\n".join(lines))
 
     def test_short_content_skipped(self) -> None:
         """Content with fewer than 20 non-empty lines is skipped."""
         lines = ["100", "200", "Channel A"] * 5  # 15 lines
-        assert not _looks_like_flattened_tables("\n".join(lines))
+        assert not looks_like_flattened_tables("\n".join(lines))
+
+    # --- Delimiter-stripping (mise-columi): rows that read as prose ---
+
+    def test_delimiter_stripped_rows_detected(self) -> None:
+        """A table whose rows each survived as ONE line, delimiters gone —
+        plausible sentences made of numbers. The ratio signal is blind to
+        this (lines are sentence-length, short_ratio is 0); the
+        stripped-row signal must catch it."""
+        lines = [
+            "Consolidated income statement for the year ended 31 December",
+            "Total external revenue 3,214 3,453 2,761",
+            "Internal supply revenue 618 574 512",
+            "Group adjusted EBITA 793 826 673",
+            "Adjusted profit before tax 646 678 546",
+            "Statutory profit after tax 377 466 398",
+            "These figures are drawn from the audited accounts.",
+        ] * 3
+        assert looks_like_flattened_tables("\n".join(lines))
+
+    def test_prose_quoting_figures_not_detected(self) -> None:
+        """Prose mentioning several numbers stays clean — words interleave
+        the figures, so lines don't END in consecutive numeric tokens."""
+        lines = [
+            "Revenue grew from 1,200 to 1,500 in 2024 across the group.",
+            "The dividend rose by 5% against 2023 and by 8% against 2022 overall.",
+            "We expect 2025 to add 300 more colleagues in 4 locations worldwide.",
+            "Viewing hours reached 21 billion in 2024, up from 19 billion previously.",
+        ] * 6
+        assert not looks_like_flattened_tables("\n".join(lines))
+
+    def test_table_of_contents_not_detected(self) -> None:
+        """TOC lines: section numbers aren't bare numerics ('3.4.1' fails),
+        and one page number per line is below the >=3 floor."""
+        lines = [
+            "1.1 Chairman's statement 4",
+            "1.2 Chief Executive's review 7",
+            "2.1 Market context 12",
+            "Financial statements ............................ 98",
+            "3.4.1 Governance and remuneration 45",
+        ] * 5
+        assert not looks_like_flattened_tables("\n".join(lines))
+
+    def test_piped_tables_immune_to_row_signal(self) -> None:
+        """The pipe guard covers the stripped-row signal too: preserved
+        markdown tables full of numeric rows never trigger fallback."""
+        lines = ["| Revenue | 3,214 | 3,453 | 2,761 |"] * 10
+        assert not looks_like_flattened_tables("\n".join(lines))
+
+    def test_two_stripped_rows_not_enough(self) -> None:
+        """One or two number-dense lines prove nothing — a table has rows."""
+        lines = [
+            "Total external revenue 3,214 3,453 2,761",
+            "Group adjusted EBITA 793 826 673",
+        ] + ["Ordinary prose about the year under review continues here."] * 20
+        assert not looks_like_flattened_tables("\n".join(lines))
 
     def test_markdown_table_syntax_skipped(self) -> None:
         """Content with markdown table pipes is skipped (structure preserved)."""
@@ -565,7 +620,7 @@ class TestFlattenedTableDetection:
             "|---------|-----|------|",
         ]
         lines.extend([f"| Ch{i} | {i*100} | £{i*10} |" for i in range(30)])
-        assert not _looks_like_flattened_tables("\n".join(lines))
+        assert not looks_like_flattened_tables("\n".join(lines))
 
     # --- Integration: convert_pdf_content triggers Drive fallback ---
 

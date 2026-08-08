@@ -85,7 +85,7 @@ _LEGACY_SIZE_BASELINE = {
     "tools/fetch/gmail.py": 695,  # +1 (2026-08-07): the adapters/gmail_ids.py split turned one import line into two
     "adapters/http_client.py": 683,
     "extractors/slides.py": 600,
-    "adapters/pdf.py": 551,
+    "adapters/pdf.py": 504,  # lowered 2026-08-08: flattened-table detector moved to extractors/text_quality.py (mise-columi)
     "extractors/talon_signature.py": 518,
 }
 
