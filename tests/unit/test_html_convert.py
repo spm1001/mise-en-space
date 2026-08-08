@@ -126,6 +126,53 @@ class TestHasDataTable:
         )
         assert not has_data_table(html)
 
+    def test_nested_layout_wrapper_is_false(self) -> None:
+        """The Slack/Google-notification shape: a centring wrapper table whose
+        inner tables are single-column stacks. Measured 2026-08-08: this shape
+        (not flat strips) is what made a rows-x-cells-only heuristic swap 31
+        of 40 real promotions/updates messages. The wrapper is excluded for
+        nesting; the inner stacks never form a text grid."""
+        html = (
+            '<table><tr><td>'
+            '  <table><tr><td>Header</td></tr>'
+            '  <tr><td><img src="hero.png"/></td></tr>'
+            '  <tr><td>Story text</td></tr></table>'
+            '</td></tr></table>'
+        )
+        assert not has_data_table(html)
+
+    def test_data_grid_inside_wrapper_is_true(self) -> None:
+        """A REAL flat text grid nested inside a branding wrapper still
+        counts — the wrapper is layout, but the inner table is data (the
+        system-report-email shape). Only the containing table is disqualified
+        by nesting, never the flat grid within."""
+        html = (
+            '<table><tr><td>'
+            '  <table><tr><td>Metric</td><td>Value</td></tr>'
+            '  <tr><td>Spend</td><td>£12,000</td></tr></table>'
+            '</td></tr></table>'
+        )
+        assert has_data_table(html)
+
+    def test_textless_grid_is_false(self) -> None:
+        """A flat grid whose cells hold only images/spacers — layout chrome."""
+        html = (
+            '<table>'
+            '<tr><td><img src="a.png"/></td><td><img src="b.png"/></td></tr>'
+            '<tr><td><img src="c.png"/></td><td>Only one text cell</td></tr>'
+            '</table>'
+        )
+        assert not has_data_table(html)
+
+    def test_unclosed_table_still_scanned(self) -> None:
+        """Sloppy mail HTML often never closes its tables — the grid must
+        still be seen (scanner reads open tables at EOF)."""
+        html = (
+            '<table><tr><td>A</td><td>B</td></tr>'
+            '<tr><td>1</td><td>2</td></tr>'  # no </table>
+        )
+        assert has_data_table(html)
+
 
 class TestSelectBodyText:
     """select_body_text — plain wins except when HTML holds a data grid."""

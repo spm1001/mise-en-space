@@ -165,26 +165,66 @@ def clean_html_for_conversion(html: str) -> str:
     return html
 
 
-_TABLE_ROW_RE = re.compile(r'<tr[\s>].*?</tr>', re.IGNORECASE | re.DOTALL)
-_TABLE_CELL_RE = re.compile(r'<t[dh][\s>]', re.IGNORECASE)
+class _TableGridScanner(HTMLParser):
+    """Per-table structure for has_data_table: rows' text-cell counts + nesting."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.tables: list[dict] = []   # finished tables
+        self.stack: list[dict] = []    # open tables (sloppy mail HTML may never close them)
+        self._cell_depth = 0
+        self._cell_has_text = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "table":
+            for t in self.stack:
+                t["has_nested"] = True
+            self.stack.append({"text_cells_per_row": [], "has_nested": False})
+        elif tag == "tr" and self.stack:
+            self.stack[-1]["text_cells_per_row"].append(0)
+        elif tag in ("td", "th") and self.stack and self.stack[-1]["text_cells_per_row"]:
+            self._cell_depth += 1
+            self._cell_has_text = False
+
+    def handle_data(self, data: str) -> None:
+        if self._cell_depth and data.strip():
+            self._cell_has_text = True
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in ("td", "th") and self._cell_depth:
+            self._cell_depth -= 1
+            if self._cell_has_text and self.stack and self.stack[-1]["text_cells_per_row"]:
+                self.stack[-1]["text_cells_per_row"][-1] += 1
+            self._cell_has_text = False
+        elif tag == "table" and self.stack:
+            self.tables.append(self.stack.pop())
 
 
 def has_data_table(html_body: str | None) -> bool:
     """True when the HTML holds a plausible DATA table, not a layout wrapper.
 
-    Cheap structural heuristic: at least two rows each carrying at least two
-    cells — a grid. Marketing-email layout tables are typically single-column
-    stacks or single-row strips, which stay False; a wide layout grid can
-    still trip this, an accepted (and disclosed) false positive. Pure, no I/O.
+    Two structural requirements, both needed (mise-voteki recalibration,
+    2026-08-08): the table must contain NO nested table — data tables are
+    flat, marketing/notification layouts are wrappers-in-wrappers — and at
+    least two of its rows must each hold at least two cells carrying visible
+    text. A first cut requiring only >=2 rows x >=2 cells swapped 31 of 40
+    real promotions/updates messages (Slack pings, Docs shares, newsletters);
+    with both requirements that corpus measured 0 false positives while the
+    known-true Outlook data table still fired. A miss here is safe: the
+    plain-text part is used, as it always was. Pure, no I/O.
     """
     if not html_body or '<table' not in html_body.lower():
         return False
-    grid_rows = 0
-    for row in _TABLE_ROW_RE.finditer(html_body):
-        if len(_TABLE_CELL_RE.findall(row.group(0))) >= 2:
-            grid_rows += 1
-            if grid_rows >= 2:
-                return True
+    scanner = _TableGridScanner()
+    try:
+        scanner.feed(html_body)
+    except Exception:
+        return False  # unparseable HTML → no swap, plain part stands
+    for t in scanner.tables + scanner.stack:
+        if t["has_nested"]:
+            continue
+        if sum(1 for c in t["text_cells_per_row"] if c >= 2) >= 2:
+            return True
     return False
 
 
