@@ -338,6 +338,7 @@ def write_search_results(
     query: str,
     results: dict[str, Any],
     base_path: Path | None = None,
+    sources: list[str] | None = None,
 ) -> Path:
     """
     Write search results to a JSON file in .mise/.
@@ -346,25 +347,39 @@ def write_search_results(
         query: The search query (used for slugified filename)
         results: The full search results dict
         base_path: Base directory (defaults to cwd)
+        sources: Sources searched — part of the filename, so parallel
+            same-query searches over different sources get distinct paths
 
     Returns:
         Path to the written file
 
     Example:
-        write_search_results("Q4 planning", {...})
-        -> Path(".mise/search--q4-planning--2026-01-31T21-12-53.json")
+        write_search_results("Q4 planning", {...}, sources=["drive", "gmail"])
+        -> Path(".mise/search--q4-planning--drive-gmail--2026-01-31T21-12-53.json")
     """
     if base_path is None:
         raise ValueError("base_path is required — deposits must not fall back to MCP server's cwd")
     mise_fetch = base_path / DEPOSIT_DIR
     mise_fetch.mkdir(parents=True, exist_ok=True)
 
-    # Build filename: search--{query-slug}--{timestamp}.json
+    # The filename carries the search's identity, not just its moment: the CC
+    # harness batches independent tool calls, so parallel same-query searches
+    # landing in the same wall-clock second are the NORMAL case, and a
+    # time-only name silently destroyed a sibling call's results (mise-gemowa,
+    # live incident 2026-07-30). Sources distinguish the common collision and
+    # make deposits self-describing; the suffix loop closes what's left
+    # (identical query+sources+second).
     slug = slugify(query, max_length=40)
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
-    filename = f"search--{slug}--{timestamp}.json"
+    src = "-".join(slugify(s, max_length=12) for s in sorted(sources)) if sources else ""
+    stem = f"search--{slug}--{src}--{timestamp}" if src else f"search--{slug}--{timestamp}"
 
-    file_path = mise_fetch / filename
+    file_path = mise_fetch / f"{stem}.json"
+    n = 2
+    while file_path.exists():
+        file_path = mise_fetch / f"{stem}-{n}.json"
+        n += 1
+
     file_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
     return file_path
 

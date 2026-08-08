@@ -379,7 +379,9 @@ def do_search(
     # Deposit results to file (filesystem-first pattern)
     # result.query, not query — it already resolves raw_query-or-query, and `query`
     # is empty on the raw path, which slugs every raw search to "untitled".
-    path = write_search_results(result.query, result.full_results(), base_path=base_path)
+    path = write_search_results(
+        result.query, result.full_results(), base_path=base_path, sources=result.sources,
+    )
     result.path = str(path)
 
     return result

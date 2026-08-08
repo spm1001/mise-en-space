@@ -332,6 +332,64 @@ class TestWriteSearchResults:
         path = write_search_results("test", {}, base_path=tmp_path)
         assert (tmp_path / ".mise").is_dir()
 
+    def test_parallel_same_query_deposits_never_clobber(self, tmp_path: Path) -> None:
+        """mise-gemowa regression. Live incident 2026-07-30: gmail and
+        calendar searches for one query, batched into the same tool block,
+        landed in the same wall-clock second, returned the SAME path, and
+        the calendar write destroyed the gmail results with no signal.
+        Both files must exist and both must be complete."""
+        import json
+        from datetime import datetime, timezone
+        from unittest.mock import patch
+
+        frozen = datetime(2026, 7, 30, 16, 53, 32, tzinfo=timezone.utc)
+        with patch("workspace.manager.datetime") as dt:
+            dt.now.return_value = frozen
+            p1 = write_search_results(
+                "MeasureCon", {"gmail_results": [{"id": "g1"}]},
+                base_path=tmp_path, sources=["gmail"],
+            )
+            p2 = write_search_results(
+                "MeasureCon", {"calendar_results": [{"id": "c1"}]},
+                base_path=tmp_path, sources=["calendar"],
+            )
+
+        assert p1 != p2
+        deposits = list((tmp_path / ".mise").glob("search--*.json"))
+        assert len(deposits) == 2
+        assert json.loads(p1.read_text())["gmail_results"][0]["id"] == "g1"
+        assert json.loads(p2.read_text())["calendar_results"][0]["id"] == "c1"
+
+    def test_identical_query_sources_second_suffixes(self, tmp_path: Path) -> None:
+        """Same query, same sources, same second — the suffix fallback
+        still yields two distinct, complete files."""
+        import json
+        from datetime import datetime, timezone
+        from unittest.mock import patch
+
+        frozen = datetime(2026, 7, 30, 16, 53, 32, tzinfo=timezone.utc)
+        with patch("workspace.manager.datetime") as dt:
+            dt.now.return_value = frozen
+            p1 = write_search_results(
+                "MeasureCon", {"n": 1}, base_path=tmp_path, sources=["gmail"],
+            )
+            p2 = write_search_results(
+                "MeasureCon", {"n": 2}, base_path=tmp_path, sources=["gmail"],
+            )
+
+        assert p1 != p2
+        assert p2.stem.endswith("-2")
+        assert json.loads(p1.read_text())["n"] == 1
+        assert json.loads(p2.read_text())["n"] == 2
+
+    def test_sources_in_filename(self, tmp_path: Path) -> None:
+        """The deposit is self-describing: sources appear in the name,
+        sorted for stability."""
+        path = write_search_results(
+            "budget", {}, base_path=tmp_path, sources=["gmail", "drive"],
+        )
+        assert "--drive-gmail--" in path.name
+
 
 class TestEnrichManifest:
     """Tests for post-creation manifest enrichment."""

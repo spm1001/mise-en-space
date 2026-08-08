@@ -70,7 +70,7 @@ Search across Drive and Gmail. Deposits results to file for token efficiency.
 
 ## Filesystem-First Pattern
 
-Search results are written to `.mise/search--{query-slug}--{timestamp}.json`.
+Search results are written to `.mise/search--{query-slug}--{sources}--{timestamp}.json` — one file per call, never overwritten (numeric suffix on collision).
 The tool returns the path and summary counts. Read the file for full results.
 
 This pattern:
@@ -93,7 +93,7 @@ This pattern:
 ```python
 # Search both sources
 search("Q4 planning")
-# Returns: {"path": ".mise/search--q4-planning--2026-01-31T21-12-53.json",
+# Returns: {"path": ".mise/search--q4-planning--drive-gmail--2026-01-31T21-12-53.json",
 #           "drive_count": 15, "gmail_count": 8, ...}
 
 # Filter by type (no keyword needed)
@@ -105,14 +105,14 @@ search("GA4", folder_id="1UclqiqLBfe3BfLRNFTWb0eDbnssxA3Tp")
 # Returns cues.scope note explaining non-recursive limitation
 
 # Then read the file for full results
-Read(".mise/search--q4-planning--2026-01-31T21-12-53.json")
+Read(".mise/search--q4-planning--drive-gmail--2026-01-31T21-12-53.json")
 ```
 
 ## Response Shape
 
 ```json
 {
-  "path": ".mise/search--q4-planning--2026-01-31T21-12-53.json",
+  "path": ".mise/search--q4-planning--drive-gmail--2026-01-31T21-12-53.json",
   "query": "Q4 planning",
   "sources": ["drive", "gmail"],
   "drive_count": 15,
