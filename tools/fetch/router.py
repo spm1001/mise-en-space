@@ -10,38 +10,44 @@ from adapters.gmail_ids import get_thread_id_for_rfc822_message_id
 from models import MiseError, ErrorKind, FetchResult, FetchError
 from validation import extract_drive_file_id, extract_gmail_id, extract_gmail_permmsgid, extract_rfc822_message_id, is_gmail_api_id, is_self_sent_gmail_url, GMAIL_WEB_ID_PREFIXES, detect_fetch_input_problem, diagnose_fetch_404
 
+from .decorations import UrlDecorations, apply_url_decorations, parse_drive_url_decorations
 from .gmail import fetch_gmail, fetch_attachment
 from .drive import fetch_drive
 
 
-def detect_id_type(input_id: str) -> tuple[str, str]:
+def detect_id_type(input_id: str) -> tuple[str, str, UrlDecorations]:
     """
     Detect whether input is Gmail or Drive, and normalize the ID.
 
     Returns:
-        Tuple of (source, normalized_id) where source is 'gmail' or 'drive'
+        Tuple of (source, normalized_id, decorations). This 3-tuple IS the
+        seam that used to destroy URL decorations (mise-dogape): the id
+        extraction keeps only /d/{id}, so anything the URL's tail named —
+        ?gid, ?tab, #heading, #slide, ?disco — must be carried from here or
+        it is unrecoverable one line into the fetch. Gmail URLs and bare ids
+        carry an empty UrlDecorations.
     """
     input_id = input_id.strip()
 
     # Gmail URL
     if "mail.google.com" in input_id:
-        return ("gmail", extract_gmail_id(input_id))
+        return ("gmail", extract_gmail_id(input_id), UrlDecorations())
 
     # Drive URL (docs, sheets, slides, drive)
     if any(domain in input_id for domain in ["docs.google.com", "sheets.google.com", "slides.google.com", "drive.google.com"]):
-        return ("drive", extract_drive_file_id(input_id))
+        return ("drive", extract_drive_file_id(input_id), parse_drive_url_decorations(input_id))
 
     # Gmail API ID (16-char hex)
     if is_gmail_api_id(input_id):
-        return ("gmail", input_id)
+        return ("gmail", input_id, UrlDecorations())
 
     # Gmail web ID (FMfcg..., KtbxL..., etc.) — needs conversion
     # Only match known prefixes; is_gmail_web_id fallback is too broad for bare IDs
     if input_id.startswith(GMAIL_WEB_ID_PREFIXES):
-        return ("gmail", extract_gmail_id(input_id))
+        return ("gmail", extract_gmail_id(input_id), UrlDecorations())
 
     # Default to Drive
-    return ("drive", input_id)
+    return ("drive", input_id, UrlDecorations())
 
 
 def _self_sent_candidates() -> list[dict[str, str]] | None:
@@ -106,6 +112,7 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
         resolution_note: str | None = None
         source: str | None = None
         normalized_id: str | None = None
+        decorations = UrlDecorations()
 
         problem = detect_fetch_input_problem(file_id)
         if problem:
@@ -162,7 +169,7 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
                 )
             else:
                 # Detect ID type and normalize
-                source, normalized_id = detect_id_type(file_id)
+                source, normalized_id, decorations = detect_id_type(file_id)
 
         # Single-attachment fetch (Gmail only)
         if attachment:
@@ -182,6 +189,12 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
         # mise-saroca discipline).
         if resolution_note and isinstance(result, FetchResult):
             result.cues.setdefault("warnings", []).append(resolution_note)
+        # Point at what the URL's tail named (mise-dogape). Post-fetch and
+        # deposit-driven, so a decorated and a bare fetch deposit identically.
+        # Point at what the URL's tail named (mise-dogape). Post-fetch and
+        # deposit-driven, so a decorated and a bare fetch deposit identically.
+        if decorations and isinstance(result, FetchResult):
+            apply_url_decorations(result, decorations)
         return result
 
     except MiseError as e:

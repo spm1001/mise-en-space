@@ -77,6 +77,7 @@ The fetch response includes a `cues` block with decision-tree signals — check 
 6. For Gmail: check `cues.files` for `*.pdf.md` (extracted attachment text)
 7. For Gmail invites: if `cues.invite_state` is present, it's the **live** Calendar state, not the email's frozen snapshot — `{status, my_response, current_start, cancelled_at}`. A `status: "cancelled"` (with a warning) means the meeting is off even though the email body still reads as a live invitation; `current_start` reflects any reschedule. Trust this over the ICS in the body.
 8. For Google Docs: if `cues.has_suggestions` is true, the doc carries unresolved suggested edits (`suggestion_count` says how many, `suggestions_mode` says how they were treated). The default render is **accepted** — the suggester's intended text, with suggested deletions honoured. Don't treat that text as settled: the suggestions are still open in the Doc. See "Docs with suggested edits" under Workflow 1.
+9. If `cues.pointer` is present, the pasted URL named a specific spot — a tab, heading, slide or comment — and the pointer says which deposited artefact holds it (often with a `content.md` line number Read's offset consumes directly). **Start there**, not at the top of the document; that targeting is why the person pasted a decorated URL.
 
 `manifest.json` is still on disk for scripts/jq, but `cues` surfaces the actionable signals so you don't need to read it separately.
 
@@ -123,10 +124,14 @@ The reason it matters is that the tail of the URL is often the *point*. `?gid=` 
 who sends you `…/edit#gid=1466289902` is saying "this tab", and an ID alone cannot say that.
 Stripping is irreversible at the caller: once you've thrown the fragment away, mise never had it.
 
-Be honest about the current state: **mise does not yet act on the Drive decorations** — wiring them
-into the returned cues is in progress (`mise-dogape`). But passing them costs nothing, they are
-already parsed on the Gmail side, and the habit has to land before the feature can be worth
-anything. So: whole URL, always.
+**Mise acts on all five decorations** (since suite 1.42): the fetch deposits everything exactly as
+for a bare URL, and `cues.pointer` names the deposited artefact holding the spot the URL pointed
+at — `?gid` → the per-tab CSV, `?tab`/`#heading` → "content.md from line 340" (feed it straight to
+Read's offset), `#slide` → the slide index and its thumbnail, `?disco` → that comment's entry in
+comments.md, ready for `comment_reply`. A pointer that no longer resolves is reported as **stale**
+rather than ignored — a dangling gid or slide id means the link rotted, which is itself worth
+telling the person who pasted it. Strip the URL to a bare ID and all of this silently disappears.
+So: whole URL, always.
 
 **Gmail URLs work harder than they look.** The thread token is the **last** fragment segment, so a
 search-scoped URL like `#search/from%3Aalice+lantern/FMfcgz…` resolves fine — mise reads the token

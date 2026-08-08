@@ -138,12 +138,15 @@ def fetch_spreadsheet(
     grid_sheets: list[tuple[str, str]] = []  # (name, sheetType)
     all_sheet_info: list[tuple[str, str]] = []
     merges_by_sheet: dict[str, list[dict[str, Any]]] = {}  # sheet name → merge ranges
+    sheet_ids: dict[str, int] = {}  # sheet name → numeric sheetId (URL ?gid=)
 
     for sheet in metadata.get("sheets", []):
         props = sheet.get("properties", {})
         name = props.get("title", "")
         sheet_type = props.get("sheetType", "GRID")
         all_sheet_info.append((name, sheet_type))
+        if "sheetId" in props:
+            sheet_ids[name] = props["sheetId"]
 
         # Collect merge ranges for GRID sheets
         sheet_merges = sheet.get("merges", [])
@@ -212,6 +215,7 @@ def fetch_spreadsheet(
                 name=sheet_name,
                 values=parsed_values,
                 sheet_type=sheet_type,
+                sheet_id=sheet_ids.get(sheet_name),
             ))
 
         # Count formula cells (cells starting with = in FORMULA render)
@@ -228,6 +232,7 @@ def fetch_spreadsheet(
                 name=name,
                 values=[],
                 sheet_type=sheet_type,
+                sheet_id=sheet_ids.get(name),
             ))
 
     # Extract chart metadata

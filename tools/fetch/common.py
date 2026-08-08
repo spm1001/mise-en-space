@@ -11,8 +11,9 @@ from typing import Any
 from adapters.drive import fetch_file_comments
 from adapters.pdf import PdfConversionResult
 from extractors.comments import extract_comments_content
+from extractors.sheets import extract_sheets_per_tab
 from models import MiseError, EmailContext
-from workspace import write_content, write_page_thumbnail
+from workspace import write_content, write_page_thumbnail, slugify
 
 
 def _enrich_with_comments(
@@ -50,6 +51,37 @@ def _enrich_with_comments(
         return (0, None)
     except Exception:
         return (0, None)
+
+
+def _write_per_tab_csvs(
+    folder: Path, data: Any, *, tabs_info: list[dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
+    """Write per-tab CSV files and return the manifest's tab index.
+
+    Returns one {name, sheet_id, filename} entry per tab — including for a
+    single-tab sheet, whose entry names content.csv (the whole-sheet file IS
+    that tab; no per-tab file is written for it). Per-tab files are written
+    only when there are 2+ tabs. sheet_id is Google's numeric id (what a URL's
+    ?gid= names) and None for xlsx-sourced data (mise-dogape).
+    Mutates tabs_info list if provided, otherwise creates new.
+    """
+    per_tab = extract_sheets_per_tab(data)
+    result = tabs_info if tabs_info is not None else []
+    if len(per_tab) <= 1:
+        for tab in data.sheets:
+            result.append(
+                {"name": tab.name, "sheet_id": tab.sheet_id, "filename": "content.csv"}
+            )
+        return result
+
+    for tab, (tab_name, csv_content) in zip(data.sheets, per_tab):
+        tab_slug = slugify(tab_name, max_length=40)
+        filename = f"content_{tab_slug}.csv"
+        write_content(folder, csv_content, filename=filename)
+        result.append(
+            {"name": tab_name, "sheet_id": tab.sheet_id, "filename": filename}
+        )
+    return result
 
 
 def _deposit_pdf_thumbnails(

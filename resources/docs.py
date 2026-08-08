@@ -293,7 +293,7 @@ Fetch content to filesystem. Writes to `.mise/` in current directory.
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `file_id` | str | Drive file ID, Gmail thread ID, or Drive folder ID |
+| `file_id` | str | Drive file ID or WHOLE URL (a `?gid`/`?tab`/`#heading`/`#slide`/`?disco` tail resolves to `cues.pointer` naming the deposited artefact; dangling pointers reported stale), Gmail thread ID, or Drive folder ID |
 | `tabs` | list[str] | Tab names to fetch from a spreadsheet (default: all tabs) |
 | `suggestions` | str | Google Docs suggested-edit view: `accepted` (default), `original`, `markup` |
 

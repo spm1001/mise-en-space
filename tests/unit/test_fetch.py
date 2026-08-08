@@ -24,6 +24,7 @@ from models import (
 from tools.fetch.gmail import _enrich_invite_state
 from adapters.gmail import AttachmentDownload
 from tools.fetch.common import _build_cues
+from tools.fetch.decorations import UrlDecorations
 from adapters.office import OfficeConversionResult
 from adapters.pdf import PdfConversionResult
 
@@ -45,21 +46,21 @@ class TestDetectIdType:
     def test_gmail_url(self) -> None:
         """Gmail URLs are detected and ID extracted."""
         url = "https://mail.google.com/mail/u/0/#inbox/FMfcgzQfBZkJgxJdSRBsRcqhpDcdBRxH"
-        source, normalized = detect_id_type(url)
+        source, normalized, _ = detect_id_type(url)
         assert source == "gmail"
         assert len(normalized) == 16  # API format
 
     def test_gmail_api_id(self) -> None:
         """16-char hex Gmail API IDs are detected."""
         api_id = "19c05803e16f5f83"
-        source, normalized = detect_id_type(api_id)
+        source, normalized, _ = detect_id_type(api_id)
         assert source == "gmail"
         assert normalized == api_id
 
     def test_gmail_web_id(self) -> None:
         """Gmail web IDs (FMfcg..., KtbxL...) are detected and converted."""
         web_id = "FMfcgzQfBZkJgxJdSRBsRcqhpDcdBRxH"
-        source, normalized = detect_id_type(web_id)
+        source, normalized, _ = detect_id_type(web_id)
         assert source == "gmail"
         assert len(normalized) == 16  # Converted to API format
         # Verify it's different from the input (was actually converted)
@@ -77,42 +78,42 @@ class TestDetectIdType:
     def test_drive_docs_url(self) -> None:
         """Google Docs URLs are detected as Drive."""
         url = "https://docs.google.com/document/d/1OepZjuwi2em/edit"
-        source, normalized = detect_id_type(url)
+        source, normalized, _ = detect_id_type(url)
         assert source == "drive"
         assert normalized == "1OepZjuwi2em"
 
     def test_drive_sheets_url(self) -> None:
         """Google Sheets URLs are detected as Drive."""
         url = "https://sheets.google.com/spreadsheets/d/abc123xyz/edit"
-        source, normalized = detect_id_type(url)
+        source, normalized, _ = detect_id_type(url)
         assert source == "drive"
         assert normalized == "abc123xyz"
 
     def test_drive_slides_url(self) -> None:
         """Google Slides URLs are detected as Drive."""
         url = "https://slides.google.com/presentation/d/prezId123/edit"
-        source, normalized = detect_id_type(url)
+        source, normalized, _ = detect_id_type(url)
         assert source == "drive"
         assert normalized == "prezId123"
 
     def test_drive_file_url(self) -> None:
         """Drive file URLs are detected as Drive."""
         url = "https://drive.google.com/file/d/1a2b3c4d5e/view"
-        source, normalized = detect_id_type(url)
+        source, normalized, _ = detect_id_type(url)
         assert source == "drive"
         assert normalized == "1a2b3c4d5e"
 
     def test_bare_drive_id(self) -> None:
         """Bare IDs (not matching Gmail patterns) default to Drive."""
         drive_id = "1OepZjuwi2emuHPAP-LWxWZnw9g0SbkjhkBJh9ta1rqU"
-        source, normalized = detect_id_type(drive_id)
+        source, normalized, _ = detect_id_type(drive_id)
         assert source == "drive"
         assert normalized == drive_id
 
     def test_strips_whitespace(self) -> None:
         """Input is stripped before detection."""
         web_id = "  FMfcgzQfBZkJgxJdSRBsRcqhpDcdBRxH  "
-        source, normalized = detect_id_type(web_id)
+        source, normalized, _ = detect_id_type(web_id)
         assert source == "gmail"
 
 
@@ -552,7 +553,7 @@ class TestFetchAttachment:
 
     def test_routes_via_do_fetch(self):
         """do_fetch with attachment param routes to fetch_attachment."""
-        with patch("tools.fetch.router.detect_id_type", return_value=("gmail", "thread_xyz")), \
+        with patch("tools.fetch.router.detect_id_type", return_value=("gmail", "thread_xyz", UrlDecorations())), \
              patch("tools.fetch.router.fetch_attachment") as mock_fetch_att:
             mock_fetch_att.return_value = FetchResult(
                 path="/tmp/test", content_file="/tmp/test/content.md",
@@ -2088,7 +2089,7 @@ class TestFetchImageFile:
 class TestDoFetchRouting:
     """Tests for do_fetch entry point routing and error handling."""
 
-    @patch("tools.fetch.router.detect_id_type", return_value=("gmail", "t1"))
+    @patch("tools.fetch.router.detect_id_type", return_value=("gmail", "t1", UrlDecorations()))
     @patch("tools.fetch.router.fetch_gmail")
     def test_routes_gmail(self, mock_gmail, mock_detect):
         """Gmail IDs route to fetch_gmail."""
@@ -2096,7 +2097,7 @@ class TestDoFetchRouting:
         result = do_fetch("t1")
         mock_gmail.assert_called_once_with("t1", base_path=None)
 
-    @patch("tools.fetch.router.detect_id_type", return_value=("drive", "f1"))
+    @patch("tools.fetch.router.detect_id_type", return_value=("drive", "f1", UrlDecorations()))
     @patch("tools.fetch.router.fetch_drive")
     def test_routes_drive(self, mock_drive, mock_detect):
         """Drive IDs route to fetch_drive."""
@@ -2125,7 +2126,7 @@ class TestDoFetchRouting:
         assert isinstance(result, FetchError)
         assert result.kind == "unknown"
 
-    @patch("tools.fetch.router.detect_id_type", return_value=("drive", "f1"))
+    @patch("tools.fetch.router.detect_id_type", return_value=("drive", "f1", UrlDecorations()))
     @patch("tools.fetch.router.fetch_drive")
     def test_passes_base_path(self, mock_drive, mock_detect):
         """base_path is forwarded to fetcher."""
@@ -2714,18 +2715,25 @@ class TestPerTabCsvDeposit:
         assert "x,y\n3,4\n" == f2.read_text()
 
     def test_single_tab_no_per_tab_files(self, tmp_path: Path) -> None:
-        """Single-tab spreadsheet skips per-tab files (redundant with content.csv)."""
+        """Single-tab spreadsheet skips per-tab files (redundant with content.csv).
+
+        Since mise-dogape the manifest still gets one tab entry — pointing at
+        content.csv and carrying the sheet_id a URL's ?gid= names — but no
+        per-tab file is written.
+        """
         from tools.fetch.drive import _write_per_tab_csvs
         from models import SpreadsheetData, SheetTab
 
         data = SpreadsheetData(
             title="Single",
             spreadsheet_id="s1",
-            sheets=[SheetTab(name="Sheet1", values=[["a"]])],
+            sheets=[SheetTab(name="Sheet1", values=[["a"]], sheet_id=77)],
         )
         tabs_info = _write_per_tab_csvs(tmp_path, data)
 
-        assert tabs_info == []
+        assert tabs_info == [
+            {"name": "Sheet1", "sheet_id": 77, "filename": "content.csv"}
+        ]
         # No per-tab files written
         csv_files = list(tmp_path.glob("content_*.csv"))
         assert csv_files == []
@@ -3007,7 +3015,7 @@ class TestRawAttachmentBytes:
 
     def test_raw_reaches_fetch_attachment(self):
         """The seam: a new param is only real if it survives every layer."""
-        with patch("tools.fetch.router.detect_id_type", return_value=("gmail", "t1")), \
+        with patch("tools.fetch.router.detect_id_type", return_value=("gmail", "t1", UrlDecorations())), \
              patch("tools.fetch.router.fetch_attachment") as mock_att:
             mock_att.return_value = FetchResult(
                 path="/tmp/t", content_file="/tmp/t/content.md",
@@ -3098,7 +3106,7 @@ class TestShowOriginalUrlFetch:
              "?ik=2bb48b24a5&view=om&permmsgid=msg-f:1872845353272970994")
 
     def test_show_original_url_routes_to_gmail_with_hex_id(self):
-        source, normalized = detect_id_type(self.URL_F)
+        source, normalized, _ = detect_id_type(self.URL_F)
         assert source == "gmail"
         assert normalized == "19fdaeed11138ef2"
 

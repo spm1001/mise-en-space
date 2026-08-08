@@ -22,16 +22,17 @@ from extractors.image import resize_image_bytes
 from extractors.docs import extract_doc_content
 from extractors.folder import extract_folder_content, extract_folder_tree
 from extractors.forms import extract_form_content
-from extractors.sheets import extract_sheets_content, extract_sheets_per_tab
+from extractors.sheets import extract_sheets_content
 from extractors.slides import extract_slides_content
 from extractors.video import extract_video_content
 from models import FetchResult, FetchError, EmailContext
-from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata, slugify
+from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata
 
 from .common import (
     _build_cues, _build_email_context_metadata, _deposit_pdf_thumbnails,
-    _enrich_with_comments, is_text_file,
+    _enrich_with_comments, _write_per_tab_csvs, is_text_file,
 )
+from .decorations import build_doc_structure, build_slides_index
 
 
 def _add_file_dates(extra: dict[str, Any], metadata: dict[str, Any]) -> None:
@@ -214,6 +215,7 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: 
     open_comment_count, _ = _enrich_with_comments(doc_id, folder, document_markdown=content)
 
     extra: dict[str, Any] = {"tab_count": len(doc_data.tabs) if doc_data.tabs else 1}
+    extra["structure"] = build_doc_structure(doc_data, content)
     if doc_data.warnings:
         extra["warnings"] = doc_data.warnings
     if open_comment_count > 0:
@@ -247,28 +249,6 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: 
         metadata=result_metadata,
         cues=cues,
     )
-
-
-def _write_per_tab_csvs(
-    folder: Path, data: Any, *, tabs_info: list[dict[str, str]] | None = None
-) -> list[dict[str, str]]:
-    """Write per-tab CSV files for multi-tab spreadsheets.
-
-    Returns list of {name, filename} dicts for manifest.
-    Only writes per-tab files when there are 2+ tabs.
-    Mutates tabs_info list if provided, otherwise creates new.
-    """
-    per_tab = extract_sheets_per_tab(data)
-    if len(per_tab) <= 1:
-        return []
-
-    result = tabs_info if tabs_info is not None else []
-    for tab_name, csv_content in per_tab:
-        tab_slug = slugify(tab_name, max_length=40)
-        filename = f"content_{tab_slug}.csv"
-        write_content(folder, csv_content, filename=filename)
-        result.append({"name": tab_name, "filename": filename})
-    return result
 
 
 def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None, tabs: list[str] | None = None) -> FetchResult:
@@ -388,6 +368,7 @@ def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], ema
         "slide_count": len(presentation_data.slides),
         "has_thumbnails": thumbnail_count > 0,
         "thumbnail_count": thumbnail_count,
+        "slides_index": build_slides_index(presentation_data),
     }
     if thumbnail_failures:
         extra["thumbnail_failures"] = thumbnail_failures

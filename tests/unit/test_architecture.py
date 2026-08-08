@@ -80,7 +80,7 @@ _LEGACY_SIZE_BASELINE = {
     "adapters/gmail.py": 1066,  # tightened 2026-08-07: id resolvers split to gmail_ids.py
     "tools/create.py": 952,
     "extractors/docs.py": 892,
-    "tools/fetch/drive.py": 824,
+    "tools/fetch/drive.py": 805,  # tightened 2026-08-08: _write_per_tab_csvs moved to common.py (mise-dogape)
     "resources/docs.py": 818,
     "tools/fetch/gmail.py": 695,  # +1 (2026-08-07): the adapters/gmail_ids.py split turned one import line into two
     "adapters/http_client.py": 683,

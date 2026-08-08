@@ -83,6 +83,9 @@ class SheetTab:
     name: str
     values: list[list[CellValue]]  # Rows of cells
     sheet_type: str = "GRID"  # GRID, OBJECT (chart sheet), or DATA_SOURCE
+    # Google's numeric sheetId (what a URL's ?gid= names). None for xlsx-sourced
+    # data, which has no Google ids (mise-dogape).
+    sheet_id: int | None = None
 
 
 @dataclass

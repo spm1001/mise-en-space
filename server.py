@@ -187,6 +187,9 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs
     """
     Fetch content to .mise/ — auto-detects type (Drive file, Gmail thread, folder).
 
+    Pass WHOLE URLs, not extracted ids: ?gid/?tab/#heading/#slide/?disco resolve to a
+    cues.pointer naming the deposited artefact (per-tab CSV, content.md line, slide,
+    comment); a dangling pointer is reported stale, and a bare id can say none of this.
     Pass base_path=cwd. Use attachment= for specific Gmail attachments (Office/PDF/image).
     Use recursive=True on folders for full tree. Use tabs= to fetch specific spreadsheet tabs.
     Docs with suggested edits: suggestions='accepted' (default, applied) | 'original' | 'markup'.
