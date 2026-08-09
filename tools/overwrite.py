@@ -23,6 +23,7 @@ from adapters.drive import (
 from markdown_import import convert_fenced_blocks
 from models import DoResult, MiseError
 from tools.common import resolve_source as _resolve_source
+from tools.doc_chips import CHIP_REF_RE, insert_chips_in_doc, parse_chip_refs
 from tools.form_edit import form_overwrite
 from tools.plain_file import plain_overwrite
 from tools.restore_point import capture_restore_point, merge_restore_cues
@@ -145,6 +146,13 @@ def do_overwrite(
 
     title = metadata.get("name", "Untitled") if metadata else None
 
+    # Whole-line @url smart-chip requests, same opt-in grain as create
+    # (mise-rafote): parse to placeholders before the markdown import, insert
+    # real chips after it.
+    chip_refs = []
+    if content and CHIP_REF_RE.search(content):
+        content, chip_refs = parse_chip_refs(content)
+
     # Pre-edit restore point (Google Doc path only — we're past all other
     # routing). Overwrite replaces the doc wholesale, so it also gets the
     # UI-visible marker comment unless opted out. Captured BEFORE the write.
@@ -154,6 +162,14 @@ def do_overwrite(
         result = _overwrite_doc(file_id, content, title=title)  # type: ignore[arg-type]
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
+
+    if chip_refs:
+        chip_result = insert_chips_in_doc(file_id, chip_refs)
+        if chip_result.get("chips_inserted"):
+            result.cues["chips_inserted"] = chip_result["chips_inserted"]
+        if chip_result.get("chip_errors"):
+            result.cues["chip_errors"] = chip_result["chip_errors"]
+
     return merge_restore_cues(result, restore_cues)
 
 

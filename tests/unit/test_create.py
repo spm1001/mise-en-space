@@ -1230,9 +1230,13 @@ class TestParseImageRefs:
 class TestEmbedImagesInDoc:
     """Test the full image embedding pipeline (mocked)."""
 
+    # find_placeholder_indices moved to tools.doc_chips (mise-rafote split), so
+    # its client needs patching at that module too — patch targets follow the
+    # module a function LIVES in, not the one that imports it.
+    @patch("tools.doc_chips.get_sync_client")
     @patch("tools.create.get_sync_client")
     @patch("extractors.image.resize_image_bytes")
-    def test_embeds_images_successfully(self, mock_resize, mock_get_client, tmp_path: Path) -> None:
+    def test_embeds_images_successfully(self, mock_resize, mock_get_client, mock_chips_client, tmp_path: Path) -> None:
         """Full pipeline: upload → share → find indices → batchUpdate → cleanup."""
         # Create test image file
         png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
@@ -1252,9 +1256,12 @@ class TestEmbedImagesInDoc:
         # upload_multipart returns file ID
         mock_client.upload_multipart.return_value = {"id": "temp_img_123"}
 
-        # documents().get() returns doc structure with placeholder
+        # documents().get() returns doc structure with placeholder — served by
+        # doc_chips' own client, where find_placeholder_indices now lives
+        mock_chips = MagicMock()
+        mock_chips_client.return_value = mock_chips
         placeholder = f"{_PLACEHOLDER_PREFIX}0{_PLACEHOLDER_SUFFIX}"
-        mock_client.get_json.return_value = {
+        mock_chips.get_json.return_value = {
             "body": {
                 "content": [{
                     "paragraph": {

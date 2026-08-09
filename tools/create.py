@@ -29,6 +29,13 @@ from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 from workspace import enrich_manifest
 from tools.common import resolve_source as _resolve_source
+from tools.doc_chips import (
+    CHIP_REF_RE as _CHIP_REF_RE,
+    ChipRef as _ChipRef,
+    find_placeholder_indices as _find_placeholder_indices,
+    insert_chips_in_doc as _insert_chips_in_doc,
+    parse_chip_refs as _parse_chip_refs,
+)
 from tools.form_create import create_form
 from validation import validate_drive_id, sanitize_title
 
@@ -406,6 +413,11 @@ def _do_create_internal(
         # Resolve image paths relative to source folder or base_path
         image_base_path = source.parent if source else (Path(base_path) if base_path else None)  # type: ignore[arg-type]
 
+    # Check for whole-line @url smart-chip requests in doc content (mise-rafote)
+    chip_refs: list[_ChipRef] = []
+    if doc_type == "doc" and content and _CHIP_REF_RE.search(content):
+        content, chip_refs = _parse_chip_refs(content)
+
     try:
         if doc_type == "file":
             file_bytes = file_path.read_bytes() if file_path else None
@@ -441,6 +453,14 @@ def _do_create_internal(
                 result.cues["images_embedded"] = embed_result["images_embedded"]
             if embed_result.get("image_errors"):
                 result.cues["image_errors"] = embed_result["image_errors"]
+
+        # Post-creation: replace chip placeholders with real smart chips
+        if chip_refs and isinstance(result, DoResult):
+            chip_result = _insert_chips_in_doc(result.file_id, chip_refs)
+            if chip_result.get("chips_inserted"):
+                result.cues["chips_inserted"] = chip_result["chips_inserted"]
+            if chip_result.get("chip_errors"):
+                result.cues["chip_errors"] = chip_result["chip_errors"]
 
         # Enrich manifest if created from source
         if source and isinstance(result, DoResult):
@@ -789,47 +809,6 @@ def _delete_temp_file(file_id: str) -> None:
         )
     except Exception:
         pass  # Best-effort cleanup
-
-
-def _find_placeholder_indices(
-    doc_id: str, placeholders: list[str],
-) -> dict[str, tuple[int, int]]:
-    """Find start/end indices of placeholder text in a Google Doc.
-
-    Returns {placeholder: (startIndex, endIndex)} for each found placeholder.
-
-    Concatenates all text runs in each paragraph before searching, so
-    placeholders that span text run boundaries are still found.
-    """
-    client = get_sync_client()
-    doc = client.get_json(
-        f"https://docs.googleapis.com/v1/documents/{doc_id}",
-        params={"fields": "body(content(paragraph(elements(textRun(content),startIndex,endIndex))))"},
-    )
-
-    result: dict[str, tuple[int, int]] = {}
-    placeholder_set = set(placeholders)
-
-    for item in doc.get("body", {}).get("content", []):
-        elements = item.get("paragraph", {}).get("elements", [])
-        if not elements:
-            continue
-
-        # Concatenate all text runs in this paragraph with their absolute positions
-        para_text = ""
-        para_start = elements[0].get("startIndex", 0)
-        for elem in elements:
-            para_text += elem.get("textRun", {}).get("content", "")
-
-        # Search for each placeholder in the concatenated paragraph text
-        for ph in placeholder_set:
-            offset = para_text.find(ph)
-            if offset >= 0:
-                start = para_start + offset
-                end = start + len(ph)
-                result[ph] = (start, end)
-
-    return result
 
 
 def _embed_images_in_doc(

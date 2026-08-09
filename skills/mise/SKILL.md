@@ -591,7 +591,7 @@ do(operation="overwrite", file_id="1abc...", range="Index!B2", base_path="...",
            '"Signed SOW",@https://drive.google.com/file/d/1AbC.../view')
 ```
 
-A **smart chip** (`@url` as the entire cell) replaces the cell text with the target's live title — rename-proof and icon-bearing, the right form for a Drive-artefact index. Because the URL stops being cell text, chips are explicit opt-in: a **bare URL stays a URL** (auto-linked), safe for columns that formulas read. Doc writes take ordinary markdown links; Sheets cells take this `[label](url)`/`@url` syntax — same intent, per-surface spelling.
+A **smart chip** (`@url` as the entire cell) replaces the cell text with the target's live title — rename-proof and icon-bearing, the right form for a Drive-artefact index. Because the URL stops being cell text, chips are explicit opt-in: a **bare URL stays a URL** (auto-linked), safe for columns that formulas read. **Docs take chips too** (since suite 1.45): in `create` and `overwrite` on a Google Doc, a line that is solely `@url` becomes a chip — same opt-in grain, whole line instead of whole cell, and mid-prose URLs stay ordinary links. Workspace URLs only; the title is always the target's live name (Google refuses a supplied one). `cues.chips_inserted` confirms; a failed pass puts the literal `@url` text back and says so in `cues.chip_errors`.
 
 **Without `range=`, a multi-tab sheet refuses** (naming its tabs) rather than silently clearing the first tab — pass the range to say what you meant. A single-tab sheet still gets the whole-tab replace, symmetric with `create`.
 
