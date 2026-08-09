@@ -212,6 +212,38 @@ class TestFormatLinksHtml:
         assert "&lt;draft&gt;" in result
         assert "&amp;" in result
 
+    def test_renders_gmail_drive_chip_markup(self) -> None:
+        """include= links ship Gmail's own chip grammar (mise-musepe, 2026-08-09).
+
+        The native composer chip is plain styled HTML on the wire — class
+        gmail_chip gmail_drive_chip, a public icon URL keyed by MIME type,
+        the title in the anchor. Emitting the same shape gets mise drafts
+        the chip rendering at read time; Gmail never upgrades plain links.
+        """
+        links = [IncludedLink(
+            file_id="abc", title="Budget 2026",
+            mime_type="application/vnd.google-apps.spreadsheet",
+            web_link="https://docs.google.com/spreadsheets/d/abc",
+        )]
+        result = _format_links_html(links)
+        assert 'class="gmail_chip gmail_drive_chip"' in result
+        assert (
+            'src="https://drive-thirdparty.googleusercontent.com/32/type/'
+            'application/vnd.google-apps.spreadsheet"'
+        ) in result
+        assert 'aria-label="Budget 2026"' in result
+        # The emoji belongs to the text/plain part only; the chip has a real icon.
+        assert "\U0001f4ca" not in result
+
+    def test_chip_per_link_with_separator(self) -> None:
+        links = [
+            IncludedLink(file_id="1", title="Doc A", mime_type="", web_link="https://a"),
+            IncludedLink(file_id="2", title="Doc B", mime_type="", web_link="https://b"),
+        ]
+        result = _format_links_html(links)
+        assert result.count("gmail_drive_chip") == 2
+        assert result.startswith('<br><hr ')
+
 
 class TestContentToHtml:
     def test_single_paragraph(self) -> None:

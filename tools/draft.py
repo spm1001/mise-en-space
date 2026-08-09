@@ -83,18 +83,41 @@ def _format_links_text(links: list[IncludedLink]) -> str:
     return "\n".join(lines)
 
 
+# Gmail's own gmail_drive_chip markup, captured by diffing a native composer
+# chip against mise's links on the wire (mise-musepe, 2026-08-09). It is plain
+# styled HTML — no proprietary attributes, no script — so any sender can emit
+# it and every Gmail surface renders the grey rounded card with the file-type
+# icon. The icon service is public and keyed by MIME type. Style values are
+# Google's verbatim; drift from them is what we would have to re-probe.
+_CHIP_ICON_BASE = "https://drive-thirdparty.googleusercontent.com/32/type/"
+_CHIP_DIV_STYLE = (
+    "width:386px;height:20px;max-height:20px;background-color:#f5f5f5;"
+    "margin:6px 0;padding:10px;color:#222;"
+    "font:normal 400 14px/20px 'Google Sans',sans-serif;border:1px solid #ddd"
+)
+_CHIP_A_STYLE = (
+    "color:rgb(32,33,36);display:inline-block;overflow:hidden;"
+    "text-overflow:ellipsis;white-space:nowrap;text-decoration:none;"
+    "border:medium;width:100%"
+)
+_CHIP_IMG_STYLE = "vertical-align: text-bottom; border: none; padding-right: 10px; height: 20px;"
+
+
 def _format_links_html(links: list[IncludedLink]) -> str:
-    """Format included links for HTML body."""
+    """Format included links for HTML body as Gmail Drive chips."""
     if not links:
         return ""
 
     parts = ['<br><hr style="border:none;border-top:1px solid #ddd;margin:16px 0">']
     for link in links:
-        icon = _icon_for_mime(link.mime_type)
         title = html_escape(link.title)
         url = html_escape(link.web_link)
+        icon_url = html_escape(_CHIP_ICON_BASE + link.mime_type)
         parts.append(
-            f'<p>{icon} <a href="{url}">{title}</a></p>'
+            f'<div class="gmail_chip gmail_drive_chip" style="{_CHIP_DIV_STYLE}">'
+            f'<a href="{url}" target="_blank" style="{_CHIP_A_STYLE}" aria-label="{title}">'
+            f'<img style="{_CHIP_IMG_STYLE}" alt="" src="{icon_url}">'
+            f'&nbsp;<span dir="ltr" style="vertical-align:bottom">{title}</span></a></div>'
         )
 
     return "\n".join(parts)
