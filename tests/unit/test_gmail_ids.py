@@ -10,8 +10,12 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from models import MiseError, ErrorKind
-from adapters.gmail_ids import get_thread_id_for_draft, get_thread_id_for_rfc822_message_id
+from models import EmailMessage, MiseError, ErrorKind
+from adapters.gmail_ids import (
+    get_thread_id_for_draft,
+    get_thread_id_for_rfc822_message_id,
+    thread_web_link_or_warn,
+)
 
 
 class TestGetThreadIdForRfc822MessageId:
@@ -92,3 +96,47 @@ class TestGetThreadIdForDraft:
                 get_thread_id_for_draft("r999")
         assert exc_info.value.kind is ErrorKind.NOT_FOUND
         assert "r999" in exc_info.value.message
+
+
+class TestThreadWebLinkOrWarn:
+    """web_link for fetched threads — self-sent threads degrade to a warning (mise-hetaba)."""
+
+    GOLDEN_ID = "19b0e7fe6f653f69"
+    GOLDEN_URL = "https://mail.google.com/mail/#all/FMfcgzQdzmSkKHmvSJPBLDSZTbfWQwph"
+
+    def _msg(self, from_address: str) -> EmailMessage:
+        return EmailMessage(message_id="m1", from_address=from_address, to_addresses=[])
+
+    @patch('adapters.gmail.current_user_email', return_value="me@example.com")
+    def test_other_party_visible_yields_link(self, _id) -> None:
+        warnings: list[str] = []
+        link = thread_web_link_or_warn(
+            [self._msg("me@example.com"), self._msg("Alice <alice@example.com>")],
+            self.GOLDEN_ID,
+            warnings,
+        )
+        assert link == self.GOLDEN_URL
+        assert warnings == []
+
+    @patch('adapters.gmail.current_user_email', return_value="me@example.com")
+    def test_all_from_me_warns_instead_of_linking(self, _id) -> None:
+        """A solely-self-authored thread may be thread-a: no derivable token (mise-lerulo)."""
+        warnings: list[str] = []
+        link = thread_web_link_or_warn(
+            [self._msg("me@example.com"), self._msg("Me <ME@example.com>")],
+            self.GOLDEN_ID,
+            warnings,
+        )
+        assert link is None
+        assert len(warnings) == 1
+        assert "self-sent" in warnings[0]
+
+    @patch('adapters.gmail.current_user_email', return_value=None)
+    def test_identity_unresolved_warns_not_links(self, _id) -> None:
+        """Tri-state discipline: None is not 'someone else' — no link on can't-tell."""
+        warnings: list[str] = []
+        link = thread_web_link_or_warn(
+            [self._msg("alice@example.com")], self.GOLDEN_ID, warnings
+        )
+        assert link is None
+        assert len(warnings) == 1

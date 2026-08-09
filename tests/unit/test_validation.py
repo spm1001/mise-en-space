@@ -5,7 +5,9 @@ Tests for validation and ID conversion utilities.
 import pytest
 
 from validation import (
+    GMAIL_WEB_ID_PREFIXES,
     escape_drive_query,
+    encode_gmail_web_token,
     extract_drive_file_id,
     extract_gmail_draft_id,
     extract_gmail_id,
@@ -16,6 +18,7 @@ from validation import (
     detect_fetch_input_problem,
     diagnose_gmail_url,
     gmail_fragment_segments,
+    gmail_thread_web_url,
     is_gmail_web_id,
     is_gmail_api_id,
     is_self_sent_gmail_url,
@@ -102,6 +105,47 @@ class TestGmailIdConversion:
         api_id = extract_gmail_id_from_url(url)
         assert api_id is not None
         assert len(api_id) == 16
+
+
+class TestEncodeGmailWebToken:
+    """The decoder's inverse — clickable web links for Gmail results (mise-hetaba)."""
+
+    # The decoder docstring's documented real pair.
+    GOLDEN_API_ID = format(1851234526825889641, "x")  # 19b0e7fe6f653f69
+    GOLDEN_TOKEN = "FMfcgzQdzmSkKHmvSJPBLDSZTbfWQwph"
+
+    def test_golden_pair(self):
+        """Encoding the documented API id reproduces the documented token exactly."""
+        assert encode_gmail_web_token(self.GOLDEN_API_ID) == self.GOLDEN_TOKEN
+
+    def test_round_trip_through_real_decoder(self):
+        """encode → convert_gmail_web_id lands back on the same API id."""
+        for api_id in (self.GOLDEN_API_ID, "19fb9faca1565748", "18a0000000000001"):
+            token = encode_gmail_web_token(api_id)
+            assert token is not None
+            assert convert_gmail_web_id(token) == api_id
+
+    def test_token_passes_the_shape_gate(self):
+        """Encoded tokens must clear GMAIL_WEB_ID_PREFIXES or every consumer refuses them."""
+        token = encode_gmail_web_token(self.GOLDEN_API_ID)
+        assert token.startswith(GMAIL_WEB_ID_PREFIXES)
+
+    def test_prefixed_input_is_rejected_not_encoded(self):
+        """The probed pitfall: 'thread-f:...' input must not silently mint a wrong-shape token."""
+        assert encode_gmail_web_token("thread-f:1851234526825889641") is None
+
+    def test_non_hex_returns_none(self):
+        assert encode_gmail_web_token("not-hex-at-all!") is None
+        assert encode_gmail_web_token("") is None
+
+    def test_web_url_shape(self):
+        """Fragment-only URL, same shape family as the draft links do() emits."""
+        url = gmail_thread_web_url(self.GOLDEN_API_ID)
+        assert url == f"https://mail.google.com/mail/#all/{self.GOLDEN_TOKEN}"
+
+    def test_web_url_none_on_bad_input(self):
+        assert gmail_thread_web_url("nope!") is None
+
 
 class TestGmailFragmentSegments:
     """

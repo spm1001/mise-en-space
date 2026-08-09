@@ -8,7 +8,7 @@ from typing import Any
 from adapters.drive import download_file, lookup_exfiltrated
 from adapters.calendar import get_event_by_ical_uid
 from adapters.gmail import fetch_thread
-from adapters.gmail_ids import get_thread_id_for_message
+from adapters.gmail_ids import get_thread_id_for_message, thread_web_link_or_warn
 from adapters.office import convert_office_content, get_office_type_from_mime
 from adapters.pdf import convert_pdf_content, render_pdf_pages
 from extractors.gmail import extract_thread_content, parse_ics_uid
@@ -244,6 +244,10 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
     # extraction_warnings so it flows to both the manifest and the cues.
     invite_state = _enrich_invite_state(thread_data.messages, extraction_warnings)
 
+    # Clickable Gmail URL, or a self-sent warning into extraction_warnings —
+    # before the manifest build so the note reaches manifest AND cues (mise-hetaba).
+    web_link = thread_web_link_or_warn(thread_data.messages, thread_id, extraction_warnings)
+
     # Append extraction summary so caller knows which files were extracted
     if extracted_attachments:
         extraction_lines = ["\n---\n\n**Extracted attachments:**"]
@@ -288,6 +292,8 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
         "subject": thread_data.subject,
         "message_count": len(thread_data.messages),
     }
+    if web_link:
+        metadata["web_link"] = web_link
     if all_attachments:
         metadata["attachments"] = all_attachments
     if all_drive_links:

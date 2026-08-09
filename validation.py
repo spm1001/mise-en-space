@@ -9,7 +9,7 @@ Patterns adopted from mcp-google-workspace.
 """
 
 import re
-from base64 import b64decode
+from base64 import b64decode, b64encode
 from urllib.parse import parse_qs, unquote_plus, urlsplit
 
 # =============================================================================
@@ -225,6 +225,55 @@ def convert_gmail_web_id(web_id: str) -> str | None:
         return None
 
     return _extract_api_id_from_decoded(decoded)
+
+
+def encode_gmail_web_token(api_id: str) -> str | None:
+    """
+    Encode an API thread/message ID as a Gmail web URL token — the decoder's inverse.
+
+    Encodes the BARE 'f:<decimal>' form, NOT 'thread-f:...' — the prefixed form
+    encodes to a token ('NHgv...') that fails the GMAIL_WEB_ID_PREFIXES shape
+    gate, while the bare form yields the familiar 'FMfcgz...' (probed 2026-08-09).
+    Only the f-family is encodable: self-sent (thread-a) threads have no
+    arithmetic transform between their r-number and the API id (mise-lerulo),
+    so callers must not mint links for threads that may be self-sent —
+    that judgement lives at the emit sites, not here.
+
+    Args:
+        api_id: API thread/message ID (16-char hex, e.g. "19b0c2d3e4f5a6b7")
+
+    Returns:
+        Web token (e.g. "FMfcgzQdzmSkKHmvSJPBLDSZTbfWQwph") or None on non-hex input
+    """
+    charset_full = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    charset_reduced = "BCDFGHJKLMNPQRSTVWXZbcdfghjklmnpqrstvwxz"
+    try:
+        decimal_id = int(api_id, 16)
+    except (ValueError, TypeError):
+        return None
+    b64 = b64encode(f"f:{decimal_id}".encode()).decode().rstrip("=")
+    # Interpret the base64 string as a number over the full alphabet...
+    n = 0
+    for ch in b64:
+        n = n * 64 + charset_full.index(ch)
+    # ...and re-express it over the 40-char vowel-less alphabet.
+    digits: list[str] = []
+    while n:
+        n, rest = divmod(n, 40)
+        digits.append(charset_reduced[rest])
+    return "".join(reversed(digits))
+
+
+def gmail_thread_web_url(thread_id: str) -> str | None:
+    """Clickable Gmail web URL for an API thread id, or None if not encodable.
+
+    Fragment-only form (no /u/N) — same shape as the draft links do() already
+    emits; Gmail resolves it against the browser's default account.
+    """
+    token = encode_gmail_web_token(thread_id)
+    if not token:
+        return None
+    return f"https://mail.google.com/mail/#all/{token}"
 
 
 RFC822_MESSAGE_ID_BODY_RE = re.compile(r'^[^\s<>@]+@[^\s<>@/]+\.[^\s<>@/]+$')

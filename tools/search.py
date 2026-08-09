@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from adapters.drive import search_files
-from adapters.gmail import search_threads
+from adapters.gmail import _is_own_address, search_threads
 from adapters.activity import search_comment_activities
 from adapters.calendar import list_events
 from models import (
@@ -25,7 +25,12 @@ from models import (
     MiseError,
     SearchResult,
 )
-from validation import escape_drive_query, sanitize_gmail_query, validate_drive_id
+from validation import (
+    escape_drive_query,
+    gmail_thread_web_url,
+    sanitize_gmail_query,
+    validate_drive_id,
+)
 from token_store import override_path
 from workspace.manager import write_search_results
 
@@ -74,7 +79,7 @@ def format_drive_result(result: DriveSearchResult) -> dict[str, Any]:
 
 def format_gmail_result(result: GmailSearchResult) -> dict[str, Any]:
     """Convert GmailSearchResult to JSON-serializable dict."""
-    return {
+    out = {
         "thread_id": result.thread_id,
         "subject": result.subject,
         "snippet": result.snippet,  # drawn from the LATEST message
@@ -90,6 +95,18 @@ def format_gmail_result(result: GmailSearchResult) -> dict[str, Any]:
         "labels": result.label_ids,
         "has_invite": result.has_invite,  # thread carries a calendar invite (mise-pinodi)
     }
+    # Clickable web URL — only when another party is visibly at an endpoint of
+    # the thread (originator or latest sender provably not the user). A thread
+    # authored solely by the user may be self-sent (thread-a), whose web token
+    # cannot be derived from the API id (mise-lerulo); identity-unresolved
+    # threads could be either. Both omit the field rather than risk a link
+    # that opens the wrong conversation (mise-hetaba).
+    if (_is_own_address(result.from_address) is False
+            or _is_own_address(result.last_sender) is False):
+        link = gmail_thread_web_url(result.thread_id)
+        if link:
+            out["web_link"] = link
+    return out
 
 
 def format_activity_result(activity: CommentActivity) -> dict[str, Any]:

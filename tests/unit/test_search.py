@@ -181,6 +181,47 @@ class TestFormatGmailResult:
         assert formatted["is_unread"] is False
         assert formatted["labels"] == []
 
+    def test_web_link_present_when_other_party_visible(self) -> None:
+        """A thread with another party at an endpoint gets a clickable URL (mise-hetaba)."""
+        result = GmailSearchResult(
+            thread_id="19b0e7fe6f653f69",
+            subject="From a colleague",
+            snippet="",
+            from_address="Alice <alice@example.com>",
+            last_sender="me@example.com",
+        )
+        with patch('adapters.gmail.current_user_email', return_value="me@example.com"):
+            formatted = format_gmail_result(result)
+        assert formatted["web_link"] == (
+            "https://mail.google.com/mail/#all/FMfcgzQdzmSkKHmvSJPBLDSZTbfWQwph"
+        )
+
+    def test_web_link_absent_for_possibly_self_sent(self) -> None:
+        """Both endpoints the user's own → may be thread-a, no derivable token (mise-lerulo)."""
+        result = GmailSearchResult(
+            thread_id="19b0e7fe6f653f69",
+            subject="Note to self",
+            snippet="",
+            from_address="me@example.com",
+            last_sender="me@example.com",
+        )
+        with patch('adapters.gmail.current_user_email', return_value="me@example.com"):
+            formatted = format_gmail_result(result)
+        assert "web_link" not in formatted
+
+    def test_web_link_absent_when_identity_unresolved(self) -> None:
+        """Tri-state discipline: can't-tell must not mint a possibly-wrong link."""
+        result = GmailSearchResult(
+            thread_id="19b0e7fe6f653f69",
+            subject="Whoever",
+            snippet="",
+            from_address="alice@example.com",
+            last_sender="alice@example.com",
+        )
+        with patch('adapters.gmail.current_user_email', return_value=None):
+            formatted = format_gmail_result(result)
+        assert "web_link" not in formatted
+
     def test_latest_message_signals_exposed(self) -> None:
         """last_sender/from_me/unread_count reach the serialized result (mise-samono)."""
         result = GmailSearchResult(

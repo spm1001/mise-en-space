@@ -11,10 +11,38 @@ Split from adapters/gmail.py 2026-08-07 (module-size ratchet, mise-nebewe):
 the id-resolution concern is separable from thread/message content fetching.
 """
 
-from adapters.gmail import _GMAIL_API
+from adapters.gmail import _GMAIL_API, _is_own_address
 from adapters.http_client import get_sync_client
-from models import MiseError, ErrorKind
+from models import EmailMessage, MiseError, ErrorKind
 from retry import with_retry
+from validation import gmail_thread_web_url
+
+
+def thread_web_link_or_warn(
+    messages: list[EmailMessage],
+    thread_id: str,
+    warnings: list[str],
+) -> str | None:
+    """Clickable Gmail web URL for a fetched thread — or a warning saying why not.
+
+    Returns a URL only when another party is visibly in the thread (some
+    message's From provably not the user): a delivered thread is f-family,
+    whose web token is arithmetically derivable from the API id. A thread
+    authored solely by the user may be self-sent (thread-a), which has NO
+    derivable token (mise-lerulo) — minting one would open the wrong
+    conversation, so those get a warning appended naming the gap instead.
+    This helper carries the whole feature so its ratchet-frozen call site
+    (tools/fetch/gmail.py) pays as few lines as possible (mise-hetaba).
+    """
+    if any(_is_own_address(m.from_address) is False for m in messages):
+        return gmail_thread_web_url(thread_id)
+    warnings.append(
+        "No web_link: every message here is from you (or identity is unresolved), "
+        "so this may be a self-sent thread — its web token cannot be derived from "
+        "the API id, and a minted link could open the wrong conversation. Find it "
+        "in Gmail by subject search."
+    )
+    return None
 
 
 @with_retry(max_attempts=3, delay_ms=1000)

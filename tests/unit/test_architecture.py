@@ -82,7 +82,7 @@ _LEGACY_SIZE_BASELINE = {
     "extractors/docs.py": 892,
     "tools/fetch/drive.py": 805,  # tightened 2026-08-08: _write_per_tab_csvs moved to common.py (mise-dogape)
     "resources/docs.py": 821,  # +3 for do(respond) docs (mise-gepiwe) — this module's mass IS resource text, so its ceiling tracks op additions; splitting a resource string across siblings would be worse. Raise only with an op.
-    "tools/fetch/gmail.py": 695,  # +1 (2026-08-07): the adapters/gmail_ids.py split turned one import line into two
+    "tools/fetch/gmail.py": 701,  # +1 (2026-08-07): the gmail_ids split turned one import into two; +6 (2026-08-09): web_link emission, logic lives in gmail_ids.thread_web_link_or_warn (mise-hetaba)
     "adapters/http_client.py": 683,
     "extractors/slides.py": 600,
     "adapters/pdf.py": 504,  # lowered 2026-08-08: flattened-table detector moved to extractors/text_quality.py (mise-columi)
