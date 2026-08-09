@@ -141,6 +141,36 @@ class TestThreadRoute:
         assert result["error"] is True
         assert "never added" in result["message"]
 
+    @patch("tools.respond.respond_to_event")
+    @patch("tools.respond.find_event_by_ical_uid")
+    @patch("tools.fetch.gmail_attachments._download_attachment_bytes")
+    @patch("tools.respond.fetch_thread")
+    def test_newest_invite_wins(
+        self, mock_thread, mock_download, mock_find, mock_respond,
+    ) -> None:
+        """Cancel-and-recreate threads: the LATEST invite names the live meeting.
+
+        threads.get returns messages oldest-first; resolving the first ICS
+        found would pick the dead event's UID and refuse on a cancellation
+        while a live invite sits later in the thread.
+        """
+        old_msg = MagicMock()
+        old_msg.calendar_attachments = [MagicMock(mime_type="text/calendar")]
+        new_msg = MagicMock()
+        new_msg.calendar_attachments = [MagicMock(mime_type="text/calendar")]
+        thread = MagicMock()
+        thread.messages = [old_msg, new_msg]  # oldest first, as the API returns
+        mock_thread.return_value = thread
+        mock_download.return_value = b"BEGIN:VCALENDAR\nUID:uid-newest\nEND:VCALENDAR"
+        mock_find.return_value = _event()
+
+        result = do_respond(file_id=self._THREAD_ID, action="accept")
+
+        assert isinstance(result, DoResult)
+        # The newest message's ICS was the one downloaded and resolved.
+        assert mock_download.call_args[0][0] is new_msg
+        mock_find.assert_called_once_with("uid-newest")
+
 
 class TestRemoteExclusion:
     def test_respond_not_in_remote_allowed_ops(self) -> None:

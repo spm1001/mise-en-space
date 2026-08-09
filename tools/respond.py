@@ -54,7 +54,10 @@ def _resolve_event_from_thread(thread_id: str) -> tuple[dict | None, dict | str]
     from tools.fetch.gmail_attachments import _download_attachment_bytes
 
     thread_data = fetch_thread(thread_id)
-    for msg in thread_data.messages:
+    # Newest message first: threads.get returns oldest-first, and in a
+    # cancel-and-recreate thread the oldest ICS names the DEAD event — the
+    # latest invite is the meeting as it now stands.
+    for msg in reversed(thread_data.messages):
         if not msg.calendar_attachments:
             continue
         att = msg.calendar_attachments[0]

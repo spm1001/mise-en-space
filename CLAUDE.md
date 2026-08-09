@@ -76,7 +76,7 @@ docs/           Design documents and references
 | `gmail_ids.py` | Alternate Gmail identifiers → thread id (message ids, rfc822 Message-IDs) — fields-masked failure-path resolvers |
 | `gmail_browser.py` | a-family (self-sent) URL resolution via a logged-in CDP Chrome — background tab, DOM harvest, fail-open |
 | `activity.py` | Drive Activity API v2 |
-| `calendar.py` | Calendar events with meeting context (attendees, attachments, Meet links); `get_event_by_ical_uid` for live invite-state (`showDeleted=true` load-bearing) |
+| `calendar.py` | Calendar events with meeting context (attendees, attachments, Meet links); `get_event_by_ical_uid` for live invite-state (`showDeleted=true` load-bearing); `respond_to_event` for RSVP writes (full-attendees-array patch — Calendar patch semantics replace arrays wholesale) |
 | `forms.py` | Google Forms API v1 (structure: questions, sections, options) |
 | `charts.py` | Sheets chart export via temporary Slides embed (Sheets API has no direct export) |
 | `cdp.py` | Chrome DevTools Protocol cookie access (for genai.py; graceful fallback) |
@@ -118,6 +118,7 @@ docs/           Design documents and references
 - `fetch` accepts `recursive=True` on folder IDs — returns full indented tree (max depth 5, 1000 items)
 - `do` routes via `operation` param — `do(operation="create", ...)`
 - `do(move)`, `do(archive)`, `do(star)`, `do(label)` accept `file_id` as `str | list[str]` for batch operations — returns per-thread/file summary with `succeeded`/`failed` counts
+- `do(respond)` RSVPs a calendar invite as the user — `file_id` is the invite's Gmail thread id (resolved to the live event via its iCalUID, newest invite in the thread wins, disclosed in cues) or the Calendar event id; `action` is `accept`/`decline`/`tentative`. Organiser-visible immediately (no draft step); refuses cancelled meetings and no-self-attendee events; remote-excluded. Needs the `calendar.events` scope (swapped for `calendar.readonly` 2026-08-09) — a stale token gets a teaching 403 naming `setup_oauth` (mise-gepiwe)
 - `do(create)` and `do(overwrite)` accept `file_path` to read content directly from a local file — no deposit folder needed. For `doc_type='file'`, reads as binary; for `doc`/`sheet`, reads as UTF-8 text. Mutually exclusive with `content` and `source`.
 - `do(create)` accepts `doc_type='folder'` — creates a Drive folder (title only, no content needed). `supportsAllDrives` is set automatically for Shared Drive compatibility.
 - `do(create)` accepts `doc_type='form'` — creates a Google Form from a YAML or JSON spec. Uses Forms API v1 (not Drive), so `folder_id`, `source`, and `file_path` are ignored. The `content` param is the spec with `title`, `description`, and `questions` array. Supported question types: `paragraph`, `short_answer`, `checkboxes`, `multiple_choice`, `dropdown`, `scale`, `text`, `section_break`. Returns form edit URL and responder URL in cues.
@@ -239,7 +240,7 @@ uv run --all-extras python scripts/smoke_stdio.py   # drive the WORKING TREE ove
 Integration tests require `-m integration` flag and real credentials.
 
 **The count IS printed — it is just at the bottom of a long scroll.** `uv run --all-extras python
--m pytest` ends with `2314 passed, 100 deselected in 25.38s` (count as of 2026-08-09 morning — it moved four times that morning) as the last line of ~92, because
+-m pytest` ends with `2331 passed, 100 deselected in 24.05s` (count as of 2026-08-09 morning — it moved five times that morning) as the last line of ~92, because
 `addopts` in `pyproject.toml` carries `-q` (which suppresses the *per-test* lines, not the summary)
 plus a ~85-line coverage table that pushes the summary off the top of a truncated view.
 `-m 'not integration'` is baked in too, hence the 100 deselected.
