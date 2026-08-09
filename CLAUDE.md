@@ -239,7 +239,7 @@ uv run --all-extras python scripts/smoke_stdio.py   # drive the WORKING TREE ove
 Integration tests require `-m integration` flag and real credentials.
 
 **The count IS printed — it is just at the bottom of a long scroll.** `uv run --all-extras python
--m pytest` ends with `2289 passed, 100 deselected in 25.64s` (count as of 2026-08-09 morning) as the last line of ~92, because
+-m pytest` ends with `2308 passed, 100 deselected in 24.69s` (count as of 2026-08-09 morning — it moved three times that morning) as the last line of ~92, because
 `addopts` in `pyproject.toml` carries `-q` (which suppresses the *per-test* lines, not the summary)
 plus a ~85-line coverage table that pushes the summary off the top of a truncated view.
 `-m 'not integration'` is baked in too, hence the 100 deselected.
