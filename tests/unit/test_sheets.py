@@ -3,7 +3,9 @@
 import pytest
 from inline_snapshot import snapshot
 
-from extractors.sheets import extract_sheets_content, extract_sheets_per_tab, _row_to_csv
+from extractors.sheets import (
+    extract_sheets_content, extract_sheets_per_tab, strip_sheet_header, _row_to_csv,
+)
 from models import SpreadsheetData, SheetTab
 
 
@@ -137,3 +139,40 @@ class TestRowToCsv:
         """Test that special characters are properly escaped."""
         result = _row_to_csv([cell])
         assert result == expected
+
+
+class TestStripSheetHeader:
+    """Tests for strip_sheet_header — the inverse of the banner extract_sheets_content writes (mise-kacani)."""
+
+    def test_strips_leading_banner(self) -> None:
+        result = strip_sheet_header("=== Sheet: Ledger ===\nProduct,Amount\nWidgets,1000\n")
+        assert result == "Product,Amount\nWidgets,1000\n"
+
+    def test_headerless_text_untouched(self) -> None:
+        """Multi-tab per-tab files are already headerless — strip is a no-op."""
+        csv_text = "Product,Amount\nWidgets,1000\n"
+        assert strip_sheet_header(csv_text) == csv_text
+
+    def test_banner_shaped_data_row_past_first_line_survives(self) -> None:
+        """Only position 0 is a header; a literal banner mid-file is data."""
+        csv_text = "Product,Amount\n=== Sheet: Ledger ===,0\n"
+        assert strip_sheet_header(csv_text) == csv_text
+
+    def test_empty_placeholder_normalises_to_empty_string(self) -> None:
+        """The extractor's '(empty)' placeholder must not become a data cell."""
+        assert strip_sheet_header("=== Sheet: Blank ===\n(empty)\n") == ""
+        assert strip_sheet_header("(empty)\n") == ""
+
+    def test_round_trips_what_the_writer_emits(self) -> None:
+        """DRIFT GUARD: strip must recognise exactly what extract_sheets_content
+        writes for a single-tab sheet. If the banner format changes, this test
+        reddens instead of create-from-deposit silently re-breaking."""
+        data = SpreadsheetData(
+            title="Single",
+            spreadsheet_id="sheet-drift-guard",
+            sheets=[SheetTab(name="Ledger", values=[["Product", "Amount"], ["Widgets", "1000"]])],
+        )
+        content = extract_sheets_content(data)
+        assert content.startswith("=== Sheet: Ledger ===")
+        # extract_sheets_content strips trailing whitespace, hence no final newline.
+        assert strip_sheet_header(content) == "Product,Amount\nWidgets,1000"

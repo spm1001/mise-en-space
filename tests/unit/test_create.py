@@ -9,9 +9,10 @@ import pytest
 
 from models import DoResult
 from server import do
+from extractors.sheets import csv_text_to_values
 from tools.create import (
     do_create, _do_create_internal, _read_source, _read_multi_tab_source,
-    _csv_text_to_values, DOC_TYPE_TO_MIME,
+    DOC_TYPE_TO_MIME,
     _parse_image_refs, _embed_images_in_doc,
     _PLACEHOLDER_PREFIX, _PLACEHOLDER_SUFFIX,
 )
@@ -910,18 +911,18 @@ class TestCsvTextToValues:
     """Tests for _csv_text_to_values helper."""
 
     def test_simple_csv(self) -> None:
-        assert _csv_text_to_values("a,b\n1,2\n") == [["a", "b"], ["1", "2"]]
+        assert csv_text_to_values("a,b\n1,2\n") == [["a", "b"], ["1", "2"]]
 
     def test_quoted_fields(self) -> None:
-        result = _csv_text_to_values('"hello, world",=SUM(A1:A3)\n')
+        result = csv_text_to_values('"hello, world",=SUM(A1:A3)\n')
         assert result == [["hello, world", "=SUM(A1:A3)"]]
 
     def test_empty_csv(self) -> None:
-        assert _csv_text_to_values("") == []
+        assert csv_text_to_values("") == []
 
     def test_formula_preserved(self) -> None:
         """Formulae (=prefix) are preserved as plain strings for USER_ENTERED."""
-        result = _csv_text_to_values("total,=A1+A2\n")
+        result = csv_text_to_values("total,=A1+A2\n")
         assert result[0][1] == "=A1+A2"
 
 
@@ -1068,6 +1069,49 @@ class TestMultiTabSheetCreation:
         mock_add.assert_not_called()
         mock_update.assert_not_called()
         assert result.cues["tab_names"] == ["Ledger"]
+
+    @patch("retry.time.sleep")
+    @patch("tools.create.rename_sheet")
+    @patch("tools.create.add_sheet", return_value=1)
+    @patch("tools.create.update_sheet_values", return_value=4)
+    @patch("tools.create.get_sync_client")
+    def test_single_tab_round_trip_strips_sheet_header(
+        self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
+    ) -> None:
+        """A REAL single-tab deposit's content.csv opens '=== Sheet: X ===' (mise-kacani).
+
+        extract_sheets_content writes that header even for single-tab sheets, and
+        the manifest's one tab entry points at content.csv — so a fetch→create
+        round-trip used to land the header as row 1 of the new spreadsheet. The
+        sibling test above uses a headerless fixture, which is exactly how the
+        bug hid: the fixture didn't match the real deposit shape.
+        """
+        (tmp_path / "content.csv").write_text(
+            "=== Sheet: Ledger ===\nProduct,Amount\nWidgets,1000\n"
+        )
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "type": "sheet",
+            "title": "Single",
+            "id": "draft-789",
+            "tabs": [
+                {"name": "Ledger", "sheet_id": 77, "filename": "content.csv"},
+            ],
+        }))
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = _make_upload_response(
+            id="sheet3",
+            webViewLink="https://docs.google.com/spreadsheets/d/sheet3/edit",
+            name="Single",
+        )
+
+        result = do_create(title="Single", doc_type="sheet", source=str(tmp_path), base_path=str(tmp_path))
+
+        assert isinstance(result, DoResult)
+        uploaded_csv = mock_client.upload_multipart.call_args[0][2].decode("utf-8")
+        assert "=== Sheet:" not in uploaded_csv
+        assert uploaded_csv.startswith("Product,Amount")
 
     @patch("retry.time.sleep")
     @patch("tools.create.rename_sheet")

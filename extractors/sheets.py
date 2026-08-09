@@ -5,7 +5,17 @@ Receives pre-assembled spreadsheet data, returns multi-sheet CSV output.
 No API calls, no MCP awareness.
 """
 
+import csv
+import io
+import re
+
 from models import SpreadsheetData, CellValue
+
+# The banner extract_sheets_content writes above each tab's rows. strip_sheet_header
+# is its inverse and MUST match what the writer emits — the round-trip test in
+# tests/unit/test_sheets.py holds the two together, so a format change here reddens
+# there rather than silently re-breaking create-from-deposit (mise-kacani).
+_SHEET_HEADER_RE = re.compile(r"^=== Sheet: .* ===\r?\n?")
 
 
 def extract_sheets_content(
@@ -107,6 +117,29 @@ def extract_sheets_per_tab(
             )
 
     return result
+
+
+def strip_sheet_header(csv_text: str) -> str:
+    """
+    Remove the leading '=== Sheet: X ===' banner from deposit CSV text.
+
+    A single-tab deposit's content.csv opens with the banner (the manifest's one
+    tab entry points at that file), so create-from-deposit must strip it or the
+    banner lands as row 1 of the new spreadsheet. Headerless per-tab files pass
+    through untouched, as does a banner-shaped line anywhere past the first —
+    only position 0 is a header. The extractor's '(empty)' placeholder for an
+    empty tab normalises to '' so it can't become a data cell either.
+    """
+    stripped = _SHEET_HEADER_RE.sub("", csv_text.lstrip("\n"), count=1)
+    if stripped.strip() == "(empty)":
+        return ""
+    return stripped
+
+
+def csv_text_to_values(csv_text: str) -> list[list[str]]:
+    """Parse CSV text into a 2D list of strings for the Sheets values API."""
+    reader = csv.reader(io.StringIO(csv_text))
+    return [row for row in reader]
 
 
 def _row_to_csv(row: list[CellValue]) -> str:

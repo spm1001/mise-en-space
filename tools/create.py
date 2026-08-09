@@ -10,8 +10,6 @@ inferred from the title's file extension, or defaults to text/plain.
 Uses httpx via MiseSyncClient (Phase 1 migration).
 """
 
-import csv
-import io
 import json
 import logging
 import mimetypes
@@ -24,6 +22,7 @@ from typing import Any
 from adapters.http_client import get_sync_client
 from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_FOLDER_MIME
 from adapters.sheets import add_sheet, update_sheet_values, rename_sheet
+from extractors.sheets import csv_text_to_values, strip_sheet_header
 from markdown_import import convert_fenced_blocks
 from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
@@ -194,6 +193,8 @@ def _read_source(source_path: Path, doc_type: str) -> tuple[str, str | None]:
         )
 
     content = content_file.read_text(encoding="utf-8")
+    if doc_type == "sheet":
+        content = strip_sheet_header(content)
     manifest = _read_manifest(source_path)
 
     return content, manifest.get("title")
@@ -227,15 +228,9 @@ def _read_multi_tab_source(source_path: Path) -> list[tuple[str, str]]:
                 ErrorKind.INVALID_INPUT,
                 f"Tab file {tab['filename']} listed in manifest but not found in {source_path}.",
             )
-        result.append((tab["name"], tab_file.read_text(encoding="utf-8")))
+        result.append((tab["name"], strip_sheet_header(tab_file.read_text(encoding="utf-8"))))
 
     return result
-
-
-def _csv_text_to_values(csv_text: str) -> list[list[str]]:
-    """Parse CSV text into a 2D list of strings for Sheets API."""
-    reader = csv.reader(io.StringIO(csv_text))
-    return [row for row in reader]
 
 
 def do_create(
@@ -652,7 +647,7 @@ def _create_multi_tab_sheet(
     tab_count = 1
     for tab_name, tab_csv in tabs[1:]:
         add_sheet(spreadsheet_id, tab_name)
-        values = _csv_text_to_values(tab_csv)
+        values = csv_text_to_values(tab_csv)
         if values:
             update_sheet_values(
                 spreadsheet_id,

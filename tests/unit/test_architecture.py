@@ -78,7 +78,7 @@ POLICED_DIRS = ("extractors", "adapters", "tools", "workspace", "resources")
 _LEGACY_SIZE_BASELINE = {
     "adapters/drive.py": 1151,
     "adapters/gmail.py": 1066,  # tightened 2026-08-07: id resolvers split to gmail_ids.py
-    "tools/create.py": 927,  # tightened 2026-08-09 twice: find_placeholder_indices moved to doc_chips.py, then de-aliased imports (mise-rafote)
+    "tools/create.py": 922,  # tightened 2026-08-09 thrice: find_placeholder_indices moved to doc_chips.py, de-aliased imports (mise-rafote), csv_text_to_values moved to extractors/sheets.py (mise-kacani)
     "extractors/docs.py": 892,
     "tools/fetch/drive.py": 805,  # tightened 2026-08-08: _write_per_tab_csvs moved to common.py (mise-dogape)
     "resources/docs.py": 818,
