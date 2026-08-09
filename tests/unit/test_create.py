@@ -12,7 +12,7 @@ from server import do
 from tools.create import (
     do_create, _do_create_internal, _read_source, _read_multi_tab_source,
     _csv_text_to_values, DOC_TYPE_TO_MIME,
-    _parse_image_refs, _find_placeholder_indices, _embed_images_in_doc,
+    _parse_image_refs, _embed_images_in_doc,
     _PLACEHOLDER_PREFIX, _PLACEHOLDER_SUFFIX,
 )
 
@@ -1524,3 +1524,47 @@ class TestCreateFolder:
 
         assert isinstance(result, DoResult)
         assert result.cues["folder"] == "MIT Shared Reference"
+
+
+class TestImageBatchFailureRestoresPlaceholders:
+    """Parity with the chip pass (mise-rafote follow-up): a failed image
+    batchUpdate must not leave 〔MISE_IMG_n〕 sentinel residue in the doc —
+    the placeholders are rewritten back to their literal ![alt](path) text."""
+
+    @patch("tools.doc_chips.get_sync_client")
+    @patch("tools.create.restore_placeholders")
+    @patch("tools.create.get_sync_client")
+    @patch("extractors.image.resize_image_bytes")
+    def test_batch_failure_calls_restore_with_literal_markdown(
+        self, mock_resize, mock_get_client, mock_restore, mock_chips_client, tmp_path: Path
+    ) -> None:
+        png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
+        (tmp_path / "chart.png").write_bytes(png_bytes)
+
+        mock_resized = MagicMock()
+        mock_resized.content_bytes = png_bytes
+        mock_resized.mime_type = "image/png"
+        mock_resize.return_value = mock_resized
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.upload_multipart.return_value = {"id": "temp_img_123"}
+        # First post_json is _share_publicly (succeeds); the embed batchUpdate fails
+        mock_client.post_json.side_effect = [{"id": "perm1"}, Exception("boom")]
+
+        mock_chips = MagicMock()
+        mock_chips_client.return_value = mock_chips
+        placeholder = f"{_PLACEHOLDER_PREFIX}0{_PLACEHOLDER_SUFFIX}"
+        mock_chips.get_json.return_value = {
+            "body": {"content": [{"paragraph": {"elements": [{
+                "startIndex": 10, "endIndex": 10 + len(placeholder),
+                "textRun": {"content": placeholder},
+            }]}}]}
+        }
+
+        refs = [_parse_image_refs("![chart](chart.png)")[1][0]]
+        result = _embed_images_in_doc("doc123", refs, tmp_path)
+
+        assert any("batchUpdate failed" in e for e in result["image_errors"])
+        pairs = mock_restore.call_args[0][1]
+        assert pairs == [(refs[0].placeholder, "![chart](chart.png)")]

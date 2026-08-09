@@ -162,7 +162,7 @@ class TestInsertChipsInDoc:
 class TestCreateWiring:
     """do_create parses chips out before import and inserts them after."""
 
-    @patch("tools.create._insert_chips_in_doc", return_value={"chips_inserted": 1})
+    @patch("tools.create.insert_chips_in_doc", return_value={"chips_inserted": 1})
     @patch("tools.create._create_doc")
     def test_doc_create_routes_chips_and_cues_the_count(
         self, mock_create_doc, mock_insert
@@ -214,3 +214,40 @@ class TestOverwriteWiring:
         assert "MISE_CHIP_0" in uploaded
         assert mock_insert.call_args[0][0] == "f1"
         assert result.cues["chips_inserted"] == 1
+
+
+class TestFencedBlocksAreNotChipped:
+    """An @url line inside a fence is literal content the author marked as
+    code — transforming it would be accept-and-transform. Fence detection is
+    convert_fenced_blocks' own regex, so the two passes agree on what is code."""
+
+    def test_backtick_fenced_chip_line_stays_literal(self):
+        content = f"Real chip:\n@{DOC_URL}\n```\n@{SHEET_URL}\n```\nAfter.\n"
+        modified, refs = parse_chip_refs(content)
+        assert len(refs) == 1
+        assert refs[0].url == DOC_URL
+        assert f"@{SHEET_URL}" in modified, "fenced @url must stay literal"
+
+    def test_tilde_fenced_chip_line_stays_literal(self):
+        content = f"~~~\n@{DOC_URL}\n~~~\n"
+        modified, refs = parse_chip_refs(content)
+        assert refs == []
+        assert f"@{DOC_URL}" in modified
+
+    def test_chip_after_a_closed_fence_still_parses(self):
+        content = f"```\ncode\n```\n@{DOC_URL}\n"
+        _, refs = parse_chip_refs(content)
+        assert len(refs) == 1
+
+    def test_unclosed_fence_runs_to_end_of_input(self):
+        """CommonMark semantics, same as convert_fenced_blocks."""
+        content = f"```\n@{DOC_URL}\n"
+        modified, refs = parse_chip_refs(content)
+        assert refs == []
+        assert f"@{DOC_URL}" in modified
+
+    def test_content_without_chips_round_trips_byte_identical(self):
+        content = "# H\n\nplain prose\n```py\ncode()\n```\ntail\n"
+        modified, refs = parse_chip_refs(content)
+        assert refs == []
+        assert modified == content

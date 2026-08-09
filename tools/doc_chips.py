@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from adapters.http_client import get_sync_client
+from markdown_import import _FENCE_OPEN_RE
 from validation import _WORKSPACE_FILE_DOMAINS
 
 _DOCS_API = "https://docs.googleapis.com/v1/documents"
@@ -46,20 +47,44 @@ def parse_chip_refs(content: str) -> tuple[str, list[ChipRef]]:
     Only Workspace-domain URLs become chips — insertRichLink rejects anything
     else outright, and batchUpdate is atomic, so gating here keeps one bad URL
     from failing every chip. A non-Workspace @url line keeps its literal text.
+
+    Fenced code blocks are skipped: an @url line inside a fence is literal
+    content the author marked as code (e.g. documenting this very syntax),
+    and transforming it would be accept-and-transform. Fence detection is
+    convert_fenced_blocks' own regex and close rule (CommonMark: an unclosed
+    fence runs to end of input), so the two passes cannot disagree about
+    what is code.
     """
     refs: list[ChipRef] = []
+    out_lines: list[str] = []
+    in_block = False
+    close_re: re.Pattern[str] | None = None
 
-    def _replace(match: re.Match) -> str:
-        url = match.group(1)
-        if not any(domain in url for domain in _WORKSPACE_FILE_DOMAINS):
-            return match.group(0)
-        idx = len(refs)
-        placeholder = f"{_CHIP_PLACEHOLDER_PREFIX}{idx}{_CHIP_PLACEHOLDER_SUFFIX}"
-        refs.append(ChipRef(index=idx, url=url, placeholder=placeholder))
-        return placeholder
+    for line in content.split("\n"):
+        if in_block:
+            out_lines.append(line)
+            if close_re and close_re.match(line):
+                in_block = False
+            continue
+        fence = _FENCE_OPEN_RE.match(line)
+        if fence:
+            marker = fence.group(2)
+            close_re = re.compile(
+                rf"^\s*{re.escape(marker[0])}{{{len(marker)},}}\s*$"
+            )
+            in_block = True
+            out_lines.append(line)
+            continue
+        chip = CHIP_REF_RE.match(line)
+        if chip and any(d in chip.group(1) for d in _WORKSPACE_FILE_DOMAINS):
+            idx = len(refs)
+            placeholder = f"{_CHIP_PLACEHOLDER_PREFIX}{idx}{_CHIP_PLACEHOLDER_SUFFIX}"
+            refs.append(ChipRef(index=idx, url=chip.group(1), placeholder=placeholder))
+            out_lines.append(placeholder)
+        else:
+            out_lines.append(line)
 
-    modified = CHIP_REF_RE.sub(_replace, content)
-    return modified, refs
+    return "\n".join(out_lines), refs
 
 
 def find_placeholder_indices(
@@ -163,12 +188,15 @@ def insert_chips_in_doc(doc_id: str, refs: list[ChipRef]) -> dict[str, Any]:
     return result
 
 
-def _restore_chip_placeholders(doc_id: str, refs: list[ChipRef]) -> None:
-    """Failure cleanup: put the literal @url text back where placeholders sit.
+def restore_placeholders(doc_id: str, replacements: list[tuple[str, str]]) -> None:
+    """Failure cleanup: put literal text back where placeholders sit.
 
+    Takes (placeholder, literal_text) pairs — shared by the chip pass
+    (@url lines) and create.py's image pass (![alt](path) refs), so neither
+    leaves sentinel residue in a document when its batch fails.
     replaceAllText is index-free so it cannot drift. Best-effort — if even
-    this fails the placeholders stand, and the chip_errors cue already names
-    the primary failure.
+    this fails the placeholders stand, and the error cue already names the
+    primary failure.
     """
     try:
         client = get_sync_client()
@@ -176,11 +204,16 @@ def _restore_chip_placeholders(doc_id: str, refs: list[ChipRef]) -> None:
             f"{_DOCS_API}/{doc_id}:batchUpdate",
             json_body={"requests": [
                 {"replaceAllText": {
-                    "containsText": {"text": ref.placeholder, "matchCase": True},
-                    "replaceText": f"@{ref.url}",
+                    "containsText": {"text": placeholder, "matchCase": True},
+                    "replaceText": literal,
                 }}
-                for ref in refs
+                for placeholder, literal in replacements
             ]},
         )
     except Exception:
         pass
+
+
+def _restore_chip_placeholders(doc_id: str, refs: list[ChipRef]) -> None:
+    """Chip-flavoured wrapper: placeholders back to their literal @url lines."""
+    restore_placeholders(doc_id, [(r.placeholder, f"@{r.url}") for r in refs])

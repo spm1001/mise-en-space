@@ -29,13 +29,8 @@ from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 from workspace import enrich_manifest
 from tools.common import resolve_source as _resolve_source
-from tools.doc_chips import (
-    CHIP_REF_RE as _CHIP_REF_RE,
-    ChipRef as _ChipRef,
-    find_placeholder_indices as _find_placeholder_indices,
-    insert_chips_in_doc as _insert_chips_in_doc,
-    parse_chip_refs as _parse_chip_refs,
-)
+from tools.doc_chips import (CHIP_REF_RE, ChipRef, find_placeholder_indices,
+                             insert_chips_in_doc, parse_chip_refs, restore_placeholders)
 from tools.form_create import create_form
 from validation import validate_drive_id, sanitize_title
 
@@ -414,9 +409,9 @@ def _do_create_internal(
         image_base_path = source.parent if source else (Path(base_path) if base_path else None)  # type: ignore[arg-type]
 
     # Check for whole-line @url smart-chip requests in doc content (mise-rafote)
-    chip_refs: list[_ChipRef] = []
-    if doc_type == "doc" and content and _CHIP_REF_RE.search(content):
-        content, chip_refs = _parse_chip_refs(content)
+    chip_refs: list[ChipRef] = []
+    if doc_type == "doc" and content and CHIP_REF_RE.search(content):
+        content, chip_refs = parse_chip_refs(content)
 
     try:
         if doc_type == "file":
@@ -456,7 +451,7 @@ def _do_create_internal(
 
         # Post-creation: replace chip placeholders with real smart chips
         if chip_refs and isinstance(result, DoResult):
-            chip_result = _insert_chips_in_doc(result.file_id, chip_refs)
+            chip_result = insert_chips_in_doc(result.file_id, chip_refs)
             if chip_result.get("chips_inserted"):
                 result.cues["chips_inserted"] = chip_result["chips_inserted"]
             if chip_result.get("chip_errors"):
@@ -880,7 +875,7 @@ def _embed_images_in_doc(
 
     # Phase 3: Find placeholder indices in the created doc
     placeholders = [ref.placeholder for ref, _, _ in uploaded]
-    indices = _find_placeholder_indices(doc_id, placeholders)
+    indices = find_placeholder_indices(doc_id, placeholders)
 
     # Phase 4: Build batchUpdate requests in reverse index order
     requests: list[dict[str, Any]] = []
@@ -919,6 +914,7 @@ def _embed_images_in_doc(
             )
         except Exception as e:
             errors.append(f"Docs batchUpdate failed: {e}")
+            restore_placeholders(doc_id, [(r.placeholder, f"![{r.alt}]({r.path})") for r, _, _ in uploaded])
 
     # Phase 5: Revoke permissions and delete temp files
     for _, file_id, perm_id in uploaded:
