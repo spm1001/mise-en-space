@@ -135,7 +135,11 @@ So: whole URL, always.
 
 **Gmail URLs work harder than they look.** The thread token is the **last** fragment segment, so a
 search-scoped URL like `#search/from%3Aalice+lantern/FMfcgz…` resolves fine — mise reads the token
-at the end, not the search terms in the middle. Two more identifier shapes resolve directly:
+at the end, not the search terms in the middle, and carries the search query (or `#label/` name)
+through as `cues.gmail_url_context`: provenance for *why* the thread was being looked at, so quote
+it in your answer when it helps. A `/u/1/` (or higher) account index draws a warning cue — mise
+always reads the one account it is authed to, so a URL from someone's second signed-in account may
+name a thread this mailbox can't see. Three more identifier shapes resolve directly:
 
 - **A Message-ID, bare or `<angle-bracketed>`** — from More ▸ Show original on any message. Pass it
   straight to `fetch()`; mise resolves it internally via an exact-match `rfc822msgid:` search and
@@ -143,6 +147,10 @@ at the end, not the search terms in the middle. Two more identifier shapes resol
 - **A Show-original URL** (`?view=om&permmsgid=msg-f:…`) — fetchable as pasted; the `msg-f` decimal
   converts to the API message id. (`permmsgid=msg-a:…` marks a self-sent message and cannot convert —
   but the page that URL opens displays the Message-ID, which can.)
+- **Mise's own draft links** (`…/mail/#drafts/r…` — the URL every draft/reply_draft result carries).
+  Fetching one resolves the draft to the thread holding it via drafts.get, disclosed as a cue that
+  also names the edit route (`do(draft, file_id=…)`). A dead link — draft since sent or discarded —
+  says so by name instead of 404ing.
 
 Three things genuinely can't resolve, and each says so by name rather than 404ing at you:
 

@@ -75,6 +75,16 @@ CASES = [
         "?ik=2bb48b24a5&view=om&permmsgid=msg-a:r-8125895545114462359",
         ["msg-a", "Message-ID"],
     ),
+    (
+        "DEAD draft URL (mise's own #drafts/<id> shape) — the resolution branch "
+        "fires, drafts.get 404s, and the error teaches the lifecycle rather than "
+        "implying a bad id (mise-jujoti step 7). A LIVE draft would resolve to "
+        "its thread, but a pinned live draft rots the moment it is sent, so the "
+        "stable envelope case is the expiry path; the success path is unit-tested "
+        "and probed live at ship time",
+        "https://mail.google.com/mail/#drafts/r1234567890123456789",
+        ["sent or discarded", "expired"],
+    ),
 ]
 
 

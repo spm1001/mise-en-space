@@ -65,6 +65,51 @@ def get_thread_id_for_message(message_id: str) -> str:
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
+def get_thread_id_for_draft(draft_id: str) -> str:
+    """
+    Resolve a Gmail DRAFT id to the id of the thread holding the draft.
+
+    mise's own draft/reply_draft results carry a web link of the form
+    …/mail/#drafts/<draft-id>, and until mise-jujoti closed the loop mise could
+    not read the URL it had itself written. Drafts live in their own id space
+    (r + digits); drafts.get is the only bridge to the thread, where Gmail
+    renders the draft in place.
+
+    Fields-masked to message/threadId — one id is all this call exists to
+    learn. NOT_FOUND here is a *lifecycle* answer, not a malformed-id answer:
+    drafts disappear when sent or discarded, so the link expires. The router
+    says so; this raises plain.
+
+    Args:
+        draft_id: A Gmail draft id (r + digits).
+
+    Returns:
+        The id of the thread holding the draft.
+
+    Raises:
+        MiseError: NOT_FOUND when the draft no longer exists.
+    """
+    client = get_sync_client()
+
+    draft = client.get_json(
+        f"{_GMAIL_API}/drafts/{draft_id}",
+        params={"fields": "message/threadId"},
+    )
+
+    # Same defensive shape as get_thread_id_for_message: a fields-masked
+    # endpoint can return an empty body rather than {}.
+    message = draft.get("message") if isinstance(draft, dict) else None
+    thread_id = message.get("threadId") if isinstance(message, dict) else None
+    if not thread_id:
+        raise MiseError(
+            ErrorKind.NOT_FOUND,
+            f"drafts.get returned no threadId for draft '{draft_id}'",
+        )
+
+    return str(thread_id)
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
 def get_thread_id_for_rfc822_message_id(message_id: str) -> str:
     """
     Resolve an RFC 822 Message-ID header to the id of the thread holding it.

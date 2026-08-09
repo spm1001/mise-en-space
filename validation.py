@@ -10,7 +10,7 @@ Patterns adopted from mcp-google-workspace.
 
 import re
 from base64 import b64decode
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote_plus, urlsplit
 
 # =============================================================================
 # PATTERNS
@@ -304,6 +304,68 @@ def gmail_fragment_segments(url: str) -> list[str]:
     return [seg for seg in fragment.split('/') if seg]
 
 
+def extract_gmail_draft_id(url: str) -> str | None:
+    """
+    Extract the draft id from a Gmail #drafts URL — the link mise itself writes.
+
+    adapters/gmail.py emits https://mail.google.com/mail/#drafts/<draft-id> on
+    every draft it creates, and until mise-jujoti closed the loop mise refused
+    to read the URL it had itself written. Drafts are a separate object in a
+    separate id space (r + digits), so this returns the draft id for the
+    caller to resolve via drafts.get — a URL whose last segment is instead a
+    web thread token (#drafts/FMfcgz…, the UI's own shape) returns None and
+    takes the normal thread route.
+
+    Pure function, no I/O.
+    """
+    if not url or 'mail.google.com' not in url:
+        return None
+    segments = gmail_fragment_segments(url)
+    if len(segments) < 2 or segments[0].lower() != 'drafts':
+        return None
+    token = segments[-1]
+    if GMAIL_DRAFT_ID_PATTERN.match(token):
+        return token
+    return None
+
+
+GMAIL_ACCOUNT_INDEX_PATTERN = re.compile(r'/mail/u/(\d+)')
+
+
+def extract_gmail_url_context(url: str) -> dict[str, object] | None:
+    """
+    Provenance a Gmail web URL carries BESIDE the thread token.
+
+    All of it used to be accepted-and-dropped (mise-jujoti): the search query
+    or label the thread was reached through — genuine provenance about why the
+    thread was being looked at — and the /u/N account index, which matters
+    because mise always reads the one account it is authed to, not the URL's.
+
+    Returns a dict with any of 'search_query', 'label' (both unquote_plus'd,
+    so from%3Aalice+lantern renders as a real query), and 'account_index'
+    (only when non-zero — /u/0/ is the default account and carries no signal).
+    None when the URL carries no such context. Pure function, no I/O.
+    """
+    if not url or 'mail.google.com' not in url:
+        return None
+
+    context: dict[str, object] = {}
+
+    match = GMAIL_ACCOUNT_INDEX_PATTERN.search(url)
+    if match and match.group(1) != '0':
+        context['account_index'] = int(match.group(1))
+
+    segments = gmail_fragment_segments(url)
+    if len(segments) >= 3:
+        view = segments[0].lower()
+        if view == 'search':
+            context['search_query'] = unquote_plus(segments[1])
+        elif view == 'label':
+            context['label'] = unquote_plus(segments[1])
+
+    return context or None
+
+
 def extract_gmail_id_from_url(url: str) -> str | None:
     """
     Extract and convert Gmail thread/message ID from a Gmail web URL.
@@ -417,10 +479,10 @@ def diagnose_gmail_url(url: str) -> str | None:
 
     if GMAIL_DRAFT_ID_PATTERN.match(token):
         return (
-            f"This is a Gmail draft link (draft id '{token}'). Drafts are not "
-            f"fetchable as threads — the draft is a separate object. To read the "
-            f"conversation it belongs to, fetch the thread id, which appears in "
-            f"the draft listing alongside the draft."
+            f"This is a Gmail draft link (draft id '{token}'). fetch() resolves "
+            f"it to the thread holding the draft automatically; for other "
+            f"operations pass that thread id, or edit the draft itself with "
+            f"do(draft, file_id='{token}')."
         )
 
     if not token.startswith(GMAIL_WEB_ID_PREFIXES):

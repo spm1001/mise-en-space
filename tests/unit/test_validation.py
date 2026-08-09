@@ -7,8 +7,10 @@ import pytest
 from validation import (
     escape_drive_query,
     extract_drive_file_id,
+    extract_gmail_draft_id,
     extract_gmail_id,
     extract_gmail_id_from_url,
+    extract_gmail_url_context,
     extract_rfc822_message_id,
     convert_gmail_web_id,
     detect_fetch_input_problem,
@@ -595,3 +597,83 @@ class TestIsSelfSentGmailUrl:
     ])
     def test_other_shapes_stay_out(self, url):
         assert is_self_sent_gmail_url(url) is False
+
+
+class TestExtractGmailDraftId:
+    """The #drafts URL mise itself writes yields its draft id (mise-jujoti step 7)."""
+
+    MISE_OWN_LINK = "https://mail.google.com/mail/#drafts/r8287431168042343092"
+
+    def test_mise_own_draft_link_yields_the_draft_id(self):
+        assert extract_gmail_draft_id(self.MISE_OWN_LINK) == "r8287431168042343092"
+
+    def test_dashed_draft_id_matches_too(self):
+        url = "https://mail.google.com/mail/u/0/#drafts/r-8125895545114462359"
+        assert extract_gmail_draft_id(url) == "r-8125895545114462359"
+
+    def test_ui_shaped_drafts_url_takes_the_thread_route(self):
+        """#drafts/FMfcgz… carries a web THREAD token, not a draft id — it must
+        fall through to normal thread routing rather than hit drafts.get."""
+        url = "https://mail.google.com/mail/u/0/#drafts/FMfcgzQgMgKRTRzJtcVbpdRDPZKZGgrW"
+        assert extract_gmail_draft_id(url) is None
+
+    def test_non_drafts_views_yield_nothing(self):
+        url = "https://mail.google.com/mail/u/0/#inbox/FMfcgzQgMgKRTRzJtcVbpdRDPZKZGgrW"
+        assert extract_gmail_draft_id(url) is None
+
+    def test_non_gmail_and_bare_ids_yield_nothing(self):
+        assert extract_gmail_draft_id("https://example.com/#drafts/r123") is None
+        assert extract_gmail_draft_id("r8287431168042343092") is None
+        assert extract_gmail_draft_id("") is None
+
+
+class TestExtractGmailUrlContext:
+    """Provenance beside the thread token — previously accepted-and-dropped
+    (mise-jujoti steps 5-6)."""
+
+    # The real production refusal from calls.jsonl that opened the bon.
+    CAPTIFY_URL = (
+        "https://mail.google.com/mail/u/0/#search/"
+        "from%3Aniharika.verma%40captify.co.uk/FMfcgzQXKhLsKgFZmMwJgntMLhRLltMN"
+    )
+    STEFANO_URL = (
+        "https://mail.google.com/mail/u/0/#search/"
+        "from%3AStefano.Figoni%40itv.com+lantern/FMfcgzQhVNfMCxqltVrdVFJgqxZhgmhM"
+    )
+
+    def test_search_query_is_carried_and_decoded(self):
+        ctx = extract_gmail_url_context(self.CAPTIFY_URL)
+        assert ctx == {"search_query": "from:niharika.verma@captify.co.uk"}
+
+    def test_plus_decodes_to_space_not_literal_plus(self):
+        """unquote alone leaves '+' intact — the brief names unquote_plus."""
+        ctx = extract_gmail_url_context(self.STEFANO_URL)
+        assert ctx["search_query"] == "from:Stefano.Figoni@itv.com lantern"
+
+    def test_label_is_carried_and_decoded(self):
+        url = "https://mail.google.com/mail/u/0/#label/Weekly+Digests/FMfcgzABC"
+        ctx = extract_gmail_url_context(url)
+        assert ctx == {"label": "Weekly Digests"}
+
+    def test_nonzero_account_index_is_carried(self):
+        url = "https://mail.google.com/mail/u/1/#all/FMfcgzABC"
+        ctx = extract_gmail_url_context(url)
+        assert ctx == {"account_index": 1}
+
+    def test_default_account_index_is_no_signal(self):
+        url = "https://mail.google.com/mail/u/0/#all/FMfcgzABC"
+        assert extract_gmail_url_context(url) is None
+
+    def test_account_index_composes_with_search(self):
+        url = "https://mail.google.com/mail/u/2/#search/lantern/FMfcgzABC"
+        ctx = extract_gmail_url_context(url)
+        assert ctx == {"account_index": 2, "search_query": "lantern"}
+
+    def test_label_listing_without_thread_carries_no_context(self):
+        """Two segments = a mailbox view, not a thread's provenance."""
+        url = "https://mail.google.com/mail/u/0/#label/Finance"
+        assert extract_gmail_url_context(url) is None
+
+    def test_non_gmail_input_yields_nothing(self):
+        assert extract_gmail_url_context("https://example.com/mail/u/3/#search/x/y") is None
+        assert extract_gmail_url_context("") is None

@@ -3235,3 +3235,119 @@ class TestBrowserResolvedSelfSentUrl:
         mock_resolve.assert_not_called()
         assert isinstance(result, FetchError)
         assert "Message-ID" in result.message  # the teaching text stands
+
+
+class TestDraftUrlFetch:
+    """fetch() resolves the #drafts URL mise itself writes — draft id →
+    drafts.get → holding thread, disclosed as a cue (mise-jujoti step 7).
+    Until this shipped, mise emitted a URL it refused to read."""
+
+    DRAFT_URL = "https://mail.google.com/mail/#drafts/r8287431168042343092"
+
+    def _fetch_result(self):
+        return FetchResult(
+            path="p", content_file="c", format="markdown", type="gmail",
+            metadata={}, cues={},
+        )
+
+    def test_draft_url_resolves_and_fetches_the_holding_thread(self):
+        with patch("tools.fetch.router.get_thread_id_for_draft",
+                   return_value="19fdaeed11138ef2") as mock_resolve, \
+             patch("tools.fetch.router.fetch_gmail",
+                   return_value=self._fetch_result()) as mock_fetch:
+            result = do_fetch(self.DRAFT_URL)
+
+        mock_resolve.assert_called_once_with("r8287431168042343092")
+        assert mock_fetch.call_args[0][0] == "19fdaeed11138ef2"
+        assert isinstance(result, FetchResult)
+
+    def test_resolution_is_disclosed_and_names_the_edit_route(self):
+        with patch("tools.fetch.router.get_thread_id_for_draft",
+                   return_value="19fdaeed11138ef2"), \
+             patch("tools.fetch.router.fetch_gmail",
+                   return_value=self._fetch_result()):
+            result = do_fetch(self.DRAFT_URL)
+
+        disclosure = " ".join(result.cues.get("warnings", []))
+        assert "r8287431168042343092" in disclosure
+        assert "19fdaeed11138ef2" in disclosure
+        assert "do(draft" in disclosure
+
+    def test_dead_draft_is_a_teaching_not_found(self):
+        """NOT_FOUND is a lifecycle answer: drafts disappear when sent or
+        discarded, so the error must say the LINK expired, not imply a bad id."""
+        with patch("tools.fetch.router.get_thread_id_for_draft",
+                   side_effect=MiseError(ErrorKind.NOT_FOUND, "404")):
+            result = do_fetch(self.DRAFT_URL)
+
+        assert isinstance(result, FetchError)
+        assert result.kind == "not_found"
+        assert "sent or discarded" in result.message
+        assert "search(" in result.message
+
+    def test_ui_shaped_drafts_url_does_not_hit_drafts_get(self):
+        """#drafts/FMfcgz… carries a web THREAD token — normal route, no drafts.get."""
+        url = "https://mail.google.com/mail/u/0/#drafts/FMfcgzQgMgKRTRzJtcVbpdRDPZKZGgrW"
+        with patch("tools.fetch.router.get_thread_id_for_draft") as mock_resolve, \
+             patch("tools.fetch.router.fetch_gmail",
+                   return_value=self._fetch_result()):
+            do_fetch(url)
+        mock_resolve.assert_not_called()
+
+
+class TestGmailUrlContextCues:
+    """Search query, label and /u/N index ride the fetch as cues instead of
+    being dropped at the URL seam (mise-jujoti steps 5-6)."""
+
+    SEARCH_URL = (
+        "https://mail.google.com/mail/u/0/#search/"
+        "from%3AStefano.Figoni%40itv.com+lantern/FMfcgzQhVNfMCxqltVrdVFJgqxZhgmhM"
+    )
+
+    def _fetch_result(self):
+        return FetchResult(
+            path="p", content_file="c", format="markdown", type="gmail",
+            metadata={}, cues={},
+        )
+
+    def test_search_query_lands_in_cues(self):
+        with patch("tools.fetch.router.fetch_gmail",
+                   return_value=self._fetch_result()):
+            result = do_fetch(self.SEARCH_URL)
+        assert result.cues["gmail_url_context"] == {
+            "search_query": "from:Stefano.Figoni@itv.com lantern"
+        }
+
+    def test_label_lands_in_cues(self):
+        url = ("https://mail.google.com/mail/u/0/#label/Weekly+Digests/"
+               "FMfcgzQhVNfMCxqltVrdVFJgqxZhgmhM")
+        with patch("tools.fetch.router.fetch_gmail",
+                   return_value=self._fetch_result()):
+            result = do_fetch(url)
+        assert result.cues["gmail_url_context"] == {"label": "Weekly Digests"}
+
+    def test_nonzero_account_index_warns(self):
+        url = ("https://mail.google.com/mail/u/1/#all/"
+               "FMfcgzQhVNfMCxqltVrdVFJgqxZhgmhM")
+        with patch("tools.fetch.router.fetch_gmail",
+                   return_value=self._fetch_result()):
+            result = do_fetch(url)
+        warnings = result.cues.get("warnings", [])
+        assert any("/u/1/" in w for w in warnings)
+        # The index alone is a warning, not provenance — no context cue.
+        assert "gmail_url_context" not in result.cues
+
+    def test_default_account_plain_view_adds_nothing(self):
+        url = ("https://mail.google.com/mail/u/0/#all/"
+               "FMfcgzQhVNfMCxqltVrdVFJgqxZhgmhM")
+        with patch("tools.fetch.router.fetch_gmail",
+                   return_value=self._fetch_result()):
+            result = do_fetch(url)
+        assert "gmail_url_context" not in result.cues
+        assert not result.cues.get("warnings")
+
+    def test_bare_thread_id_input_adds_nothing(self):
+        with patch("tools.fetch.router.fetch_gmail",
+                   return_value=self._fetch_result()):
+            result = do_fetch("19fdaeed11138ef2")
+        assert "gmail_url_context" not in result.cues

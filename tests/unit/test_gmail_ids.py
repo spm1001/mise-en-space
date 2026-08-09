@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from models import MiseError, ErrorKind
-from adapters.gmail_ids import get_thread_id_for_rfc822_message_id
+from adapters.gmail_ids import get_thread_id_for_draft, get_thread_id_for_rfc822_message_id
 
 
 class TestGetThreadIdForRfc822MessageId:
@@ -53,3 +53,42 @@ class TestGetThreadIdForRfc822MessageId:
         assert exc_info.value.kind is ErrorKind.NOT_FOUND
         assert "missing@example.com" in exc_info.value.message
         assert "Show original" in exc_info.value.message
+
+
+class TestGetThreadIdForDraft:
+    """drafts.get resolving a draft id to its holding thread (mise-jujoti step 7)."""
+
+    def _client_returning(self, payload):
+        mock_client = MagicMock()
+        mock_client.get_json.return_value = payload
+        return mock_client
+
+    @patch('adapters.gmail_ids.get_sync_client')
+    def test_resolves_thread_id(self, mock_get_client) -> None:
+        mock_get_client.return_value = self._client_returning(
+            {"message": {"threadId": "19fdaeed11138ef2"}}
+        )
+        with patch('retry.time.sleep'):
+            thread_id = get_thread_id_for_draft("r8287431168042343092")
+        assert thread_id == "19fdaeed11138ef2"
+
+    @patch('adapters.gmail_ids.get_sync_client')
+    def test_calls_drafts_get_fields_masked(self, mock_get_client) -> None:
+        """The mask is the seam — one id is all this call exists to learn."""
+        client = self._client_returning({"message": {"threadId": "t"}})
+        mock_get_client.return_value = client
+        with patch('retry.time.sleep'):
+            get_thread_id_for_draft("r123")
+        url = client.get_json.call_args[0][0]
+        params = client.get_json.call_args.kwargs.get("params")
+        assert url.endswith("/drafts/r123")
+        assert params == {"fields": "message/threadId"}
+
+    @patch('adapters.gmail_ids.get_sync_client')
+    def test_empty_body_raises_not_found_naming_the_draft(self, mock_get_client) -> None:
+        mock_get_client.return_value = self._client_returning({})
+        with patch('retry.time.sleep'):
+            with pytest.raises(MiseError) as exc_info:
+                get_thread_id_for_draft("r999")
+        assert exc_info.value.kind is ErrorKind.NOT_FOUND
+        assert "r999" in exc_info.value.message

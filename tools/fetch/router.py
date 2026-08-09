@@ -6,9 +6,9 @@ from pathlib import Path
 
 from adapters.gmail import search_threads
 from adapters.gmail_browser import resolve_gmail_url_via_browser
-from adapters.gmail_ids import get_thread_id_for_rfc822_message_id
+from adapters.gmail_ids import get_thread_id_for_draft, get_thread_id_for_rfc822_message_id
 from models import MiseError, ErrorKind, FetchResult, FetchError
-from validation import extract_drive_file_id, extract_gmail_id, extract_gmail_permmsgid, extract_rfc822_message_id, is_gmail_api_id, is_self_sent_gmail_url, GMAIL_WEB_ID_PREFIXES, detect_fetch_input_problem, diagnose_fetch_404
+from validation import extract_drive_file_id, extract_gmail_draft_id, extract_gmail_id, extract_gmail_permmsgid, extract_gmail_url_context, extract_rfc822_message_id, is_gmail_api_id, is_self_sent_gmail_url, GMAIL_WEB_ID_PREFIXES, detect_fetch_input_problem, diagnose_fetch_404
 
 from .decorations import UrlDecorations, apply_url_decorations, parse_drive_url_decorations
 from .gmail import fetch_gmail, fetch_attachment
@@ -114,7 +114,35 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
         normalized_id: str | None = None
         decorations = UrlDecorations()
 
-        problem = detect_fetch_input_problem(file_id)
+        # mise emits …/mail/#drafts/<draft-id> on every draft it creates, and
+        # until mise-jujoti it refused to read that very URL. A draft lives in
+        # its own id space, but its thread is one drafts.get away — resolve,
+        # fetch the thread (Gmail renders the draft in place there), disclose.
+        draft_id = extract_gmail_draft_id(file_id)
+        if draft_id:
+            try:
+                thread_id = get_thread_id_for_draft(draft_id)
+            except MiseError as e:
+                if e.kind is ErrorKind.NOT_FOUND:
+                    return FetchError(
+                        kind=e.kind.value,
+                        message=(
+                            f"Draft '{draft_id}' no longer exists — drafts "
+                            f"disappear when sent or discarded, so this link has "
+                            f"expired. If it was sent, find the conversation "
+                            f"with search('to:… subject:…')."
+                        ),
+                    )
+                raise
+            source, normalized_id = "gmail", thread_id
+            resolution_note = (
+                f"This URL is a Gmail DRAFT link. mise resolved draft "
+                f"'{draft_id}' to the thread holding it ('{thread_id}') via "
+                f"drafts.get and fetched that thread. To edit the draft itself, "
+                f"use do(draft, file_id='{draft_id}')."
+            )
+
+        problem = detect_fetch_input_problem(file_id) if source is None else None
         if problem:
             # Self-sent (a-family) FRAGMENT permalinks name a thread that
             # exists but is unreachable from the URL alone. Where a logged-in
@@ -184,13 +212,31 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
         else:
             result = fetch_drive(normalized_id, base_path=base_path, recursive=recursive, tabs=tabs, suggestions=suggestions)
 
-        # Disclose any resolution (Message-ID→thread, or browser-resolved
-        # a-family URL) as a cue — resolve-and-cue, never silently (the
-        # mise-saroca discipline).
+        # Disclose any resolution (draft→thread, Message-ID→thread, or
+        # browser-resolved a-family URL) as a cue — resolve-and-cue, never
+        # silently (the mise-saroca discipline).
         if resolution_note and isinstance(result, FetchResult):
             result.cues.setdefault("warnings", []).append(resolution_note)
-        # Point at what the URL's tail named (mise-dogape). Post-fetch and
-        # deposit-driven, so a decorated and a bare fetch deposit identically.
+        # Gmail URLs carry provenance BESIDE the thread token that used to be
+        # accepted-and-dropped (mise-jujoti): the search query or label the
+        # thread was reached through, and the /u/N account index.
+        if isinstance(result, FetchResult) and "mail.google.com" in file_id:
+            context = extract_gmail_url_context(file_id)
+            if context:
+                provenance = {
+                    k: context[k] for k in ("search_query", "label") if k in context
+                }
+                if provenance:
+                    result.cues["gmail_url_context"] = provenance
+                account_index = context.get("account_index")
+                if account_index:
+                    result.cues.setdefault("warnings", []).append(
+                        f"The URL names Gmail account /u/{account_index}/ — a "
+                        f"secondary signed-in account in that browser. mise "
+                        f"always reads the one account it is authed to (see "
+                        f"cues._identity); if that isn't the account the URL "
+                        f"meant, this thread may not be the one the sender saw."
+                    )
         # Point at what the URL's tail named (mise-dogape). Post-fetch and
         # deposit-driven, so a decorated and a bare fetch deposit identically.
         if decorations and isinstance(result, FetchResult):
