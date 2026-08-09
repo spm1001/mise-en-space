@@ -81,7 +81,7 @@ _LEGACY_SIZE_BASELINE = {
     "tools/create.py": 922,  # tightened 2026-08-09 thrice: find_placeholder_indices moved to doc_chips.py, de-aliased imports (mise-rafote), csv_text_to_values moved to extractors/sheets.py (mise-kacani)
     "extractors/docs.py": 892,
     "tools/fetch/drive.py": 805,  # tightened 2026-08-08: _write_per_tab_csvs moved to common.py (mise-dogape)
-    "resources/docs.py": 818,
+    "resources/docs.py": 821,  # +3 for do(respond) docs (mise-gepiwe) — this module's mass IS resource text, so its ceiling tracks op additions; splitting a resource string across siblings would be worse. Raise only with an op.
     "tools/fetch/gmail.py": 695,  # +1 (2026-08-07): the adapters/gmail_ids.py split turned one import line into two
     "adapters/http_client.py": 683,
     "extractors/slides.py": 600,

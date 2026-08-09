@@ -508,3 +508,31 @@ class TestGetEventByIcalUid:
 
         state = get_event_by_ical_uid("uid@google.com")
         assert state.current_start == "2026-09-01"
+
+
+class TestRespondToEvent:
+    """respond_to_event — the RSVP write (mise-gepiwe)."""
+
+    @patch("adapters.calendar.get_sync_client")
+    def test_patch_carries_full_attendees_array(self, mock_get_client) -> None:
+        """Calendar patch semantics replace arrays WHOLESALE (probed live
+        2026-08-09, mise-bozumu): sending only the self entry would silently
+        drop every other attendee from this copy. The full array goes back."""
+        from adapters.calendar import respond_to_event
+        client = MagicMock()
+        mock_get_client.return_value = client
+        event = {"id": "evt1", "attendees": [
+            {"email": "org@x.com", "organizer": True, "responseStatus": "accepted"},
+            {"email": "me@y.com", "self": True, "responseStatus": "needsAction"},
+        ]}
+        respond_to_event(event, "accepted")
+        body = client.patch_json.call_args[1]["json_body"]
+        assert len(body["attendees"]) == 2
+        assert body["attendees"][1]["responseStatus"] == "accepted"
+        assert body["attendees"][0]["responseStatus"] == "accepted"
+
+    def test_no_self_attendee_raises_value_error(self) -> None:
+        from adapters.calendar import respond_to_event
+        import pytest as _pytest
+        with _pytest.raises(ValueError):
+            respond_to_event({"id": "e", "attendees": []}, "accepted")

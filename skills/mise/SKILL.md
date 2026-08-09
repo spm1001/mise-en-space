@@ -419,6 +419,7 @@ search("Q4 report", sources=["drive", "calendar"], base_path="...")
 | `replace_text` | Find-and-replace in file (Sheets: across cell values, all tabs) | `file_id`, `find`, `content` |
 | `draft` | Compose a new Gmail draft — or update an existing one in place | `to`, `subject`, `content`, optional `include` (Drive file IDs); update: `file_id` (draft ID) + `content` |
 | `reply_draft` | Reply draft in an existing thread | `file_id` (thread ID), `content`, optional `include` |
+| `respond` | Accept/decline/tentative a calendar invite — the RSVP lands live, organiser sees it | `file_id` (invite thread ID or Calendar event ID), `action` (`accept`/`decline`/`tentative`) |
 | `archive` | Remove thread(s) from Inbox | `file_id` (str or list) |
 | `star` | Star thread(s) | `file_id` (str or list) |
 | `label` | Add/remove label on thread(s) | `file_id` (str or list), `label`, optional `remove=True` |
@@ -830,6 +831,8 @@ do(operation="draft", to="team@example.com", subject="Report ready",
 ```
 
 Draft-only — Claude composes, the user reviews and sends from Gmail. This is a safety boundary, not a limitation.
+
+**`respond` is the one op in this family that ACTS rather than drafts:** the RSVP registers on the live event immediately and the organiser sees it, exactly as if clicked in Calendar. Use it on an explicit ask ("accept it", "decline that meeting") — never speculatively during triage. `file_id` takes the invite's thread ID (resolved to the event via its iCalUID, disclosed in cues) or the event ID; it refuses cancelled meetings and events the user isn't an attendee of.
 
 **What recipients see from `include=`** (characterised live, 2026-08-09): each file renders as a **Gmail Drive chip** — the grey rounded card with the file-type icon, same as the composer's own "insert from Drive" — because mise emits Gmail's own chip markup (plain styled HTML; Gmail never upgrades bare links to chips at read time, so markup at compose time is the only route). The text/plain part carries emoji + URL lines for non-HTML clients. **One thing the native composer does that mise does not: check the recipient can access the file.** Gmail's compose UI offers "Share & send"; mise sends the chip regardless, and a recipient without access hits "request access" on click. Before including a file someone outside the owner's domain needs, share it first (`do(share)`) — mise won't warn you.
 

@@ -192,21 +192,16 @@ def list_events(
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
-def get_event_by_ical_uid(uid: str) -> InviteState | None:
-    """Resolve an invitation's iCalUID to its LIVE calendar event state.
-
-    An invite email's ICS is a frozen snapshot; this reads the current state
-    from the user's primary calendar so a cancelled/rescheduled meeting is
-    disclosed rather than repeated stale (mise-pinodi / meduto exploration).
+def find_event_by_ical_uid(uid: str) -> dict[str, Any] | None:
+    """Resolve an iCalUID to the RAW primary-calendar event, or None.
 
     `showDeleted=true` is LOAD-BEARING: with the default (false) a cancelled
     event returns ZERO items — invisible, not marked cancelled — so a naive
     lookup concludes "no such event". With it, the cancelled event comes back
     with status=cancelled.
 
-    Returns None when no matching event exists on the primary calendar (e.g.
-    an external invite never added to this calendar). Raises on API error —
-    the caller decides whether to skip (guest mode may lack calendar scope).
+    The raw dict is what respond_to_event needs (id + attendees);
+    get_event_by_ical_uid parses the same lookup into an InviteState.
     """
     client = get_sync_client()
     response = client.get_json(
@@ -214,10 +209,62 @@ def get_event_by_ical_uid(uid: str) -> InviteState | None:
         params={"iCalUID": uid, "showDeleted": "true"},
     )
     items = response.get("items", [])
-    if not items:
+    return items[0] if items else None
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def get_event(event_id: str) -> dict[str, Any]:
+    """Fetch one raw event from the primary calendar by event id."""
+    client = get_sync_client()
+    return client.get_json(f"{_CALENDAR_API}/primary/events/{event_id}")
+
+
+def respond_to_event(event: dict[str, Any], response_status: str) -> dict[str, Any]:
+    """Set the user's own responseStatus on an event they were invited to.
+
+    Read-modify-patch of the FULL attendees array: Calendar patch semantics
+    replace array fields WHOLESALE (probed live 2026-08-09, mise-bozumu), so
+    sending only the self entry would drop every other attendee from this
+    copy. The caller passes the freshly-read event; the whole array goes back
+    with one field flipped.
+
+    Raises ValueError when the event has no self attendee — the user's own
+    event, or one they were never invited to; RSVP is meaningless there.
+    """
+    attendees = event.get("attendees", [])
+    flipped = False
+    for attendee in attendees:
+        if attendee.get("self"):
+            attendee["responseStatus"] = response_status
+            flipped = True
+    if not flipped:
+        raise ValueError(
+            "No self attendee on this event — it is either your own event or "
+            "one you were not invited to, so there is no RSVP to set."
+        )
+
+    client = get_sync_client()
+    return client.patch_json(
+        f"{_CALENDAR_API}/primary/events/{event['id']}",
+        json_body={"attendees": attendees},
+    )
+
+
+def get_event_by_ical_uid(uid: str) -> InviteState | None:
+    """Resolve an invitation's iCalUID to its LIVE calendar event state.
+
+    An invite email's ICS is a frozen snapshot; this reads the current state
+    from the user's primary calendar so a cancelled/rescheduled meeting is
+    disclosed rather than repeated stale (mise-pinodi / meduto exploration).
+
+    Returns None when no matching event exists on the primary calendar (e.g.
+    an external invite never added to this calendar). Raises on API error —
+    the caller decides whether to skip (guest mode may lack calendar scope).
+    """
+    event = find_event_by_ical_uid(uid)
+    if event is None:
         return None
 
-    event = items[0]
     status = event.get("status", "confirmed")
 
     my_response: str | None = None

@@ -35,6 +35,7 @@ from tools import (
     do_share,
     do_star,
     do_trash,
+    do_respond,
 )
 
 # Required params per operation — validated before dispatch.
@@ -59,6 +60,7 @@ REQUIRED_PARAMS: dict[str, set[str]] = {
     "comment_reply": {"file_id", "comment_id"},  # content OR action — handler validates
     "setup_oauth": set(),  # no required params — force=true is optional
     "trash": {"file_id"},
+    "respond": {"file_id", "action"},
 }
 
 # Content operations that need mime-type routing (metadata pre-fetched at dispatch)
@@ -124,6 +126,7 @@ DISPATCH: dict[str, Any] = {
     ),
     "setup_oauth": lambda p: do_setup_oauth(force=p.get("force", False)),
     "trash": lambda p: do_trash(file_id=p["file_id"]),
+    "respond": lambda p: do_respond(file_id=p["file_id"], action=p["action"]),
 }
 
 
@@ -131,10 +134,11 @@ DISPATCH: dict[str, Any] = {
 DO_DESCRIPTION_FULL = """\
 Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail.
 
-Operations: create, copy, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, trash, setup_oauth.
-Create: content + title + doc_type (doc/sheet/file/folder/form). page_setup='pageless'. file_path= to read from disk. folder: title only. form: content is YAML/JSON spec with title, description, questions.
-Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content). Sheets: overwrite=CSV, range='Tab'/'Tab!F9:F15' aims one tab/cells; cells: [label](url)→link; @url alone→chip (sheet cell/doc line, create too); replace_text=cell find/replace. Forms: overwrite takes the same spec as create — fetch, tweak, overwrite (replaces all questions). Doc edits return cues.restore_point (pre-edit Version history anchor); overwrite also posts a restore-point comment (restore_comment=False skips).
-Email: draft (to + subject + content; file_id=draft_id updates that draft in place), reply_draft (file_id + content — refuses if the thread already carries a draft, naming it; supersede=True discards existing thread drafts first), archive/star/label. Drafts auto-append the user's Gmail signature — don't write a sign-off in content.
+Operations: create, copy, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, trash, respond, setup_oauth.
+Create: content + title + doc_type (doc/sheet/file/folder/form). page_setup='pageless'. file_path= to read from disk. folder: title only. form: content is YAML/JSON spec (title, description, questions).
+Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content). Sheets: overwrite=CSV, range='Tab'/'Tab!F9:F15' aims one tab/cells; cells: [label](url)→link; @url alone→chip (sheet cell/doc line, create too); replace_text=cell find/replace. Forms: overwrite takes the create spec (replaces all questions). Doc edits return cues.restore_point; overwrite posts a restore-point comment (restore_comment=False skips).
+Respond: file_id (invite thread or event id) + action=accept|decline|tentative.
+Email: draft (to + subject + content; file_id=draft_id updates it in place), reply_draft (file_id + content — refuses if the thread already carries a draft, naming it; supersede=True discards existing thread drafts first), archive/star/label. Drafts auto-append the user's Gmail signature — don't write a sign-off in content.
 Trash: file_id (single or list) — Drive files go to recoverable trash; Gmail draft IDs (r+digits) are discarded permanently.
 Comments: comment (file_id + content — opens a NEW thread), comment_reply (file_id + comment_id [from comments.md] + content and/or action=resolve|reopen). Both auto-prefix '[agent] '.
 Share: file_id + to + role (reader/writer/commenter), confirm=True to execute.

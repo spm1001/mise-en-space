@@ -42,7 +42,13 @@ SCOPES = [
 
     # Calendar: Meeting context (who was in the meeting, when, what docs linked)
     # Helps correlate docs with discussions.
-    'https://www.googleapis.com/auth/calendar.readonly',
+    # calendar.events (not .readonly) since 2026-08-09: covers the same event
+    # reads the adapter has always done (events-on-primary only — no
+    # calendarList, no settings) PLUS the responseStatus write that RSVP needs.
+    # Sameer chose the scope route over a CDP-browser workaround (mise-forunu
+    # closed the zero-scope route as a measured negative). Existing tokens keep
+    # working for reads; the respond op teaches re-auth on 403.
+    'https://www.googleapis.com/auth/calendar.events',
 
     # Forms: Read and create form structure (questions, sections, options)
     'https://www.googleapis.com/auth/forms.body',
