@@ -519,6 +519,10 @@ do(operation="create", content="<svg>...</svg>", title="diagram.svg", doc_type="
 do(operation="create", content="# Notes\n\nContent here", title="notes.md", doc_type="file")
 do(operation="create", content='{"key": "value"}', title="config.json", doc_type="file")
 
+# A Drive FOLDER — title only, no content. supportsAllDrives is set for you,
+# so this works on Shared Drives. Do NOT hand-roll a Drive API script for this.
+do(operation="create", doc_type="folder", title="Brand Lift handover", folder_id="1parent...")
+
 # Move single file
 do(operation="move", file_id="1abc...", folder_id="1xyz...")
 
@@ -539,7 +543,7 @@ pack, a board pack, anything you're about to share access to in bulk. Keep the
 from, and reconstructing that later is miserable. `blocked` (as distinct from `failed`)
 means the owner has restricted copying — ask them, don't retry.
 
-**Create:** Without `folder_id`, the doc lands in Drive root. Response includes `cues.folder` showing where it landed. Use `doc_type="file"` for plain files (markdown, SVG, JSON, YAML, etc.) — MIME type is inferred from the title extension. The file stays as-is in Drive, no conversion to Google format. Response includes `cues.plain_file` and `cues.mime_type`.
+**Create:** `doc_type="folder"` makes a Drive folder (title only — no `content`, no `source`, no `file_path`); nest it by passing `folder_id`. *Added 2026-08-10, mise-kagejo — this was missing and the shard used folder creation as its example of "bypassing mise", which cost a real session a hand-rolled Drive-API script it didn't need.* Without `folder_id`, the doc lands in Drive root. Response includes `cues.folder` showing where it landed. Use `doc_type="file"` for plain files (markdown, SVG, JSON, YAML, etc.) — MIME type is inferred from the title extension. The file stays as-is in Drive, no conversion to Google format. Response includes `cues.plain_file` and `cues.mime_type`.
 
 **Move:** Enforces single parent — removes all existing parents, adds destination. Response includes `cues.destination_folder` (name) and `cues.previous_parents`.
 
