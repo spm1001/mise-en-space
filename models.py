@@ -575,6 +575,7 @@ class SearchResult:
     gmail_results: list[dict[str, Any]] = field(default_factory=list)
     activity_results: list[dict[str, Any]] = field(default_factory=list)
     calendar_results: list[dict[str, Any]] = field(default_factory=list)
+    people_results: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     # Path to deposited results file (filesystem-first pattern)
     path: str | None = None
@@ -592,6 +593,8 @@ class SearchResult:
             result["activity_results"] = self.activity_results
         if "calendar" in self.sources:
             result["calendar_results"] = self.calendar_results
+        if "people" in self.sources:
+            result["people_results"] = self.people_results
         if self.errors:
             result["errors"] = self.errors
         return result
@@ -654,6 +657,18 @@ class SearchResult:
                     item["has_meet"] = True
                 calendar_items.append(item)
             preview["calendar"] = calendar_items
+        if self.people_results:
+            people_items = []
+            for r in self.people_results[:max_per_source]:
+                item = {
+                    "name": r.get("name", ""),
+                    "email": r.get("email", ""),
+                }
+                for key in ("title", "department", "manager"):
+                    if r.get(key):
+                        item[key] = r[key]
+                people_items.append(item)
+            preview["people"] = people_items
         return preview
 
     def to_dict(self) -> dict[str, Any]:
@@ -673,6 +688,7 @@ class SearchResult:
                 "gmail_count": len(self.gmail_results) if "gmail" in self.sources else 0,
                 "activity_count": len(self.activity_results) if "activity" in self.sources else 0,
                 "calendar_count": len(self.calendar_results) if "calendar" in self.sources else 0,
+                "people_count": len(self.people_results) if "people" in self.sources else 0,
             }
             preview = self._build_preview()
             if preview:
@@ -893,3 +909,51 @@ class InviteState:
         return d
 
 
+
+
+@dataclass
+class DirectoryPerson:
+    """A colleague's public Workspace directory profile (mise-mahiho).
+
+    Read via the Admin SDK's domain_public view, which is a non-admin
+    capability — see adapters/people.py for the evidence and the control.
+
+    `manager_email` comes from the Workspace account's `relations` field, which
+    is an ACCOUNT field rather than an HR record. Measured at ITV: accurate for
+    ordinary staff, but at board level it records who administers the account
+    (the Chairman's manager reads as the Company Secretary). Report it as what
+    the directory says, never as organisational fact.
+    """
+    email: str
+    full_name: str
+    given_name: str | None = None
+    family_name: str | None = None
+    title: str | None = None
+    department: str | None = None
+    organization: str | None = None
+    location: str | None = None
+    manager_email: str | None = None
+    phone: str | None = None
+    photo_url: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Compact dict — absent fields are omitted rather than sent as null."""
+        d: dict[str, Any] = {"email": self.email, "name": self.full_name}
+        for key, value in (
+            ("title", self.title),
+            ("department", self.department),
+            ("organization", self.organization),
+            ("location", self.location),
+            ("manager", self.manager_email),
+            ("phone", self.phone),
+        ):
+            if value:
+                d[key] = value
+        return d
+
+
+@dataclass
+class PeopleSearchResults:
+    """Results from a domain directory search."""
+    people: list[DirectoryPerson]
+    truncated: bool = False  # a page token survived — more matched than were fetched

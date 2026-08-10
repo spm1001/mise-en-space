@@ -378,12 +378,13 @@ See `references/filtering-results.md` for patterns.
 
 ### Search Sources
 
-Default sources are `['drive', 'gmail']`. Two additional sources are available:
+Default sources are `['drive', 'gmail']`. Three additional sources are available:
 
 | Source | What it returns | When to use |
 |--------|----------------|-------------|
 | `activity` | Recent comment events from Drive Activity API | "What's been discussed recently?" / "Any comments on my files?" |
 | `calendar` | Events ±7 days around now, filtered by your query | "Is my meeting with X still on?" / meeting context for Drive files |
+| `people` | Staff directory: role, department, location, reporting line | "Who is Richard Pearce?" / "Who does she report to?" / placing an unfamiliar name before replying |
 
 ```python
 # Recent comment activity
@@ -394,7 +395,19 @@ search("Gareth", sources=["calendar"], base_path="...")
 
 # Calendar enrichment (adds meeting_context to Drive results)
 search("Q4 report", sources=["drive", "calendar"], base_path="...")
+
+# Who is this person? A SINGLE hit auto-expands with manager + direct reports
+search("Richard Pearce", sources=["people"], base_path="...")
+
+# Everyone in a team — bare words match name/email only, so scope by field
+search("orgDepartment:MIT", sources=["people"], base_path="...")
+
+# Any value with a SPACE needs = and SINGLE quotes. The colon form returns
+# zero silently, which reads exactly like nobody holding that job.
+search("orgTitle='Head of Strategy'", sources=["people"], base_path="...")
 ```
+
+**`people`** reads the Workspace staff directory. Query grammar is the Admin SDK's, not Drive's: **bare words match name and email only** — a job title returns zero, so use `orgDepartment:X` or `email:prefix*` to search by role or team. **Any value containing a space needs `=` and single quotes** — `orgTitle='Head of Strategy'` works, while both `orgTitle:Head of Strategy` and `orgTitle:"Head of Strategy"` return zero with no error, which is indistinguishable from nobody holding that job. One hit expands automatically with the manager resolved to a name and the direct reports listed; several hits return flat profiles, so narrow and look again. Two things to pass on honestly rather than assert: `manager` is the Workspace *account* field, not an HR record (at board level it can record who administers the account), and colleagues can opt out of the directory, so an empty result is not proof someone doesn't exist.
 
 **`activity`** returns comment events — who commented, on what, when. Actors show as "Unknown" (people/ID limitation); the content and file are accurate. The query is NOT applied to activity — it always returns recent events.
 

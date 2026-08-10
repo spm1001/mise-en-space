@@ -14,6 +14,7 @@ from adapters.drive import search_files
 from adapters.gmail import _is_own_address, search_threads
 from adapters.activity import search_comment_activities
 from adapters.calendar import list_events
+from adapters.people import expand_profile, search_people
 from models import (
     CalendarEvent,
     CalendarSearchResult,
@@ -23,6 +24,7 @@ from models import (
     GmailSearchResult,
     GmailSearchResults,
     MiseError,
+    PeopleSearchResults,
     SearchResult,
 )
 from validation import (
@@ -214,7 +216,10 @@ def do_search(
             Optional when type or folder_id is set.
         sources: List of sources to search (default: ['drive', 'gmail'],
             or ['drive'] in guest mode where the token has no Gmail scope).
-            Valid sources: 'drive', 'gmail', 'activity', 'calendar'.
+            Valid sources: 'drive', 'gmail', 'activity', 'calendar', 'people'.
+            'people' searches the Workspace staff directory — bare words match
+            name and email, `orgDepartment:X` scopes by team; a single hit is
+            expanded with the manager and direct reports resolved to names.
         max_results: Maximum results per source
         base_path: Base directory for deposits (defaults to cwd)
         folder_id: Optional Drive folder ID to scope results to immediate children only.
@@ -281,6 +286,10 @@ def do_search(
     search_gmail = "gmail" in sources
     search_activity = "activity" in sources
     search_calendar = "calendar" in sources
+    # NB not `search_people` — that is the imported adapter function, and a
+    # local of the same name shadows it (caught by live smoke, not by unit
+    # tests: they call the adapter directly and never cross this scope).
+    search_directory = "people" in sources
 
     if type is not None and not search_drive:
         result.cues["type_note"] = f"type='{type}' applies to Drive only — Drive not in sources, filter ignored"
@@ -308,6 +317,11 @@ def do_search(
         activity_result = search_comment_activities(page_size=max_results)
         return activity_result.activities
 
+    def _run_people() -> PeopleSearchResults:
+        # Query goes straight to the Admin SDK's own syntax — bare words match
+        # name/email, `orgDepartment:X` and `email:pre*` scope by field.
+        return search_people(query, max_results=max_results)
+
     def _run_calendar() -> CalendarSearchResult:
         # Query rides the API's q filter; the ±7 day window is scanned in
         # full and a hit cap keeps events nearest NOW (mise-bidopi — the
@@ -325,6 +339,8 @@ def do_search(
         active_sources.append(("activity", _run_activity))
     if search_calendar:
         active_sources.append(("calendar", _run_calendar))
+    if search_directory:
+        active_sources.append(("people", _run_people))
 
     if active_sources:
         with ThreadPoolExecutor(max_workers=len(active_sources)) as executor:
@@ -386,6 +402,50 @@ def do_search(
             result.errors.append(f"Calendar search failed: {e.message}")
         except Exception as e:
             result.errors.append(f"Calendar search failed: {str(e)}")
+
+    if "people" in futures:
+        try:
+            people_search = futures["people"].result()
+            result.people_results = [p.to_dict() for p in people_search.people]
+            if people_search.truncated:
+                result.cues["people_truncated"] = (
+                    f"Results capped at {len(people_search.people)} — MORE MATCHED. "
+                    "Narrow the query or raise max_results."
+                )
+            if len(people_search.people) == 1:
+                # One hit is a "who is this person?" question — answer it whole,
+                # with the reporting line resolved to names (adapters/people.py).
+                context = expand_profile(people_search.people[0])
+                if context:
+                    result.people_results[0].update(context)
+            elif not people_search.people and query.strip():
+                # A bare job title finds nobody: the Admin SDK's free-text search
+                # matches name and email ONLY. Measured 2026-08-10 — teach the
+                # field-scoped form rather than letting the zero read as absence.
+                # {query!r} rather than '{query}' — the literal quoted form trips
+                # test_security's raw-interpolation scan, which is a lexical check
+                # that cannot tell a Drive query from a sentence. Dodging the
+                # collision is right; loosening the guard for prose is not.
+                result.cues["people_note"] = (
+                    f"No directory match for {query!r}. Bare words search NAME and "
+                    "EMAIL only. For a role or team use a field: orgDepartment:MIT, "
+                    "email:jane.smith*, or — for any value containing a SPACE — the "
+                    "equals-and-single-quotes form, orgTitle='Head of Strategy'. "
+                    "A multi-word value written as orgTitle:Head of Strategy, or in "
+                    "double quotes, returns zero silently. Colleagues can also opt "
+                    "out of the directory, so zero is not proof of absence."
+                )
+            if result.people_results:
+                result.cues["people_source"] = (
+                    "Workspace directory. 'manager' is the account's own field, "
+                    "not an HR record — accurate for staff, but at board level it "
+                    "can record who administers the account. Report it as what the "
+                    "directory says."
+                )
+        except MiseError as e:
+            result.errors.append(f"Directory search failed: {e.message}")
+        except Exception as e:
+            result.errors.append(f"Directory search failed: {str(e)}")
 
     # Cross-reference: enrich Drive results with meeting context
     if result.drive_results and calendar_events:

@@ -81,7 +81,7 @@ _LEGACY_SIZE_BASELINE = {
     "tools/create.py": 922,  # tightened 2026-08-09 thrice: find_placeholder_indices moved to doc_chips.py, de-aliased imports (mise-rafote), csv_text_to_values moved to extractors/sheets.py (mise-kacani)
     "extractors/docs.py": 892,
     "tools/fetch/drive.py": 805,  # tightened 2026-08-08: _write_per_tab_csvs moved to common.py (mise-dogape)
-    "resources/docs.py": 821,  # +3 for do(respond) docs (mise-gepiwe) — this module's mass IS resource text, so its ceiling tracks op additions; splitting a resource string across siblings would be worse. Raise only with an op.
+    "resources/docs.py": 851,  # +30 for the 'people' search source (mise-mahiho); the last 6 are the multi-word query trap, added after a live probe showed `orgTitle:Head of Strategy` returns zero SILENTLY — a caller who doesn't know that reads the zero as "nobody has that job" — this module's mass IS resource text, so its ceiling tracks CAPABILITY additions; splitting a resource string across siblings would be worse. Raise only with a new op or search source, and only by what the new capability's grammar actually needs. The people entry earns its lines on query grammar (Admin SDK syntax, not Drive's) plus two honesty notes the caller cannot infer.
     "tools/fetch/gmail.py": 701,  # +1 (2026-08-07): the gmail_ids split turned one import into two; +6 (2026-08-09): web_link emission, logic lives in gmail_ids.thread_web_link_or_warn (mise-hetaba)
     "adapters/http_client.py": 683,
     "extractors/slides.py": 600,

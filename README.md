@@ -119,7 +119,7 @@ uv run python -m auth --code URL_OR_CODE # Exchange the code from the headless f
 
 With `--auto`, grant permissions in the browser and you're done.
 
-**Scopes requested:** Drive (read+write), Gmail (read+write), Contacts (read), Docs/Sheets/Slides (read+write), Drive Activity, Drive Labels, Calendar. See [`oauth_config.py`](oauth_config.py) for the full list and rationale.
+**Scopes requested:** Drive (read+write), Gmail (read+write), Docs/Sheets/Slides (read+write), Drive Activity, Drive Labels, Calendar, Forms, and the staff directory (read). The directory scope is `admin.directory.user.readonly`, which reads more alarming than it is — mise only ever calls the Directory API's `domain_public` view, documented by Google as available to any user on the domain, and never the administrator view. See [`oauth_config.py`](oauth_config.py) for the full list and rationale.
 
 <details>
 <summary>Bringing your own GCP project (advanced)</summary>

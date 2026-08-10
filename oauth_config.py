@@ -20,7 +20,13 @@ SCOPES = [
     # --- Core: Search + Fetch + Edit + Gmail Write ---
     'https://www.googleapis.com/auth/drive',  # Full access: read, write, create (superset of drive.readonly + drive.file)
     'https://www.googleapis.com/auth/gmail.modify',  # Superset of readonly: drafts, send, labels, archive
-    'https://www.googleapis.com/auth/contacts.readonly',
+    # NB contacts.readonly was requested here from 2026-01-23 to 2026-08-10 and
+    # NEVER used by a line of code. Removed with mise-mahiho, and worth recording
+    # why it mattered: it reads like directory access and is not — it covers the
+    # user's OWN address book. Its presence in this list (and as "Contacts (read)"
+    # in the README) made the staff directory look like solved ground for six
+    # months, which is a large part of why nobody probed the real gap. An unused
+    # scope is not merely dead weight; it is a false claim about capability.
 
     # --- Create (need write access) ---
     'https://www.googleapis.com/auth/documents',
@@ -52,6 +58,22 @@ SCOPES = [
 
     # Forms: Read and create form structure (questions, sections, options)
     'https://www.googleapis.com/auth/forms.body',
+
+    # Directory: colleagues' public profiles — title, department, location and
+    # the reporting line — so Claude can tell who someone is (mise-mahiho).
+    #
+    # NOT an admin capability, despite the name. Google documents users.get and
+    # users.list with viewType=domain_public as available to ANY domain user
+    # ("Retrieve a user as a non-administrator"), and adapters/people.py passes
+    # domain_public on every request. Measured on ITV 2026-08-10: those calls
+    # return 200 on a plain user token while the same call WITHOUT
+    # domain_public returns 403 "Not Authorized" — that differing error is the
+    # control proving the token holds no administrator rights.
+    #
+    # The lighter-sounding alternative, People API directory.readonly, was
+    # measured and rejected: its prefix query matches names and emails only
+    # (a job title returns zero) and it has no reverse lookup.
+    'https://www.googleapis.com/auth/admin.directory.user.readonly',
 ]
 
 # OAuth server port (localhost callback receiver)

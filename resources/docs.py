@@ -143,6 +143,36 @@ The JSON file contains the full results:
 }
 ```
 
+## sources=['people'] — the staff directory
+
+"Who is this colleague and who do they report to?" Read-only, and non-admin
+despite the scope name — every request uses the Directory API's
+`domain_public` view, available to any user on the domain.
+
+Query grammar is the Admin SDK's, NOT Drive's:
+
+| Query | Matches |
+|---|---|
+| `Neil Charles` | name and email — bare words do NOT match job titles |
+| `email:jane.smith*` | address prefix |
+| `orgDepartment:MIT` | everyone in a department (single-word value) |
+| `orgTitle='Head of Strategy'` | any value with a SPACE — `=` and SINGLE quotes |
+
+**The multi-word trap:** `orgTitle:Head of Strategy` and
+`orgTitle:"Head of Strategy"` both return **zero with no error**, which reads
+exactly like nobody holding that job. Use `=` and single quotes for anything
+containing a space.
+
+Results carry email, name, title, department, organization, location, manager.
+A **single** hit is expanded — manager resolved to a name, direct reports
+listed — at two extra calls; a multi-hit search returns flat profiles, so
+narrow and look again.
+
+Two honesty notes, also cued in responses: `manager` is the Workspace *account*
+field rather than an HR record (at board level it can record who administers
+the account), and colleagues can opt out of listing, so an empty result is not
+proof a person does not exist.
+
 ## Notes
 
 - Drive search uses fullText contains (searches content, not just filename)
