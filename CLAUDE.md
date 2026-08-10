@@ -269,17 +269,17 @@ shape of what actually crosses the wire — and the live `mcp__*` tools can't re
 tree (see the Gotchas row above). This spawns `server.py` from the repo and speaks real MCP to
 it, closing that gap. Add a case when you change fetch's failure surface.
 
-**mypy currently emits 20 errors on a clean tree** — 14 in `adapters/http_client.py`, 2 in
-`adapters/conversion.py`, 2 in `extractors/image.py`, 2 in `adapters/people.py` — so the command
-cannot report a *new* one without hand-counting. Group by file and compare against the files you
-touched. Tracked as `mise-bunuvu`, and this paragraph is that item's own best evidence: it said
-**16** across two files when written on 2026-08-03, measured **18** across three the next day
-(with `extractors/image.py` untouched since 2026-03-02), and **20** across four on 2026-08-10 —
-the two `people.py` errors shipped with the 1.49.0–1.51.x releases and sat uncounted here for a
-day. The two `image.py` errors are **stubs-only,
-not a runtime bug** — `Image.LANCZOS` still resolves to `1` on Pillow 12.3.0 and the path is
-test-covered; a tightened Pillow stub is the likely cause of the count moving, but that is a
-hypothesis and nobody has proved it. Verified independent of `--all-extras`: 18 either way.
+**mypy's standing errors are baselined and ratcheted — the number lives in
+`tests/unit/test_mypy_baseline.py`, not here** (mise-bunuvu, closed 2026-08-10). The suite runs
+the documented command and compares per-(file, error-code) counts against `MYPY_BASELINE`: a NEW
+error fails CI naming the verbatim mypy line; a FIXED error fails until the entry is lowered, so
+banked debt cannot grow back. Raising an entry is a deliberate act to argue in the commit message.
+The bare mypy command still prints the standing errors (~20 as of 2026-08-10) — read them through
+the baseline, never by hand-count. This paragraph used to carry the count itself and was the
+item's best evidence against that: 16 when written (2026-08-03), 18 the next day, 20 within the
+week — twice moving with the named files untouched (stub churn, unproven) and twice via shipped
+code that sat uncounted for a day. Per-error reasons, including the `extractors/image.py`
+stubs-only pair, are enrolled beside their numbers in the baseline.
 
 ### Build flavours (mise-hibere, 0.7.9)
 
