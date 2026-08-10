@@ -83,6 +83,11 @@ packages = ["extractors", "adapters", "tools", "workspace"]
 # imports adapters/extractors, whose closure reaches these root modules).
 "cues_util.py" = "cues_util.py"
 "filters.py" = "filters.py"
+# filters.py's data file — without it, wheel consumers die on the first
+# non-empty attachment list (mise-ditoja; glaneur.service, nightly from
+# 2026-08-08). get_filter_config() also carries a built-in fallback now,
+# but the shipped file is what keeps the JSON the single tunable.
+"config/attachment_filters.json" = "config/attachment_filters.json"
 "html_convert.py" = "html_convert.py"
 "token_store.py" = "token_store.py"
 "validation.py" = "validation.py"

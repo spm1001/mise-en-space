@@ -7,10 +7,49 @@ generic filenames from Claude.
 """
 
 import json
+import logging
 import re
 from pathlib import Path
 from functools import lru_cache
 from typing import Any
+
+_CONFIG_PATH = Path(__file__).parent / "config" / "attachment_filters.json"
+
+# Mirrors config/attachment_filters.json, and a test pins the two equal.
+# filters.py is force-included into the wheel; when the JSON is absent from
+# the installed layout (the packaging slip that killed glaneur.service
+# nightly from 2026-08-08, mise-ditoja), filtering degrades to these defaults
+# instead of taking down the caller's whole search with FileNotFoundError.
+# The file wins when present, so the JSON stays the single tunable — and only
+# a MISSING file falls back; malformed JSON still raises, because that is a
+# config error someone made, not a packaging slip.
+_DEFAULT_FILTER_CONFIG: dict[str, Any] = {
+    "version": 1,
+    "description": (
+        "Built-in fallback mirror of config/attachment_filters.json. "
+        "Calendar invites, vcards, small images, and generic filenames "
+        "are hidden from Claude."
+    ),
+    "image_size_threshold_bytes": 204800,
+    "excluded_mime_types": [
+        "text/calendar",
+        "application/ics",
+        "text/vcard",
+        "text/x-vcard",
+        "image/gif",
+    ],
+    "excluded_filename_patterns": [
+        "^image$",
+        "^image\\.(png|jpg|jpeg|gif|webp)$",
+        "^image\\d+\\.(png|jpg|jpeg|gif)$",
+        "^photo\\.(png|jpg|jpeg|gif|webp)$",
+        "^attachment\\.(pdf|docx?|xlsx?)$",
+        "^document\\.(pdf|docx?)$",
+        "^file\\.(pdf|docx?|xlsx?)$",
+        "^untitled",
+        "^screenshot\\.(png|jpg)$",
+    ],
+}
 
 
 @lru_cache(maxsize=1)
@@ -19,9 +58,18 @@ def get_filter_config() -> dict[str, Any]:
     Load filter configuration from JSON file.
 
     Cached for performance - config doesn't change during runtime.
+    Degrades to _DEFAULT_FILTER_CONFIG when the file is absent (a wheel
+    install missing the data file), never on malformed content.
     """
-    config_path = Path(__file__).parent / "config" / "attachment_filters.json"
-    config: dict[str, Any] = json.loads(config_path.read_text())
+    try:
+        config: dict[str, Any] = json.loads(_CONFIG_PATH.read_text())
+    except FileNotFoundError:
+        logging.getLogger(__name__).warning(
+            "attachment_filters.json not found at %s — using built-in "
+            "default filter config",
+            _CONFIG_PATH,
+        )
+        return dict(_DEFAULT_FILTER_CONFIG)
     return config
 
 

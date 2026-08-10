@@ -2,8 +2,18 @@
 Tests for attachment filtering logic.
 """
 
+import json
+import shutil
+import subprocess
+import zipfile
+from pathlib import Path
+
 import pytest
+
+import filters
 from filters import is_trivial_attachment, filter_attachments, get_filter_config
+
+_REPO = Path(__file__).parents[2]
 
 
 class TestGetFilterConfig:
@@ -16,6 +26,81 @@ class TestGetFilterConfig:
         assert "excluded_mime_types" in config
         assert "excluded_filename_patterns" in config
         assert "image_size_threshold_bytes" in config
+
+    def test_default_mirrors_shipped_json(self):
+        """The built-in fallback stays in sync with the shipped JSON.
+
+        Two copies of one config is a drift hazard; this pins them equal on
+        every behavioural key. `description` is exempt — the fallback's
+        deliberately names itself as the fallback.
+        """
+        shipped = json.loads(
+            (_REPO / "config" / "attachment_filters.json").read_text()
+        )
+        behavioural = lambda d: {k: v for k, v in d.items() if k != "description"}
+        assert behavioural(filters._DEFAULT_FILTER_CONFIG) == behavioural(shipped)
+
+    def test_missing_file_degrades_to_defaults(self, monkeypatch, tmp_path):
+        """A wheel install missing the data file gets defaults, not a crash.
+
+        The mise-ditoja mechanism: filters.py rides the wheel force-include,
+        the JSON didn't, and every filter_attachments() call on a non-empty
+        list died with FileNotFoundError (glaneur.service, nightly from
+        2026-08-08). Only FileNotFoundError falls back — malformed JSON must
+        still raise, so a bad hand-edit stays loud.
+        """
+        monkeypatch.setattr(
+            filters, "_CONFIG_PATH", tmp_path / "nowhere" / "gone.json"
+        )
+        get_filter_config.cache_clear()
+        filters._get_compiled_patterns.cache_clear()
+        try:
+            config = get_filter_config()
+            assert config["excluded_mime_types"]  # real defaults, not {}
+            # The caller-facing path the incident actually killed:
+            survivors = filter_attachments(
+                [{"filename": "contract.pdf", "mime_type": "application/pdf",
+                  "size": 900_000}]
+            )
+            assert len(survivors) == 1
+        finally:
+            get_filter_config.cache_clear()
+            filters._get_compiled_patterns.cache_clear()
+
+    def test_malformed_json_still_raises(self, monkeypatch, tmp_path):
+        """The fallback covers packaging slips only, never config errors."""
+        bad = tmp_path / "attachment_filters.json"
+        bad.write_text("{not json")
+        monkeypatch.setattr(filters, "_CONFIG_PATH", bad)
+        get_filter_config.cache_clear()
+        try:
+            with pytest.raises(json.JSONDecodeError):
+                get_filter_config()
+        finally:
+            get_filter_config.cache_clear()
+
+    @pytest.mark.skipif(shutil.which("uv") is None, reason="needs uv to build")
+    def test_wheel_carries_the_config(self, tmp_path):
+        """Assert on the artefact: the built wheel ships the data file.
+
+        The pyproject force-include entry is the config; the wheel is the
+        thing consumers install. ~0.5s build, measured 2026-08-10.
+        """
+        subprocess.run(
+            ["uv", "build", "--wheel", "-o", str(tmp_path)],
+            cwd=_REPO,
+            check=True,
+            capture_output=True,
+            timeout=120,
+        )
+        (wheel,) = tmp_path.glob("*.whl")
+        names = zipfile.ZipFile(wheel).namelist()
+        assert "config/attachment_filters.json" in names, (
+            "wheel is missing config/attachment_filters.json — the "
+            "force-include entry in pyproject.toml has been lost "
+            "(mise-ditoja: this is what killed glaneur.service nightly)"
+        )
+        assert "filters.py" in names
 
 
 class TestIsTrivialAttachment:

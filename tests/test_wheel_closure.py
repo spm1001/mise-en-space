@@ -21,7 +21,14 @@ def _wheel_config() -> tuple[set[str], set[str]]:
     cfg = tomllib.loads((ROOT / "pyproject.toml").read_text())
     wheel = cfg["tool"]["hatch"]["build"]["targets"]["wheel"]
     packages = {p.rstrip("/") for p in wheel.get("packages", [])}
-    forced = {Path(k).stem for k in wheel.get("force-include", {})}
+    # Only .py entries are importable root modules; force-include also
+    # carries data files (config/attachment_filters.json, mise-ditoja),
+    # which have no import closure to walk.
+    forced = {
+        Path(k).stem
+        for k in wheel.get("force-include", {})
+        if Path(k).suffix == ".py"
+    }
     return packages, forced
 
 
