@@ -368,6 +368,20 @@ def _fetch_profile(address: str) -> dict[str, Any] | None:
     return value
 
 
+def own_profile() -> dict[str, Any] | None:
+    """The user's own directory profile, cached like any other lookup.
+
+    Exists for relation arithmetic — a thread fetch names 'X is Y's manager'
+    with the user in the set (mise-nelizu) — NEVER for attaching under a
+    `people` key: placing the user to themselves is noise (see profiles_for).
+    One directory call per session, then the cache answers.
+    """
+    me = (current_user_email() or "").lower()
+    if not me or "@" not in me:
+        return None
+    return _fetch_profile(me)
+
+
 def profiles_for(header_values: Iterable[str | None]) -> dict[str, dict[str, Any]]:
     """Directory profiles for the own-domain addresses in these headers.
 

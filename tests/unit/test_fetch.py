@@ -3351,3 +3351,207 @@ class TestGmailUrlContextCues:
                    return_value=self._fetch_result()):
             result = do_fetch("19fdaeed11138ef2")
         assert "gmail_url_context" not in result.cues
+
+
+class TestParticipantPlacement:
+    """mise-nelizu: a Gmail FETCH places its participants, not just search.
+
+    The machinery is fajabe's — same adapter, same process-lifetime cache, so
+    a thread just found by search re-pays nothing for addresses the search
+    already asked about. What fetch adds is the SET: relations across every
+    participant (the user's own cached profile joins the arithmetic, so 'this
+    thread includes your manager' arrives as a named fact), and an honest-
+    absence note for whoever has no directory entry.
+    """
+
+    DIRECTORY = {
+        "kate.waters@itv.com": ("Kate Waters", None),
+        "rupert.coghlan@itv.com": ("Rupert Coghlan", "kate.waters@itv.com"),
+        "sameer.modha@itv.com": ("Sameer Modha", "kate.waters@itv.com"),
+    }
+
+    @pytest.fixture(autouse=True)
+    def _clean_cache(self):
+        from adapters.people import clear_profile_cache
+
+        clear_profile_cache()
+        yield
+        clear_profile_cache()
+
+    def _fake_get_person(self, calls: list | None = None):
+        from models import DirectoryPerson
+
+        def fake(address):
+            if calls is not None:
+                calls.append(address)
+            entry = self.DIRECTORY.get(address)
+            if entry is None:
+                raise MiseError(ErrorKind.NOT_FOUND, "no profile")
+            name, mgr = entry
+            return DirectoryPerson(
+                email=address, full_name=name, title="Role", manager_email=mgr
+            )
+
+        return fake
+
+    def _thread(self):
+        msg = EmailMessage(
+            message_id="m1",
+            from_address="Kate Waters <kate.waters@itv.com>",
+            to_addresses=["Sameer Modha <sameer.modha@itv.com>"],
+            cc_addresses=[
+                "Rupert Coghlan <rupert.coghlan@itv.com>", "ext@gmail.com",
+            ],
+            body_text="",
+        )
+        return GmailThreadData(thread_id="t1", subject="s", messages=[msg])
+
+    def _placed(self, calls: list | None = None):
+        import adapters.people as P
+        import tools.fetch.gmail_participants as GP
+
+        me = "sameer.modha@itv.com"
+        with patch.object(P, "get_person", self._fake_get_person(calls)), \
+             patch.object(P, "current_user_email", return_value=me), \
+             patch.object(GP, "current_user_email", return_value=me):
+            return GP.participants_with_placement(self._thread())
+
+    def test_colleagues_are_placed_and_the_user_is_not(self):
+        participants, extras = self._placed()
+        assert set(extras["people"]) == {
+            "kate.waters@itv.com", "rupert.coghlan@itv.com",
+        }, "the user must never be placed to themselves"
+        # The display list is unchanged by placement.
+        assert participants[0] == "Kate Waters <kate.waters@itv.com>"
+
+    def test_relations_cover_the_whole_set_including_the_user(self):
+        _, extras = self._placed()
+        rels = extras["people_relations"]
+        assert "Kate Waters is Rupert Coghlan's manager" in rels
+        assert "Kate Waters is Sameer Modha's manager" in rels, (
+            "the user's own profile joins the relation arithmetic — a thread "
+            "with their boss on it must say so by name"
+        )
+
+    def test_external_gap_is_an_honest_absence_note(self):
+        _, extras = self._placed()
+        assert extras["people_note"].startswith("2 of 3"), (
+            "kate + rupert placed, ext@gmail.com not, user excluded from the count"
+        )
+        assert "not a failed lookup" in extras["people_note"]
+
+    def test_nothing_places_nothing_added(self):
+        import adapters.people as P
+        import tools.fetch.gmail_participants as GP
+
+        msg = EmailMessage(
+            message_id="m1", from_address="a@gmail.com",
+            to_addresses=["b@outlook.com"], body_text="",
+        )
+        thread = GmailThreadData(thread_id="t1", subject="s", messages=[msg])
+        me = "sameer.modha@itv.com"
+        with patch.object(P, "get_person", self._fake_get_person()), \
+             patch.object(P, "current_user_email", return_value=me), \
+             patch.object(GP, "current_user_email", return_value=me):
+            participants, extras = GP.participants_with_placement(thread)
+        assert extras == {}, "an all-external thread carries no people keys at all"
+        assert participants == ["a@gmail.com", "b@outlook.com"]
+
+    def test_search_warmed_addresses_are_not_re_asked(self):
+        """The done criterion: fetch after search re-pays nothing for senders.
+
+        Search warms the cache for the addresses it placed (the senders); a
+        fetch of the same thread may look up genuinely NEW participants
+        (To/Cc, the user's own profile) but must not re-ask about anyone the
+        search already resolved — and a second fetch must add no calls at all.
+        """
+        import adapters.people as P
+
+        calls: list = []
+        with patch.object(P, "get_person", self._fake_get_person(calls)), \
+             patch.object(P, "current_user_email",
+                          return_value="sameer.modha@itv.com"):
+            P.profiles_for(["Kate Waters <kate.waters@itv.com>"])  # search-shaped
+        warmed = len(calls)
+        assert warmed == 1
+
+        self._placed(calls)
+        assert calls.count("kate.waters@itv.com") == 1, (
+            "fetch re-asked the directory about an address search had already "
+            "resolved — the shared cache is not holding"
+        )
+        after_first_fetch = len(calls)
+
+        self._placed(calls)
+        assert len(calls) == after_first_fetch, (
+            "a repeat fetch made directory calls — placement is no longer "
+            "cache-cheap"
+        )
+
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
+    @patch("tools.fetch.gmail.get_deposit_folder", return_value="/tmp/test-deposit")
+    @patch("tools.fetch.gmail.write_content")
+    @patch("tools.fetch.gmail.write_manifest")
+    @patch("tools.fetch.gmail.extract_thread_content", return_value="Thread content")
+    def test_placement_rides_fetch_gmail_cues(
+        self, mock_extract, mock_manifest, mock_write, mock_folder,
+        mock_lookup, mock_fetch,
+    ):
+        """Enter through the CALLER: the cues a real fetch returns carry the
+        placement (the mahiho lesson — adapter-level green proves nothing
+        about the wiring above it)."""
+        import adapters.people as P
+        import tools.fetch.gmail_participants as GP
+
+        mock_fetch.return_value = self._thread()
+        me = "sameer.modha@itv.com"
+        with patch.object(P, "get_person", self._fake_get_person()), \
+             patch.object(P, "current_user_email", return_value=me), \
+             patch.object(GP, "current_user_email", return_value=me):
+            result = fetch_gmail("t1")
+
+        assert set(result.cues["people"]) == {
+            "kate.waters@itv.com", "rupert.coghlan@itv.com",
+        }
+        assert "Kate Waters is Rupert Coghlan's manager" in \
+            result.cues["people_relations"]
+        # And the pre-existing participants cue is intact beside it.
+        assert "Kate Waters <kate.waters@itv.com>" in result.cues["participants"]
+
+
+class TestRelationsAmong:
+    """Set-wise reporting lines — pure arithmetic, no calls, no quadratic noise."""
+
+    KATE = {"email": "kate@itv.com", "name": "Kate Waters"}
+    RUPERT = {"email": "rupert@itv.com", "name": "Rupert Coghlan",
+              "manager": "kate@itv.com"}
+    SAMEER = {"email": "sameer@itv.com", "name": "Sameer Modha",
+              "manager": "kate@itv.com"}
+    NEIL = {"email": "neil@itv.com", "name": "Neil Charles",
+            "manager": "kate@itv.com"}
+
+    def test_manager_in_set_yields_direct_lines_and_no_group_line(self):
+        from tools.fetch.gmail_participants import relations_among
+
+        rels = relations_among([self.KATE, self.RUPERT, self.SAMEER])
+        assert "Kate Waters is Rupert Coghlan's manager" in rels
+        assert "Kate Waters is Sameer Modha's manager" in rels
+        assert not any("same manager" in r for r in rels), (
+            "when the shared manager is IN the set, the direct lines already "
+            "say it — a group line on top is noise"
+        )
+
+    def test_shared_manager_outside_the_set_groups_to_one_line(self):
+        from tools.fetch.gmail_participants import relations_among
+
+        rels = relations_among([self.RUPERT, self.SAMEER, self.NEIL])
+        assert rels == [
+            "Rupert Coghlan, Sameer Modha and Neil Charles report to the "
+            "same manager"
+        ], "three teammates are ONE fact, not three pairwise lines"
+
+    def test_no_management_structure_means_no_lines(self):
+        from tools.fetch.gmail_participants import relations_among
+
+        assert relations_among([self.KATE, {"email": "z@itv.com", "name": "Z"}]) == []

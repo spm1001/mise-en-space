@@ -27,7 +27,7 @@ from .gmail_attachments import (
     classify_attachment,
 )
 from .gmail_exfil import _match_exfil_for_message
-from .gmail_participants import _extract_participants
+from .gmail_participants import participants_with_placement
 
 
 def _enrich_invite_state(messages: list[Any], warnings: list[str]) -> InviteState | None:
@@ -329,7 +329,7 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
     if all_label_ids:
         metadata["labels"] = sorted(all_label_ids)
 
-    participants = _extract_participants(thread_data)
+    participants, people_cues = participants_with_placement(thread_data)
 
     # Date range
     all_warnings = (thread_data.warnings or []) + extraction_warnings
@@ -349,7 +349,7 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
         participants=participants,
         has_attachments=thread_data.has_attachments,
         date_range=date_range,
-    )
+    ) | people_cues
 
     # Add label-derived cues
     if unread_count:
