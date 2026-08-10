@@ -502,7 +502,7 @@ class TestSenderRender:
                 },
             },
         }
-        assert _describe_sender(row) == "Meghan Baddely — Insight Manager, Commercial"
+        assert _describe_sender(row) == "Meghan Baddely — Insight Manager"
 
     def test_falls_back_to_the_originator_when_the_last_sender_is_external(self) -> None:
         from models import _describe_sender
@@ -558,3 +558,37 @@ class TestRelationIsWiredNotJustBuilt:
         ):
             P.attach_profiles(rows)
         assert "people_relation" not in rows[0]
+
+
+class TestGroupAddressesAreRoutineNotExceptional:
+    """mit-group@itv.com is in a large share of real threads (measured 2026-08-10)."""
+
+    def test_400_userKey_reads_as_a_group_not_a_mystery(self) -> None:
+        from adapters import people as P
+
+        def boom(*a, **k):
+            raise httpx.HTTPStatusError(
+                "bad", request=MagicMock(),
+                response=httpx.Response(400, text='{"error":{"message":"Type not supported: userKey"}}'),
+            )
+
+        with patch("adapters.people.get_sync_client", return_value=_client(boom)):
+            with pytest.raises(MiseError) as ei:
+                P.get_person("mit-group@itv.com")
+        assert ei.value.kind == ErrorKind.NOT_FOUND
+        assert "group or alias" in ei.value.message
+        assert ei.value.details.get("is_group") is True
+
+    def test_an_unrelated_400_is_not_mislabelled_as_a_group(self) -> None:
+        from adapters import people as P
+
+        def boom(*a, **k):
+            raise httpx.HTTPStatusError(
+                "bad", request=MagicMock(),
+                response=httpx.Response(400, text='{"error":{"message":"Invalid Input"}}'),
+            )
+
+        with patch("adapters.people.get_sync_client", return_value=_client(boom)):
+            with pytest.raises(MiseError) as ei:
+                P.get_person("whatever@itv.com")
+        assert ei.value.details.get("is_group") is None

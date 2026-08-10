@@ -584,14 +584,21 @@ def _describe_sender(row: dict[str, Any]) -> str | None:
         raw = row.get(key) or ""
         for addr, prof in people.items():
             if addr and addr in raw.lower():
-                bits = [b for b in (prof.get("title"), prof.get("department")) if b]
+                title = prof.get("title")
                 # A bare name adds nothing the address didn't already say —
                 # measured on a real inbox, this is how shared mailboxes and
                 # service accounts ("cortex data-access") present. Skip to the
                 # next candidate rather than render a line with no content.
-                if not bits:
+                if not title:
                     continue
-                return f"{prof.get('name')} — {', '.join(bits)}"
+                # Title ONLY, deliberately. The raw `department` is an HR string
+                # ("Client Strategy & Commercial Marketing") that repeats down a
+                # thirty-row list and buys little; Sameer's judgement, 2026-08-10,
+                # on seeing real output. The useful form is the coarse DIVISION
+                # ("Commercial"), which the directory does not hold — that needs
+                # a hand-built division map, and when one exists it belongs right
+                # here, appended to this line. Full department stays on the row.
+                return f"{prof.get('name')} — {title}"
     return None
 
 

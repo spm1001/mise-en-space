@@ -87,6 +87,19 @@ def _convert_error(e: httpx.HTTPStatusError, subject: str) -> MiseError:
     """Map the Directory API's HTTP taxonomy onto MiseError kinds."""
     status = e.response.status_code
     body = e.response.text[:300]
+    if status == 400 and "userKey" in body:
+        # A GROUP address, not a person — users.get answers "Type not supported:
+        # userKey". Expected rather than exceptional: team distribution lists
+        # (mit-group@itv.com) sit in a large share of real threads, so this is a
+        # routine outcome of placing senders and must read as one. Placing the
+        # group itself would need the Groups API and its own scope; not worth a
+        # re-consent until someone asks.
+        return MiseError(
+            ErrorKind.NOT_FOUND,
+            f"{subject} is a group or alias, not an individual — no personal "
+            "directory profile exists for it.",
+            details={"subject": subject, "http_status": 400, "is_group": True},
+        )
     if status == 404:
         return MiseError(
             ErrorKind.NOT_FOUND,
