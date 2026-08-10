@@ -592,3 +592,97 @@ class TestGroupAddressesAreRoutineNotExceptional:
             with pytest.raises(MiseError) as ei:
                 P.get_person("whatever@itv.com")
         assert ei.value.details.get("is_group") is None
+
+
+class TestOrgMap:
+    """org_map.json is hand-edited DATA — a typo must fail here, not silently.
+
+    The file has no code in it by design, which means nothing else validates
+    it. These tests are the whole safety net for a file a human will edit
+    between releases.
+    """
+
+    def test_the_shipped_map_is_valid_json_with_the_expected_shape(self) -> None:
+        import json
+        from pathlib import Path
+
+        raw = json.loads((Path(__file__).parents[2] / "org_map.json").read_text())
+        itv = raw["domains"]["itv.com"]
+        assert itv["departments"], "no exact department rows"
+        for pair in itv["patterns"]:
+            assert len(pair) == 2 and all(isinstance(x, str) for x in pair), (
+                f"pattern rows must be [match, division] string pairs — got {pair!r}"
+            )
+            assert pair[0] == pair[0].lower(), (
+                f"pattern {pair[0]!r} must be lowercase — matching lowercases the "
+                "department, so an uppercase pattern can never fire"
+            )
+
+    def test_exact_match_wins_over_pattern(self) -> None:
+        from adapters.people import division_for
+
+        # 'Strategy, Policy & Regulation' would hit no commercial pattern, but
+        # 'BE Studio' would hit the 'studios' pattern with a worse answer.
+        assert division_for("x@itv.com", "BE Studio") == "Studios (Bright Entertainment)"
+
+    def test_the_corporate_centre_is_NOT_commercial(self) -> None:
+        """The caution the whole file exists to encode.
+
+        'Strategy, Policy & Regulation' is the corporate centre. A keyword rule
+        files it under Commercial and misplaces exactly the senior people it
+        matters most to place correctly (Richard Pearce sits here).
+        """
+        from adapters.people import division_for
+
+        got = division_for("x@itv.com", "Strategy, Policy & Regulation")
+        assert got == "Corporate centre"
+        assert "Commercial" not in (got or "")
+
+    def test_an_unmapped_department_yields_nothing_rather_than_a_guess(self) -> None:
+        from adapters.people import division_for
+
+        assert division_for("x@itv.com", "Some Team Invented Yesterday") is None
+        assert division_for("x@itv.com", None) is None
+        assert division_for("", "Commercial Analysis") is None
+
+    def test_another_domain_finds_no_entry_so_the_file_is_inert_there(self) -> None:
+        """mise-home is built from this source and must not inherit ITV's map."""
+        from adapters.people import division_for
+
+        assert division_for("x@planetmodha.com", "Client Strategy & Commercial Marketing") is None
+
+    def test_a_missing_or_broken_map_costs_divisions_never_an_exception(self) -> None:
+        from pathlib import Path
+
+        from adapters import people as P
+
+        original = P._org_map
+        try:
+            P._org_map = None
+            with patch.object(P, "_ORG_MAP_FILE", Path("/nonexistent/org_map.json")):
+                assert division_for_safe(P) is None
+        finally:
+            P._org_map = original
+
+    def test_render_appends_the_division_when_there_is_one(self) -> None:
+        from models import _describe_sender
+
+        row = {
+            "last_sender": "M <m@itv.com>",
+            "people": {"m@itv.com": {"name": "M", "title": "Insight Manager",
+                                     "division": "Commercial"}},
+        }
+        assert _describe_sender(row) == "M — Insight Manager, Commercial"
+
+    def test_render_omits_the_division_when_unmapped(self) -> None:
+        from models import _describe_sender
+
+        row = {
+            "last_sender": "M <m@itv.com>",
+            "people": {"m@itv.com": {"name": "M", "title": "Insight Manager"}},
+        }
+        assert _describe_sender(row) == "M — Insight Manager"
+
+
+def division_for_safe(module):
+    return module.division_for("x@itv.com", "Client Strategy & Commercial Marketing")

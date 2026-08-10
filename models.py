@@ -598,7 +598,9 @@ def _describe_sender(row: dict[str, Any]) -> str | None:
                 # ("Commercial"), which the directory does not hold — that needs
                 # a hand-built division map, and when one exists it belongs right
                 # here, appended to this line. Full department stays on the row.
-                return f"{prof.get('name')} — {title}"
+                div = prof.get("division")
+                return f"{prof.get('name')} — {title}, {div}" if div else \
+                    f"{prof.get('name')} — {title}"
     return None
 
 
@@ -973,6 +975,9 @@ class DirectoryPerson:
     family_name: str | None = None
     title: str | None = None
     department: str | None = None
+    # Coarse division from org_map.json — "Commercial", not the raw HR string.
+    # None whenever the map has no confident answer; never a guess.
+    division: str | None = None
     organization: str | None = None
     location: str | None = None
     manager_email: str | None = None
@@ -985,6 +990,7 @@ class DirectoryPerson:
         for key, value in (
             ("title", self.title),
             ("department", self.department),
+            ("division", self.division),
             ("organization", self.organization),
             ("location", self.location),
             ("manager", self.manager_email),

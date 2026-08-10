@@ -1,0 +1,118 @@
+{
+  "_about": [
+    "Coarse DIVISION for a colleague, from the department string the directory gives us.",
+    "",
+    "WHY THIS FILE EXISTS. The Workspace directory has a `department` field and it is",
+    "nearly useless raw. Measured across the complete ITV directory 2026-08-10: 11,556",
+    "entries, 650 distinct department strings, and dirty with it — 'Post production'",
+    "(142 people) and 'Post Production' (127) are one team split by a capital P. What",
+    "actually places a sender is the coarse answer, Commercial or Studios or News, and",
+    "no API holds that. Sameer's line: 'knowing someone is in Commercial is often enough.'",
+    "",
+    "WHY IT IS HAND-WRITTEN. A rule set over the raw strings maps only ~66% of headcount.",
+    "The rest is house knowledge nobody derives: Potato is a Studios label, Quay Street is",
+    "where Coronation Street is made, 'Record to Report' is a Finance process not a team.",
+    "",
+    "WHY IT IS SMALL. You never place 11,556 people, only the ones who email you. A",
+    "250-thread sweep of a real mailbox found 106 distinct correspondents, 36 of them in",
+    "the directory at all, spanning THIRTEEN departments. This grows at the rate you meet",
+    "people — a few rows a month, not a curation project.",
+    "",
+    "MAINTENANCE. Hand-edited, and it rides a normal mise release like any other vendored",
+    "file. When an unfamiliar colleague's department is missing, add the row and publish.",
+    "It is deliberately data-only, with no code in it, so it can be reviewed or replaced",
+    "without reading Python.",
+    "",
+    "DOMAIN-KEYED ON PURPOSE. The mechanism is generic; only the data is tenant-specific.",
+    "The mise-home flavour is built from this same source and simply finds no entry for",
+    "its own domain, so this file is inert there rather than needing a build-time swap.",
+    "",
+    "NEVER GUESS. An unmapped department yields no division at all. A wrong division is",
+    "worse than none — it would misplace exactly the senior people it matters most to get",
+    "right (see the corporate-centre note below)."
+  ],
+
+  "domains": {
+    "itv.com": {
+      "_note": "Exact matches win over patterns. Seeded from Sameer's real correspondents.",
+
+      "departments": {
+        "Client Strategy & Commercial Marketing": "Commercial",
+        "Commercial Strategy & Trading": "Commercial",
+        "Commercial Analysis": "Commercial",
+        "Sales and Account Management": "Commercial",
+        "Commercial Partnerships and Sales": "Commercial",
+        "Business Development (Nations & Regions)": "Commercial (regional sales)",
+        "Insight and Innovation": "Commercial (insight)",
+        "ITV Insights Group": "Commercial (insight)",
+        "MIT": "Commercial (MIT — Sameer's own team)",
+
+        "Central Data": "Technology (data platform)",
+        "Group Data Technology": "Technology (data platform)",
+        "Viewer Technology Engineering": "Technology",
+        "Channel Services": "Technology (broadcast ops)",
+
+        "M&E Legal and Compliance": "Legal (Media & Entertainment)",
+        "M&E Finance": "Finance (Media & Entertainment)",
+        "Record to Report": "Finance",
+        "Third Party Payments": "Finance",
+
+        "BE Studio": "Studios (Bright Entertainment)",
+        "Potato": "Studios (label)",
+        "Quay Street": "Studios (Coronation Street)",
+        "Partner Label": "Studios",
+        "Multistory Media": "Studios",
+        "Lifted Entertainment": "Studios",
+        "Bright Entertainment": "Studios",
+
+        "UTV": "News & Regions (Northern Ireland)",
+        "ITN": "News (news provider)",
+        "Channel TV": "News & Regions (Channel Islands)",
+
+        "Strategy, Policy & Regulation": "Corporate centre"
+      },
+
+      "_patterns_note": [
+        "Ordered; first match wins, and only consulted when no exact match applies.",
+        "Substring, case-insensitive, plain text — NOT regular expressions, so this file",
+        "stays safe to hand-edit without knowing regex syntax."
+      ],
+      "patterns": [
+        ["emmerdale", "Studios (Emmerdale)"],
+        ["coronation street", "Studios (Coronation Street)"],
+        ["post produc", "Studios (post production)"],
+        ["itv studios", "Studios"],
+        ["studios", "Studios"],
+        ["production", "Studios"],
+        ["itv creative", "Studios (Creative)"],
+        ["news", "News & Regions"],
+        ["nations & regions", "News & Regions"],
+        ["commercial", "Commercial"],
+        ["sales", "Commercial"],
+        ["advertis", "Commercial"],
+        ["legal", "Legal"],
+        ["complian", "Legal"],
+        ["regulat", "Legal"],
+        ["financ", "Finance"],
+        ["procurement", "Finance"],
+        ["technolog", "Technology"],
+        ["engineer", "Technology"],
+        ["cyber", "Technology"],
+        ["people", "People"],
+        ["talent", "People"],
+        ["marketing", "Marketing"]
+      ],
+
+      "_cautions": [
+        "'Strategy, Policy & Regulation' is the CORPORATE CENTRE, not Commercial. A naive",
+        "keyword rule files it under Commercial and misplaces exactly the senior people",
+        "worth placing correctly — this is why it has an explicit row above the patterns.",
+        "1,236 of 11,556 directory entries carry NO department at all, so an absent",
+        "division says nothing about who someone is.",
+        "Two thirds of a real mailbox's correspondents are not in the directory at all —",
+        "external, or service accounts. This file cannot help with those and must not",
+        "pretend to."
+      ]
+    }
+  }
+}
