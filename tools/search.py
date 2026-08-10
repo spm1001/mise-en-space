@@ -14,7 +14,7 @@ from adapters.drive import search_files
 from adapters.gmail import _is_own_address, search_threads
 from adapters.activity import search_comment_activities
 from adapters.calendar import list_events
-from adapters.people import expand_profile, search_people
+from adapters.people import attach_profiles, expand_profile, search_people
 from models import (
     CalendarEvent,
     CalendarSearchResult,
@@ -371,6 +371,26 @@ def do_search(
                 result.cues["gmail_truncated"] = (
                     f"Results capped at {len(gmail_search.results)} — more exist. "
                     "Narrow the query or increase max_results to see all."
+                )
+            # Place the senders (mise-fajabe). Cached + parallel in the
+            # adapter, so a session's recurring correspondents cost one
+            # lookup each. Best-effort: never fails the search.
+            placed = attach_profiles(result.gmail_results)
+            if placed:
+                # Say WHICH set the count describes. It counts people across
+                # every fetched thread, while the preview renders a handful of
+                # rows and suppresses lines with nothing to add — so "6 placed"
+                # beside one visible line is correct and reads as a bug unless
+                # the cue draws the same shown-vs-fetched line the rest of
+                # search already draws (mise-werevi).
+                result.cues["people_context"] = (
+                    f"{placed} distinct sender(s) placed from the staff directory "
+                    f"across all {len(result.gmail_results)} threads — full "
+                    "profiles are on each row's `people` key in the deposit. The "
+                    "preview shows fewer, and omits a line for anyone whose entry "
+                    "carries no role (shared mailboxes, service accounts) and for "
+                    "you. An address with no entry is external or "
+                    "directory-opted-out — an honest absence, not a failed lookup."
                 )
         except MiseError as e:
             result.errors.append(f"Gmail search failed: {e.message}")

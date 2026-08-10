@@ -566,6 +566,35 @@ class FetchError:
         return result
 
 
+
+def _describe_sender(row: dict[str, Any]) -> str | None:
+    """One-line placement for a Gmail search row's live voice (mise-fajabe).
+
+    STARTING POINT, expected to be iterated: name — title, department. Sameer
+    said outright we'd find the right level by looking at it, so this is
+    deliberately the smallest useful render. Everything else (manager,
+    location, organization) is already on the row under `people`, so making it
+    richer or leaner is a change here and nowhere else.
+    """
+    people = row.get("people") or {}
+    if not people:
+        return None
+    # The last sender is who you would reply to; fall back to the originator.
+    for key in ("last_sender", "from"):
+        raw = row.get(key) or ""
+        for addr, prof in people.items():
+            if addr and addr in raw.lower():
+                bits = [b for b in (prof.get("title"), prof.get("department")) if b]
+                # A bare name adds nothing the address didn't already say —
+                # measured on a real inbox, this is how shared mailboxes and
+                # service accounts ("cortex data-access") present. Skip to the
+                # next candidate rather than render a line with no content.
+                if not bits:
+                    continue
+                return f"{prof.get('name')} — {', '.join(bits)}"
+    return None
+
+
 @dataclass
 class SearchResult:
     """Search result across sources."""
@@ -627,6 +656,13 @@ class SearchResult:
                 att_names = r.get("attachment_names")
                 if att_names:
                     item["attachment_names"] = att_names
+                # One line placing the live voice in the thread (mise-fajabe).
+                # The full profiles ride the deposit under `people`; this is
+                # the render, and the render is what we tune. Prefers the
+                # LAST sender — the person you would actually reply to.
+                who = _describe_sender(r)
+                if who:
+                    item["who"] = who
                 gmail_items.append(item)
             preview["gmail"] = gmail_items
         if self.activity_results:

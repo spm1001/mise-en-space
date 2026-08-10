@@ -31,11 +31,15 @@ users may opt out of directory listing. An empty result is therefore not proof
 a colleague does not exist.
 """
 
+from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
+from email.utils import getaddresses
 from typing import Any
 
 import httpx
 
 from adapters.http_client import get_sync_client
+from cues_util import current_user_email
 from models import DirectoryPerson, ErrorKind, MiseError, PeopleSearchResults
 from retry import with_retry
 
@@ -234,3 +238,154 @@ def expand_profile(person: DirectoryPerson) -> dict[str, Any]:
         context["direct_reports"] = [r.to_dict() for r in reports]
 
     return context
+
+
+# --- Placing the people in a mailbox (mise-fajabe) -------------------------
+#
+# Sameer's ask: "if there's an email from Meghan Baddely, to know what she
+# does and why she might be asking." That has to arrive at SEARCH time, not
+# fetch time — triage is "which of these thirty do I read?", and placement is
+# an input to that decision, so delivering it on fetch means paying the
+# expensive call on every thread just to learn who sent it.
+#
+# What makes that affordable is not the API being fast, it is that inbox
+# senders repeat relentlessly. A thirty-thread slice is ten to fifteen unique
+# addresses, and across a session the same colleagues recur constantly — so
+# one process-lifetime cache turns "a lookup per row" into "a lookup per
+# colleague, once". Negative results are cached too: an external sender that
+# doesn't resolve must not be re-queried on every subsequent search.
+
+_PROFILE_CACHE: dict[str, dict[str, Any] | None] = {}
+# Bounded so a long session sweeping a large mailbox cannot grow it without
+# limit. Far above any realistic correspondent count, so it is a backstop
+# rather than an eviction policy — hence the crude clear-all.
+_CACHE_MAX = 2000
+_ENRICH_WORKERS = 6
+
+
+def clear_profile_cache() -> None:
+    """Drop cached directory profiles (test isolation, and re-auth)."""
+    _PROFILE_CACHE.clear()
+
+
+def address_of(header_value: str | None) -> str | None:
+    """Bare lowercased address from a From/To-shaped header value."""
+    if not header_value:
+        return None
+    parsed = getaddresses([header_value.strip().rstrip(",")])
+    addr = parsed[0][1] if parsed and parsed[0][1] else None
+    return addr.lower() if addr else None
+
+
+def _own_domain() -> str | None:
+    me = current_user_email()
+    return me.rsplit("@", 1)[-1].lower() if me and "@" in me else None
+
+
+def _fetch_profile(address: str) -> dict[str, Any] | None:
+    """One cached lookup. None means 'asked, and there is no profile'."""
+    if address in _PROFILE_CACHE:
+        return _PROFILE_CACHE[address]
+    try:
+        person = get_person(address)
+        value: dict[str, Any] | None = person.to_dict()
+    except Exception:
+        # Best-effort by design: enrichment decorates a search that has
+        # already succeeded, so a directory hiccup must never fail it. Cached
+        # as a negative so the same dead address is not retried all session.
+        value = None
+    if len(_PROFILE_CACHE) < _CACHE_MAX:
+        _PROFILE_CACHE[address] = value
+    return value
+
+
+def profiles_for(header_values: Iterable[str | None]) -> dict[str, dict[str, Any]]:
+    """Directory profiles for the own-domain addresses in these headers.
+
+    Deduped, cached and fetched in parallel. Returns only what resolved, keyed
+    by lowercased address — an absent key means "not in the directory", which
+    is the honest answer for an external sender and must not be rendered as a
+    failed lookup.
+    """
+    domain = _own_domain()
+    if not domain:
+        return {}
+
+    # Never place the user to themselves. Measured on a real inbox: without
+    # this, a calendar invite Sameer had sent rendered as "Sameer Modha —
+    # Client Strategy Data & Effectiveness Lead", which is a wasted lookup and
+    # a wasted line. Excluding here rather than in the render also means the
+    # fallback to the thread's ORIGINATOR fires, so a thread he replied to
+    # last still places the colleague who started it.
+    me = (current_user_email() or "").lower()
+
+    wanted = {
+        addr
+        for addr in (address_of(v) for v in header_values)
+        if addr and addr.endswith(f"@{domain}") and addr != me
+    }
+    if not wanted:
+        return {}
+
+    uncached = [a for a in wanted if a not in _PROFILE_CACHE]
+    if uncached:
+        with ThreadPoolExecutor(max_workers=min(_ENRICH_WORKERS, len(uncached))) as ex:
+            list(ex.map(_fetch_profile, uncached))
+
+    return {a: p for a in wanted if (p := _fetch_profile(a)) is not None}
+
+
+def attach_profiles(rows: list[dict[str, Any]]) -> int:
+    """Attach directory profiles to Gmail search rows, in place.
+
+    Takes plain dicts rather than a SearchResult so this stays an adapter —
+    it must not know the tools layer's types. Returns how many distinct
+    people were placed, which is what the caller turns into a cue.
+
+    Deliberately generous with what it ATTACHES and silent about what is
+    SHOWN: the whole profile rides the deposit under `people`, and the render
+    is one line built in models.py. Tuning how much a caller sees is then a
+    render change, never a refetch — which matters because the right level of
+    detail here is a question only looking at real output can answer.
+    """
+    if not rows:
+        return 0
+    people = profiles_for([r.get(k) for r in rows for k in ("from", "last_sender")])
+    if not people:
+        return 0
+    for row in rows:
+        found = {}
+        for key in ("from", "last_sender"):
+            addr = address_of(row.get(key))
+            if addr and addr in people:
+                found[addr] = people[addr]
+        if found:
+            row["people"] = found
+            # Two placed people on one row is the "…and her boss" case. Pure
+            # arithmetic over profiles already in hand — no extra call — so
+            # there is no reason to withhold it.
+            if len(found) > 1:
+                pair = list(found.values())
+                rel = relation_between(pair[0], pair[1])
+                if rel:
+                    row["people_relation"] = rel
+    return len(people)
+
+
+def relation_between(a: dict[str, Any], b: dict[str, Any]) -> str | None:
+    """How two directory profiles relate — computed, never fetched.
+
+    Once every participant carries a manager address, the reporting structure
+    among them is arithmetic on data already in hand. This is the half of
+    Sameer's ask about relating "an email from her boss" as exactly that.
+    """
+    a_mail, b_mail = a.get("email", "").lower(), b.get("email", "").lower()
+    a_mgr = (a.get("manager") or "").lower()
+    b_mgr = (b.get("manager") or "").lower()
+    if a_mgr and a_mgr == b_mail:
+        return f"{b.get('name')} is {a.get('name')}'s manager"
+    if b_mgr and b_mgr == a_mail:
+        return f"{a.get('name')} is {b.get('name')}'s manager"
+    if a_mgr and a_mgr == b_mgr:
+        return f"{a.get('name')} and {b.get('name')} report to the same manager"
+    return None

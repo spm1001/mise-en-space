@@ -314,3 +314,247 @@ class TestPeopleSourceThroughDoSearch:
         """`manager` is an account field, not an HR record. Never ship it bare."""
         r = self._search(tmp_path, [_parse_person(RAW_USER)])
         assert "account" in r.cues.get("people_source", "")
+
+
+class TestPlacingSenders:
+    """mise-fajabe: an unfamiliar name arrives already placed.
+
+    The whole design rests on one empirical claim — that inbox senders repeat,
+    so a process-lifetime cache turns "a lookup per row" into "a lookup per
+    colleague, once". test_repeat_search_costs_nothing is that claim; if it
+    ever goes red the feature is quietly making an API call per result and the
+    reason for enriching at search rather than fetch has evaporated.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clean_cache(self):
+        from adapters.people import clear_profile_cache
+
+        clear_profile_cache()
+        yield
+        clear_profile_cache()
+
+    def _counting_get_person(self, calls: list):
+        def fake(address):
+            calls.append(address)
+            if not address.endswith("@itv.com"):
+                raise MiseError(ErrorKind.NOT_FOUND, "nope")
+            return DirectoryPerson(
+                email=address,
+                full_name=address.split("@")[0].replace(".", " ").title(),
+                title="Insight Manager",
+                department="Commercial",
+                manager_email="boss@itv.com",
+            )
+
+        return fake
+
+    def test_address_of_strips_the_display_name(self) -> None:
+        from adapters.people import address_of
+
+        assert address_of("Meghan Baddely <Meghan.Baddely@itv.com>") == "meghan.baddely@itv.com"
+        assert address_of("plain@itv.com") == "plain@itv.com"
+        assert address_of(None) is None
+        assert address_of("") is None
+
+    def test_only_own_domain_addresses_are_looked_up(self) -> None:
+        from adapters import people as P
+
+        calls: list = []
+        with patch.object(P, "get_person", self._counting_get_person(calls)), patch.object(
+            P, "current_user_email", return_value="sameer.modha@itv.com"
+        ):
+            got = P.profiles_for(["a@itv.com", "outsider@gmail.com", "b@itv.com"])
+
+        assert set(got) == {"a@itv.com", "b@itv.com"}
+        assert "outsider@gmail.com" not in calls, (
+            "an external address must not be sent to the directory at all"
+        )
+
+    def test_duplicates_collapse_to_one_lookup(self) -> None:
+        from adapters import people as P
+
+        calls: list = []
+        with patch.object(P, "get_person", self._counting_get_person(calls)), patch.object(
+            P, "current_user_email", return_value="s@itv.com"
+        ):
+            P.profiles_for(["a@itv.com"] * 8 + ["b@itv.com"] * 4)
+        assert sorted(calls) == ["a@itv.com", "b@itv.com"]
+
+    def test_repeat_search_costs_nothing(self) -> None:
+        """The claim the whole search-time design rests on."""
+        from adapters import people as P
+
+        calls: list = []
+        with patch.object(P, "get_person", self._counting_get_person(calls)), patch.object(
+            P, "current_user_email", return_value="s@itv.com"
+        ):
+            P.profiles_for(["a@itv.com", "b@itv.com"])
+            first = len(calls)
+            P.profiles_for(["a@itv.com", "b@itv.com", "a@itv.com"])
+
+        assert first == 2
+        assert len(calls) == 2, (
+            f"second search made {len(calls) - first} extra call(s) — the cache is "
+            "not holding, and enriching at search time is no longer cheap"
+        )
+
+    def test_an_unresolvable_address_is_not_retried(self) -> None:
+        """A negative must cache too, or every search re-asks about strangers."""
+        from adapters import people as P
+
+        calls: list = []
+        # Own-domain but absent from the directory (opted out, or departed).
+        def fake(address):
+            calls.append(address)
+            raise MiseError(ErrorKind.NOT_FOUND, "gone")
+
+        with patch.object(P, "get_person", fake), patch.object(
+            P, "current_user_email", return_value="s@itv.com"
+        ):
+            assert P.profiles_for(["ghost@itv.com"]) == {}
+            assert P.profiles_for(["ghost@itv.com"]) == {}
+        assert len(calls) == 1
+
+    def test_no_resolvable_identity_means_no_lookups_at_all(self) -> None:
+        from adapters import people as P
+
+        calls: list = []
+        with patch.object(P, "get_person", self._counting_get_person(calls)), patch.object(
+            P, "current_user_email", return_value=None
+        ):
+            assert P.profiles_for(["a@itv.com"]) == {}
+        assert calls == []
+
+    def test_attach_profiles_annotates_rows_and_counts_people(self) -> None:
+        from adapters import people as P
+
+        rows = [
+            {"from": "A <a@itv.com>", "last_sender": "B <b@itv.com>"},
+            {"from": "A <a@itv.com>", "last_sender": "A <a@itv.com>"},
+            {"from": "x@gmail.com", "last_sender": "x@gmail.com"},
+        ]
+        with patch.object(P, "get_person", self._counting_get_person([])), patch.object(
+            P, "current_user_email", return_value="s@itv.com"
+        ):
+            placed = P.attach_profiles(rows)
+
+        assert placed == 2
+        assert set(rows[0]["people"]) == {"a@itv.com", "b@itv.com"}
+        assert set(rows[1]["people"]) == {"a@itv.com"}
+        assert "people" not in rows[2], (
+            "an external-only row must carry no people key — an absent entry is "
+            "an honest absence, not a failed lookup"
+        )
+
+    def test_a_directory_outage_leaves_rows_untouched(self) -> None:
+        from adapters import people as P
+
+        rows = [{"from": "a@itv.com", "last_sender": "a@itv.com"}]
+        with patch.object(P, "get_person", side_effect=RuntimeError("down")), patch.object(
+            P, "current_user_email", return_value="s@itv.com"
+        ):
+            assert P.attach_profiles(rows) == 0
+        assert "people" not in rows[0]
+
+
+class TestRelationBetween:
+    """Reporting structure is arithmetic on data already in hand — no calls."""
+
+    BOSS = {"email": "kate@itv.com", "name": "Kate Waters"}
+    REPORT = {"email": "sameer@itv.com", "name": "Sameer Modha", "manager": "kate@itv.com"}
+    PEER = {"email": "rupert@itv.com", "name": "Rupert Coghlan", "manager": "kate@itv.com"}
+
+    def test_manager_is_named_as_such_in_both_orders(self) -> None:
+        from adapters.people import relation_between
+
+        assert relation_between(self.REPORT, self.BOSS) == "Kate Waters is Sameer Modha's manager"
+        assert relation_between(self.BOSS, self.REPORT) == "Kate Waters is Sameer Modha's manager"
+
+    def test_shared_manager_reads_as_same_team(self) -> None:
+        from adapters.people import relation_between
+
+        assert relation_between(self.REPORT, self.PEER) == (
+            "Sameer Modha and Rupert Coghlan report to the same manager"
+        )
+
+    def test_unrelated_people_get_nothing_rather_than_a_guess(self) -> None:
+        from adapters.people import relation_between
+
+        assert relation_between(self.BOSS, {"email": "z@itv.com", "name": "Z"}) is None
+
+
+class TestSenderRender:
+    """The render is the thing we iterate — pin its shape, not its richness."""
+
+    def test_one_line_places_the_LAST_sender_not_the_originator(self) -> None:
+        from models import _describe_sender
+
+        row = {
+            "from": "Old Starter <old@itv.com>",
+            "last_sender": "Meghan Baddely <meghan@itv.com>",
+            "people": {
+                "old@itv.com": {"name": "Old Starter", "title": "Analyst"},
+                "meghan@itv.com": {
+                    "name": "Meghan Baddely",
+                    "title": "Insight Manager",
+                    "department": "Commercial",
+                },
+            },
+        }
+        assert _describe_sender(row) == "Meghan Baddely — Insight Manager, Commercial"
+
+    def test_falls_back_to_the_originator_when_the_last_sender_is_external(self) -> None:
+        from models import _describe_sender
+
+        row = {
+            "from": "Meghan Baddely <meghan@itv.com>",
+            "last_sender": "someone@outside.com",
+            "people": {"meghan@itv.com": {"name": "Meghan Baddely", "title": "Insight Manager"}},
+        }
+        assert _describe_sender(row) == "Meghan Baddely — Insight Manager"
+
+    def test_no_people_means_no_line_rather_than_an_empty_one(self) -> None:
+        from models import _describe_sender
+
+        assert _describe_sender({"from": "x@y.com"}) is None
+        assert _describe_sender({"from": "x@y.com", "people": {}}) is None
+
+
+class TestRelationIsWiredNotJustBuilt:
+    """relation_between used to be tested and never called. Pin the call site."""
+
+    @pytest.fixture(autouse=True)
+    def _clean_cache(self):
+        from adapters.people import clear_profile_cache
+
+        clear_profile_cache()
+        yield
+        clear_profile_cache()
+
+    def test_a_row_with_a_boss_and_their_report_says_so(self) -> None:
+        from adapters import people as P
+
+        profiles = {
+            "kate@itv.com": DirectoryPerson(email="kate@itv.com", full_name="Kate Waters",
+                                            title="Director"),
+            "sameer@itv.com": DirectoryPerson(email="sameer@itv.com", full_name="Sameer Modha",
+                                              title="Lead", manager_email="kate@itv.com"),
+        }
+        rows = [{"from": "Kate <kate@itv.com>", "last_sender": "Sameer <sameer@itv.com>"}]
+        with patch.object(P, "get_person", lambda a: profiles[a]), patch.object(
+            P, "current_user_email", return_value="someone.else@itv.com"
+        ):
+            P.attach_profiles(rows)
+        assert rows[0]["people_relation"] == "Kate Waters is Sameer Modha's manager"
+
+    def test_one_placed_person_gets_no_relation_key(self) -> None:
+        from adapters import people as P
+
+        person = DirectoryPerson(email="a@itv.com", full_name="A", title="T")
+        rows = [{"from": "a@itv.com", "last_sender": "a@itv.com"}]
+        with patch.object(P, "get_person", lambda a: person), patch.object(
+            P, "current_user_email", return_value="me@itv.com"
+        ):
+            P.attach_profiles(rows)
+        assert "people_relation" not in rows[0]
