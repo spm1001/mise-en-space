@@ -32,6 +32,7 @@ adapters/       Thin Google API wrappers (easily mocked)
 tools/          MCP tool definitions + dispatch/remote orchestration (the wiring layer)
 workspace/      File deposit management (.mise/ in cwd)
 resources/      MCP resource text (mise://docs/*) + tool-doc registry
+mise_en_space/  The blessed LIBRARY door (mise-dareti): one class (Mise), search/fetch/do, credentials selected in the constructor — the wheel-consumer contract (glaneur, Garni)
 server.py       FastMCP registration shim (stdio default, --remote for StreamableHTTP) — ≤500 lines, enforced
 apps-script/    Google Apps Script for email attachment extraction (runs in Google, not Python)
 docs/           Design documents and references
@@ -59,6 +60,7 @@ docs/           Design documents and references
 - Adapters MAY import parsing utilities from extractors
 - Adapters use `convert_*` names, not `extract_*` (extract_* reserved for pure extractors/)
 - Tools wire adapters → extractors → workspace. The do() machinery (`DISPATCH`, `REQUIRED_PARAMS`, `run_operation`) lives in `tools/dispatch.py`; remote orchestration in `tools/remote.py`
+- `mise_en_space/` is the facade tier ABOVE everything: it imports downward freely and NOTHING may import it (enforced — it sits in every other tier's forbidden set). It is deliberately thin re-exports plus identity selection; logic belongs in the layers. Identity state lives in `token_store.configure_identity()` (in-process, never env mutation), and the frozen `http_client` pays only the three seams ambient already paid
 - server.py registers tools/resources and holds the thin @mcp.tool wrappers — nothing else (capped at 500 lines)
 - Shared utilities live at root level — they sit BELOW the layers and never import upward (retry.py's `adapters.http_client` import is the one documented exception)
 - ALL of the above is mechanically enforced by `tests/unit/test_architecture.py` (`LAYER_RULES` for directories, `FILE_RULES` for server.py + root utilities). When adding a module tier, extend the rules — unpoliced tiers are where mass accumulates (server.py hit 1,318 lines before mise-jimohe)
@@ -245,7 +247,7 @@ uv run --all-extras python scripts/smoke_stdio.py   # drive the WORKING TREE ove
 Integration tests require `-m integration` flag and real credentials.
 
 **The count IS printed — it is just at the bottom of a long scroll.** `uv run --all-extras python
--m pytest` ends with `2447 passed, 100 deselected in 36.29s` (count as of 2026-08-12 evening) as the last line of ~92, because
+-m pytest` ends with `2463 passed, 100 deselected in 37.03s` (count as of 2026-08-12 evening) as the last line of ~92, because
 `addopts` in `pyproject.toml` carries `-q` (which suppresses the *per-test* lines, not the summary)
 plus a ~85-line coverage table that pushes the summary off the top of a truncated view.
 `-m 'not integration'` is baked in too, hence the 100 deselected.
