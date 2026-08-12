@@ -16,6 +16,7 @@ from typing import Any
 from adapters.drive import get_file_metadata
 from models import MiseError
 from token_store import ambient_mode
+from validation import diagnose_sa_quota_403
 from tools import (
     OPERATIONS,
     do_append,
@@ -224,6 +225,13 @@ def run_operation(operation: str, params: dict[str, Any]) -> dict[str, Any]:
     try:
         result = handler(params)
     except Exception as e:
+        # The SA-quota 403 carries its cause only in the response BODY,
+        # which str(e) drops — surface it with the ownership teaching
+        # before the generic INTERNAL swallows it (mise-finupa).
+        quota_teaching = diagnose_sa_quota_403(e)
+        if quota_teaching:
+            return {"error": True, "kind": "permission_denied",
+                    "message": quota_teaching, "retryable": False}
         return {"error": True, "kind": "INTERNAL",
                 "message": f"Operation '{operation}' failed: {e}", "retryable": False}
     result_dict: dict[str, Any] = result.to_dict() if hasattr(result, "to_dict") else result

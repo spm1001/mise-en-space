@@ -1013,3 +1013,46 @@ def diagnose_fetch_404(file_id: str, *, tried_message_lookup: bool = False) -> s
 
     return None
 
+
+
+def diagnose_sa_quota_403(exc: Exception) -> str | None:
+    """Teaching text for a service-account write refused on storage quota.
+
+    Probed live 2026-08-12 (mise-finupa, the agent-spike SA): a create into
+    My Drive as a service account answers 403 with reason
+    storageQuotaExceeded. Google's own body text is decent ("Service
+    Accounts do not have storage quota. Leverage shared drives…") but
+    mise's funnel loses it — str() of an httpx.HTTPStatusError carries
+    only "Client error '403 Forbidden' for url …", so the caller saw a
+    bare 403 with the cause buried in an unread body. The same probe's
+    known-positive: the identical create into a Shared Drive folder
+    succeeded. Ownership is the variable, not size.
+
+    Fires only in ambient (service-account) mode: on a human's token,
+    storageQuotaExceeded usually means genuinely full storage, and
+    claiming otherwise would misteach. Duck-typed on .response so
+    validation stays free of an httpx import.
+    """
+    resp = getattr(exc, "response", None)
+    if resp is None or getattr(resp, "status_code", None) != 403:
+        return None
+    try:
+        body = resp.text
+    except Exception:
+        return None
+    if "storageQuotaExceeded" not in body:
+        return None
+    try:
+        from token_store import ambient_mode
+        if not ambient_mode():
+            return None
+    except ValueError:
+        return None  # misconfigured credential env — let the primary error speak
+    return (
+        "Drive refused the write: service accounts own ZERO storage quota "
+        "(Google's 2025 enforcement), so a file created by this service account "
+        "cannot land in My Drive — the refusal is about OWNERSHIP, not free "
+        "space. Write into a folder on a SHARED DRIVE this service account can "
+        "edit: content there belongs to the drive rather than its creator, and "
+        "the identical create succeeds."
+    )

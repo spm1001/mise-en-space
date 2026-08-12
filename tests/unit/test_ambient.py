@@ -153,3 +153,78 @@ class TestAmbientDispatchGate:
         monkeypatch.delenv("MISE_CREDENTIALS", raising=False)
         result = run_operation("draft", {})
         assert "ambient" not in result.get("message", "")
+
+
+class TestSaQuotaTeaching:
+    """diagnose_sa_quota_403 — canned body captured from the LIVE probe
+    (2026-08-12, agent-spike SA create into its own My Drive)."""
+
+    def _quota_exc(self):
+        import httpx
+
+        body = (
+            '{"error": {"code": 403, "message": "Service Accounts do not have '
+            'storage quota. Leverage shared drives (https://developers.google.com'
+            '/workspace/drive/api/guides/about-shareddrives), or use OAuth '
+            'delegation (http://support.google.com/a/answer/7281227) instead.", '
+            '"errors": [{"domain": "usageLimits", "reason": "storageQuotaExceeded"}]}}'
+        )
+        req = httpx.Request("POST", "https://www.googleapis.com/upload/drive/v3/files")
+        resp = httpx.Response(403, text=body, request=req)
+        return httpx.HTTPStatusError(
+            "Client error '403 Forbidden'", request=req, response=resp
+        )
+
+    def test_fires_in_ambient_mode(self, ambient_env):
+        from validation import diagnose_sa_quota_403
+
+        msg = diagnose_sa_quota_403(self._quota_exc())
+        assert msg is not None
+        assert "OWNERSHIP" in msg
+        assert "SHARED DRIVE" in msg
+
+    def test_silent_on_a_human_token(self, monkeypatch):
+        """On a user credential, storageQuotaExceeded usually means genuinely
+        full storage — claiming ownership trouble would misteach."""
+        from validation import diagnose_sa_quota_403
+
+        monkeypatch.delenv("MISE_CREDENTIALS", raising=False)
+        assert diagnose_sa_quota_403(self._quota_exc()) is None
+
+    def test_silent_on_other_403s(self, ambient_env):
+        import httpx
+
+        from validation import diagnose_sa_quota_403
+
+        req = httpx.Request("POST", "https://www.googleapis.com/upload/drive/v3/files")
+        resp = httpx.Response(
+            403, text='{"error": {"errors": [{"reason": "insufficientFilePermissions"}]}}',
+            request=req,
+        )
+        exc = httpx.HTTPStatusError("Client error", request=req, response=resp)
+        assert diagnose_sa_quota_403(exc) is None
+
+    def test_silent_on_bodyless_exceptions(self, ambient_env):
+        from validation import diagnose_sa_quota_403
+
+        assert diagnose_sa_quota_403(RuntimeError("no response here")) is None
+
+    def test_dispatch_surfaces_the_teaching(self, ambient_env):
+        """Through the real funnel: a handler raising the live-shaped 403
+        reaches the caller as permission_denied with the ownership text,
+        not as INTERNAL with the body dropped."""
+        from unittest.mock import patch as mock_patch
+
+        import tools.dispatch as dispatch_mod
+
+        def _raiser(params):
+            raise self._quota_exc()
+
+        with mock_patch.dict(dispatch_mod.DISPATCH, {"create": _raiser}):
+            result = run_operation(
+                "create", {"title": "t", "content": "c", "doc_type": "doc"}
+            )
+        assert result["error"] is True
+        assert result["kind"] == "permission_denied"
+        assert "OWNERSHIP" in result["message"]
+        assert "403 Forbidden" not in result["message"]
