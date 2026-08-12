@@ -18,6 +18,18 @@ from token_store import (
     has_token,
 )
 
+
+@pytest.fixture(autouse=True)
+def _not_guest_mode(monkeypatch):
+    """This module states its credential env explicitly.
+
+    tests/unit/conftest.py sets MISE_TOKEN_PATH for hermeticity, but the
+    override path is authoritative over exactly the Keychain/file/legacy
+    resolution this module tests. Normal-mode tests clear it; the guest-
+    mode class below sets it per-test, which overrides this.
+    """
+    monkeypatch.delenv("MISE_TOKEN_PATH", raising=False)
+
 # Sample token payload used across tests
 SAMPLE_TOKEN = json.dumps({
     "access_token": "ya29.test",

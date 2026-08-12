@@ -15,6 +15,19 @@ from adapters.http_client import (
 import json
 
 
+@pytest.fixture(autouse=True)
+def _not_guest_mode(monkeypatch):
+    """This module states its credential env explicitly.
+
+    tests/unit/conftest.py sets MISE_TOKEN_PATH for hermeticity, but that
+    sends _load_and_diagnose_credentials down the guest branch — a
+    different load path and a different bootstrap hint than the normal-
+    mode tests here exercise. The guest-mode class below sets the var
+    per-test, which overrides this.
+    """
+    monkeypatch.delenv("MISE_TOKEN_PATH", raising=False)
+
+
 # Fake credentials for testing
 def _mock_credentials():
     creds = MagicMock()

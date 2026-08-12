@@ -1001,6 +1001,7 @@ class TestEagerOctetStreamResolution:
         mock_gmail_extract.assert_called_once()
         assert mock_gmail_extract.call_args.kwargs["mime_type"] == "image/png"
 
+    @patch("adapters.gmail_ids._is_own_address", return_value=False)
     @patch("tools.fetch.gmail.fetch_thread")
     @patch("tools.fetch.gmail.lookup_exfiltrated", return_value={})
     @patch("tools.fetch.gmail._extract_attachment_content")
@@ -1010,10 +1011,18 @@ class TestEagerOctetStreamResolution:
     @patch("tools.fetch.gmail.extract_thread_content", return_value="Thread content")
     def test_octet_stream_unknown_extension_still_skipped(
         self, mock_extract, mock_manifest, mock_write, mock_folder,
-        mock_gmail_extract, mock_lookup, mock_fetch
+        mock_gmail_extract, mock_lookup, mock_fetch, mock_own
     ):
         """Unknown-extension octet-stream stays unextractable — skipped
-        silently from eager preview, no resolution warning emitted."""
+        silently from eager preview, no resolution warning emitted.
+
+        _is_own_address is pinned False (sender provably not the user) so
+        the web_link mints and the 'warnings absent' assert stays about
+        ATTACHMENTS. Unpinned, identity resolves from the machine's token:
+        present → link, no warning, green; absent (CI) → the honest
+        'No web_link' warning → red. This exact divergence kept CI red for
+        sixteen runs, 2026-08-09→12, invisible from every dev machine.
+        """
         att = EmailAttachment(
             filename="archive.weird",
             mime_type="application/octet-stream",

@@ -28,6 +28,18 @@ from models import (
     MiseError,
     ErrorKind,
 )
+
+
+@pytest.fixture(autouse=True)
+def _not_guest_mode(monkeypatch):
+    """This module states its credential env explicitly.
+
+    tests/unit/conftest.py sets MISE_TOKEN_PATH for hermeticity, but that
+    flips mise into guest mode, where omitted search sources default to
+    ['drive'] — the very contract several tests here pin for NORMAL mode.
+    The guest-mode test below sets the var itself, which overrides this.
+    """
+    monkeypatch.delenv("MISE_TOKEN_PATH", raising=False)
 from tools.search import (
     format_drive_result,
     format_gmail_result,
