@@ -25,6 +25,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +35,95 @@ KEYCHAIN_SERVICE = "mise-oauth-token"
 # when set: no Keychain reads, no Keychain writes, no migration.
 OVERRIDE_ENV = "MISE_TOKEN_PATH"
 
+# --- Constructor-selected identity (mise_en_space facade, mise-dareti) ------
+#
+# A library consumer selects the identity in code — Mise(credentials=...),
+# Mise(token_path=...), Mise(ambient=True) — instead of through env vars.
+# The state lives here, in process, and override_path()/ambient_mode()
+# consult it, so every downstream gate (guest-mode teaching errors, the
+# ambient search narrowing and mailbox-op refusals) fires identically
+# whichever way the mode was selected. Env vars are never written: a
+# constructor mutating the environment would leak the choice into
+# subprocesses and into state the caller believes they own.
+#
+# One identity per process is the architecture (single-user clients,
+# lru_cached services), so configure_identity() replaces wholesale —
+# last call wins — and the facade clears the HTTP-client singletons
+# after each call so stale credentials can't linger in a live client.
+_CONFIGURED: dict[str, Any] = {}
+
+
+def configure_identity(
+    *,
+    credentials: Any | None = None,
+    token_path: Path | str | None = None,
+    ambient: bool = False,
+) -> None:
+    """Select the process identity from code; with no arguments, clear it.
+
+    At most one selector may be passed, and none may be passed while an
+    identity env var (MISE_TOKEN_PATH / MISE_CREDENTIALS) is set — the
+    same no-honest-precedence rule ambient_mode() applies to env-env
+    collisions. A silent winner would be an accepted-and-dropped
+    identity, this codebase's characteristic bug.
+    """
+    chosen = [
+        name
+        for name, given in (
+            ("credentials", credentials is not None),
+            ("token_path", token_path is not None),
+            ("ambient", bool(ambient)),
+        )
+        if given
+    ]
+    if len(chosen) > 1:
+        raise ValueError(
+            f"Pass at most one of credentials/token_path/ambient — got "
+            f"{' and '.join(chosen)}. They select different identities."
+        )
+    if chosen:
+        for env_name in (OVERRIDE_ENV, AMBIENT_ENV):
+            if os.environ.get(env_name):
+                raise ValueError(
+                    f"{env_name} is set in the environment while "
+                    f"'{chosen[0]}' was passed in code — these select "
+                    f"different identities and there is no honest "
+                    f"precedence. Unset {env_name} or drop the argument."
+                )
+    _CONFIGURED.clear()
+    if credentials is not None:
+        _CONFIGURED["credentials"] = credentials
+    elif token_path is not None:
+        _CONFIGURED["token_path"] = Path(token_path)
+    elif ambient:
+        _CONFIGURED["ambient"] = True
+
+
+def configured_credentials() -> Any | None:
+    """The credentials object passed in code, or None (the common case)."""
+    return _CONFIGURED.get("credentials")
+
+
+def injected_refresh_refusal() -> FileNotFoundError:
+    """Teaching error for a refresh refusal on constructor-injected credentials.
+
+    http_client's reload-then-retry path is token-file medicine: a
+    caller-owned credentials OBJECT has no path to re-read, and mise
+    cannot re-mint what it never minted.
+    """
+    return FileNotFoundError(
+        "The credentials passed to mise in code (Mise(credentials=...)) were "
+        "refused on refresh. mise cannot re-mint a caller-owned credential — "
+        "construct a new Mise with fresh credentials, or use token_path= / "
+        "ambient=True, whose sources mise can re-read itself."
+    )
+
 
 def override_path() -> Path | None:
     """Return the caller-supplied token path, or None when not in guest mode."""
+    configured = _CONFIGURED.get("token_path")
+    if configured is not None:
+        return Path(configured)
     raw = os.environ.get(OVERRIDE_ENV)
     return Path(raw) if raw else None
 
@@ -60,6 +147,8 @@ def ambient_mode() -> bool:
     characteristic bug), and 'both modes set' has no honest precedence —
     they name different identities.
     """
+    if _CONFIGURED.get("ambient"):
+        return True
     raw = os.environ.get(AMBIENT_ENV)
     if not raw:
         return False

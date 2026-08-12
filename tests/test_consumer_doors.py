@@ -73,8 +73,10 @@ def test_library_door_clean_venv_core_only(tmp_path):
     # Known-positive control on the enumerator itself: a sweep over an
     # accidentally-empty module list would pass vacuously. Doubles as the
     # fast tripwire for a lost force-include line (control-proven: dropping
-    # "filters.py" reds here before any venv is built).
-    for known_shipped in ("filters", "adapters.drive", "tools"):
+    # "filters.py" reds here before any venv is built). mise_en_space is the
+    # facade package (mise-dareti) — the wheel door's actual CONTRACT — so
+    # its absence must red here, not in a consumer's traceback.
+    for known_shipped in ("filters", "adapters.drive", "tools", "mise_en_space"):
         assert known_shipped in modules, (
             f"LIBRARY DOOR: {known_shipped!r} is missing from the built wheel "
             f"— a [tool.hatch.build.targets.wheel] entry has been lost from "
@@ -101,7 +103,8 @@ def test_library_door_clean_venv_core_only(tmp_path):
                 importlib.import_module(mod)
             except Exception as e:
                 failures[mod] = f"{{type(e).__name__}}: {{e}}"
-        result = {{"failures": failures, "survivors": None, "filters_file": None}}
+        result = {{"failures": failures, "survivors": None, "filters_file": None,
+                   "facade_create": None, "facade_unknown_op": None}}
         if "filters" not in failures:
             import filters
             result["filters_file"] = filters.__file__
@@ -110,15 +113,29 @@ def test_library_door_clean_venv_core_only(tmp_path):
                 "mime_type": "application/pdf",
                 "size": 900_000,
             }}]))
+        if "mise_en_space" not in failures:
+            # The facade's credential-free behavioural walk: constructor
+            # selection + dispatch both work from the wheel, teaching
+            # errors intact, before any credential could be consulted.
+            from mise_en_space import Mise
+            m = Mise(token_path="deliberately-absent.json")
+            result["facade_create"] = m.do("create")
+            result["facade_unknown_op"] = m.do("no_such_operation")
         print(json.dumps(result))
         """
     )
     # NEUTRAL cwd is load-bearing: sys.path[0] inherits the cwd, so a
     # repo-cwd sweep resolves the working tree and proves nothing about
-    # the install (the 2026-08-10 false green).
+    # the install (the 2026-08-10 false green). Env is stripped of the
+    # identity vars for the same hermeticity reason the MCP door strips
+    # them: the facade constructor refuses code-plus-env identity, and a
+    # dev machine's pins must not reach this probe (mise-wahane).
+    sweep_env = dict(os.environ)
+    sweep_env.pop("MISE_TOKEN_PATH", None)
+    sweep_env.pop("MISE_CREDENTIALS", None)
     out = subprocess.run(
         [str(venv_python), "-c", sweep],
-        cwd=tmp_path, capture_output=True, text=True, timeout=120,
+        cwd=tmp_path, capture_output=True, text=True, timeout=120, env=sweep_env,
     )
     assert out.returncode == 0, f"LIBRARY DOOR: sweep interpreter died:\n{out.stderr}"
     report = json.loads(out.stdout)
@@ -136,6 +153,21 @@ def test_library_door_clean_venv_core_only(tmp_path):
     assert str(REPO) not in report["filters_file"], (
         f"LIBRARY DOOR: sweep resolved {report['filters_file']} — the working "
         "tree leaked onto the probe's sys.path; the walk proved nothing"
+    )
+
+    # The facade behavioural walk (mise-dareti): both probes are
+    # credential-free by construction, so a failure here is wiring, not auth.
+    create = report["facade_create"]
+    assert create and create.get("error"), (
+        f"LIBRARY DOOR: facade do('create') with nothing to create should "
+        f"return a teaching error dict, got: {create}"
+    )
+    assert "content" in create["message"] or "source" in create["message"], (
+        f"LIBRARY DOOR: the create refusal lost its teaching text: {create}"
+    )
+    unknown = report["facade_unknown_op"]
+    assert unknown and unknown.get("error") and "Unknown operation" in unknown["message"], (
+        f"LIBRARY DOOR: facade do() unknown-op refusal broke: {unknown}"
     )
 
 

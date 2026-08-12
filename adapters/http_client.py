@@ -78,7 +78,10 @@ def _load_and_diagnose_credentials(token_path: str | Path) -> Any:
     - Token expired with no refresh_token
     - Token expired and refresh failed
     """
-    from token_store import ambient_mode, override_path
+    from token_store import ambient_mode, configured_credentials, override_path
+    injected = configured_credentials()
+    if injected is not None:  # constructor-selected (mise_en_space facade)
+        return injected
     if ambient_mode():  # explicit opt-in only — see adapters/ambient.py
         from adapters.ambient import load_ambient_credentials
         return load_ambient_credentials()
@@ -188,10 +191,13 @@ class MiseHttpClient:
             self._credentials.refresh(GoogleAuthRequest())
             return
         except RefreshError:
-            from token_store import ambient_mode
+            from token_store import ambient_mode, configured_credentials
             if ambient_mode():  # platform identity trouble, not a stale file
                 from adapters.ambient import ambient_refresh_refusal
                 raise ambient_refresh_refusal()
+            if configured_credentials() is not None:  # no file to re-read
+                from token_store import injected_refresh_refusal
+                raise injected_refresh_refusal()
             old_refresh = getattr(self._credentials, "refresh_token", None)
             token_path = resolve_token_path(TOKEN_FILE)
             fresh = _load_and_diagnose_credentials(token_path)
@@ -419,10 +425,13 @@ class MiseSyncClient:
             self._credentials.refresh(GoogleAuthRequest())
             return
         except RefreshError:
-            from token_store import ambient_mode
+            from token_store import ambient_mode, configured_credentials
             if ambient_mode():  # platform identity trouble, not a stale file
                 from adapters.ambient import ambient_refresh_refusal
                 raise ambient_refresh_refusal()
+            if configured_credentials() is not None:  # no file to re-read
+                from token_store import injected_refresh_refusal
+                raise injected_refresh_refusal()
             old_refresh = getattr(self._credentials, "refresh_token", None)
             token_path = resolve_token_path(TOKEN_FILE)
             fresh = _load_and_diagnose_credentials(token_path)

@@ -69,7 +69,7 @@ pattern = "\"version\":\\s*\"(?P<version>[^\"]+)\""
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["extractors", "adapters", "tools", "workspace"]
+packages = ["extractors", "adapters", "tools", "workspace", "mise_en_space"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "markdown_import.py" = "markdown_import.py"

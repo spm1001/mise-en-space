@@ -17,13 +17,18 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
-# Layers and their forbidden imports
+# Layers and their forbidden imports. mise_en_space is the facade tier
+# (mise-dareti): it sits ABOVE every layer and may import downward freely,
+# but nothing may import IT — it appears in every other tier's forbidden
+# set so the library contract can never become load-bearing plumbing.
 LAYER_RULES = {
-    "extractors": {"adapters", "tools"},  # extractors can't import adapters or tools
-    "adapters": {"tools"},                 # adapters can't import tools
-    # tools can import anything (it's the wiring layer)
-    "workspace": {"adapters", "tools", "extractors", "server"},  # pure folder management
-    "resources": {"extractors", "workspace", "tools"},  # resources may hit adapters (live state) but not business logic
+    "extractors": {"adapters", "tools", "mise_en_space"},
+    "adapters": {"tools", "mise_en_space"},
+    # tools can import any layer below it (it's the wiring layer)
+    "tools": {"mise_en_space", "server"},
+    "workspace": {"adapters", "tools", "extractors", "server", "mise_en_space"},
+    "resources": {"extractors", "workspace", "tools", "mise_en_space"},  # may hit adapters (live state), not business logic
+    "mise_en_space": {"server", "resources"},  # the facade fronts the library, not the MCP shim
 }
 
 # Files outside any layer directory — the tier the 2026-06-10 toise flagged:
@@ -32,7 +37,7 @@ LAYER_RULES = {
 # *.py gets the strict default automatically, so adding a file cannot quietly
 # open a new unpoliced tier. Root utilities sit BELOW the layers and may not
 # import upward (root→root imports like auth→token_store are fine).
-_ROOT_DEFAULT_FORBIDDEN = {"adapters", "tools", "workspace", "extractors", "server", "resources"}
+_ROOT_DEFAULT_FORBIDDEN = {"adapters", "tools", "workspace", "extractors", "server", "resources", "mise_en_space"}
 
 # Entry points and documented exceptions:
 # - server.py / cli.py reach DOWN into tools (registration/wiring) — never
@@ -41,9 +46,9 @@ _ROOT_DEFAULT_FORBIDDEN = {"adapters", "tools", "workspace", "extractors", "serv
 # - retry.py imports adapters.http_client (clear_sync_client for auth-refresh
 #   retry) — the one sanctioned root→adapters import.
 _ROOT_OVERRIDES = {
-    "server.py": {"extractors", "workspace"},
-    "cli.py": {"adapters", "extractors", "workspace", "server", "resources"},
-    "retry.py": {"tools", "workspace", "extractors", "server", "resources"},
+    "server.py": {"extractors", "workspace", "mise_en_space"},
+    "cli.py": {"adapters", "extractors", "workspace", "server", "resources", "mise_en_space"},
+    "retry.py": {"tools", "workspace", "extractors", "server", "resources", "mise_en_space"},
 }
 
 FILE_RULES = {
@@ -59,7 +64,7 @@ SERVER_MAX_LINES = 500
 # Every module under the layer directories gets the SAME number, so there is one
 # standard in the repo rather than a special case for server.py (mise-nebewe).
 MODULE_MAX_LINES = 500
-POLICED_DIRS = ("extractors", "adapters", "tools", "workspace", "resources")
+POLICED_DIRS = ("extractors", "adapters", "tools", "workspace", "resources", "mise_en_space")
 
 # Grandfathered debt, measured 2026-08-03. These eleven modules were already over
 # the cap when it was extended repo-wide, and splitting them is deliberately NOT
@@ -83,7 +88,7 @@ _LEGACY_SIZE_BASELINE = {
     "tools/fetch/drive.py": 805,  # tightened 2026-08-08: _write_per_tab_csvs moved to common.py (mise-dogape)
     "resources/docs.py": 851,  # +30 for the 'people' search source (mise-mahiho); the last 6 are the multi-word query trap, added after a live probe showed `orgTitle:Head of Strategy` returns zero SILENTLY — a caller who doesn't know that reads the zero as "nobody has that job" — this module's mass IS resource text, so its ceiling tracks CAPABILITY additions; splitting a resource string across siblings would be worse. Raise only with a new op or search source, and only by what the new capability's grammar actually needs. The people entry earns its lines on query grammar (Admin SDK syntax, not Drive's) plus two honesty notes the caller cannot infer.
     "tools/fetch/gmail.py": 701,  # +1 (2026-08-07): the gmail_ids split turned one import into two; +6 (2026-08-09): web_link emission, logic lives in gmail_ids.thread_web_link_or_warn (mise-hetaba)
-    "adapters/http_client.py": 694,  # +11 (2026-08-12): ambient-mode dispatch — a 4-line branch in _load_and_diagnose_credentials plus a 5-line refresh guard in EACH near-duplicate client (mise-wasagu). The logic itself lives in adapters/ambient.py; these lines are irreducibly here because the loader and both _refresh_or_reload bodies are the seams ambient must intercept. Halves when MiseSyncClient dies in Phase 2.
+    "adapters/http_client.py": 703,  # +11 (2026-08-12): ambient-mode dispatch — a 4-line branch in _load_and_diagnose_credentials plus a 5-line refresh guard in EACH near-duplicate client (mise-wasagu). +9 (2026-08-12 evening, mise-dareti): constructor-injected credentials pay the SAME three seams — a 3-line return in the loader, a 3-line refusal in each refresh path; the registry and teaching text live in token_store. These are the only seams identity selection can intercept. Halves when MiseSyncClient dies in Phase 2.
     "extractors/slides.py": 600,
     "adapters/pdf.py": 504,  # lowered 2026-08-08: flattened-table detector moved to extractors/text_quality.py (mise-columi)
     "extractors/talon_signature.py": 518,
