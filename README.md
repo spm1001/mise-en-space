@@ -79,6 +79,7 @@ mise create "Title" --content "# Markdown content"
 ```
 server.py       MCP server (thin wrappers around tools; ≤500 lines, enforced)
 cli.py          CLI interface (same tools, no MCP)
+mise_en_space/  Library facade — import mise for in-process use (see below)
 tools/          Business logic — routing, orchestration, do() dispatch, remote mode
 adapters/       Thin Google API wrappers (one per service)
 extractors/     Pure functions — no I/O, no MCP awareness (testable without APIs)
@@ -94,6 +95,22 @@ skills/         Claude skill (auto-discovered by plugin system)
 - All of it mechanically enforced by `tests/unit/test_architecture.py` — including the root-level utility files, by discovery
 
 Adding a new content type means: adapter (API call), extractor (parse), tool (wire + deposit). The layers are independent.
+
+## Using mise as a library
+
+Services that run headless (glaneur's nightly harvest, Garni's Cloud Run agents) import mise in-process instead of speaking MCP. The contract is the `mise_en_space` package — one class, the same three verbs:
+
+```python
+from mise_en_space import Mise
+
+ws = Mise(ambient=True, base_path=workdir)   # Cloud Run SA via ADC; also:
+                                             # token_path=..., credentials=..., or Mise()
+listing = ws.search(folder_id=CORPUS)        # discovery
+result = ws.fetch(file_id)                   # deposit: manifest.json + content.md
+doc = ws.do("create", title=..., content=markdown, folder_id=SHARED_DRIVE_FOLDER)
+```
+
+The worked example — hydrate a Drive folder, write a Doc back, as a service account — is [`examples/hydrate_and_write_back.py`](examples/hydrate_and_write_back.py); its header covers installing the wheel (you supply jeton yourself — uv source maps don't ride wheel metadata) and the service-account facts that bite (writes land only in Shared Drives). The full credential and deposit contract is the package docstring: `python -c "import mise_en_space; help(mise_en_space)"`.
 
 ## Setup
 
