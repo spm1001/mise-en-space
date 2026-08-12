@@ -523,6 +523,53 @@ class TestPreviewPartialCue:
     @patch('tools.search.write_search_results')
     @patch('tools.search.search_threads')
     @patch('tools.search.search_files')
+    @patch('tools.search.ambient_mode')
+    def test_ambient_mode_defaults_to_drive_only(
+        self, mock_ambient, mock_drive, mock_gmail, mock_write
+    ) -> None:
+        """Ambient mode defaults omitted sources to Drive only (mise-wasagu).
+
+        Same narrowing as guest mode, different reason: a service account
+        has no Gmail mailbox at all.
+        """
+        mock_ambient.return_value = True
+        mock_drive.return_value = DriveSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test")
+
+        mock_drive.assert_called_once()
+        mock_gmail.assert_not_called()
+        assert result.sources == ["drive"]
+        assert not result.errors  # narrowing an OMITTED list needs no error
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
+    @patch('tools.search.ambient_mode')
+    def test_ambient_mode_refuses_explicit_gmail_with_teaching_text(
+        self, mock_ambient, mock_drive, mock_gmail, mock_write
+    ) -> None:
+        """An EXPLICIT non-Drive source in ambient mode gets a teaching
+        errors[] entry, not a silent narrowing and not an opaque Google 403
+        (mise-wasagu). Unlike guest mode, explicit opt-in cannot work here —
+        there is no mailbox behind the credential at any scope."""
+        mock_ambient.return_value = True
+        mock_drive.return_value = DriveSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("test", sources=["drive", "gmail", "people"])
+
+        mock_gmail.assert_not_called()
+        assert result.sources == ["drive"]
+        (error,) = result.errors
+        assert "ambient (service-account) mode" in error
+        assert "Gmail" in error and "People" in error
+        assert "no Gmail mailbox" in error
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
     def test_gmail_only(self, mock_drive, mock_gmail, mock_write) -> None:
         """Only Gmail searched when sources=['gmail']."""
         mock_gmail.return_value = GmailSearchResults(results=[])

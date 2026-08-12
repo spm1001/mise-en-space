@@ -40,6 +40,43 @@ def override_path() -> Path | None:
     raw = os.environ.get(OVERRIDE_ENV)
     return Path(raw) if raw else None
 
+
+# Env switch for ambient Application Default Credentials (mise-wasagu):
+# MISE_CREDENTIALS=ambient makes mise mint credentials via
+# google.auth.default() — Cloud Run metadata server, workload identity,
+# and GOOGLE_APPLICATION_CREDENTIALS all resolve through that one call.
+AMBIENT_ENV = "MISE_CREDENTIALS"
+
+
+def ambient_mode() -> bool:
+    """True when the caller opted into ambient ADC (MISE_CREDENTIALS=ambient).
+
+    Explicit opt-in only — a missing token file NEVER falls through to
+    ambient discovery. That would be a silent identity switch, the same
+    hazard the MISE_TOKEN_PATH design refuses (see module docstring).
+
+    Misconfiguration raises rather than picking a winner: an unrecognised
+    value would otherwise be accepted-and-dropped (this codebase's
+    characteristic bug), and 'both modes set' has no honest precedence —
+    they name different identities.
+    """
+    raw = os.environ.get(AMBIENT_ENV)
+    if not raw:
+        return False
+    if raw != "ambient":
+        raise ValueError(
+            f"{AMBIENT_ENV}={raw!r} is not recognised — the only supported "
+            "value is 'ambient' (Application Default Credentials). Unset it "
+            "to use the token file."
+        )
+    if override_path() is not None:
+        raise ValueError(
+            f"Both {AMBIENT_ENV}=ambient and {OVERRIDE_ENV} are set — these "
+            "select different identities (platform service account vs "
+            "caller-owned token file). Unset one."
+        )
+    return True
+
 # Legacy token location (package root). Used for migration from
 # versioned plugin cache dirs to stable data dir.
 _LEGACY_TOKEN_PATH = Path(__file__).parent / "token.json"

@@ -15,6 +15,7 @@ from typing import Any
 
 from adapters.drive import get_file_metadata
 from models import MiseError
+from token_store import ambient_mode
 from tools import (
     OPERATIONS,
     do_append,
@@ -170,6 +171,16 @@ Returns:
     web_link: URL to view/edit"""
 
 
+# Ops that need a Gmail mailbox, a personal calendar, or an OAuth flow —
+# a service account has none of these, so ambient mode (mise-wasagu)
+# refuses up front with the reason rather than leaving Google to answer
+# an opaque insufficient-scope 403. trash stays available: it is dual-
+# backend and its Drive half works (a Gmail-id trash errors per-call).
+AMBIENT_UNAVAILABLE_OPS = {
+    "draft", "reply_draft", "archive", "star", "label", "respond", "setup_oauth",
+}
+
+
 def run_operation(operation: str, params: dict[str, Any]) -> dict[str, Any]:
     """
     Validate and execute one do() operation.
@@ -186,6 +197,15 @@ def run_operation(operation: str, params: dict[str, Any]) -> dict[str, Any]:
     if not handler:
         return {"error": True, "kind": "invalid_input",
                 "message": f"Unknown operation: {operation}. Supported: {sorted(OPERATIONS)}"}
+
+    if operation in AMBIENT_UNAVAILABLE_OPS and ambient_mode():
+        return {"error": True, "kind": "invalid_input",
+                "message": f"'{operation}' is unavailable in ambient (service-account) "
+                           "mode — a service account has no Gmail mailbox or personal "
+                           "calendar, and its credentials come from the platform, not "
+                           "an OAuth flow. Drive-family ops (create, copy, move, "
+                           "rename, share, overwrite, prepend, append, replace_text, "
+                           "comment, comment_reply, trash) remain available."}
 
     required = REQUIRED_PARAMS.get(operation, set())
     missing = {p for p in required if params.get(p) is None}

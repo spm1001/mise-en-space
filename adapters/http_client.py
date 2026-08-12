@@ -78,7 +78,10 @@ def _load_and_diagnose_credentials(token_path: str | Path) -> Any:
     - Token expired with no refresh_token
     - Token expired and refresh failed
     """
-    from token_store import override_path
+    from token_store import ambient_mode, override_path
+    if ambient_mode():  # explicit opt-in only — see adapters/ambient.py
+        from adapters.ambient import load_ambient_credentials
+        return load_ambient_credentials()
     token_path = Path(token_path)
     guest_mode = override_path() is not None
 
@@ -185,6 +188,10 @@ class MiseHttpClient:
             self._credentials.refresh(GoogleAuthRequest())
             return
         except RefreshError:
+            from token_store import ambient_mode
+            if ambient_mode():  # platform identity trouble, not a stale file
+                from adapters.ambient import ambient_refresh_refusal
+                raise ambient_refresh_refusal()
             old_refresh = getattr(self._credentials, "refresh_token", None)
             token_path = resolve_token_path(TOKEN_FILE)
             fresh = _load_and_diagnose_credentials(token_path)
@@ -412,6 +419,10 @@ class MiseSyncClient:
             self._credentials.refresh(GoogleAuthRequest())
             return
         except RefreshError:
+            from token_store import ambient_mode
+            if ambient_mode():  # platform identity trouble, not a stale file
+                from adapters.ambient import ambient_refresh_refusal
+                raise ambient_refresh_refusal()
             old_refresh = getattr(self._credentials, "refresh_token", None)
             token_path = resolve_token_path(TOKEN_FILE)
             fresh = _load_and_diagnose_credentials(token_path)

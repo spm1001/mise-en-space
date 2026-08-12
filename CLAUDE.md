@@ -327,6 +327,8 @@ uv run python -m auth --code URL_OR_CODE  # Exchange code from headless flow
 
 Token storage: macOS Keychain (`mise-oauth-token`) is the source of truth. `~/.claude/plugins/data/mise-batterie-de-savoir/token.json` is the persistent fallback (auto-created since 2026-05). The plugin-staging-dir token path is ephemeral on Cowork and should never be relied on.
 
+**Ambient mode (service accounts — mise-wasagu):** `MISE_CREDENTIALS=ambient` makes mise mint credentials via `google.auth.default()` — Cloud Run metadata server, workload identity, and `GOOGLE_APPLICATION_CREDENTIALS` all resolve through that one call (loader: `adapters/ambient.py`). Explicit opt-in ONLY, never a fallback — a missing token keeps teaching `setup_oauth`, and setting it beside `MISE_TOKEN_PATH` is an error, not a precedence. The scope tier is fixed per deployment (`MISE_SCOPES=readonly` for never-writing consumers) and is Drive-family only: search defaults to `['drive']` and refuses explicit gmail/people/calendar with the reason; `draft`/`reply_draft`/`archive`/`star`/`label`/`respond`/`setup_oauth` refuse via a dispatch gate — a service account has no mailbox or personal calendar. NB service accounts also own zero Drive storage (Google's 2025 enforcement): SA writes only land in Shared Drives (teaching error: mise-finupa).
+
 ## How to Add a New Content Type
 
 1. **Adapter** — Create `adapters/{type}.py` with fetch function (API calls, returns data)

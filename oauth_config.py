@@ -121,6 +121,44 @@ def can_open_browser() -> bool:
 
 
 # Local credentials file (for external users who provide their own)
+# --- Ambient (service-account) scope tiers — mise-wasagu ---
+# Drive-family only: a service account has no Gmail mailbox and no personal
+# calendar, so ambient mode never requests those scopes (gmail-backed ops
+# refuse with a teaching error instead of leaving Google to answer an
+# opaque insufficient-scope 403). The tier is fixed per DEPLOYMENT, not
+# per call: Drive sharing — which folders the SA can see — is the fence
+# that bounds blast radius, and MISE_SCOPES=readonly covers consumers that
+# never write (decided with Sameer 2026-08-12, superseding the per-call
+# sketch in mise-dehebi's original brief).
+AMBIENT_SCOPES_READWRITE = [
+    'https://www.googleapis.com/auth/drive',
+    'https://www.googleapis.com/auth/documents',
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/presentations',
+    'https://www.googleapis.com/auth/forms.body',
+]
+AMBIENT_SCOPES_READONLY = [
+    'https://www.googleapis.com/auth/drive.readonly',
+    'https://www.googleapis.com/auth/documents.readonly',
+    'https://www.googleapis.com/auth/spreadsheets.readonly',
+    'https://www.googleapis.com/auth/presentations.readonly',
+    'https://www.googleapis.com/auth/forms.body.readonly',
+]
+
+
+def ambient_scopes() -> list[str]:
+    """Scope set for ambient mode, chosen once at construction (MISE_SCOPES)."""
+    tier = os.environ.get('MISE_SCOPES', '')
+    if tier == 'readonly':
+        return list(AMBIENT_SCOPES_READONLY)
+    if tier in ('', 'readwrite'):
+        return list(AMBIENT_SCOPES_READWRITE)
+    raise ValueError(
+        f"MISE_SCOPES={tier!r} is not recognised — 'readonly' or 'readwrite' "
+        "(the default). Unset it for read-write."
+    )
+
+
 LOCAL_CREDENTIALS_FILE = _PACKAGE_ROOT / 'credentials.json'
 
 # GCP Secret Manager (optional — used by maintainer when local credentials.json absent)

@@ -33,7 +33,7 @@ from validation import (
     sanitize_gmail_query,
     validate_drive_id,
 )
-from token_store import override_path
+from token_store import ambient_mode, override_path
 from workspace.manager import write_search_results
 
 
@@ -241,8 +241,10 @@ def do_search(
     if sources is None:
         # Guest mode (MISE_TOKEN_PATH set): the caller-owned credential has no
         # Gmail scope, so an omitted-sources search defaults to Drive only —
-        # otherwise it fails on a scope the guest token never carries (mise-kivane).
-        sources = ["drive"] if override_path() is not None else ["drive", "gmail"]
+        # otherwise it fails on a scope the guest token never carries
+        # (mise-kivane). Ambient mode narrows identically: no mailbox (wasagu).
+        narrow = override_path() is not None or ambient_mode()
+        sources = ["drive"] if narrow else ["drive", "gmail"]
 
     # Resolve type filter → Drive query clause (validated by caller, guard for direct use)
     type_clause: str | None = None
@@ -266,6 +268,13 @@ def do_search(
         excluded_sources = [s for s in sources if s != "drive"]
         sources = [s for s in sources if s == "drive"]
 
+    # Ambient (service-account) mode reaches Drive only (mise-wasagu) —
+    # narrowed like folder_id; the errors[] entry below carries the reason.
+    ambient_blocked: list[str] = []
+    if ambient_mode():
+        ambient_blocked = [s for s in sources if s != "drive"]
+        sources = [s for s in sources if s == "drive"]
+
     # The raw query is what was actually asked, so it labels the result and the
     # deposit filename; otherwise an empty slug lands on disk.
     result = SearchResult(query=raw_query or query, sources=sources)
@@ -281,6 +290,12 @@ def do_search(
         result.cues["sources_note"] = (
             f"{names} excluded — {drive_only_reason} scopes to Drive only"
         )
+    if ambient_blocked:
+        names = ", ".join(s.capitalize() for s in ambient_blocked)
+        result.errors.append(
+            f"{names} unavailable in ambient (service-account) mode — a service "
+            "account has no Gmail mailbox, personal calendar, or directory "
+            "identity. Drive remains searchable.")
 
     search_drive = "drive" in sources
     search_gmail = "gmail" in sources
