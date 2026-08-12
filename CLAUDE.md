@@ -245,10 +245,18 @@ uv run --all-extras python scripts/smoke_stdio.py   # drive the WORKING TREE ove
 Integration tests require `-m integration` flag and real credentials.
 
 **The count IS printed — it is just at the bottom of a long scroll.** `uv run --all-extras python
--m pytest` ends with `2331 passed, 100 deselected in 24.05s` (count as of 2026-08-09 morning — it moved five times that morning) as the last line of ~92, because
+-m pytest` ends with `2447 passed, 100 deselected in 36.29s` (count as of 2026-08-12 evening) as the last line of ~92, because
 `addopts` in `pyproject.toml` carries `-q` (which suppresses the *per-test* lines, not the summary)
 plus a ~85-line coverage table that pushes the summary off the top of a truncated view.
 `-m 'not integration'` is baked in too, hence the 100 deselected.
+
+**Unit tests run hermetically — a green may not use the machine's token.** `tests/unit/conftest.py`
+autouse-points `MISE_TOKEN_PATH` at an absent file, so every unit test stands where CI stands
+(no ambient credential, identity unresolved). This exists because a dev-token-dependent green kept
+CI red for sixteen runs across three publishes, invisibly (2026-08-09→12, mise-wahane's close note).
+Tests of the credential machinery itself (`test_token_store`, `test_http_client`, `test_search`'s
+source defaults) state their env explicitly with module fixtures; follow that pattern, never
+delete the conftest pin to make a test pass.
 
 **This paragraph said the opposite until 2026-08-04, and the correction is the lesson.** It read
 "pytest prints no `N passed` summary line here", told readers the run's evidence was its exit code,
