@@ -261,7 +261,7 @@ class TestFetchPdf:
         assert result.metadata["title"] == "Test Document"
         assert result.metadata["extraction_method"] == "markitdown"
 
-        mock_extract.assert_called_once_with("abc123")
+        mock_extract.assert_called_once_with("abc123", thumbnails=True)
         mock_write_content.assert_called_once()
         mock_write_manifest.assert_called_once()
 

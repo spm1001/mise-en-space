@@ -80,7 +80,7 @@ def _self_sent_candidates() -> list[dict[str, str]] | None:
     return candidates or None
 
 
-def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None = None, recursive: bool = False, tabs: list[str] | None = None, suggestions: str = "accepted", raw: bool = False) -> FetchResult | FetchError:
+def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None = None, recursive: bool = False, tabs: list[str] | None = None, suggestions: str = "accepted", raw: bool = False, thumbnails: bool = True) -> FetchResult | FetchError:
     """
     Main fetch entry point.
 
@@ -96,6 +96,9 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
         suggestions: For Google Docs with suggested edits — 'accepted'
             (default: suggestions applied), 'original' (suggestions ignored),
             'markup' (explicit {++ins++}/{--del--} spans)
+        thumbnails: Render page/slide thumbnails (PDF pages, Slides, PDF
+            attachments). False skips rendering — the wall-clock and
+            deposit-weight lever for text-only corpus hydration
     """
     try:
         if suggestions not in ("accepted", "original", "markup"):
@@ -206,11 +209,11 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
                     kind="invalid_input",
                     message="attachment parameter only works with Gmail thread/message IDs",
                 )
-            result = fetch_attachment(normalized_id, attachment, base_path=base_path, raw=raw)
+            result = fetch_attachment(normalized_id, attachment, base_path=base_path, raw=raw, thumbnails=thumbnails)
         elif source == "gmail":
             result = fetch_gmail(normalized_id, base_path=base_path)
         else:
-            result = fetch_drive(normalized_id, base_path=base_path, recursive=recursive, tabs=tabs, suggestions=suggestions)
+            result = fetch_drive(normalized_id, base_path=base_path, recursive=recursive, tabs=tabs, suggestions=suggestions, thumbnails=thumbnails)
 
         # Disclose any resolution (draft→thread, Message-ID→thread, or
         # browser-resolved a-family URL) as a cue — resolve-and-cue, never

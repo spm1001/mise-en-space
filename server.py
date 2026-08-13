@@ -183,7 +183,7 @@ def _log_search_result(call_params: dict[str, Any], result: dict[str, Any]) -> N
 
 
 @mcp.tool()
-def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs: list[str] | None = None, recursive: bool = False, suggestions: str = "accepted", raw: bool = False) -> dict[str, Any]:
+def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs: list[str] | None = None, recursive: bool = False, suggestions: str = "accepted", raw: bool = False, thumbnails: bool = True) -> dict[str, Any]:
     """
     Fetch content to .mise/ — auto-detects type (Drive file, Gmail thread, folder).
 
@@ -196,7 +196,8 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs
     raw=True with attachment= also deposits the untouched original bytes — PDFs and Office
     files are otherwise converted and the original discarded, so the document itself was
     unreachable. Pairs with do(create, doc_type='file', file_path=...) to put a Gmail-only
-    attachment into Drive.
+    attachment into Drive. thumbnails=False skips page/slide thumbnail rendering
+    (PDFs, Slides) — much faster for text-only use.
     """
     call_params: dict[str, Any] = {"file_id": file_id}
     if attachment:
@@ -209,6 +210,8 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs
         call_params["suggestions"] = suggestions
     if raw:
         call_params["raw"] = True
+    if not thumbnails:
+        call_params["thumbnails"] = False
 
     if raw and not attachment:
         return {"error": True, "kind": "invalid_input",
@@ -222,14 +225,14 @@ def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs
             return {"error": True, "kind": "invalid_input",
                     "message": "raw=True is not available in remote mode — binary content "
                                "cannot be returned inline."}
-        result = fetch_remote(file_id, base_path, attachment, recursive=recursive, tabs=tabs, suggestions=suggestions)
+        result = fetch_remote(file_id, base_path, attachment, recursive=recursive, tabs=tabs, suggestions=suggestions, thumbnails=thumbnails)
         _log_fetch_result(call_params, result)
         return result
 
     if not base_path:
         return {"error": True, "kind": "invalid_input",
                 "message": "base_path is required — pass your working directory so deposits land in your project, not the MCP server's directory"}
-    result = do_fetch(file_id, base_path=Path(base_path), attachment=attachment, recursive=recursive, tabs=tabs, suggestions=suggestions, raw=raw).to_dict()
+    result = do_fetch(file_id, base_path=Path(base_path), attachment=attachment, recursive=recursive, tabs=tabs, suggestions=suggestions, raw=raw, thumbnails=thumbnails).to_dict()
     _log_fetch_result(call_params, result)
     return result
 

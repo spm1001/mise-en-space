@@ -394,6 +394,7 @@ def fetch_attachment(
     attachment_name: str,
     base_path: Path | None = None,
     raw: bool = False,
+    thumbnails: bool = True,
 ) -> FetchResult | FetchError:
     """
     Fetch a single named attachment from a Gmail thread.
@@ -552,10 +553,11 @@ def fetch_attachment(
         pdf_result = convert_pdf_content(file_bytes=content_bytes, file_id=thread_id)
 
         # Render thumbnails (own folder, no collision risk)
-        try:
-            pdf_result.thumbnails = render_pdf_pages(file_bytes=content_bytes)
-        except Exception as e:
-            pdf_result.warnings.append(f"Thumbnail rendering failed: {e}")
+        if thumbnails:
+            try:
+                pdf_result.thumbnails = render_pdf_pages(file_bytes=content_bytes)
+            except Exception as e:
+                pdf_result.warnings.append(f"Thumbnail rendering failed: {e}")
 
         folder = get_deposit_folder("pdf", title, thread_id, base_path=base_path)
         content_path = write_content(folder, pdf_result.content)

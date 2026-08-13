@@ -188,12 +188,15 @@ class Mise:
         tabs: list[str] | None = None,
         suggestions: str = "accepted",
         raw: bool = False,
+        thumbnails: bool = True,
     ) -> FetchResult | FetchError:
         """Deposit one artefact's converted content; return path + cues.
 
         Accepts Drive file ids, Gmail thread/message ids, and folder ids
         (`recursive=True` for the full tree, depth 5). The deposit folder
         layout is in the module docstring; `result.path` names it.
+        `thumbnails=False` skips page/slide thumbnail rendering — the
+        wall-clock lever for text-only corpus hydration.
         """
         return do_fetch(
             file_id,
@@ -203,6 +206,7 @@ class Mise:
             tabs=tabs,
             suggestions=suggestions,
             raw=raw,
+            thumbnails=thumbnails,
         )
 
     def do(self, operation: str, **params: Any) -> dict[str, Any]:

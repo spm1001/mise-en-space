@@ -287,6 +287,97 @@ class TestRenderFailsGracefully:
         assert result.thumbnails.method == "pdf2image"
 
 
+class TestThumbnailsOptOut:
+    """thumbnails=False skips rendering entirely (mise-giwawa).
+
+    The not-called asserts are only meaningful beside a positive control on
+    the same patch target — test_successful_thumbnails_attached_to_result
+    above proves adapters.pdf.render_pdf_pages is the live seam.
+    """
+
+    @patch("adapters.pdf.render_pdf_pages")
+    @patch("adapters.pdf.get_file_size")
+    @patch("adapters.pdf.download_file")
+    @patch("adapters.pdf._convert_with_markitdown")
+    def test_opt_out_skips_render_small_file(
+        self,
+        mock_markitdown: MagicMock,
+        mock_download: MagicMock,
+        mock_get_size: MagicMock,
+        mock_render: MagicMock,
+    ) -> None:
+        """Small-file path: no render call, no thumbnail warning, content intact."""
+        from adapters.pdf import fetch_and_convert_pdf
+
+        mock_get_size.return_value = 1024
+        mock_download.return_value = b"%PDF-content"
+        mock_markitdown.return_value = "Extracted text " * 100
+
+        result = fetch_and_convert_pdf("file123", thumbnails=False)
+
+        mock_render.assert_not_called()
+        assert result.thumbnails is None
+        assert result.content == "Extracted text " * 100
+        assert not any("Thumbnail" in w for w in result.warnings)
+
+    @patch("adapters.pdf.render_pdf_pages")
+    @patch("adapters.pdf.get_file_size")
+    @patch("adapters.pdf.download_file_to_temp")
+    @patch("adapters.pdf.MarkItDown")
+    def test_opt_out_skips_render_large_file(
+        self,
+        mock_markitdown_class: MagicMock,
+        mock_download_temp: MagicMock,
+        mock_get_size: MagicMock,
+        mock_render: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Streaming path honours the opt-out too."""
+        from adapters.pdf import fetch_and_convert_pdf, STREAMING_THRESHOLD_BYTES
+
+        mock_get_size.return_value = STREAMING_THRESHOLD_BYTES + 1
+        temp_file = tmp_path / "large.pdf"
+        temp_file.write_bytes(b"%PDF-content")
+        mock_download_temp.return_value = temp_file
+
+        mock_md = MagicMock()
+        mock_md.convert_local.return_value = MagicMock(text_content="Large file content " * 100)
+        mock_markitdown_class.return_value = mock_md
+
+        result = fetch_and_convert_pdf("large_id", thumbnails=False)
+
+        mock_render.assert_not_called()
+        assert result.thumbnails is None
+        assert result.content == "Large file content " * 100
+
+    @patch("tools.fetch.drive.fetch_and_convert_pdf")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
+    def test_fetch_pdf_threads_opt_out(
+        self,
+        mock_manifest: MagicMock,
+        mock_write_content: MagicMock,
+        mock_get_folder: MagicMock,
+        mock_extract: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """fetch_pdf passes thumbnails=False through to the adapter."""
+        from tools.fetch.drive import fetch_pdf
+
+        folder = tmp_path / "pdf--test--abc123"
+        folder.mkdir()
+        mock_extract.return_value = PdfConversionResult(
+            content="# PDF Content", method="markitdown", char_count=100, thumbnails=None,
+        )
+        mock_get_folder.return_value = folder
+        mock_write_content.return_value = folder / "content.md"
+
+        fetch_pdf("abc123", "Test PDF", {"mimeType": "application/pdf"}, thumbnails=False)
+
+        mock_extract.assert_called_once_with("abc123", thumbnails=False)
+
+
 class TestPageCap:
     """Verify MAX_THUMBNAIL_PAGES cap."""
 

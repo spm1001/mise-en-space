@@ -43,7 +43,7 @@ def _add_file_dates(extra: dict[str, Any], metadata: dict[str, Any]) -> None:
         extra["modified_time"] = metadata["modifiedTime"]
 
 
-def fetch_drive(file_id: str, base_path: Path | None = None, recursive: bool = False, tabs: list[str] | None = None, suggestions: str = "accepted") -> FetchResult | FetchError:
+def fetch_drive(file_id: str, base_path: Path | None = None, recursive: bool = False, tabs: list[str] | None = None, suggestions: str = "accepted", thumbnails: bool = True) -> FetchResult | FetchError:
     """Fetch Drive file, route by type, extract content, deposit to workspace."""
     # Get metadata to determine type
     metadata = get_file_metadata(file_id)
@@ -61,13 +61,13 @@ def fetch_drive(file_id: str, base_path: Path | None = None, recursive: bool = F
     elif mime_type == GOOGLE_SHEET_MIME:
         return fetch_sheet(file_id, title, metadata, email_context, base_path=base_path, tabs=tabs)
     elif mime_type == GOOGLE_SLIDES_MIME:
-        return fetch_slides(file_id, title, metadata, email_context, base_path=base_path)
+        return fetch_slides(file_id, title, metadata, email_context, base_path=base_path, thumbnails=thumbnails)
     elif mime_type == GOOGLE_FORM_MIME:
         return fetch_form_file(file_id, title, metadata, email_context, base_path=base_path)
     elif is_media_file(mime_type):
         return fetch_video(file_id, title, metadata, email_context, base_path=base_path)
     elif mime_type == "application/pdf":
-        return fetch_pdf(file_id, title, metadata, email_context, base_path=base_path)
+        return fetch_pdf(file_id, title, metadata, email_context, base_path=base_path, thumbnails=thumbnails)
     elif (office_type := get_office_type_from_mime(mime_type)):
         return fetch_office(file_id, title, metadata, office_type, email_context, base_path=base_path)
     elif is_text_file(mime_type):
@@ -341,23 +341,23 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
     )
 
 
-def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
+def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None, thumbnails: bool = True) -> FetchResult:
     """Fetch Google Slides with open comments included."""
-    # Enable thumbnails - selective logic in adapter skips stock photos/text-only
-    presentation_data = fetch_presentation(presentation_id, include_thumbnails=True)
+    # Selective logic in adapter skips stock photos/text-only slides
+    presentation_data = fetch_presentation(presentation_id, include_thumbnails=thumbnails)
     content = extract_slides_content(presentation_data)
 
     folder = get_deposit_folder("slides", title, presentation_id, base_path=base_path)
     content_path = write_content(folder, content)
 
-    # Write thumbnails if available, track failures
+    # needs_thumbnail is set at parse time regardless of the thumbnails flag, so failure accounting only applies when rendering was requested — else every slide misreports as failed.
     thumbnail_count = 0
     thumbnail_failures: list[int] = []
     for slide in presentation_data.slides:
         if slide.thumbnail_bytes:
             write_thumbnail(folder, slide.thumbnail_bytes, slide.index)
             thumbnail_count += 1
-        elif slide.needs_thumbnail:
+        elif thumbnails and slide.needs_thumbnail:
             # Thumbnail was requested but not received
             thumbnail_failures.append(slide.index + 1)  # 1-indexed for humans
 
@@ -514,7 +514,7 @@ def fetch_video(file_id: str, title: str, metadata: dict[str, Any], email_contex
     )
 
 
-def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None) -> FetchResult:
+def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None, thumbnails: bool = True) -> FetchResult:
     """
     Fetch PDF file with hybrid extraction strategy.
 
@@ -522,7 +522,7 @@ def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context:
     conversion for complex/image-heavy PDFs.
     """
     # Extract via adapter (handles download + hybrid extraction + thumbnail rendering)
-    result = fetch_and_convert_pdf(file_id)
+    result = fetch_and_convert_pdf(file_id, thumbnails=thumbnails)
 
     # Deposit to workspace
     folder = get_deposit_folder("pdf", title, file_id, base_path=base_path)

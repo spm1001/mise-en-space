@@ -170,6 +170,7 @@ def convert_pdf_content(
 def fetch_and_convert_pdf(
     file_id: str,
     min_chars_threshold: int = DEFAULT_MIN_CHARS_THRESHOLD,
+    thumbnails: bool = True,
 ) -> PdfConversionResult:
     """
     Download PDF from Drive and extract content.
@@ -180,6 +181,7 @@ def fetch_and_convert_pdf(
     Args:
         file_id: Drive file ID
         min_chars_threshold: Minimum chars to consider markitdown successful
+        thumbnails: False skips page-thumbnail rendering entirely (mise-giwawa)
 
     Returns:
         PdfConversionResult with content and extraction method used
@@ -189,7 +191,7 @@ def fetch_and_convert_pdf(
 
     if file_size > STREAMING_THRESHOLD_BYTES:
         # Large file: stream to temp, extract from path
-        return _fetch_and_convert_pdf_large(file_id, min_chars_threshold)
+        return _fetch_and_convert_pdf_large(file_id, min_chars_threshold, thumbnails=thumbnails)
     else:
         # Small file: load into memory
         pdf_bytes = download_file(file_id)
@@ -198,16 +200,18 @@ def fetch_and_convert_pdf(
             file_id=file_id,
             min_chars_threshold=min_chars_threshold,
         )
-        try:
-            result.thumbnails = render_pdf_pages(file_bytes=pdf_bytes)
-        except Exception as e:
-            result.warnings.append(f"Thumbnail rendering failed: {e}")
+        if thumbnails:
+            try:
+                result.thumbnails = render_pdf_pages(file_bytes=pdf_bytes)
+            except Exception as e:
+                result.warnings.append(f"Thumbnail rendering failed: {e}")
         return result
 
 
 def _fetch_and_convert_pdf_large(
     file_id: str,
     min_chars_threshold: int = DEFAULT_MIN_CHARS_THRESHOLD,
+    *, thumbnails: bool = True,
 ) -> PdfConversionResult:
     """
     Extract large PDF using streaming download.
@@ -225,10 +229,11 @@ def _fetch_and_convert_pdf_large(
         )
         result.warnings.insert(0, "Large file: using streaming download")
         # Render thumbnails before temp file is unlinked
-        try:
-            result.thumbnails = render_pdf_pages(file_path=tmp_path)
-        except Exception as e:
-            result.warnings.append(f"Thumbnail rendering failed: {e}")
+        if thumbnails:
+            try:
+                result.thumbnails = render_pdf_pages(file_path=tmp_path)
+            except Exception as e:
+                result.warnings.append(f"Thumbnail rendering failed: {e}")
         return result
     finally:
         tmp_path.unlink(missing_ok=True)

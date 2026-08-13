@@ -60,7 +60,7 @@ def search_remote(
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def fetch_remote(file_id: str, base_path: str, attachment: str | None, *, recursive: bool = False, tabs: list[str] | None = None, suggestions: str = "accepted") -> dict[str, Any]:
+def fetch_remote(file_id: str, base_path: str, attachment: str | None, *, recursive: bool = False, tabs: list[str] | None = None, suggestions: str = "accepted", thumbnails: bool = True) -> dict[str, Any]:
     """
     Remote fetch: deposit to temp dir, read content back inline, clean up.
 
@@ -74,7 +74,7 @@ def fetch_remote(file_id: str, base_path: str, attachment: str | None, *, recurs
         temp_dir = tempfile.mkdtemp(prefix="mise-remote-")
         effective_base = Path(temp_dir)
     try:
-        result = do_fetch(file_id, base_path=effective_base, attachment=attachment, recursive=recursive, tabs=tabs, suggestions=suggestions)
+        result = do_fetch(file_id, base_path=effective_base, attachment=attachment, recursive=recursive, tabs=tabs, suggestions=suggestions, thumbnails=thumbnails)
 
         if not isinstance(result, FetchResult):
             return result.to_dict()

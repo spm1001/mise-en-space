@@ -87,10 +87,10 @@ _LEGACY_SIZE_BASELINE = {
     "extractors/docs.py": 892,
     "tools/fetch/drive.py": 805,  # tightened 2026-08-08: _write_per_tab_csvs moved to common.py (mise-dogape)
     "resources/docs.py": 851,  # +30 for the 'people' search source (mise-mahiho); the last 6 are the multi-word query trap, added after a live probe showed `orgTitle:Head of Strategy` returns zero SILENTLY — a caller who doesn't know that reads the zero as "nobody has that job" — this module's mass IS resource text, so its ceiling tracks CAPABILITY additions; splitting a resource string across siblings would be worse. Raise only with a new op or search source, and only by what the new capability's grammar actually needs. The people entry earns its lines on query grammar (Admin SDK syntax, not Drive's) plus two honesty notes the caller cannot infer.
-    "tools/fetch/gmail.py": 701,  # +1 (2026-08-07): the gmail_ids split turned one import into two; +6 (2026-08-09): web_link emission, logic lives in gmail_ids.thread_web_link_or_warn (mise-hetaba)
+    "tools/fetch/gmail.py": 703,  # +1 (2026-08-07): the gmail_ids split turned one import into two; +6 (2026-08-09): web_link emission, logic lives in gmail_ids.thread_web_link_or_warn (mise-hetaba); +2 (2026-08-13): thumbnails opt-out — one signature line, one if-guard at the render site (mise-giwawa)
     "adapters/http_client.py": 703,  # +11 (2026-08-12): ambient-mode dispatch — a 4-line branch in _load_and_diagnose_credentials plus a 5-line refresh guard in EACH near-duplicate client (mise-wasagu). +9 (2026-08-12 evening, mise-dareti): constructor-injected credentials pay the SAME three seams — a 3-line return in the loader, a 3-line refusal in each refresh path; the registry and teaching text live in token_store. These are the only seams identity selection can intercept. Halves when MiseSyncClient dies in Phase 2.
     "extractors/slides.py": 600,
-    "adapters/pdf.py": 504,  # lowered 2026-08-08: flattened-table detector moved to extractors/text_quality.py (mise-columi)
+    "adapters/pdf.py": 509,  # lowered 2026-08-08: flattened-table detector moved to extractors/text_quality.py (mise-columi); +5 (2026-08-13): thumbnails opt-out — two signature lines, one docstring line, two if-guards at the render sites; the gating must sit beside the renders it skips (mise-giwawa)
     "extractors/talon_signature.py": 518,
 }
 

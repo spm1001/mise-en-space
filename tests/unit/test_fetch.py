@@ -561,7 +561,7 @@ class TestFetchAttachment:
             )
             result = do_fetch("thread_xyz", attachment="report.xlsx")
             mock_fetch_att.assert_called_once_with(
-                "thread_xyz", "report.xlsx", base_path=None, raw=False,
+                "thread_xyz", "report.xlsx", base_path=None, raw=False, thumbnails=True,
             )
 
     def test_rejects_non_gmail(self):
@@ -1770,6 +1770,33 @@ class TestFetchSlides:
     @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/slides/content.md"))
     @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
     @patch("tools.fetch.drive.write_manifest")
+    def test_slides_opt_out_no_false_failures(self, mock_manifest, mock_comments,
+                                               mock_write, mock_folder, mock_extract, mock_fetch):
+        """thumbnails=False: adapter asked not to render, and content slides are
+        NOT misreported as thumbnail failures (needs_thumbnail is set at parse
+        time regardless of whether rendering was requested)."""
+        slide = MagicMock()
+        slide.thumbnail_bytes = None
+        slide.needs_thumbnail = True  # content slide — would render if asked
+        slide.index = 0
+        mock_pres = MagicMock()
+        mock_pres.slides = [slide]
+        mock_pres.warnings = []
+        mock_fetch.return_value = mock_pres
+
+        fetch_slides("p1", "Deck", _drive_metadata("application/vnd.google-apps.presentation"), thumbnails=False)
+
+        mock_fetch.assert_called_once_with("p1", include_thumbnails=False)
+        extra = mock_manifest.call_args[1].get("extra", {})
+        assert "thumbnail_failures" not in extra
+        assert extra["thumbnail_count"] == 0
+
+    @patch("tools.fetch.drive.fetch_presentation")
+    @patch("tools.fetch.drive.extract_slides_content", return_value="# Slide 1")
+    @patch("tools.fetch.drive.get_deposit_folder", return_value=Path("/tmp/slides"))
+    @patch("tools.fetch.drive.write_content", return_value=Path("/tmp/slides/content.md"))
+    @patch("tools.fetch.drive._enrich_with_comments", return_value=(0, None))
+    @patch("tools.fetch.drive.write_manifest")
     def test_slides_with_email_context(self, mock_manifest, mock_comments,
                                         mock_write, mock_folder, mock_extract, mock_fetch):
         """Email context in slides result metadata."""
@@ -2112,7 +2139,15 @@ class TestDoFetchRouting:
         """Drive IDs route to fetch_drive."""
         mock_drive.return_value = FetchResult(path="/p", content_file="/p/c.md", format="markdown", type="doc", metadata={})
         result = do_fetch("f1")
-        mock_drive.assert_called_once_with("f1", base_path=None, recursive=False, tabs=None, suggestions="accepted")
+        mock_drive.assert_called_once_with("f1", base_path=None, recursive=False, tabs=None, suggestions="accepted", thumbnails=True)
+
+    @patch("tools.fetch.router.detect_id_type", return_value=("drive", "f1", UrlDecorations()))
+    @patch("tools.fetch.router.fetch_drive")
+    def test_threads_thumbnails_opt_out(self, mock_drive, mock_detect):
+        """thumbnails=False reaches fetch_drive intact (mise-giwawa)."""
+        mock_drive.return_value = FetchResult(path="/p", content_file="/p/c.md", format="markdown", type="doc", metadata={})
+        do_fetch("f1", thumbnails=False)
+        mock_drive.assert_called_once_with("f1", base_path=None, recursive=False, tabs=None, suggestions="accepted", thumbnails=False)
 
     def test_mise_error_caught(self):
         """MiseError becomes FetchError."""
@@ -2141,7 +2176,7 @@ class TestDoFetchRouting:
         """base_path is forwarded to fetcher."""
         mock_drive.return_value = FetchResult(path="/p", content_file="/p/c.md", format="markdown", type="doc", metadata={})
         do_fetch("f1", base_path=Path("/custom"))
-        mock_drive.assert_called_once_with("f1", base_path=Path("/custom"), recursive=False, tabs=None, suggestions="accepted")
+        mock_drive.assert_called_once_with("f1", base_path=Path("/custom"), recursive=False, tabs=None, suggestions="accepted", thumbnails=True)
 
 
 class TestExtractParticipants:
