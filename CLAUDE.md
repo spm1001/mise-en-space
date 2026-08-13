@@ -121,6 +121,8 @@ docs/           Design documents and references
 - **`fetch` of a decorated Drive URL points at the named location instead of throwing it away** (mise-dogape). `?gid`, `?tab`, `#heading`, `#slide`, `?disco` are parsed at the `detect_id_type` seam (now a 3-tuple — the old 2-tuple silently destroyed them one line into the fetch), resolved **post-fetch against the deposit alone** (manifest + comments.md, zero extra API calls), and surfaced as `cues.pointer` ("heading 'Team Inbox:' in tab 'Template' — content.md from line 340"). Deposits are byte-identical for decorated and bare fetches; resolution data rides the manifest unconditionally (`structure` for docs, `sheet_id` in `tabs` — now written for single-tab sheets too, `slides_index` for decks). A dangling pointer is reported STALE (firm for tabs — ids are immutable; gentle for headings — only read-only), never ignored. Resolution is lookup, never shape-matching (`'p'`, `'g3f5d00ed841_0_0'`, `'mig_slide_003'` are all real slide ids). Logic lives in `tools/fetch/decorations.py`.
 - `fetch` accepts `raw=True` alongside `attachment=` — deposits the attachment's **original bytes** beside the extraction (mise-buzafo). PDFs and Office files are otherwise converted and the original discarded, so the document itself was unreachable; only images and plain text survived. Lands in `cues.files` automatically. Pairs with `do(create, doc_type='file', file_path=…)` to put a Gmail-only artefact into Drive. Rejected without `attachment=`, and in remote mode (binary can't ride back inline).
 - `fetch` accepts optional `tabs` param (list of tab names) to fetch only specific tabs from spreadsheets
+- `fetch` accepts `thumbnails=False` — skips PDF page and Slides thumbnail rendering on every path (Drive PDFs, Gmail PDF attachments, Slides), default unchanged (mise-giwawa). Measured: 154s → 59s and 77 MB → 0 of PNGs on a 256-page annual report; the wall-clock lever for text-only corpus hydration. Slides guard rides along: with rendering off, content slides are not misreported as `thumbnail_failures`.
+- **PDF page-citation fidelity is measured, never inferred** (mise-wujoga): every PDF deposit carries `page_markers` (form feeds counted in content.md) and `pdf_pages` (poppler's count via `adapters/pdf_info.py`, None when poppler/pdf2image absent), and a warning cue fires when per-page citations can't be derived (0 markers on a multi-page PDF, partial markers = misalignment, or the Drive path on a build with no page count). Marker survival is per-PDF, not per-path — markitdown kept the two-page fixture's form feed and dropped all 255 of the BBC annual report's in the same environment — so gating on `extraction_method` is wrong on real documents; that design was falsified live before shipping.
 - `fetch` accepts `suggestions=` for Google Docs carrying suggested edits: `accepted` (default — suggestions applied, the suggester's intended text, deletions honoured), `original` (pre-suggestion text), `markup` (`{++ins++}[s1]`/`{--del--}[s1]` CriticMarkup, shared `[sN]` = one replace). `cues.has_suggestions`/`suggestion_count`/`suggestions_mode` + a warning fire whenever suggestions exist. First call is always SUGGESTIONS_INLINE (countable); the preview modes cost a second `documents.get` only when suggestions are present (checkbox-oracle pattern). See mise-wofomu.
 - `fetch` accepts `recursive=True` on folder IDs — returns full indented tree (max depth 5, 1000 items)
 - `do` routes via `operation` param — `do(operation="create", ...)`
@@ -247,7 +249,7 @@ uv run --all-extras python scripts/smoke_stdio.py   # drive the WORKING TREE ove
 Integration tests require `-m integration` flag and real credentials.
 
 **The count IS printed — it is just at the bottom of a long scroll.** `uv run --all-extras python
--m pytest` ends with `2463 passed, 100 deselected in 37.03s` (count as of 2026-08-12 evening) as the last line of ~92, because
+-m pytest` ends with `2482 passed, 100 deselected in 22.99s` (count as of 2026-08-13 late) as the last line of ~92, because
 `addopts` in `pyproject.toml` carries `-q` (which suppresses the *per-test* lines, not the summary)
 plus a ~85-line coverage table that pushes the summary off the top of a truncated view.
 `-m 'not integration'` is baked in too, hence the 100 deselected.
@@ -272,6 +274,10 @@ and nothing adjacent**; re-run the thing the claim is about, not the thing your 
 `addopts`' `-q` and your `-v` cancel to zero verbosity. Use `-vv` — and validate it against a clean
 tree *before* trusting a red, because the failure mode here is an **empty result with exit code 0**,
 which reads exactly like "nothing went wrong" and just as easily like "nothing was checked".
+The same screen is reachable from the opposite direction: adding your own `-q` stacks with
+`addopts`' `-q` to `-qq`, which genuinely suppresses the `N passed` summary while exiting 0 — so a
+tidy-looking `pytest -q` here loses the count entirely (walked into live, 2026-08-13, mise-ligopu).
+Run the bare documented command when you need the number.
 
 **`scripts/smoke_stdio.py` is how you exercise the MCP envelope before publishing.** Unit
 tests can't reach the FastMCP registration, the `@mcp.tool` wrapper, schema coercion or the

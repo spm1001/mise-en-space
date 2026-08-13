@@ -121,6 +121,55 @@ def _deposit_pdf_thumbnails(
     return extras
 
 
+def pdf_page_fidelity(result: PdfConversionResult) -> dict[str, Any]:
+    """
+    Manifest extras for page-citation viability, plus a loud warning when
+    citations can't be derived (mise-wujoga).
+
+    Page-marker survival is per-PDF, not per-path: markitdown kept the
+    two-page fixture's form feed and dropped all 255 of the BBC annual
+    report's in the same environment, and the Drive-conversion fallback
+    (PDF → temp Doc → markdown) structurally has no page concept. So the
+    contract is measured, never inferred from extraction_method: count the
+    markers actually present in the content, judge them against poppler's
+    page count (result.pdf_pages, None = unknown), and warn — by mutating
+    result.warnings, the repo's warnings pattern — whenever a page-citing
+    consumer would silently mis-cite.
+
+    Full preservation is pages-1 or pages markers (trailing form feed
+    varies); 0 markers on a multi-page PDF means citations are underivable,
+    and anything in between means they'd MISALIGN, which is worse than
+    absent — both warn.
+    """
+    markers = result.content.count("\f")
+    extras: dict[str, Any] = {"page_markers": markers}
+    pages = result.pdf_pages
+    if pages is not None:
+        extras["pdf_pages"] = pages
+
+    if pages is not None and pages >= 2:
+        if markers == 0:
+            result.warnings.append(
+                f"No page markers survived extraction ({pages}-page PDF, "
+                f"{result.method} path) — per-page citations cannot be "
+                "derived from content.md."
+            )
+        elif markers < pages - 1:
+            result.warnings.append(
+                f"Partial page markers: {markers} form feeds for {pages} "
+                f"pages ({result.method} path) — per-page citations would "
+                "misalign; treat page boundaries as unreliable."
+            )
+    elif pages is None and result.method == "drive" and markers == 0:
+        result.warnings.append(
+            "PDF extracted via Drive conversion, which preserves no page "
+            "boundaries — per-page citations cannot be derived (page count "
+            "unknown on this build)."
+        )
+
+    return extras
+
+
 def _build_cues(
     folder: Path | str,
     *,

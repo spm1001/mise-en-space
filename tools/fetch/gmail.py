@@ -17,7 +17,7 @@ from models import FetchResult, FetchError, InviteState, MiseError, ErrorKind
 from validation import is_gmail_api_id, diagnose_fetch_404
 from workspace import get_deposit_folder, write_content, write_manifest, write_image, write_raw
 
-from .common import _build_cues, _deposit_pdf_thumbnails
+from .common import _build_cues, _deposit_pdf_thumbnails, pdf_page_fidelity
 from .gmail_attachments import (
     MAX_EAGER_ATTACHMENTS,
     _download_attachment_bytes,
@@ -564,6 +564,7 @@ def fetch_attachment(
 
         # Deposit thumbnails via shared helper
         thumb_extras = _deposit_pdf_thumbnails(folder, pdf_result)
+        fidelity_extras = pdf_page_fidelity(pdf_result)  # mutates warnings pre-merge
 
         # Before _build_cues so the raw filename lands in cues.files.
         raw_extras = _deposit_raw(folder, content_bytes, attachment_name) if raw else {}
@@ -575,6 +576,7 @@ def fetch_attachment(
             "extraction_method": pdf_result.method,
             "char_count": pdf_result.char_count,
             **thumb_extras,
+            **fidelity_extras,
         }
         if raw_extras.get("raw_file"):
             extra["raw_file"] = raw_extras["raw_file"]

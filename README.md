@@ -112,6 +112,8 @@ doc = ws.do("create", title=..., content=markdown, folder_id=SHARED_DRIVE_FOLDER
 
 The worked example — hydrate a Drive folder, write a Doc back, as a service account — is [`examples/hydrate_and_write_back.py`](examples/hydrate_and_write_back.py); its header covers installing the wheel (you supply jeton yourself — uv source maps don't ride wheel metadata) and the service-account facts that bite (writes land only in Shared Drives). The full credential and deposit contract is the package docstring: `python -c "import mise_en_space; help(mise_en_space)"`.
 
+Two facts a headless PDF pipeline needs. `fetch(file_id, thumbnails=False)` skips page/slide PNG rendering — measured 154s → 59s and 77 MB → 0 of deposit weight on a 256-page annual report — so pass it whenever nothing will look at pixels. And **no extraction path guarantees page boundaries**: form-feed survival is per-PDF (markitdown kept a two-page fixture's marker and dropped all 255 of that same annual report's), so a page-citing consumer must gate on the measured fields every PDF deposit carries — `page_markers` (form feeds in content.md) against `pdf_pages` (poppler's count, when available) — and heed the warning cue that fires whenever per-page citations can't be derived. Never infer page fidelity from `extraction_method`.
+
 ## Setup
 
 ### 1. Clone and install

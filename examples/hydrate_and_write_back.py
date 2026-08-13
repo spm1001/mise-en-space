@@ -91,9 +91,11 @@ def hydrate(ws: Mise, folder_id: str, flat_dir: Path) -> list[dict]:
             continue
         # Print BEFORE each fetch: PDF conversion can take minutes per
         # file on report-sized documents, and a silent walk is
-        # indistinguishable from a hung one.
+        # indistinguishable from a hung one. thumbnails=False skips the
+        # page-PNG rendering a text-only consumer never reads — measured
+        # 154s -> 59s and 77 MB -> 0 on a 256-page annual report.
         print(f"  hydrating {entry['name']} ...", flush=True)
-        result = ws.fetch(entry["id"])
+        result = ws.fetch(entry["id"], thumbnails=False)
         if not isinstance(result, FetchResult):
             # A teaching error object — message says what to do. One bad
             # file shouldn't abort a corpus walk; record it and move on.

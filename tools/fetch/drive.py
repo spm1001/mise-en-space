@@ -30,7 +30,7 @@ from workspace import get_deposit_folder, write_content, write_manifest, write_t
 
 from .common import (
     _build_cues, _build_email_context_metadata, _deposit_pdf_thumbnails,
-    _enrich_with_comments, _write_per_tab_csvs, is_text_file,
+    _enrich_with_comments, _write_per_tab_csvs, is_text_file, pdf_page_fidelity,
 )
 from .decorations import build_doc_structure, build_slides_index
 
@@ -535,6 +535,7 @@ def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context:
         "char_count": result.char_count,
         "extraction_method": result.method,
         **thumb_extras,
+        **pdf_page_fidelity(result),  # mutates result.warnings before the reads below
     }
     if result.warnings:
         extra["warnings"] = result.warnings

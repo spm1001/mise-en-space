@@ -24,6 +24,7 @@ except ImportError:  # slim/embedded build — PDF text falls back to Drive conv
 from adapters.conversion import convert_via_drive
 from extractors.text_quality import looks_like_flattened_tables
 from adapters.drive import download_file, download_file_to_temp, get_file_size, STREAMING_THRESHOLD_BYTES
+from adapters.pdf_info import count_pdf_pages
 
 log = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ class PdfConversionResult:
     char_count: int
     warnings: list[str] = field(default_factory=list)
     thumbnails: PdfThumbnailResult | None = None
+    pdf_pages: int | None = None  # poppler ground truth; None = unknown (mise-wujoga)
 
 
 def convert_pdf_content(
@@ -103,6 +105,7 @@ def convert_pdf_content(
     if file_bytes is not None and file_path is not None:
         raise ValueError("Cannot provide both file_bytes and file_path")
 
+    pdf_pages = count_pdf_pages(file_bytes=file_bytes, file_path=file_path)
     warnings: list[str] = []
 
     # 1. Try markitdown first (fast path) — absent in the slim/embedded build,
@@ -138,6 +141,7 @@ def convert_pdf_content(
                 method="markitdown",
                 char_count=char_count,
                 warnings=warnings,
+                pdf_pages=pdf_pages,
             )
 
     # 3. Markitdown failed or produced flattened tables — fall back to Drive
@@ -164,6 +168,7 @@ def convert_pdf_content(
         method="drive",
         char_count=len(conversion_result.content.strip()),
         warnings=warnings,
+        pdf_pages=pdf_pages,
     )
 
 

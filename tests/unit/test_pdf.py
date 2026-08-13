@@ -229,8 +229,145 @@ class TestPdfExtraction:
         assert "Failed to delete temp file" in str(result.warnings)
 
 
+class TestPdfPageFidelity:
+    """pdf_page_fidelity: measured page-citation viability (mise-wujoga).
+
+    Marker survival is per-PDF, not per-path — markitdown kept the fixture's
+    form feed and dropped all 255 of the BBC annual report's — so the
+    contract counts markers against poppler's page count rather than
+    inferring from extraction_method.
+    """
+
+    def _result(self, content: str, method: str = "markitdown", pages: int | None = None) -> PdfConversionResult:
+        return PdfConversionResult(
+            content=content, method=method, char_count=len(content), pdf_pages=pages,
+        )
+
+    def test_full_preservation_pages_minus_one(self) -> None:
+        from tools.fetch.common import pdf_page_fidelity
+        r = self._result("p1\fp2\fp3", pages=3)
+        extras = pdf_page_fidelity(r)
+        assert extras == {"page_markers": 2, "pdf_pages": 3}
+        assert r.warnings == []
+
+    def test_full_preservation_trailing_feed(self) -> None:
+        from tools.fetch.common import pdf_page_fidelity
+        r = self._result("p1\fp2\fp3\f", pages=3)
+        pdf_page_fidelity(r)
+        assert r.warnings == []
+
+    def test_zero_markers_multipage_warns(self) -> None:
+        from tools.fetch.common import pdf_page_fidelity
+        r = self._result("all one blob", pages=256)
+        extras = pdf_page_fidelity(r)
+        assert extras["page_markers"] == 0
+        assert any("cannot be derived" in w for w in r.warnings)
+        assert any("256-page" in w for w in r.warnings)
+
+    def test_partial_markers_warn_misalignment(self) -> None:
+        from tools.fetch.common import pdf_page_fidelity
+        r = self._result("a\fb", pages=10)  # 1 marker, 10 pages
+        pdf_page_fidelity(r)
+        assert any("misalign" in w for w in r.warnings)
+
+    def test_single_page_never_warns(self) -> None:
+        from tools.fetch.common import pdf_page_fidelity
+        r = self._result("one pager", pages=1)
+        pdf_page_fidelity(r)
+        assert r.warnings == []
+
+    def test_unknown_pages_drive_path_warns(self) -> None:
+        """Slim build: no poppler, every PDF takes the Drive path — the
+        warning must still fire there, or the wheel consumer never sees it."""
+        from tools.fetch.common import pdf_page_fidelity
+        r = self._result("converted text", method="drive", pages=None)
+        extras = pdf_page_fidelity(r)
+        assert "pdf_pages" not in extras
+        assert any("Drive conversion" in w for w in r.warnings)
+
+    def test_unknown_pages_markitdown_stays_quiet(self) -> None:
+        """0 markers + unknown count on markitdown could be a 1-pager —
+        disclose the number, don't cry wolf."""
+        from tools.fetch.common import pdf_page_fidelity
+        r = self._result("maybe one page", method="markitdown", pages=None)
+        extras = pdf_page_fidelity(r)
+        assert extras == {"page_markers": 0}
+        assert r.warnings == []
+
+
+class TestCountPdfPages:
+    """count_pdf_pages: poppler ground truth, None on any failure."""
+
+    def test_counts_real_fixture(self) -> None:
+        from adapters.pdf_info import count_pdf_pages
+        fixture = Path("fixtures/pdf/two_pages.pdf").read_bytes()
+        assert count_pdf_pages(file_bytes=fixture) == 2
+
+    def test_no_input_returns_none(self) -> None:
+        from adapters.pdf_info import count_pdf_pages
+        assert count_pdf_pages() is None
+
+    @patch("pdf2image.pdfinfo_from_bytes", side_effect=Exception("no poppler"))
+    def test_poppler_failure_returns_none(self, mock_info: MagicMock) -> None:
+        from adapters.pdf_info import count_pdf_pages
+        assert count_pdf_pages(file_bytes=b"%PDF") is None
+
+    @patch("adapters.pdf.count_pdf_pages", return_value=7)
+    @patch("adapters.pdf.convert_via_drive")
+    @patch("adapters.pdf._convert_with_markitdown", return_value="text " * 200)
+    def test_convert_stamps_pdf_pages_markitdown(
+        self, mock_md: MagicMock, mock_drive: MagicMock, mock_count: MagicMock
+    ) -> None:
+        result = convert_pdf_content(file_bytes=b"%PDF", file_id="x")
+        assert result.method == "markitdown"
+        assert result.pdf_pages == 7
+        mock_drive.assert_not_called()
+
+    @patch("adapters.pdf.count_pdf_pages", return_value=7)
+    @patch("adapters.pdf.convert_via_drive")
+    @patch("adapters.pdf._convert_with_markitdown", return_value="tiny")
+    def test_convert_stamps_pdf_pages_drive_fallback(
+        self, mock_md: MagicMock, mock_drive: MagicMock, mock_count: MagicMock
+    ) -> None:
+        mock_drive.return_value = MagicMock(content="drive text " * 100, warnings=[])
+        result = convert_pdf_content(file_bytes=b"%PDF", file_id="x")
+        assert result.method == "drive"
+        assert result.pdf_pages == 7
+
+
 class TestFetchPdf:
     """Tests for PDF fetch tool function."""
+
+    @patch("tools.fetch.drive.fetch_and_convert_pdf")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
+    def test_fidelity_reaches_manifest_and_cues(
+        self,
+        mock_write_manifest: MagicMock,
+        mock_write_content: MagicMock,
+        mock_get_folder: MagicMock,
+        mock_extract: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """A 0-marker multi-page PDF: extras land in the manifest and the
+        warning lands in cues.warnings — the loud half of the contract."""
+        mock_extract.return_value = PdfConversionResult(
+            content="no page markers here",
+            method="markitdown",
+            char_count=20,
+            pdf_pages=256,
+        )
+        mock_get_folder.return_value = tmp_path
+        mock_write_content.return_value = tmp_path / "content.md"
+
+        result = fetch_pdf("abc123", "Big Report", {"mimeType": "application/pdf"})
+
+        extra = mock_write_manifest.call_args.kwargs.get("extra") or mock_write_manifest.call_args[1].get("extra")
+        assert extra["page_markers"] == 0
+        assert extra["pdf_pages"] == 256
+        assert any("cannot be derived" in w for w in extra["warnings"])
+        assert any("cannot be derived" in w for w in result.cues["warnings"])
 
     @patch("tools.fetch.drive.fetch_and_convert_pdf")
     @patch("tools.fetch.drive.get_deposit_folder")
