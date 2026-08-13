@@ -3047,6 +3047,61 @@ class TestRawAttachmentBytes:
         assert "raw_file" not in extras
         assert extras["warnings"]
 
+    @patch("tools.fetch.gmail.fetch_thread")
+    @patch("tools.fetch.gmail.lookup_exfiltrated")
+    @patch("tools.fetch.gmail_attachments.download_attachment")
+    @patch("tools.fetch.gmail.convert_office_content")
+    @patch("tools.fetch.gmail.get_deposit_folder", return_value=Path("/tmp/docx-raw"))
+    @patch("tools.fetch.gmail.write_content", return_value=Path("/tmp/docx-raw/content.md"))
+    @patch("tools.fetch.gmail.write_manifest")
+    @patch("tools.fetch.gmail.write_raw")
+    def test_raw_survives_the_drive_exfil_office_path(
+        self, mock_raw, mock_manifest, mock_write, mock_folder,
+        mock_office, mock_download, mock_lookup, mock_fetch
+    ):
+        """mise-cejozu — raw=True raised UnboundLocalError on exactly the
+        attachments the pre-exfil optimisation applies to.
+
+        content_bytes carried a bare annotation (`content_bytes: bytes | None`),
+        which declares a name without binding it. The exfil branch converts
+        server-side and never assigns it, so the guard written to rescue this
+        very case — `if raw and content_bytes is None` — was itself the read
+        that raised. It fired only on the path it existed for.
+
+        Every neighbouring test passed throughout, because `raw and ...`
+        short-circuits when raw is False: the bug was unreachable without
+        raw=True, and no test combined raw=True with an exfil'd Office file.
+        Found in the field reading tracked changes in a .docx whose extraction
+        had flattened them.
+        """
+        docx_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        att = EmailAttachment(
+            filename="Ways of Working.docx", mime_type=docx_mime,
+            size=3502564, attachment_id="att_1",
+        )
+        mock_fetch.return_value = _make_thread_data([att])
+        mock_lookup.return_value = {
+            "msg_abc123": [
+                {"file_id": "drive_77", "name": "Ways of Working.docx", "mimeType": docx_mime}
+            ]
+        }
+        mock_office.return_value = OfficeConversionResult(
+            content="# WoW", source_type="docx", export_format="markdown", extension="md",
+        )
+        mock_download.return_value = AttachmentDownload(
+            filename="Ways of Working.docx", mime_type=docx_mime,
+            size=3502564, content=b"PK\x03\x04 docx bytes",
+        )
+
+        result = fetch_attachment("thread_xyz", "Ways of Working.docx", raw=True)
+
+        assert isinstance(result, FetchResult)
+        assert result.metadata["source"] == "drive_exfil"
+        # The point of the guard: server-side conversion downloaded nothing, so
+        # raw= has to go and get the bytes deliberately, then deposit them.
+        mock_raw.assert_called_once()
+        assert mock_raw.call_args[0][1] == b"PK\x03\x04 docx bytes"
+
 
 class TestMessageIdFetch:
     """fetch() accepts an RFC 822 Message-ID and resolves it via rfc822msgid:

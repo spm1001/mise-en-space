@@ -438,7 +438,7 @@ def fetch_attachment(
     # application/octet-stream (Outlook/Exchange ships CSV/JSON/XML this way).
     mime_type = _resolve_attachment_mime(target_att.mime_type, target_att.filename)
     category = classify_attachment(mime_type)
-    content_bytes: bytes | None
+    content_bytes: bytes | None = None
     warnings: list[str] = []
     if mime_type != target_att.mime_type:
         warnings.append(
