@@ -326,6 +326,9 @@ Fetch content to filesystem. Writes to `.mise/` in current directory.
 | `file_id` | str | Drive file ID or WHOLE URL (a `?gid`/`?tab`/`#heading`/`#slide`/`?disco` tail resolves to `cues.pointer` naming the deposited artefact; dangling pointers reported stale), Gmail thread ID or URL (search/label context rides as `cues.gmail_url_context`; a `#drafts/r…` link resolves to the draft's thread), an RFC 822 Message-ID, or Drive folder ID |
 | `tabs` | list[str] | Tab names to fetch from a spreadsheet (default: all tabs) |
 | `suggestions` | str | Google Docs suggested-edit view: `accepted` (default), `original`, `markup` |
+| `recursive` | bool | Folder IDs only: full indented tree, depth 5 (default: immediate listing) |
+| `raw` | bool | With `attachment=`: also deposit the untouched original bytes (PDF/Office originals are otherwise converted and discarded) |
+| `thumbnails` | bool | Default True. False skips PDF page and Slides thumbnail rendering — much faster and lighter for text-only use (154s → 59s on a 256-page PDF) |
 
 ## Tab Filtering (Sheets)
 
