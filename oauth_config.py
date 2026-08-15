@@ -25,6 +25,15 @@ _PACKAGE_ROOT = Path(__file__).parent
 # and admin APIs were on for ITV but not planetmodha). The client_id prefix in
 # that error is the owning project's number — `gcloud projects describe <project>
 # --format='value(projectNumber)'` confirms which project to fix.
+#
+# AND the same error string has a SECOND, independent source: Google Workspace
+# app access control (admin.google.com → Security → API controls) blocking a
+# third-party OAuth client the admin hasn't configured — evaluated per signed-in
+# ACCOUNT, after login, so curl without cookies can never reproduce it (measured
+# 2026-08-15: anonymous requests 302 to sign-in even with a disabled API's
+# scope). Discriminator: the base64 authError in the error page URL decodes to
+# the blocking Workspace's own denial text (ITV's says "Tech Central"). Fix is
+# in the blocked account's Workspace admin console, not in GCP.
 SCOPES = [
     # --- Core: Search + Fetch + Edit + Gmail Write ---
     'https://www.googleapis.com/auth/drive',  # Full access: read, write, create (superset of drive.readonly + drive.file)
