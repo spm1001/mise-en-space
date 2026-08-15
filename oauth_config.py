@@ -27,13 +27,17 @@ _PACKAGE_ROOT = Path(__file__).parent
 # --format='value(projectNumber)'` confirms which project to fix.
 #
 # AND the same error string has a SECOND, independent source: Google Workspace
-# app access control (admin.google.com → Security → API controls) blocking a
-# third-party OAuth client the admin hasn't configured — evaluated per signed-in
-# ACCOUNT, after login, so curl without cookies can never reproduce it (measured
-# 2026-08-15: anonymous requests 302 to sign-in even with a disabled API's
-# scope). Discriminator: the base64 authError in the error page URL decodes to
-# the blocking Workspace's own denial text (ITV's says "Tech Central"). Fix is
-# in the blocked account's Workspace admin console, not in GCP.
+# app access control (admin.google.com → Security → API controls) blocking an
+# OAuth client — and being domain-owned does NOT exempt you: with "Trust
+# internal, domain-owned apps" unticked, a client in the org's own GCP project
+# is blocked like any stranger's (planetmodha had it unticked, 2026-08-15;
+# ITV's is on, which is why the ITV flavour never needed an admin step). The
+# check is evaluated per signed-in ACCOUNT, after login, so curl without
+# cookies can never reproduce it (measured: anonymous requests 302 to sign-in
+# even with a disabled API's scope). Discriminator: the base64 authError in
+# the error page URL decodes to the blocking Workspace's own denial text
+# (ITV's says "Tech Central"). Fix is in the blocked account's Workspace
+# admin console, not in GCP.
 SCOPES = [
     # --- Core: Search + Fetch + Edit + Gmail Write ---
     'https://www.googleapis.com/auth/drive',  # Full access: read, write, create (superset of drive.readonly + drive.file)
