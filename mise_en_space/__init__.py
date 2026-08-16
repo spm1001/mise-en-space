@@ -161,6 +161,8 @@ class Mise:
         folder_id: str | None = None,
         type: str | None = None,  # shadows the builtin for parity with the tool surface
         raw_query: str | None = None,
+        time_min: str | None = None,
+        time_max: str | None = None,
     ) -> SearchResult:
         """Find files/emails/events; metadata plus preview, results deposited.
 
@@ -168,6 +170,9 @@ class Mise:
         query grammar (plain query is AND across words; raw_query is
         Drive's own language). With `folder_id` and no query, lists that
         folder's immediate children — the discovery half of a folder walk.
+        `time_min`/`time_max` (ISO date or datetime, any range — historical
+        fine) bound the calendar window with no query term needed: the
+        clash-check and event-backfill route (mise-riduka).
         """
         return do_search(
             query=query,
@@ -177,6 +182,8 @@ class Mise:
             folder_id=folder_id,
             type=type,
             raw_query=raw_query,
+            time_min=time_min,
+            time_max=time_max,
         )
 
     def fetch(

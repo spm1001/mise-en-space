@@ -1520,3 +1520,111 @@ class TestSearchMCPValidation:
              patch("server.search_remote", return_value={"ok": True}) as mock_remote:
             search(raw_query="name contains 'PCA'", base_path="/tmp")
         assert "name contains 'PCA'" in mock_remote.call_args.args
+
+
+class TestCalendarTimeWindow:
+    """Explicit time_min/time_max on search (mise-riduka)."""
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.list_events')
+    def test_window_threads_to_adapter_parsed(self, mock_calendar, mock_write) -> None:
+        """ISO strings arrive at the adapter as aware datetimes — a bare date
+        as time_max widened to the END of its day."""
+        from datetime import timezone
+        mock_calendar.return_value = CalendarSearchResult(events=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("", sources=["calendar"],
+                           time_min="2026-08-03", time_max="2026-08-05")
+
+        kwargs = mock_calendar.call_args.kwargs
+        assert kwargs["time_min"] == datetime(2026, 8, 3, tzinfo=timezone.utc)
+        assert kwargs["time_max"] == datetime(2026, 8, 6, tzinfo=timezone.utc)
+        assert "calendar window" in result.cues["calendar_window"]
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.list_events')
+    def test_unfiltered_default_window_needs_no_query(self, mock_calendar, mock_write) -> None:
+        """sources=['calendar'] with no query lists the default ±7d window."""
+        mock_calendar.return_value = CalendarSearchResult(events=[_make_calendar_event()])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("", sources=["calendar"])
+
+        assert len(result.calendar_results) == 1
+        kwargs = mock_calendar.call_args.kwargs
+        assert kwargs["time_min"] is None and kwargs["time_max"] is None
+        assert "calendar_window" not in result.cues
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.list_events')
+    def test_explicit_window_truncation_teaches_the_cursor(self, mock_calendar, mock_write) -> None:
+        mock_calendar.return_value = CalendarSearchResult(
+            events=[_make_calendar_event()], truncated=True)
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("", sources=["calendar"],
+                           time_min="2026-08-01", time_max="2026-08-10")
+
+        cue = result.cues["calendar_truncated"]
+        assert "chronological head" in cue and "time_min" in cue
+
+    def test_window_without_calendar_source_refuses(self) -> None:
+        """A window that scopes nothing is accept-and-drop — refuse instead."""
+        with pytest.raises(ValueError, match="calendar"):
+            do_search("x", sources=["drive"], time_min="2026-08-03")
+
+    def test_window_with_folder_id_refuses(self) -> None:
+        """folder_id narrows to Drive, which would silently drop the window."""
+        with pytest.raises(ValueError, match="folder_id"):
+            do_search("", sources=["calendar", "drive"], time_min="2026-08-03",
+                      folder_id="1234567890abc")
+
+    def test_garbage_bound_raises_teaching_error(self) -> None:
+        with pytest.raises(ValueError, match="ISO date"):
+            do_search("", sources=["calendar"], time_min="next tuesday")
+
+    def test_window_reaches_remote_mode(self) -> None:
+        """Same disease as raw_query above: a param accepted at the boundary
+        must ride the remote path too, or a remote caller gets the default
+        window presented as their answer."""
+        import server
+        from server import search
+        with patch.object(server, "_REMOTE_MODE", True), \
+             patch("server.search_remote", return_value={"ok": True}) as mock_remote:
+            search(sources=["calendar"], time_min="2026-08-03",
+                   time_max="2026-08-05", base_path="/tmp")
+        assert mock_remote.call_args.kwargs["time_min"] == "2026-08-03"
+        assert mock_remote.call_args.kwargs["time_max"] == "2026-08-05"
+
+
+class TestSearchGate:
+    """The all-empty refusal at the server boundary, and its two new escapes
+    (mise-riduka: the gate was the ONLY thing between callers and the
+    unfiltered calendar listing the adapter supported all along)."""
+
+    def test_all_empty_still_refuses_and_teaches_the_new_routes(self) -> None:
+        from server import search
+        result = search(base_path="/tmp")
+        assert result["kind"] == "invalid_input"
+        assert "time_min" in result["message"]
+
+    def test_sole_calendar_source_passes_the_gate(self) -> None:
+        from server import search
+        # No base_path: reaching the base_path error PROVES the gate opened.
+        result = search(sources=["calendar"])
+        assert "base_path" in result["message"]
+
+    def test_window_passes_the_gate(self) -> None:
+        from server import search
+        result = search(time_min="2026-08-03")
+        assert "base_path" in result["message"]
+
+    def test_wrapper_converts_window_refusal_to_teaching_json(self) -> None:
+        """do_search's ValueError refusals reach MCP callers as invalid_input
+        JSON, not a traceback — the fetch router's conversion, applied here."""
+        from server import search
+        result = search(query="x", sources=["drive"], time_min="2026-08-03",
+                        base_path="/tmp")
+        assert result["kind"] == "invalid_input"
+        assert "calendar" in result["message"]

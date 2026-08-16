@@ -145,7 +145,25 @@ async def main() -> int:
                     print(f"   MISSING: {missing}")
                 print()
 
-    print(f"{len(CASES) - failures}/{len(CASES)} cases passed")
+            # search's failure surface (mise-riduka): the all-empty refusal must
+            # teach the calendar-window routes through the real envelope — the
+            # unit tests enter through do_search/server.search, not the wire.
+            result = await session.call_tool("search", {"base_path": "/tmp/mise-smoke"})
+            text = "".join(getattr(block, "text", "") for block in result.content)
+            wanted = ["time_min", "sources=['calendar']"]
+            missing = [w for w in wanted if w not in text]
+            status = "PASS" if not missing else "FAIL"
+            if missing:
+                failures += 1
+            print(f"[{status}] search with nothing at all — the gate refusal "
+                  "teaches the calendar-window routes (mise-riduka)")
+            print(f"   raw: {text}")
+            if missing:
+                print(f"   MISSING: {missing}")
+            print()
+
+    total = len(CASES) + 1
+    print(f"{total - failures}/{total} cases passed")
     return 1 if failures else 0
 
 

@@ -126,23 +126,37 @@ def list_events(
     days_forward: int = 7,
     max_results: int = 50,
     query: str = "",
+    time_min: datetime | None = None,
+    time_max: datetime | None = None,
 ) -> CalendarSearchResult:
     """
-    List calendar events in a time window around now, optionally filtered.
+    List calendar events in a time window, optionally filtered.
+
+    The window defaults to ±days_back/days_forward around now; an explicit
+    time_min/time_max overrides its bound (either or both — the Calendar API
+    takes any absolute range, so historical windows work, mise-riduka).
 
     The full window is scanned (paginated internally, bounded at _SCAN_CAP)
-    BEFORE the max_results cap is applied, and the cap keeps the events
-    nearest to now. Both halves matter: Google returns oldest-first, so a
-    single capped page fills up with last week and tomorrow's meeting never
-    appears (mise-bidopi — the cap must not eat the future).
+    BEFORE the max_results cap is applied. Overflow selection depends on the
+    window kind: the default now-centred window keeps events nearest to now —
+    Google returns oldest-first, so a single capped page fills up with last
+    week and tomorrow's meeting never appears (mise-bidopi — the cap must not
+    eat the future). An EXPLICIT window keeps chronological order from the
+    window start instead: the caller stated their interest, nearest-now would
+    bias toward whichever edge is closer to today, and a chronological head
+    gives a deterministic cursor (advance time_min past the last event).
 
     Args:
-        days_back: How many days in the past to include.
-        days_forward: How many days in the future to include.
-        max_results: Maximum events returned; when more match, the ones
-            nearest to now win and the result is flagged truncated.
+        days_back: How many days in the past to include (ignored when
+            time_min is given).
+        days_forward: How many days in the future to include (ignored when
+            time_max is given).
+        max_results: Maximum events returned; overflow selection as above,
+            and the result is flagged truncated.
         query: Free-text filter passed as the API's `q` param (matches
             summary, description, attendees, location). Empty = no filter.
+        time_min: Explicit window start (aware datetime).
+        time_max: Explicit window end (aware datetime, exclusive).
 
     Returns:
         CalendarSearchResult, chronological; .truncated True when events
@@ -150,12 +164,13 @@ def list_events(
     """
     client = get_sync_client()
     now = datetime.now(timezone.utc)
-    time_min = (now - timedelta(days=days_back)).isoformat()
-    time_max = (now + timedelta(days=days_forward)).isoformat()
+    explicit_window = time_min is not None or time_max is not None
+    window_min = time_min or (now - timedelta(days=days_back))
+    window_max = time_max or (now + timedelta(days=days_forward))
 
     params: dict[str, Any] = {
-        "timeMin": time_min,
-        "timeMax": time_max,
+        "timeMin": window_min.isoformat(),
+        "timeMax": window_max.isoformat(),
         "singleEvents": "true",  # Google API expects lowercase string
         "orderBy": "startTime",
         "maxResults": _PAGE_SIZE,
@@ -184,9 +199,15 @@ def list_events(
 
     if len(events) > max_results:
         truncated = True
-        # Keep the events nearest to now, then restore chronological order.
-        events = sorted(events, key=lambda e: abs(_event_start_dt(e) - now))[:max_results]
-        events.sort(key=_event_start_dt)
+        if explicit_window:
+            # Caller stated the window: keep the chronological head, a
+            # deterministic cursor (advance time_min past the last event).
+            events.sort(key=_event_start_dt)
+            events = events[:max_results]
+        else:
+            # Keep the events nearest to now, then restore chronological order.
+            events = sorted(events, key=lambda e: abs(_event_start_dt(e) - now))[:max_results]
+            events.sort(key=_event_start_dt)
 
     return CalendarSearchResult(events=events, truncated=truncated)
 

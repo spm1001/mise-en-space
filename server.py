@@ -93,6 +93,8 @@ def search(
     folder_id: str | None = None,
     type: str | None = None,
     raw_query: str | None = None,
+    time_min: str | None = None,
+    time_max: str | None = None,
 ) -> dict[str, Any]:
     """
     Search across Drive and Gmail.
@@ -102,29 +104,27 @@ def search(
 
     Args:
         query: Search terms. Optional when type or folder_id is set.
-        sources: ['drive', 'gmail'] — default: both (drive only in guest mode). Also: 'activity' (recent comments), 'calendar' (events ±7 days, query-filtered, nearest-now kept when capped), 'people' (staff directory: role, dept, reporting line — mise://docs/search)
+        sources: ['drive', 'gmail'] — default: both (drive only in guest mode). Also: 'activity' (recent comments), 'calendar' (events, ±7 days unless time_min/time_max), 'people' (staff directory: role, dept, reporting line — mise://docs/search)
         max_results: Maximum results per source
         base_path: Directory for deposits (pass your cwd so files land next to your project, not the MCP server's directory)
-        folder_id: Optional Drive folder ID to scope results to immediate children only.
-            Non-recursive — only files directly inside this folder are returned.
-            When set, forces sources=['drive'] (Gmail has no folder concept).
+        folder_id: Optional Drive folder ID to scope results to immediate children
+            only. Non-recursive; forces sources=['drive'] (Gmail has no folders).
         type: Optional Drive file type filter. Applies to Drive only.
             Values: folder, doc, spreadsheet, sheet, slides, presentation, pdf, image, video, form
         raw_query: Drive query language, unescaped (Drive only; excludes other sources).
             Use instead of query when you need what one fullText clause can't say:
             `name contains 'PCA'`, `or` between synonyms, `not`, `modifiedTime > '2025-01-01'`,
             `'x@y.com' in owners`. `trashed = false` and any type/folder_id are ANDed on.
-            NB plain `query` is AND across words — every term must appear, so one word the
-            estate doesn't use returns zero.
+            NB plain `query` is AND across words — one term the estate doesn't use returns zero.
+        time_min: Calendar window start — ISO date/datetime, any range (historical fine),
+            no query term needed ('what is in the diary 3–5 Aug?').
+        time_max: Window end; a bare date runs to the END of that day.
 
     Returns:
         path: Path to deposited search results JSON
         query: The search query
         sources: Sources searched
-        drive_count: Number of Drive results
-        gmail_count: Number of Gmail results
-        activity_count: Number of Activity results
-        calendar_count: Number of Calendar results
+        drive_count/gmail_count/activity_count/calendar_count: per-source counts
         cues: Scope notes and warnings
     """
     if query.strip() and raw_query and raw_query.strip():
@@ -132,9 +132,13 @@ def search(
                 "message": "Pass either 'query' (search terms) or 'raw_query' (Drive query "
                            "language), not both — they build the same clause two different ways."}
 
-    if not query.strip() and not (raw_query or "").strip() and type is None and folder_id is None:
+    has_window = bool((time_min or "").strip() or (time_max or "").strip())
+    if (not query.strip() and not (raw_query or "").strip() and type is None
+            and folder_id is None and not has_window and sources != ["calendar"]):
         return {"error": True, "kind": "invalid_input",
-                "message": "search requires at least one of: query, raw_query, type, or folder_id"}
+                "message": "search requires at least one of: query, raw_query, type, "
+                           "folder_id, or a calendar window (time_min/time_max — or "
+                           "sources=['calendar'] alone for the ±7-day listing)"}
 
     # Drive syntax in `query` doesn't error, it silently keyword-searches the
     # operator names and returns plausible wrong files (probed 2026-07-27:
@@ -157,17 +161,32 @@ def search(
         call_params["folder_id"] = folder_id
     if type:
         call_params["type"] = type
+    if time_min:
+        call_params["time_min"] = time_min
+    if time_max:
+        call_params["time_max"] = time_max
 
+    # ValueError from do_search is a boundary refusal with teaching text
+    # (window vs sources/folder_id, garbage ISO bounds) — same conversion the
+    # fetch router applies, so it reaches the caller as JSON, not a traceback.
     if _REMOTE_MODE:
-        result = search_remote(query, sources, max_results, base_path, folder_id, type, raw_query)
+        try:
+            result = search_remote(query, sources, max_results, base_path, folder_id, type,
+                                   raw_query, time_min=time_min, time_max=time_max)
+        except ValueError as e:
+            result = {"error": True, "kind": "invalid_input", "message": str(e)}
         _log_search_result(call_params, result)
         return result
 
     if not base_path:
         return {"error": True, "kind": "invalid_input",
                 "message": "base_path is required — pass your working directory so deposits land in your project, not the MCP server's directory"}
-    result = do_search(query, sources, max_results, base_path=Path(base_path),
-                       folder_id=folder_id, type=type, raw_query=raw_query).to_dict()
+    try:
+        result = do_search(query, sources, max_results, base_path=Path(base_path),
+                           folder_id=folder_id, type=type, raw_query=raw_query,
+                           time_min=time_min, time_max=time_max).to_dict()
+    except ValueError as e:
+        result = {"error": True, "kind": "invalid_input", "message": str(e)}
     _log_search_result(call_params, result)
     return result
 

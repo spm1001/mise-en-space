@@ -5,7 +5,6 @@ Unified search across Drive, Gmail, Activity, and Calendar.
 Deposits results to file (filesystem-first pattern).
 """
 
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, Future
 from pathlib import Path
 from typing import Any
@@ -30,10 +29,18 @@ from models import (
 from validation import (
     escape_drive_query,
     gmail_thread_web_url,
+    parse_time_window,
     sanitize_gmail_query,
     validate_drive_id,
 )
 from token_store import ambient_mode, override_path
+from tools.search_calendar import (
+    _build_meeting_context_index,
+    _enrich_drive_results_with_meetings,
+    calendar_truncated_cue,
+    calendar_window_cue,
+    format_calendar_result,
+)
 from workspace.manager import write_search_results
 
 
@@ -127,70 +134,6 @@ def format_activity_result(activity: CommentActivity) -> dict[str, Any]:
     return result
 
 
-def format_calendar_result(event: CalendarEvent) -> dict[str, Any]:
-    """Convert CalendarEvent to JSON-serializable dict for search results."""
-    human_attendees = [a for a in event.attendees if not a.is_resource]
-    result: dict[str, Any] = {
-        "event_id": event.event_id,
-        "summary": event.summary,
-        "start_time": event.start_time,
-        "end_time": event.end_time,
-        "html_link": event.html_link,
-        "organizer": event.organizer_email,
-        "attendee_count": len(human_attendees),
-        "attendees": [
-            {"email": a.email, "name": a.display_name, "status": a.response_status}
-            for a in human_attendees[:10]  # Cap for token efficiency
-        ],
-    }
-    if event.attachments:
-        result["attachments"] = [
-            {"file_id": a.file_id, "title": a.title}
-            for a in event.attachments
-        ]
-        result["attachment_count"] = len(event.attachments)
-    if event.meet_link:
-        result["meet_link"] = event.meet_link
-    return result
-
-
-def _build_meeting_context_index(
-    calendar_events: list[CalendarEvent],
-) -> dict[str, list[dict[str, Any]]]:
-    """Build file_id → meeting context lookup from calendar events.
-
-    Returns a dict mapping Drive file IDs to lists of meeting context dicts.
-    A file may appear in multiple meetings.
-    """
-    index: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for event in calendar_events:
-        if not event.attachments:
-            continue
-        human_attendees = [a for a in event.attendees if not a.is_resource]
-        context = {
-            "summary": event.summary,
-            "start_time": event.start_time,
-            "attendee_count": len(human_attendees),
-            "html_link": event.html_link,
-        }
-        if event.meet_link:
-            context["meet_link"] = event.meet_link
-        for att in event.attachments:
-            index[att.file_id].append(context)
-    return dict(index)
-
-
-def _enrich_drive_results_with_meetings(
-    drive_results: list[dict[str, Any]],
-    meeting_index: dict[str, list[dict[str, Any]]],
-) -> None:
-    """Annotate Drive results with meeting context (mutates in place)."""
-    for dr in drive_results:
-        file_id = dr.get("id")
-        if file_id and file_id in meeting_index:
-            dr["meeting_context"] = meeting_index[file_id]
-
-
 def do_search(
     query: str = "",
     sources: list[str] | None = None,
@@ -199,6 +142,8 @@ def do_search(
     folder_id: str | None = None,
     type: str | None = None,
     raw_query: str | None = None,
+    time_min: str | None = None,
+    time_max: str | None = None,
 ) -> SearchResult:
     """
     Search across Drive, Gmail, Activity, and Calendar.
@@ -234,6 +179,11 @@ def do_search(
             ANDed on (every mise surface excludes trash; a raw query silently
             resurrecting deleted files would be a worse surprise than not being
             able to search them), and `type`/`folder_id` still compose.
+        time_min: Calendar window start — ISO date or datetime. Overrides the
+            default 7-days-back bound; any historical range works (mise-riduka).
+            Requires 'calendar' in sources.
+        time_max: Calendar window end — ISO date or datetime. A bare date runs
+            to the END of that day. Overrides the default 7-days-forward bound.
 
     Returns:
         SearchResult with path to deposited file and result counts
@@ -245,6 +195,26 @@ def do_search(
         # (mise-kivane). Ambient mode narrows identically: no mailbox (wasagu).
         narrow = override_path() is not None or ambient_mode()
         sources = ["drive"] if narrow else ["drive", "gmail"]
+
+    # Explicit calendar window (mise-riduka). Parsed at the boundary so garbage
+    # fails loudly, and REFUSED when it could only be dropped — a window that
+    # scopes nothing is the accept-and-drop this codebase keeps re-learning.
+    # Checked against the REQUESTED sources, before any narrowing strips
+    # calendar out from under it.
+    window_min = window_max = None
+    if time_min or time_max:
+        window_min, window_max = parse_time_window(time_min, time_max)
+        if "calendar" not in sources:
+            raise ValueError(
+                "time_min/time_max scope the calendar source only — add "
+                "'calendar' to sources, or drop the window params"
+            )
+        if folder_id is not None or raw_query:
+            raise ValueError(
+                "time_min/time_max cannot combine with folder_id or raw_query — "
+                "those scope the search to Drive only, which would silently "
+                "drop the calendar window"
+            )
 
     # Resolve type filter → Drive query clause (validated by caller, guard for direct use)
     type_clause: str | None = None
@@ -338,10 +308,11 @@ def do_search(
         return search_people(query, max_results=max_results)
 
     def _run_calendar() -> CalendarSearchResult:
-        # Query rides the API's q filter; the ±7 day window is scanned in
-        # full and a hit cap keeps events nearest NOW (mise-bidopi — the
-        # cap must not eat the future).
-        return list_events(max_results=max_results, query=query)
+        # Query rides the API's q filter. The default window is ±7 days with
+        # nearest-NOW kept on overflow (mise-bidopi — the cap must not eat
+        # the future); an explicit window keeps the chronological head.
+        return list_events(max_results=max_results, query=query,
+                           time_min=window_min, time_max=window_max)
 
     # Run searches in parallel
     futures: dict[str, Future[Any]] = {}
@@ -427,11 +398,12 @@ def do_search(
             calendar_search = futures["calendar"].result()
             calendar_events = calendar_search.events
             result.calendar_results = [format_calendar_result(e) for e in calendar_events]
+            explicit_window = window_min is not None or window_max is not None
+            if explicit_window:
+                result.cues["calendar_window"] = calendar_window_cue(window_min, window_max)
             if calendar_search.truncated:
-                result.cues["calendar_truncated"] = (
-                    f"Results capped at {len(calendar_events)} — more events matched "
-                    "in the ±7-day window; the events nearest to now were kept. "
-                    "Add a query or raise max_results to see more."
+                result.cues["calendar_truncated"] = calendar_truncated_cue(
+                    len(calendar_events), explicit_window
                 )
         except MiseError as e:
             result.errors.append(f"Calendar search failed: {e.message}")

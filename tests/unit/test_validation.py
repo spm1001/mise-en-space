@@ -721,3 +721,64 @@ class TestExtractGmailUrlContext:
     def test_non_gmail_input_yields_nothing(self):
         assert extract_gmail_url_context("https://example.com/mail/u/3/#search/x/y") is None
         assert extract_gmail_url_context("") is None
+
+
+class TestParseTimeWindow:
+    """Calendar window bound parsing (mise-riduka)."""
+
+    def test_bare_dates_widen_to_whole_days(self):
+        from datetime import datetime, timezone
+        from validation import parse_time_window
+
+        lo, hi = parse_time_window("2026-08-03", "2026-08-05")
+        assert lo == datetime(2026, 8, 3, tzinfo=timezone.utc)
+        # 'between 3 and 5 Aug' includes the 5th: exclusive next-midnight bound
+        assert hi == datetime(2026, 8, 6, tzinfo=timezone.utc)
+
+    def test_same_date_both_bounds_is_one_full_day(self):
+        from datetime import timedelta
+        from validation import parse_time_window
+
+        lo, hi = parse_time_window("2026-08-04", "2026-08-04")
+        assert hi - lo == timedelta(days=1)
+
+    def test_datetimes_pass_through_with_offset(self):
+        from datetime import datetime, timezone, timedelta
+        from validation import parse_time_window
+
+        lo, hi = parse_time_window("2026-08-03T09:00:00+01:00", "2026-08-03T17:30:00Z")
+        assert lo == datetime(2026, 8, 3, 9, tzinfo=timezone(timedelta(hours=1)))
+        assert hi == datetime(2026, 8, 3, 17, 30, tzinfo=timezone.utc)
+
+    def test_naive_datetime_becomes_utc(self):
+        from datetime import timezone
+        from validation import parse_time_window
+
+        lo, _ = parse_time_window("2026-08-03T09:00:00", None)
+        assert lo is not None and lo.tzinfo == timezone.utc
+
+    def test_either_bound_may_be_absent(self):
+        from validation import parse_time_window
+
+        assert parse_time_window(None, None) == (None, None)
+        lo, hi = parse_time_window("2026-08-03", None)
+        assert lo is not None and hi is None
+        lo, hi = parse_time_window(None, "2026-08-05")
+        assert lo is None and hi is not None
+
+    def test_garbage_names_the_expected_format(self):
+        from validation import parse_time_window
+
+        with pytest.raises(ValueError, match="ISO date"):
+            parse_time_window("next tuesday", None)
+        with pytest.raises(ValueError, match="time_max"):
+            parse_time_window(None, "05/08/2026")
+
+    def test_empty_window_refused(self):
+        from validation import parse_time_window
+
+        with pytest.raises(ValueError, match="empty calendar window"):
+            parse_time_window("2026-08-05", "2026-08-03")
+        # Datetime equality is empty too
+        with pytest.raises(ValueError, match="empty calendar window"):
+            parse_time_window("2026-08-03T09:00:00Z", "2026-08-03T09:00:00Z")

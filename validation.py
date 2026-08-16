@@ -10,6 +10,7 @@ Patterns adopted from mcp-google-workspace.
 
 import re
 from base64 import b64decode, b64encode
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, unquote_plus, urlsplit
 
 # =============================================================================
@@ -1056,3 +1057,57 @@ def diagnose_sa_quota_403(exc: Exception) -> str | None:
         "edit: content there belongs to the drive rather than its creator, and "
         "the identical create succeeds."
     )
+
+
+# Date-only bound: widened to cover the whole day (see parse_time_window)
+_DATE_ONLY_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _parse_window_bound(raw: str, param: str, *, end: bool) -> datetime:
+    """One calendar-window bound → aware datetime. See parse_time_window."""
+    text = raw.strip()
+    try:
+        if _DATE_ONLY_RE.fullmatch(text):
+            day = datetime.fromisoformat(text).replace(tzinfo=timezone.utc)
+            return day + timedelta(days=1) if end else day
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        raise ValueError(
+            f"{param} must be an ISO date or datetime — '2026-08-03' or "
+            f"'2026-08-03T09:00:00+01:00' — got {text!r}"
+        ) from None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def parse_time_window(
+    time_min: str | None, time_max: str | None
+) -> tuple[datetime | None, datetime | None]:
+    """Parse search's calendar window bounds into aware datetimes.
+
+    Accepts an ISO date ('2026-08-03') or datetime ('2026-08-03T09:00:00+01:00';
+    'Z' works, naive is taken as UTC). A bare DATE widens to cover its whole
+    day: as time_min it starts at 00:00 UTC, as time_max it runs to the END of
+    that day (exclusive next-midnight bound) — so time_min='2026-08-03' with
+    time_max='2026-08-05' spans the 3rd, 4th AND 5th, which is what "between
+    3 and 5 Aug" means to the person asking (mise-riduka).
+
+    Either bound may be None (the caller's default fills it). Raises ValueError
+    naming the expected format on garbage, and on an empty window (min >= max).
+    """
+    parsed_min = (
+        _parse_window_bound(time_min, "time_min", end=False)
+        if time_min and time_min.strip() else None
+    )
+    parsed_max = (
+        _parse_window_bound(time_max, "time_max", end=True)
+        if time_max and time_max.strip() else None
+    )
+    if parsed_min and parsed_max and parsed_min >= parsed_max:
+        raise ValueError(
+            f"empty calendar window: time_min {parsed_min.isoformat()} is not "
+            f"before time_max {parsed_max.isoformat()} (a bare date as time_max "
+            "already covers its whole day)"
+        )
+    return parsed_min, parsed_max

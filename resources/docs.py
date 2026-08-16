@@ -87,6 +87,8 @@ This pattern:
 | `max_results` | int | 20 | Maximum results per source |
 | `folder_id` | str | None | Drive folder ID to scope results to immediate children only. Non-recursive. Forces sources=['drive']. |
 | `type` | str | None | Drive file type filter. Values: `folder`, `doc`, `spreadsheet`, `sheet`, `slides`, `presentation`, `pdf`, `image`, `video`, `form`. Applies to Drive only. |
+| `time_min` | str | None | Calendar window start — ISO date or datetime. Requires 'calendar' in sources. |
+| `time_max` | str | None | Calendar window end. A bare date runs to the END of that day. |
 
 ## Examples
 
@@ -172,6 +174,22 @@ Two honesty notes, also cued in responses: `manager` is the Workspace *account*
 field rather than an HR record (at board level it can record who administers
 the account), and colleagues can opt out of listing, so an empty result is not
 proof a person does not exist.
+
+## sources=['calendar'] — the diary window
+
+"What is in the diary between 3 and 5 Aug?" needs no topic term:
+`sources=['calendar']` alone lists the default ±7-day window, and
+`time_min`/`time_max` set any explicit window — historical included
+(backfilling event ids for old notes works). A bare date as `time_max`
+covers its whole day, so `time_min='2026-08-03', time_max='2026-08-05'`
+spans the 3rd, 4th AND 5th. Events OVERLAPPING the window are returned
+(Google's semantics — right for clash-checking; an all-day event at the
+edge can ride in on timezone skew). `query` still filters when given.
+
+On overflow the two window kinds keep different survivors, cued in
+`calendar_truncated`: the default now-centred window keeps events nearest
+NOW (tomorrow's meeting must survive a busy week); an explicit window keeps
+the chronological HEAD — advance `time_min` past the last event to page.
 
 ## Notes
 

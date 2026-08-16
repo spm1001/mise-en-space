@@ -387,7 +387,7 @@ Default sources are `['drive', 'gmail']`. Three additional sources are available
 | Source | What it returns | When to use |
 |--------|----------------|-------------|
 | `activity` | Recent comment events from Drive Activity API | "What's been discussed recently?" / "Any comments on my files?" |
-| `calendar` | Events ±7 days around now, filtered by your query | "Is my meeting with X still on?" / meeting context for Drive files |
+| `calendar` | Events ±7 days around now, or any explicit `time_min`/`time_max` window — query optional | "Is my meeting with X still on?" / "What's in the diary Tuesday?" / clash-checking / meeting context for Drive files |
 | `people` | Staff directory: role, department, location, reporting line | "Who is Richard Pearce?" / "Who does she report to?" / placing an unfamiliar name before replying |
 
 ```python
@@ -396,6 +396,13 @@ search("project update", sources=["activity"], base_path="...")
 
 # Is tomorrow's meeting still on? (query matches summary/description/attendees)
 search("Gareth", sources=["calendar"], base_path="...")
+
+# What's in the diary between 3 and 5 Aug? No query term needed — a bare
+# date as time_max covers its whole day, and historical windows work
+search(sources=["calendar"], time_min="2026-08-03", time_max="2026-08-05", base_path="...")
+
+# The whole ±7-day window, unfiltered (clash-checking, "what's on this week?")
+search(sources=["calendar"], base_path="...")
 
 # Calendar enrichment (adds meeting_context to Drive results)
 search("Q4 report", sources=["drive", "calendar"], base_path="...")
@@ -415,7 +422,7 @@ search("orgTitle='Head of Strategy'", sources=["people"], base_path="...")
 
 **`activity`** returns comment events — who commented, on what, when. Actors show as "Unknown" (people/ID limitation); the content and file are accurate. The query is NOT applied to activity — it always returns recent events.
 
-**`calendar`** is NOT in default sources (adds an API call). The query IS applied (free-text match on summary, description, attendees, location) over a ±7-day window around now — upcoming events are first-class, so "confirm tomorrow's meeting" works. If more events match than `max_results`, the ones **nearest to now** are kept and `cues.calendar_truncated` says so. When included alongside `drive`, matching calendar event attachments add `meeting_context` to Drive results — connecting a file to the meeting where it was discussed.
+**`calendar`** is NOT in default sources (adds an API call). The query is optional here: `sources=["calendar"]` alone lists the ±7-day window, and `time_min`/`time_max` (ISO date or datetime) set any explicit window — historical included, so backfilling event ids for old notes works. Events **overlapping** the window are returned (Google's semantics — right for clash-checking; an all-day event at the edge can ride in on timezone skew), and `cues.calendar_window` discloses the resolved bounds. When a query IS given it filters as free-text (summary, description, attendees, location). On overflow past `max_results` the survivors differ by window kind, and `cues.calendar_truncated` says which: the default now-centred window keeps events **nearest to now** (tomorrow's meeting survives a busy week); an explicit window keeps the **chronological head** — advance `time_min` past the last event to page. When included alongside `drive`, matching calendar event attachments add `meeting_context` to Drive results — connecting a file to the meeting where it was discussed. `time_min`/`time_max` refuse to combine with sources that lack `calendar`, or with `folder_id`/`raw_query` — a window that scopes nothing is an accepted-and-dropped param, and mise refuses those loudly.
 
 ## Workflow 4: Do (Act on Workspace)
 

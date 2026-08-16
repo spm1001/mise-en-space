@@ -408,6 +408,77 @@ class TestListEvents:
         assert summaries == ["Morning standup", "Lunch", "Review"]
 
 
+class TestListEventsExplicitWindow:
+    """Explicit time_min/time_max bounds (mise-riduka) — historical windows
+    work, and overflow keeps the chronological head rather than nearest-now."""
+
+    @patch("retry.time.sleep")
+    @patch("adapters.calendar.get_sync_client")
+    def test_explicit_bounds_ride_the_api_params(self, mock_get_client, _sleep) -> None:
+        from datetime import datetime, timezone
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"items": []}
+
+        lo = datetime(2026, 8, 3, tzinfo=timezone.utc)
+        hi = datetime(2026, 8, 6, tzinfo=timezone.utc)
+        list_events(time_min=lo, time_max=hi)
+
+        params = mock_client.get_json.call_args.kwargs["params"]
+        assert params["timeMin"] == lo.isoformat()
+        assert params["timeMax"] == hi.isoformat()
+
+    @patch("retry.time.sleep")
+    @patch("adapters.calendar.get_sync_client")
+    def test_one_bound_defaults_the_other(self, mock_get_client, _sleep) -> None:
+        """time_min alone: the max bound still comes from days_forward."""
+        from datetime import datetime, timezone
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"items": []}
+
+        lo = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        list_events(time_min=lo)
+
+        params = mock_client.get_json.call_args.kwargs["params"]
+        assert params["timeMin"] == lo.isoformat()
+        assert params["timeMax"] > params["timeMin"]  # now+7d — present, later
+
+    @patch("retry.time.sleep")
+    @patch("adapters.calendar.get_sync_client")
+    def test_explicit_window_cap_keeps_chronological_head(self, mock_get_client, _sleep) -> None:
+        """A HISTORICAL window must not keep 'nearest to now' — that biases
+        toward whichever window edge is closer to today. The chronological
+        head is a deterministic cursor (advance time_min to continue)."""
+        from datetime import datetime, timezone
+
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
+            "items": [
+                _api_event(event_id="d3", summary="3rd",
+                           start="2026-08-03T10:00:00Z", end="2026-08-03T11:00:00Z"),
+                _api_event(event_id="d4", summary="4th",
+                           start="2026-08-04T10:00:00Z", end="2026-08-04T11:00:00Z"),
+                _api_event(event_id="d5", summary="5th",
+                           start="2026-08-05T10:00:00Z", end="2026-08-05T11:00:00Z"),
+            ],
+        }
+
+        result = list_events(
+            max_results=2,
+            time_min=datetime(2026, 8, 3, tzinfo=timezone.utc),
+            time_max=datetime(2026, 8, 6, tzinfo=timezone.utc),
+        )
+
+        assert result.truncated is True
+        # Nearest-now would keep d4+d5 (today postdates this window); the
+        # explicit window keeps the head.
+        assert [e.event_id for e in result.events] == ["d3", "d4"]
+
+
 
 
 class TestGetEventByIcalUid:
