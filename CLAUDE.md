@@ -378,3 +378,5 @@ a skill: `uv run --script ../batterie-de-savoir/scripts/render-skills.py .` from
 root. CI re-checks it on every push (fetching the canonical script from batterie-de-savoir
 raw main), so a stale table fails the build. If a table one-liner reads badly, fix the
 SKILL.md description (skill-forge), not the table.
+
+**Notes room:** `~/notes/practices/mise/` — the thinking half (usage discipline, field gotchas, what not to trust). Read it when the question is how we *use* this rather than how it works. (bon-jezahi, 2026-08-16)
