@@ -73,6 +73,12 @@ def build_prompt(q: dict, fmt: str, arm: str, dep: Path) -> str:
     for f in sorted(dep.iterdir(), key=lambda p: (p.name != "manifest.json", p.name)):
         parts.append(f"\n--- {f.name} ---\n{f.read_text()}")
     parts.append(f"\n{q['question']}")
+    # Without this line a tool-native subject burns its single no-tools turn
+    # ANNOUNCING a script ("I'll compute this with a quick script…") — 9 of 11
+    # inline misses on 2026-08-17 were plans, not answers. A bare API reader
+    # (Flash) is unaffected: it has no tool concept either way.
+    parts.append("\nYou have no tools in this environment — answer directly "
+                 "from the content shown above, showing any working in text.")
     prompt = "\n".join(parts)
     if len(prompt.encode()) > INLINE_CAP_BYTES:
         raise ValueError(f"inline prompt {len(prompt.encode())} bytes exceeds cap — "
