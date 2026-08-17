@@ -169,6 +169,85 @@ def make_pilot_plan(out: Path, answers: dict) -> Path:
     return p
 
 
+ALL_FORMATS = ["aligned", "aligned-hr", "csv", "dual", "json-min", "md-min", "tsv"]
+S1_QIDS = [f"{fam}-{i}" for fam in ("lookup", "aggregate", "quote") for i in range(3)] + ["rank-0"]
+HARD_QIDS = {  # the never-gated slices; 3 distinct instances per cell
+    "s2-wide": [f"widecross-{i}" for i in range(3)] + [f"quote-{i}" for i in range(3)],
+    "s4-buried": [f"locate-{i}" for i in range(3)] + [f"lookup-{i}" for i in range(3)],
+    "s5-join": [f"joingap-{i}" for i in range(3)] + ["joinset-0"],
+}
+SAB_QIDS = [f"{fam}-{i}" for fam in ("lookup", "aggregate") for i in range(3)]
+
+
+def make_league_plans(out: Path, answers: dict) -> list[Path]:
+    """The league (design doc §Gate run results → league consequences).
+
+    flash-league: the accuracy canary — all 7 formats, every slice the
+      1.5MB inline cap admits (S1 ≤2k; 10k/50k are tools-arm-only), plus
+      sabotage. Foregone cells for strong readers are NOT foregone here.
+    claude-league: only cells where something is still open —
+      tooled S2/S4/S5 (cost + method recruitment; dual joins the gate trio
+      because whether the sidecar CSV gets USED is a method question),
+      tooled S1-50k (the router-economics tier, instance-0 only),
+      inline sabotage (detect-recover WITHOUT tools — the gate only
+      proved it tooled), and inline harder slices at instance-0.
+      Strong-reader tooled S1 ≤10k accuracy is measured at ceiling: dropped.
+    """
+    flash, claude = [], []
+    for scale in (200, 500, 2000):
+        for suffix in S1_QIDS:
+            for fmt in ALL_FORMATS:
+                flash.append({"run_id": f"L-f-{scale}-{fmt}-{suffix}",
+                              "qid": f"s1-{scale}-{suffix}", "format": fmt,
+                              "arm": "inline", "model": "flash"})
+    for suffix in SAB_QIDS:
+        for fmt in ALL_FORMATS:
+            flash.append({"run_id": f"L-f-sab-{fmt}-{suffix}",
+                          "qid": f"s1-2000-{suffix}", "format": fmt,
+                          "arm": "inline", "model": "flash",
+                          "fid_override": "s1-2000-sabotaged"})
+    for fid, suffixes in HARD_QIDS.items():
+        for suffix in suffixes:
+            for fmt in ALL_FORMATS:
+                flash.append({"run_id": f"L-f-{fid}-{fmt}-{suffix}",
+                              "qid": f"{fid}-{suffix}", "format": fmt,
+                              "arm": "inline", "model": "flash"})
+
+    tooled_fmts = ["aligned", "md-min", "json-min", "dual"]
+    for model in ("fable", "opus"):
+        m = model[0]
+        for fid, suffixes in HARD_QIDS.items():
+            for suffix in suffixes:
+                for fmt in tooled_fmts:
+                    claude.append({"run_id": f"L-{m}-t-{fid}-{fmt}-{suffix}",
+                                   "qid": f"{fid}-{suffix}", "format": fmt,
+                                   "arm": "tools", "model": model})
+        for suffix in ("lookup-0", "aggregate-0", "rank-0"):
+            for fmt in ("aligned", "md-min", "json-min"):
+                claude.append({"run_id": f"L-{m}-t-50000-{fmt}-{suffix}",
+                               "qid": f"s1-50000-{suffix}", "format": fmt,
+                               "arm": "tools", "model": model})
+        for suffix in ("lookup-0", "aggregate-0"):
+            for fmt in ("aligned", "json-min"):
+                claude.append({"run_id": f"L-{m}-i-sab-{fmt}-{suffix}",
+                               "qid": f"s1-2000-{suffix}", "format": fmt,
+                               "arm": "inline", "model": model,
+                               "fid_override": "s1-2000-sabotaged"})
+        for fid in HARD_QIDS:
+            for suffix in (HARD_QIDS[fid][0], HARD_QIDS[fid][3]):
+                for fmt in ("aligned", "md-min", "json-min"):
+                    claude.append({"run_id": f"L-{m}-i-{fid}-{fmt}-{suffix}",
+                                   "qid": f"{fid}-{suffix}", "format": fmt,
+                                   "arm": "inline", "model": model})
+    paths = []
+    for name, plan in (("flash-league.json", flash), ("claude-league.json", claude)):
+        p = out / name
+        p.write_text(json.dumps(plan, indent=1))
+        paths.append(p)
+        print(f"{name}: {len(plan)} runs")
+    return paths
+
+
 def make_smoke_plan(out: Path, answers: dict) -> Path:
     """Four runs proving the harness end-to-end: both arms x two formats,
     on the cheap 2000-row tier, session-default model."""
@@ -194,6 +273,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=3)
     ap.add_argument("--make-smoke-plan", action="store_true")
     ap.add_argument("--make-pilot-plan", action="store_true")
+    ap.add_argument("--make-league-plans", action="store_true")
     a = ap.parse_args()
     out = Path(a.out).expanduser()
     answers = load_answers(out)
@@ -203,6 +283,13 @@ def main():
         return
     if a.make_pilot_plan:
         print(f"wrote {make_pilot_plan(out, answers)}")
+        return
+    if a.make_league_plans:
+        for p in make_league_plans(out, answers):
+            plan = json.loads(p.read_text())
+            missing = [r["qid"] for r in plan if r["qid"] not in answers]
+            assert not missing, f"{p.name}: qids not in answers.json: {missing[:5]}"
+            print(f"validated {p}")
         return
 
     plan = json.loads(Path(a.plan).expanduser().read_text())
