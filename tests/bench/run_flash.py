@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures as cf
 import json
+import re
 import time
 from pathlib import Path
 
@@ -85,7 +86,11 @@ def one_run(run: dict, out: Path, answers: dict, client) -> str:
     tdir = out / "transcripts"
     tdir.mkdir(exist_ok=True)
     tpath = tdir / f"{rid}.jsonl"
-    if tpath.exists() and '"type":"result"' in tpath.read_text(errors="replace"):
+    # BOTH spellings: CC stream-json is compact ('"type":"result"'), but this
+    # runner's own json.dumps writes '"type": "result"' — matching only the
+    # compact form made resume a silent full re-run (caught 2026-08-17, $31)
+    if tpath.exists() and re.search(r'"type":\s*"result"',
+                                    tpath.read_text(errors="replace")):
         return f"SKIP {rid} (result present)"
 
     q = answers[run["qid"]]
