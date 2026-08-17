@@ -220,19 +220,65 @@ def score_one(run: dict, q: dict, out: Path) -> dict:
                             or ("exceed" in low and not re.search(
                                 r"\bnot\b|\bno\b|did not|below|under", low))):
                         claimed.add(reg)
-            if claimed == set(q["answer_set"]):
+            # Later passes build INDEPENDENT candidate sets — one per coherent
+            # representation (a headline list, a header's bullet/table block,
+            # the per-line verdict sweep). Never merge them: a single stray
+            # affirmative line ("London came closest to overtaking…") must not
+            # poison an otherwise-exact list. Correct if ANY candidate matches.
+            # Shapes measured live 2026-08-17: headline sentence, bullet block
+            # under an affirmative header, verdict-column table ("Over").
+            expected_set = set(q["answer_set"])
+            candidates = [claimed]
+            lines = text.splitlines()
+            aff = re.compile(r"exceed|\bover\w*\b|beat|\byes\b", re.I)
+            neg = re.compile(r"\bnot\b|\bno\b|\bunder\b|\bbelow\b|did not|"
+                             r"\bmiss|\bif\b", re.I)
+            sweep = set()
+            for i, ln in enumerate(lines):
+                here = {r for r in REGIONS if r.lower() in ln.lower()}
+                if not aff.search(ln) or neg.search(ln):
+                    continue
+                if len(here) >= 2:          # headline list: its own candidate
+                    candidates.append(here)
+                elif here:                  # verdict row: joins the sweep set
+                    sweep |= here
+                else:                       # header over a bullet/table block
+                    block = set()
+                    for nxt in lines[i + 1:]:
+                        if not nxt.strip():
+                            if block:
+                                break
+                            continue
+                        got = {r for r in REGIONS if r.lower() in nxt.lower()}
+                        if not got:
+                            # table furniture (header/rule rows) is
+                            # region-free but doesn't end the block
+                            if nxt.lstrip().startswith("|"):
+                                continue
+                            break
+                        if not neg.search(nxt):
+                            block |= got
+                    candidates.append(block)
+            candidates.append(sweep)
+            if any(c == expected_set for c in candidates):
                 row["correct"] = 1
                 flags.append("joinset_line_extract")
             else:
                 flags.append("set_mismatch_hand_review")
     elif fam == "quote":
-        expected = q["expected_line_by_format"].get(run["format"])
-        if expected is None:
+        # dual deposits carry the SAME row in two renderings (content.txt
+        # aligned + content_grid.csv); a verbatim quote of either is correct —
+        # two tooled subjects quoted the CSV form and were right (2026-08-17)
+        fmts = ["dual", "csv"] if run["format"] == "dual" else [run["format"]]
+        cands = [q["expected_line_by_format"][f] for f in fmts
+                 if q["expected_line_by_format"].get(f)]
+        if not cands:
             row["quote_exact"] = row["quote_norm"] = "NA"
             flags.append("no_expected_line_for_format")
         else:
-            row["quote_exact"] = int(expected in text)
-            row["quote_norm"] = int(norm_typo(expected) in norm_typo(text))
+            row["quote_exact"] = int(any(c in text for c in cands))
+            row["quote_norm"] = int(any(norm_typo(c) in norm_typo(text)
+                                        for c in cands))
         row["correct"] = row["quote_exact"] if row["quote_exact"] != "NA" else ""
     row["flags"] = ";".join(flags)
     return row
