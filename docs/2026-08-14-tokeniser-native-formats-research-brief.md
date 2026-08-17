@@ -1,5 +1,16 @@
 # Research brief: what should "best for agents" actually mean?
 
+> **SUPERSEDED — this is v1, kept as a dated capture.** The live brief is **v2.1** at
+> `~/notes/practices/mise/prepped-for-agents-brief.md` (same-day Chat review → v2, Deep
+> Research sweep folded → v2.1; TeleTables verified against the primary source 2026-08-16).
+> What changed: the +23–27% headline was a pipeline/format conflation (minimal pipes cost
+> only +6%; padding is the tax), the 8/8 comprehension tie was a ceiling effect, the token
+> league table has now RUN across cl100k/o200k/Gemma-SP (ranking transfers; padded pipes are
+> *worse* on Gemma), and the familiarity principle rules out exotic formats. Workstream A is
+> done (report archived beside the v2.1 brief in `sources/`); next are B (estate census) and
+> C (the bench) — ready-to-run specs sit in the same notes room. *(Banner added 2026-08-17,
+> jaceja reconciliation.)*
+
 *Drafted 2026-08-14, from the giwawa/wujoga/mitoki measurement night. Status: sketch for Sameer to react to. Seed evidence at the bottom.*
 
 ## The provocation
