@@ -198,14 +198,33 @@ def score_one(run: dict, q: dict, out: Path) -> dict:
         ok = ans in text.lower()
         if not ok and "accept_number" in q:
             head = ans.split(". ", 1)[1]
-            ok = (re.search(rf"section\s+{q['accept_number']}\b", text, re.I) is not None
+            # "Section number:** 11" is a correct locate — Flash's bullet style
+            # broke the bare "section 11" fallback (6 false misses, 2026-08-17)
+            ok = (re.search(rf"section(?:\s+number)?\s*[:*]*\s*{q['accept_number']}\b",
+                            text, re.I) is not None
                   and head.lower() in text.lower())
         row["correct"] = int(ok)
     elif fam == "joinset":
         predicted = {r for r in REGIONS if r.lower() in text.lower()}
         row["correct"] = int(predicted == set(q["answer_set"]))
         if not row["correct"]:
-            flags.append("set_mismatch_hand_review")
+            # A workings table names EVERY region ("London ... No"), so the
+            # mention-set sweeps in non-answers. Second pass: a region counts
+            # only if one of its lines carries an affirmative marker.
+            claimed = set()
+            for line in text.splitlines():
+                low = line.lower()
+                for reg in REGIONS:
+                    if reg.lower() in low and (
+                            re.search(r"\byes\b", low)
+                            or ("exceed" in low and not re.search(
+                                r"\bnot\b|\bno\b|did not|below|under", low))):
+                        claimed.add(reg)
+            if claimed == set(q["answer_set"]):
+                row["correct"] = 1
+                flags.append("joinset_line_extract")
+            else:
+                flags.append("set_mismatch_hand_review")
     elif fam == "quote":
         expected = q["expected_line_by_format"].get(run["format"])
         if expected is None:
