@@ -1,5 +1,7 @@
 # The deposit-format policy — decided by measurement, 2026-08-18
 
+*Depends on: `TOK-JSON-TAX`, `TOK-MD`, `COMP-RIDER`, `DISC-RIDER`, `REACH-ENGINES`, `REACH-FORMAT`, `HINT-PLACEMENT`, `CAP-INLINE`, `COST-ARM` — per-rig values in `~/notes/practices/model-profiles/`. When a rig requalifies and any of these move, this policy is stale by exactly that list (the runbook's diff step).*
+
 *The numbers behind every verdict: `~/notes/practices/mise/format-league-findings.md` (918 scored runs, three readers, ~$200) plus `census-findings.md` (70 real PDFs) and `routing-findings.md` (spec 2) in the same notes room. Harness: `tests/bench/` in this repo — committed, re-runnable, takes new model strings (the reprofiling battery for the next model generation). Bench data: `~/bench-work/`. Board: mise-rolira.*
 
 ## Format verdicts
