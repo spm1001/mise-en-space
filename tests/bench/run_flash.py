@@ -48,13 +48,16 @@ MAX_ATTEMPTS = 5
 RETRYABLE = {429, 500, 503, 504}
 
 
-def call_flash(client, prompt: str) -> tuple[str, dict, str]:
+def call_flash(client, prompt: str, system: str | None = None) -> tuple[str, dict, str]:
     """One generate_content call with backoff. Returns (text, usage, model_version)."""
-    from google.genai import errors
+    from google.genai import errors, types
+    cfg = (types.GenerateContentConfig(system_instruction=system)
+           if system else None)
     last = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            resp = client.models.generate_content(model=MODEL, contents=prompt)
+            resp = client.models.generate_content(model=MODEL, contents=prompt,
+                                                  config=cfg)
             if resp.text is None:
                 # Safety block / empty candidate — visible, not silently scored
                 raise RuntimeError(f"empty response text (candidates={resp.candidates})")
@@ -99,7 +102,8 @@ def one_run(run: dict, out: Path, answers: dict, client) -> str:
 
     t0 = time.time()
     try:
-        text, usage, model_version = call_flash(client, prompt)
+        text, usage, model_version = call_flash(client, prompt,
+                                                system=run.get("system"))
     except Exception as e:
         (tdir / f"{rid}.err").write_text(f"{type(e).__name__}: {e}\n")
         return f"FAIL {rid} ({type(e).__name__})"
@@ -121,11 +125,18 @@ def main():
     ap.add_argument("--out", default=str(Path.home() / "bench-work"))
     ap.add_argument("--plan", required=True)
     ap.add_argument("--jobs", type=int, default=3)
+    ap.add_argument("--system", default=None,
+                    help="system instruction applied to every run in this "
+                         "invocation (also honoured per-run via a 'system' "
+                         "key in the plan)")
     a = ap.parse_args()
     out = Path(a.out).expanduser()
     answers = load_answers(out)
     plan = json.loads(Path(a.plan).expanduser().read_text())
     flash_runs = [r for r in plan if r["model"] == "flash"]
+    if a.system:
+        for r in flash_runs:
+            r.setdefault("system", a.system)
 
     from google import genai
     from google.genai import types
