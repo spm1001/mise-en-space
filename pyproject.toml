@@ -14,7 +14,7 @@ dependencies = [
     "mcp[cli]>=1.28.1,<2.0.0",
     # Google APIs (httpx + REST, OAuth via jeton)
     "httpx[http2]>=0.28.1",
-    "orjson>=3.11.9",
+    "orjson>=3.12.0",
     "jeton",
     # Form spec parsing
     "pyyaml>=6.0",
@@ -50,8 +50,8 @@ macos = [
 dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
-    "ruff>=0.16.1",
-    "mypy>=2.3.0",
+    "ruff>=0.16.3",
+    "mypy>=2.3.1",
     # Stubs for the core `markdown` dep so html_convert.markdown_to_html types
     # cleanly (markdown ships no py.typed).
     "types-Markdown>=3.5",
@@ -119,9 +119,9 @@ jeton = { git = "https://github.com/spm1001/jeton.git" }
 
 [dependency-groups]
 dev = [
-    "mypy>=2.3.0",
+    "mypy>=2.3.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
-    "inline-snapshot>=0.35.3",
+    "inline-snapshot>=0.35.4",
 ]
