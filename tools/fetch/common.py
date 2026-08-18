@@ -11,6 +11,7 @@ from typing import Any
 from adapters.drive import fetch_file_comments
 from adapters.pdf import PdfConversionResult
 from extractors.comments import extract_comments_content
+from extractors.pdf_anchors import insert_crop_anchors
 from extractors.sheets import extract_sheets_per_tab
 from models import MiseError, EmailContext
 from workspace import write_content, write_page_thumbnail, slugify
@@ -119,6 +120,42 @@ def _deposit_pdf_thumbnails(
         extras["thumbnail_failures"] = missing
 
     return extras
+
+
+def deposit_pdf_crops(folder: Path, result: PdfConversionResult) -> dict[str, Any]:
+    """
+    Write embedded-graphic crops and anchor them in the content (mise-jopohi).
+
+    Mutates result.content (exhibit anchors at each crop's page — call
+    BEFORE write_content) and result.warnings (the repo's warnings
+    pattern). Returns manifest extras; empty dict when there are no crops.
+
+    The anchors are the interface: a text-first reader greps content.md,
+    hits `<!-- exhibit: crop_pNNN_iNNN.png … -->` at the point of omission,
+    and views the crop. Manifest `crops` entries carry the same records for
+    programmatic consumers.
+    """
+    if not result.crops:
+        return {}
+
+    records = []
+    for crop in result.crops:
+        (Path(folder) / crop.name).write_bytes(crop.png_bytes)
+        records.append({
+            "file": crop.name,
+            "pages": crop.pages,
+            "width": crop.width,
+            "height": crop.height,
+        })
+
+    result.content, placed = insert_crop_anchors(result.content, records)
+    if not placed:
+        result.warnings.append(
+            f"{len(records)} graphic crops extracted, but page markers are "
+            "absent from this extraction — exhibit anchors are grouped at "
+            "the end of content.md rather than at their pages."
+        )
+    return {"crops": records, "crop_count": len(records)}
 
 
 def pdf_page_fidelity(result: PdfConversionResult) -> dict[str, Any]:

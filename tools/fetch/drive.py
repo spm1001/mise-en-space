@@ -30,7 +30,7 @@ from workspace import get_deposit_folder, write_content, write_manifest, write_t
 
 from .common import (
     _build_cues, _build_email_context_metadata, _deposit_pdf_thumbnails,
-    _enrich_with_comments, _write_per_tab_csvs, is_text_file, pdf_page_fidelity,
+    _enrich_with_comments, _write_per_tab_csvs, deposit_pdf_crops, is_text_file, pdf_page_fidelity,
 )
 from .decorations import build_doc_structure, build_slides_index
 
@@ -524,8 +524,9 @@ def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context:
     # Extract via adapter (handles download + hybrid extraction + thumbnail rendering)
     result = fetch_and_convert_pdf(file_id, thumbnails=thumbnails)
 
-    # Deposit to workspace
+    # Deposit to workspace (crops first — the helper anchors them into result.content)
     folder = get_deposit_folder("pdf", title, file_id, base_path=base_path)
+    crop_extras = deposit_pdf_crops(folder, result)
     content_path = write_content(folder, result.content)
 
     # Deposit page thumbnails (shared helper writes PNGs, returns manifest extras)
@@ -535,6 +536,7 @@ def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context:
         "char_count": result.char_count,
         "extraction_method": result.method,
         **thumb_extras,
+        **crop_extras,
         **pdf_page_fidelity(result),  # mutates result.warnings before the reads below
     }
     if result.warnings:

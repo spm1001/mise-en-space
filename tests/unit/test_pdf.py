@@ -27,7 +27,8 @@ def poppler_absent():
     primary is tested in TestPdftotextPrimary, which re-patches per-case;
     TestRunPdftotext calls adapters.pdf_info directly, which this patch
     (on the adapters.pdf binding) deliberately does not reach."""
-    with patch("adapters.pdf.run_pdftotext", side_effect=FileNotFoundError()):
+    with patch("adapters.pdf.run_pdftotext", side_effect=FileNotFoundError()), \
+         patch("adapters.pdf.extract_pdf_crops", return_value=[]):
         yield
 
 

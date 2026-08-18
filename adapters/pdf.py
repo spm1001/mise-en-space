@@ -24,7 +24,7 @@ except ImportError:  # slim/embedded build — PDF text falls back to Drive conv
 from adapters.conversion import convert_via_drive
 from extractors.text_quality import looks_like_flattened_tables
 from adapters.drive import download_file, download_file_to_temp, get_file_size, STREAMING_THRESHOLD_BYTES
-from adapters.pdf_info import count_pdf_pages, run_pdftotext
+from adapters.pdf_info import PdfCrop, count_pdf_pages, extract_pdf_crops, run_pdftotext
 from adapters.pdf_render import PdfThumbnailResult, render_pdf_pages
 
 # Threshold for the local-extraction fallback to Drive conversion (empirical,
@@ -43,6 +43,7 @@ class PdfConversionResult:
     warnings: list[str] = field(default_factory=list)
     thumbnails: PdfThumbnailResult | None = None
     pdf_pages: int | None = None  # poppler ground truth; None = unknown (mise-wujoga)
+    crops: list[PdfCrop] = field(default_factory=list)  # embedded graphics (mise-jopohi)
 
 
 def convert_pdf_content(
@@ -196,6 +197,14 @@ def fetch_and_convert_pdf(
             file_id=file_id,
             min_chars_threshold=min_chars_threshold,
         )
+        # Crops are unconditional (unlike thumbnails): a few KB of embedded
+        # graphics vs 10s of MB of page renders, and they serve the TEXT
+        # lane — the anchors in content.md are how a text-first reader
+        # learns a value lives in pixels (mise-jopohi). Never blocks.
+        try:
+            result.crops = extract_pdf_crops(file_bytes=pdf_bytes)
+        except Exception as e:
+            result.warnings.append(f"Graphic-crop extraction unavailable: {e}")
         if thumbnails:
             try:
                 result.thumbnails = render_pdf_pages(file_bytes=pdf_bytes)
@@ -224,7 +233,11 @@ def _fetch_and_convert_pdf_large(
             file_path=tmp_path,
         )
         result.warnings.insert(0, "Large file: using streaming download")
-        # Render thumbnails before temp file is unlinked
+        # Crops + thumbnails before the temp file is unlinked
+        try:
+            result.crops = extract_pdf_crops(file_path=tmp_path)
+        except Exception as e:
+            result.warnings.append(f"Graphic-crop extraction unavailable: {e}")
         if thumbnails:
             try:
                 result.thumbnails = render_pdf_pages(file_path=tmp_path)

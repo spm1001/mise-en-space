@@ -64,6 +64,33 @@ slides--ami-deck--1Oep/
 
 Only slides needing visual context get thumbnails (charts, complex layouts, images). Text-only slides are skipped.
 
+## PDFs: Exhibit Crops and Anchors (the two-repo contract)
+
+A census of real corporate PDFs (636 probes, 70 documents, 2026-08-17) measured ~3% of values as **vision-only** — printed inside embedded chart images (Excel charts pasted as pictures) that NO text extractor can reach. PDF deposits therefore carry the qualifying embedded graphics as crop files, each announced by a grep-able anchor in `content.md` at the page where the graphic sits:
+
+```
+pdf--strategy-update--abc123/
+├── content.md              # pdftotext -layout text, with exhibit anchors
+├── crop_p008_i012.png      # embedded graphic from page 8 (original resolution)
+├── page_01.png …           # full-page thumbnails (when thumbnails=True)
+└── manifest.json           # includes crops [{file, pages, width, height}], crop_count
+```
+
+**The anchor line** (one per crop per page, at the end of that page's text):
+
+```
+<!-- exhibit: crop_p008_i012.png | page 8 | 751x452px | embedded graphic — its values are NOT in this text; view the crop image -->
+```
+
+**The two-stage retrieval this enables:** stage 1, grep/read the text as usual; on hitting an anchor whose graphic might hold the answer, stage 2, view the named crop file with a vision-capable read. The anchor prefix is stable — `grep 'exhibit:' content.md` lists every graphic with its page and file in one hit each.
+
+**Contract guarantees, and their honest limits:**
+
+- Anchors carry **only deterministic fields** (file, page, pixel dimensions). Semantic fields — what the chart shows, its entities and metrics — would require understanding the image, which the extractor cannot do without fabricating; enrich them consumer-side from the crops if you need an index.
+- Crops cover **embedded raster objects** passing a corpus-calibrated filter (min dimension 240px, on ≤3 pages, covering <80% of the page). Vector-drawn charts, full-page background photos and repeated furniture (logos, watermark badges) are excluded — full-page values remain reachable via the page thumbnails.
+- When page markers are absent from an extraction (markitdown/Drive fallback paths), anchors group in a disclosed block at the end of `content.md` instead of at their pages, and a warning cue says so.
+- No count cap: every qualifying graphic ships (census: median ~4 per document, p90 ~44 on photo-heavy decks).
+
 ## Gmail: Attachments
 
 ```

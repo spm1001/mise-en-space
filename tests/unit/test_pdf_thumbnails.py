@@ -27,7 +27,8 @@ def poppler_absent():
     without poppler. The pdftotext-primary chain is tested in test_pdf.py's
     TestPdftotextPrimary. Patches the adapters.pdf binding only — direct
     calls to adapters.pdf_info.run_pdftotext stay real."""
-    with patch("adapters.pdf.run_pdftotext", side_effect=FileNotFoundError()):
+    with patch("adapters.pdf.run_pdftotext", side_effect=FileNotFoundError()), \
+         patch("adapters.pdf.extract_pdf_crops", return_value=[]):
         yield
 
 

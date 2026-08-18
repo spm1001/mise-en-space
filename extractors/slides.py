@@ -131,6 +131,13 @@ def _format_slide(slide: SlideData) -> str:
         parts.append("### Visual Elements\n")
         for elem in slide.visual_elements:
             parts.append(f"- {elem}\n")
+        # Eye-level exhibit anchor (mise-jopohi): gated on thumbnail_bytes —
+        # the file is only written when the render actually happened.
+        if slide.thumbnail_bytes:
+            parts.append(
+                f"\n<!-- exhibit: slide_{slide.index + 1:02d}.png | slide {slide.index + 1} | "
+                "rendered slide — values in its charts/images are NOT in this text; view the image -->\n"
+            )
         parts.append("\n")
 
     parts.append("---\n")

@@ -545,3 +545,36 @@ class TestExtractTextFromElements:
         result = _extract_text_from_elements(elements)
 
         assert result == "Text"
+
+
+class TestSlideExhibitAnchors:
+    """Eye-level exhibit anchors on thumbnailed slides (mise-jopohi).
+
+    Same grep contract as PDF crops: `grep 'exhibit:' content.md` — one
+    line per rendered slide, naming the slide_NN.png file.
+    """
+
+    def _data(self, thumbnail_bytes: bytes | None) -> PresentationData:
+        return PresentationData(
+            title="Deck",
+            presentation_id="deck-id",
+            slides=[
+                SlideData(
+                    slide_id="s5",
+                    index=4,  # 0-based -> slide_05.png
+                    text_content=["Q3 results"],
+                    visual_elements=["[CHART] Embedded spreadsheet chart"],
+                    thumbnail_bytes=thumbnail_bytes,
+                )
+            ],
+        )
+
+    def test_thumbnailed_slide_carries_anchor(self) -> None:
+        result = extract_slides_content(self._data(b"\x89PNGfake"))
+        assert "<!-- exhibit: slide_05.png | slide 5 |" in result
+
+    def test_no_thumbnail_no_anchor(self) -> None:
+        """The anchor is gated on the render having happened — an anchor
+        naming an unwritten file would be a dangling pointer."""
+        result = extract_slides_content(self._data(None))
+        assert "exhibit:" not in result
