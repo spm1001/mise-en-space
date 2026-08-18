@@ -20,6 +20,17 @@ from tools.fetch import fetch_pdf
 FIXTURES_DIR = Path(__file__).parent.parent.parent / "fixtures"
 
 
+@pytest.fixture(autouse=True)
+def poppler_absent():
+    """Pin pdftotext absent module-wide so the markitdown and Drive branches
+    behave identically on hosts with and without poppler. The pdftotext
+    primary is tested in TestPdftotextPrimary, which re-patches per-case;
+    TestRunPdftotext calls adapters.pdf_info directly, which this patch
+    (on the adapters.pdf binding) deliberately does not reach."""
+    with patch("adapters.pdf.run_pdftotext", side_effect=FileNotFoundError()):
+        yield
+
+
 class TestPdfExtraction:
     """Tests for PDF extraction adapter."""
 
@@ -42,8 +53,9 @@ class TestPdfExtraction:
 
         assert result.method == "markitdown"
         assert result.char_count >= DEFAULT_MIN_CHARS_THRESHOLD
-        assert len(result.warnings) == 0
-        mock_markitdown.assert_called_once_with(sample_pdf_bytes)
+        # The only warning is the poppler teaching line (fixture pins it absent)
+        assert [w for w in result.warnings if "pdftotext" not in w] == []
+        mock_markitdown.assert_called_once_with(sample_pdf_bytes, file_path=None)
 
     @patch("adapters.pdf.convert_via_drive")
     @patch("adapters.pdf._convert_with_markitdown")
@@ -833,3 +845,132 @@ class TestFlattenedTableDetection:
         assert result.method == "drive"
         assert any("flattened tables" in w for w in result.warnings)
         mock_convert.assert_called_once()
+
+
+class TestPdftotextPrimary:
+    """The pdftotext -layout primary chain (mise-mitoki).
+
+    The module fixture pins pdftotext absent; each case here re-patches the
+    adapters.pdf binding to exercise the primary path.
+    """
+
+    SAMPLE = b"%PDF-1.4 sample"
+
+    @patch("adapters.pdf._convert_with_markitdown")
+    @patch("adapters.pdf.run_pdftotext")
+    def test_success_above_threshold(
+        self, mock_ptt: MagicMock, mock_md: MagicMock
+    ) -> None:
+        mock_ptt.return_value = "line one\n" * 200
+        result = convert_pdf_content(self.SAMPLE, "f1")
+        assert result.method == "pdftotext"
+        assert result.warnings == []
+        mock_md.assert_not_called()
+
+    @patch("adapters.pdf._convert_with_markitdown")
+    @patch("adapters.pdf.run_pdftotext")
+    def test_detector_never_judges_poppler_output(
+        self, mock_ptt: MagicMock, mock_md: MagicMock
+    ) -> None:
+        """The rescope pin: whitespace-aligned table rows fire the
+        flattened-table detector (27/133 census slices — all GOOD output,
+        e.g. the BBC remuneration table), so it must never judge poppler.
+        The in-test control proves the input would fire it."""
+        aligned = "\n".join(
+            f"Segment {i}        1,{i:03d}      2,{i:03d}       –      {i}%"
+            for i in range(40)
+        )
+        assert looks_like_flattened_tables(aligned)  # control: it WOULD fire
+        mock_ptt.return_value = aligned
+        result = convert_pdf_content(self.SAMPLE, "f1")
+        assert result.method == "pdftotext"
+        assert result.warnings == []
+        mock_md.assert_not_called()
+
+    @patch("adapters.pdf.convert_via_drive")
+    @patch("adapters.pdf._convert_with_markitdown")
+    @patch("adapters.pdf.run_pdftotext", return_value="thin")
+    def test_thin_text_layer_goes_straight_to_drive(
+        self, mock_ptt: MagicMock, mock_md: MagicMock, mock_drive: MagicMock
+    ) -> None:
+        """Scanned/image-only PDF: markitdown reads the same text layer and
+        is skipped; Drive's server-side OCR is the rescue."""
+        from adapters.conversion import ConversionResult
+        mock_drive.return_value = ConversionResult(
+            content="B" * 1000, temp_file_deleted=True, warnings=[]
+        )
+        result = convert_pdf_content(self.SAMPLE, "f1")
+        assert result.method == "drive"
+        mock_md.assert_not_called()
+        assert any("scanned/image-only" in w for w in result.warnings)
+
+    @patch("adapters.pdf._convert_with_markitdown", return_value="A" * 600)
+    def test_binary_absent_falls_back_to_markitdown(
+        self, mock_md: MagicMock
+    ) -> None:
+        """Poppler missing (module fixture): markitdown rescues, and the
+        warning teaches the install line — loud, never silent (mise-releko)."""
+        result = convert_pdf_content(self.SAMPLE, "f1")
+        assert result.method == "markitdown"
+        assert any("poppler-utils" in w for w in result.warnings)
+
+    @patch("adapters.pdf._convert_with_markitdown", return_value="A" * 600)
+    @patch("adapters.pdf.run_pdftotext", side_effect=ValueError("pdftotext exit 1: bad xref"))
+    def test_corrupt_pdf_falls_back_to_markitdown(
+        self, mock_ptt: MagicMock, mock_md: MagicMock
+    ) -> None:
+        result = convert_pdf_content(self.SAMPLE, "f1")
+        assert result.method == "markitdown"
+        assert any("pdftotext failed" in w for w in result.warnings)
+
+
+class TestRunPdftotext:
+    """run_pdftotext: the poppler subprocess seam (adapters/pdf_info.py)."""
+
+    FIXTURE = FIXTURES_DIR / "pdf" / "two_pages.pdf"
+
+    def test_known_answer_on_real_fixture(self) -> None:
+        """Live known-answer (CI installs poppler-utils): text extracted,
+        pages separated by the form feed citations ride on."""
+        from adapters.pdf_info import run_pdftotext
+        text = run_pdftotext(file_bytes=self.FIXTURE.read_bytes())
+        assert "Page One" in text
+        assert "Page Two" in text
+        assert "\f" in text
+
+    def test_file_path_variant_matches_bytes(self) -> None:
+        from adapters.pdf_info import run_pdftotext
+        assert run_pdftotext(file_path=self.FIXTURE) == run_pdftotext(
+            file_bytes=self.FIXTURE.read_bytes()
+        )
+
+    @patch("adapters.pdf_info.subprocess.run", side_effect=FileNotFoundError("no pdftotext"))
+    def test_absent_binary_raises_file_not_found(self, mock_run: MagicMock) -> None:
+        from adapters.pdf_info import run_pdftotext
+        with pytest.raises(FileNotFoundError):
+            run_pdftotext(file_bytes=b"%PDF")
+
+    @patch("adapters.pdf_info.subprocess.run")
+    def test_nonzero_exit_raises_value_error(self, mock_run: MagicMock) -> None:
+        from adapters.pdf_info import run_pdftotext
+        mock_run.return_value = MagicMock(returncode=1, stderr=b"Syntax Error", stdout=b"")
+        with pytest.raises(ValueError, match="pdftotext exit 1"):
+            run_pdftotext(file_bytes=b"NOT_A_PDF")
+
+    def test_requires_input(self) -> None:
+        from adapters.pdf_info import run_pdftotext
+        with pytest.raises(ValueError, match="Must provide"):
+            run_pdftotext()
+
+    @patch("adapters.pdf_info.os.access", return_value=False)
+    @patch("adapters.pdf_info.shutil.which", return_value=None)
+    def test_binary_resolution_probes_known_homes(
+        self, mock_which: MagicMock, mock_access: MagicMock
+    ) -> None:
+        """A PATH miss alone is not absence — GUI-spawned processes on macOS
+        run with a bare launchd PATH, so the resolver probes the known
+        install homes; only both failing raises."""
+        from adapters.pdf_info import _pdftotext_bin
+        with pytest.raises(FileNotFoundError, match="known install locations"):
+            _pdftotext_bin()
+        assert mock_access.call_count == 3  # all three homes probed

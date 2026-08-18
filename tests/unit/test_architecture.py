@@ -90,7 +90,6 @@ _LEGACY_SIZE_BASELINE = {
     "tools/fetch/gmail.py": 705,  # +1 (2026-08-07): the gmail_ids split turned one import into two; +6 (2026-08-09): web_link emission, logic lives in gmail_ids.thread_web_link_or_warn (mise-hetaba); +2 (2026-08-13): thumbnails opt-out — one signature line, one if-guard at the render site (mise-giwawa); +2 (2026-08-13): pdf_page_fidelity call + spread on the attachment path — logic lives in common.py (mise-wujoga)
     "adapters/http_client.py": 703,  # +11 (2026-08-12): ambient-mode dispatch — a 4-line branch in _load_and_diagnose_credentials plus a 5-line refresh guard in EACH near-duplicate client (mise-wasagu). +9 (2026-08-12 evening, mise-dareti): constructor-injected credentials pay the SAME three seams — a 3-line return in the loader, a 3-line refusal in each refresh path; the registry and teaching text live in token_store. These are the only seams identity selection can intercept. Halves when MiseSyncClient dies in Phase 2.
     "extractors/slides.py": 600,
-    "adapters/pdf.py": 514,  # lowered 2026-08-08: flattened-table detector moved to extractors/text_quality.py (mise-columi); +5 (2026-08-13): thumbnails opt-out — signatures, docstring line, if-guards beside the renders they skip (mise-giwawa); +5 (2026-08-13): pdf_pages ground truth — field, import, one count_pdf_pages call, two constructor args; counting lives in the pdf_info sibling (mise-wujoga)
     "extractors/talon_signature.py": 518,
 }
 

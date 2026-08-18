@@ -24,7 +24,7 @@ Looking around for others, I found plenty of inspiration, but also some snags:
 I wanted something that had the best of all these ideas:
 
 - **Sous-chef philosophy.** Fetch a doc and get the comments too. Fetch an email and get the attachments extracted. Don't make the chef ask for every ingredient separately.
-- **Clean extraction.** PDFs use hybrid extraction ([markitdown](https://github.com/microsoft/markitdown) → Drive OCR fallback). Office files convert automatically.
+- **Clean extraction.** PDF text comes from poppler's `pdftotext -layout` — measured best on a 636-probe census of real corporate PDFs (97.4% verbatim value survival, 100% on big-table pages) — with Drive server-side OCR as the fallback for scans. Office files convert automatically.
 - **Opinionated, LLM-first control surface** 3 tools not 50 - search, fetch, do. ~3k tokens of tool definitions and everything routes through the same three verbs.
 - **One call, rich results.** Gmail search returns subjects, senders, snippets, and attachment names — not a bag of IDs requiring N+1 follow-ups.
 - **Filesystem-deposits.** Content goes to disk as markdown/CSV, not into the context window. Claude reads (and greps) what it needs.
@@ -69,7 +69,7 @@ mise create "Title" --content "# Markdown content"
 | Google Sheets | CSV + chart PNGs + open comments |
 | Google Slides | Markdown + selective thumbnails + open comments |
 | Gmail threads | Markdown with signature stripping via [talon](https://github.com/mailgun/talon), attachment extraction |
-| PDFs | Markdown ([markitdown](https://github.com/microsoft/markitdown) → Drive OCR fallback) |
+| PDFs | Layout-aligned text (`pdftotext -layout` → Drive OCR fallback for scans) |
 | Office files (DOCX/XLSX/PPTX) | Markdown or CSV via Drive conversion |
 | Video/Audio | AI summary + metadata (requires a chrome-debug browser session) |
 | Images | Deposited as-is; SVG rendered to PNG |
@@ -112,7 +112,7 @@ doc = ws.do("create", title=..., content=markdown, folder_id=SHARED_DRIVE_FOLDER
 
 The worked example — hydrate a Drive folder, write a Doc back, as a service account — is [`examples/hydrate_and_write_back.py`](examples/hydrate_and_write_back.py); its header covers installing the wheel (you supply jeton yourself — uv source maps don't ride wheel metadata) and the service-account facts that bite (writes land only in Shared Drives). The full credential and deposit contract is the package docstring: `python -c "import mise_en_space; help(mise_en_space)"`.
 
-Two facts a headless PDF pipeline needs. `fetch(file_id, thumbnails=False)` skips page/slide PNG rendering — measured 154s → 59s and 77 MB → 0 of deposit weight on a 256-page annual report — so pass it whenever nothing will look at pixels. And **no extraction path guarantees page boundaries**: form-feed survival is per-PDF (markitdown kept a two-page fixture's marker and dropped all 255 of that same annual report's), so a page-citing consumer must gate on the measured fields every PDF deposit carries — `page_markers` (form feeds in content.md) against `pdf_pages` (poppler's count, when available) — and heed the warning cue that fires whenever per-page citations can't be derived. Never infer page fidelity from `extraction_method`.
+Three facts a headless PDF pipeline needs. **The bulk-text tool is poppler's `pdftotext -layout`** — the extraction primary since suite 1.67 — and the wheel cannot bundle it: put `poppler-utils` in the consumer image (Dockerfile `apt-get install poppler-utils`) or PDF text silently degrades to markitdown (worse on tables) or Drive conversion (slow, needs write scope), with only a cue warning to say so. `fetch(file_id, thumbnails=False)` skips page/slide PNG rendering — measured 154s → 59s and 77 MB → 0 of deposit weight on a 256-page annual report — so pass it whenever nothing will look at pixels. And **no extraction path guarantees page boundaries**: form-feed survival is per-PDF (markitdown kept a two-page fixture's marker and dropped all 255 of that same annual report's), so a page-citing consumer must gate on the measured fields every PDF deposit carries — `page_markers` (form feeds in content.md) against `pdf_pages` (poppler's count, when available) — and heed the warning cue that fires whenever per-page citations can't be derived. Never infer page fidelity from `extraction_method`.
 
 ## Setup
 
@@ -123,6 +123,15 @@ git clone https://github.com/spm1001/mise-en-space.git
 cd mise-en-space
 uv sync    # requires uv — https://docs.astral.sh/uv/
 ```
+
+**System prerequisite: poppler.** PDF text extraction (`pdftotext -layout`) and PDF/deck page thumbnails shell out to [poppler](https://poppler.freedesktop.org/):
+
+```bash
+sudo apt-get install poppler-utils   # Debian/Ubuntu
+brew install poppler                 # macOS
+```
+
+Without it mise still works — PDF text falls back to markitdown (measurably worse on tables) or Drive conversion, and thumbnails are skipped — and both the session-start hook and every affected fetch say so rather than degrading silently.
 
 ### 2. Google OAuth
 
@@ -208,7 +217,7 @@ MCP server startup is ~1.3s (import + first auth). After that, the server stays 
 | **Search (Drive + Gmail)** | ~0.8s | 0.6–1.1s | Parallel — faster than either alone |
 | **Fetch: Google Doc** | ~2s | 1.7–3.1s | Single API call |
 | **Fetch: Gmail thread** | ~2.4s | 1.8–3.0s | Thread + message batch |
-| **Fetch: PDF** | ~2.5s | 2.1–3.0s | markitdown; complex PDFs fall back to Drive OCR (5–15s) |
+| **Fetch: PDF** | ~2.5s | 2.1–3.0s | pdftotext (since 1.67; extraction itself is ~55× faster than the markitdown benchmarked here — download and thumbnails dominate); scans fall back to Drive OCR (5–15s) |
 | **Fetch: Google Sheet** | ~4s | 1.9–5.9s | 2 API calls (metadata + values) |
 | **Fetch: Slides (7 slides)** | ~6s | 3.1–9.3s | ~0.5s per thumbnail, sequential |
 | **Fetch: XLSX** | ~6s | 6.1–6.7s | Drive upload → convert → export |

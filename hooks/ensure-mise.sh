@@ -180,6 +180,24 @@ if [ "$HAS_TOKEN" = false ]; then
     fi
 fi
 
+# 4. Poppler (pdftotext/pdftoppm) backs PDF text extraction and page/deck
+#    thumbnails (mise-mitoki, mise-releko). Its absence is silent per-fetch —
+#    text degrades to markitdown, thumbnails skip — and it bites hardest on
+#    exactly the dense visual decks where fidelity matters most, so say it
+#    ONCE, up front. Advisory only: never block on it. Hook shells can run
+#    with a truncated PATH (same trap as uv above), so probe the known
+#    install homes too before concluding absence.
+POPPLER_BIN="$(command -v pdftotext 2>/dev/null)"
+if [ -z "$POPPLER_BIN" ]; then
+    for _c in /opt/homebrew/bin/pdftotext /usr/local/bin/pdftotext /usr/bin/pdftotext; do
+        if [ -x "$_c" ]; then POPPLER_BIN="$_c"; break; fi
+    done
+fi
+if [ -z "$POPPLER_BIN" ]; then
+    ISSUES="${ISSUES}• poppler is not installed — PDF text extraction degrades (tables, page markers) and PDF/deck thumbnails are skipped. Install: apt-get install poppler-utils (Debian/Ubuntu) or brew install poppler (macOS).\n"
+    # advisory — do NOT set BLOCKING
+fi
+
 # If no issues, exit silently
 [ -z "$ISSUES" ] && exit 0
 
@@ -190,7 +208,7 @@ if [ "$BLOCKING" = true ]; then
     FOOTER="The MCP server won't work until these are resolved."
 else
     HEADER="ℹ️ ${DISPLAY_NAME} — optional setup:"
-    FOOTER="Advisory only: your other mise flavour is working, so nothing is broken."
+    FOOTER="Advisory only: nothing is broken — these just make mise better."
 fi
 MSG="${HEADER}\n\n${ISSUES}\n${FOOTER}"
 

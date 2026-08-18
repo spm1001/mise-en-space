@@ -82,8 +82,18 @@ The fetch response includes a `cues` block with decision-tree signals — check 
 8. For Google Docs: if `cues.has_suggestions` is true, the doc carries unresolved suggested edits (`suggestion_count` says how many, `suggestions_mode` says how they were treated). The default render is **accepted** — the suggester's intended text, with suggested deletions honoured. Don't treat that text as settled: the suggestions are still open in the Doc. See "Docs with suggested edits" under Workflow 1.
 9. If `cues.pointer` is present, the pasted URL named a specific spot — a tab, heading, slide or comment — and the pointer says which deposited artefact holds it (often with a `content.md` line number Read's offset consumes directly). **Start there**, not at the top of the document; that targeting is why the person pasted a decorated URL.
 10. For Gmail: `cues.people` places every own-domain participant from the staff directory (role, department, manager), and `cues.people_relations` names reporting lines across the thread — including the user's own ("Kate Waters is Sameer Modha's manager" on a thread from their boss). Read it before drafting a reply: who outranks whom changes the register. An address absent from `people` is external or directory-opted-out (`people_note` says so) — never report it as a failed lookup.
+11. **Values printed inside chart images are in NO text extraction** — a census of real corporate PDFs measured ~3% of values as vision-only (chart data labels, watermark badges). If the question hangs on a chart's numbers, Read the deposited page/slide thumbnail (`page_NN.png`, `slide_NN.png`) before concluding the value is absent.
 
 `manifest.json` is still on disk for scripts/jq, but `cues` surfaces the actionable signals so you don't need to read it separately.
+
+### Working a large deposit: which engine
+
+Measured, not taste (deposit-format league: 918 scored runs, three readers, 2026-08-18):
+
+- **One-shot questions against deposits up to at least 50k rows: coreutils + jq + stdlib python.** This is what tooled readers choose unprompted at every scale — DuckDB and Polars scored zero uses despite being installed — and it measured 18/18 correct at 50k rows. grep/awk over a deposited CSV is the fast lane, not the lazy one.
+- **DuckDB earns its import ceremony only for:** sustained analysis (many questions against one large deposit), genuine multi-file joins, or beyond-memory data.
+- **Prefer DuckDB over Polars when you do want an engine** — the standard Polars wheel dies with an illegal instruction on non-AVX2 CPUs.
+- **Past ~10k rows a deposit outgrows inline reading entirely** (2,000 aligned rows measure ~218k Claude tokens): consume it with tools, or slice before reading.
 
 See `references/deposit-structure.md` for folder layout and attachment patterns.
 

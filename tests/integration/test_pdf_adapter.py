@@ -88,7 +88,7 @@ def test_pdf_extraction_with_zero_threshold(integration_ids: dict[str, str]) -> 
 
 # --- Local rendering tests (no Google API, needs poppler-utils) ---
 
-from adapters.pdf import render_pdf_pages
+from adapters.pdf_render import render_pdf_pages
 
 FIXTURE_PDF = Path(__file__).parent.parent.parent / "fixtures" / "pdf" / "two_pages.pdf"
 PNG_HEADER = b"\x89PNG\r\n\x1a\n"

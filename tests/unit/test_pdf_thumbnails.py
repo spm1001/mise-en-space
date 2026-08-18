@@ -7,17 +7,28 @@ from unittest.mock import patch, MagicMock, PropertyMock
 
 import pytest
 
-from adapters.pdf import (
+from adapters.pdf import PdfConversionResult
+from adapters.pdf_render import (
     _calculate_dpi,
     render_pdf_pages,
     PageImage,
-    PdfConversionResult,
     PdfThumbnailResult,
     TARGET_MAX_PX,
     FIXED_DPI,
     MAX_DPI,
     MAX_THUMBNAIL_PAGES,
 )
+
+
+@pytest.fixture(autouse=True)
+def poppler_absent():
+    """Pin pdftotext absent module-wide: these tests exercise the markitdown
+    and rendering branches, and must behave identically on hosts with and
+    without poppler. The pdftotext-primary chain is tested in test_pdf.py's
+    TestPdftotextPrimary. Patches the adapters.pdf binding only — direct
+    calls to adapters.pdf_info.run_pdftotext stay real."""
+    with patch("adapters.pdf.run_pdftotext", side_effect=FileNotFoundError()):
+        yield
 
 
 class TestCalculateDpi:
@@ -65,8 +76,8 @@ class TestRenderPdfPages:
         with pytest.raises(ValueError, match="Must provide either"):
             render_pdf_pages()
 
-    @patch("adapters.pdf._render_via_pdf2image")
-    @patch("adapters.pdf._render_via_coregraphics")
+    @patch("adapters.pdf_render._render_via_pdf2image")
+    @patch("adapters.pdf_render._render_via_coregraphics")
     def test_darwin_tries_coregraphics_first(
         self,
         mock_cg: MagicMock,
@@ -84,8 +95,8 @@ class TestRenderPdfPages:
         mock_pdf2img.assert_not_called()
         assert result.method == "coregraphics"
 
-    @patch("adapters.pdf._render_via_pdf2image")
-    @patch("adapters.pdf._render_via_coregraphics")
+    @patch("adapters.pdf_render._render_via_pdf2image")
+    @patch("adapters.pdf_render._render_via_coregraphics")
     def test_darwin_falls_back_on_import_error(
         self,
         mock_cg: MagicMock,
@@ -104,8 +115,8 @@ class TestRenderPdfPages:
         mock_pdf2img.assert_called_once()
         assert result.method == "pdf2image"
 
-    @patch("adapters.pdf._render_via_pdf2image")
-    @patch("adapters.pdf._render_via_coregraphics")
+    @patch("adapters.pdf_render._render_via_pdf2image")
+    @patch("adapters.pdf_render._render_via_coregraphics")
     def test_linux_skips_coregraphics(
         self,
         mock_cg: MagicMock,
@@ -130,7 +141,7 @@ class TestRenderViaPdf2image:
     @patch("pdf2image.convert_from_bytes")
     def test_renders_pages_from_bytes(self, mock_convert: MagicMock) -> None:
         """Renders pages from in-memory bytes."""
-        from adapters.pdf import _render_via_pdf2image
+        from adapters.pdf_render import _render_via_pdf2image
 
         # Create fake PIL images
         mock_img = MagicMock()
@@ -151,7 +162,7 @@ class TestRenderViaPdf2image:
     @patch("pdf2image.convert_from_path")
     def test_renders_pages_from_path(self, mock_convert: MagicMock, tmp_path: Path) -> None:
         """Renders pages from file path."""
-        from adapters.pdf import _render_via_pdf2image
+        from adapters.pdf_render import _render_via_pdf2image
 
         pdf_file = tmp_path / "test.pdf"
         pdf_file.write_bytes(b"%PDF-test")
@@ -173,7 +184,7 @@ class TestRenderViaPdf2image:
     def test_poppler_not_installed_raises_import_error(self, mock_convert: MagicMock) -> None:
         """Missing poppler-utils raises ImportError (not crash)."""
         from pdf2image.exceptions import PDFInfoNotInstalledError
-        from adapters.pdf import _render_via_pdf2image
+        from adapters.pdf_render import _render_via_pdf2image
 
         mock_convert.side_effect = PDFInfoNotInstalledError("pdftoppm not found")
 
@@ -184,7 +195,7 @@ class TestRenderViaPdf2image:
     def test_corrupt_pdf_raises_value_error(self, mock_convert: MagicMock) -> None:
         """Corrupt PDF raises ValueError."""
         from pdf2image.exceptions import PDFPageCountError
-        from adapters.pdf import _render_via_pdf2image
+        from adapters.pdf_render import _render_via_pdf2image
 
         mock_convert.side_effect = PDFPageCountError("Unable to get page count")
 
@@ -385,7 +396,7 @@ class TestPageCap:
     @patch("pdf2image.pdfinfo_from_bytes")
     def test_cap_at_100_pages(self, mock_info: MagicMock, mock_convert: MagicMock) -> None:
         """200-page PDF → only first 100 rendered, warning about limit."""
-        from adapters.pdf import _render_via_pdf2image
+        from adapters.pdf_render import _render_via_pdf2image
 
         # pdf2image returns MAX_THUMBNAIL_PAGES images (the last_page cap)
         mock_img = MagicMock()

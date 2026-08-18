@@ -83,7 +83,9 @@ docs/           Design documents and references
 | `charts.py` | Sheets chart export via temporary Slides embed (Sheets API has no direct export) |
 | `cdp.py` | Chrome DevTools Protocol cookie access (for genai.py; graceful fallback) |
 | `conversion.py` | **Shared** Drive upload→convert→export→delete pattern |
-| `pdf.py` | PDF conversion (hybrid: markitdown → Drive fallback) |
+| `pdf.py` | PDF text extraction (pdftotext -layout primary → markitdown only when poppler absent → Drive OCR fallback; mise-mitoki). The flattened-table detector judges ONLY markitdown output — it is calibrated on markitdown's failure shapes and false-fires on -layout's aligned columns (27/133 census slices) |
+| `pdf_info.py` | The poppler subprocess seam: `count_pdf_pages` (pdfinfo) + `run_pdftotext` |
+| `pdf_render.py` | PDF page-thumbnail rendering (CoreGraphics on macOS, pdf2image/poppler on Linux) — split from pdf.py 2026-08-18 |
 | `office.py` | Office file conversion (DOCX/XLSX/PPTX via Drive) |
 | `image.py` | Image files (raster + SVG→PNG rendering) |
 | `genai.py` | Video summaries via internal GenAI API (requires chrome-debug) |
@@ -249,8 +251,10 @@ uv run --all-extras python scripts/smoke_stdio.py   # drive the WORKING TREE ove
 
 Integration tests require `-m integration` flag and real credentials.
 
+**`tests/bench/` is the model-qualification battery, not part of the test suite** (mise-rolira): a committed, re-runnable harness that takes new model strings — the deposit-format league, the consumer riders, three generations of scorer. It exists so the next model generation gets *measured* against the deposit-format policy (`docs/2026-08-18-deposit-format-policy.md`) rather than assumed; per-rig facts live in `~/notes/practices/model-profiles/`, findings and archived evidence in `~/notes/practices/mise/`. Costs real API money — run deliberately, never in CI.
+
 **The count IS printed — it is just at the bottom of a long scroll.** `uv run --all-extras python
--m pytest` ends with `2482 passed, 100 deselected in 22.99s` (count as of 2026-08-13 late) as the last line of ~92, because
+-m pytest` ends with `2514 passed, 100 deselected in 38.58s` (count as of 2026-08-18) as the last line of ~92, because
 `addopts` in `pyproject.toml` carries `-q` (which suppresses the *per-test* lines, not the summary)
 plus a ~85-line coverage table that pushes the summary off the top of a truncated view.
 `-m 'not integration'` is baked in too, hence the 100 deselected.
@@ -304,11 +308,17 @@ Local extraction (`markitdown[pdf]`, `pdf2image`) lives in an optional `extracti
 extra, **not** core. Two flavours result:
 
 - **Full** — dev/CI and the marketplace plugin (the plugin spawns `uv run --extra
-  extraction`). Fast local PDF text, HTML→markdown, PDF page thumbnails.
+  extraction`). markitdown as the PDF fallback, HTML→markdown, PDF page thumbnails.
 - **Slim / embedded** — what Cornichon vendors (`vendor.sh` installs plain core, no
-  extra). `markitdown` is absent, so `adapters/pdf.py` degrades to **Drive
-  server-side conversion** for PDF text, `html_convert.py` to tag-stripping, and PDF
-  thumbnails are skipped. Image fetch still works (`pillow` is core).
+  extra). `markitdown` is absent, `html_convert.py` degrades to tag-stripping, and
+  PDF thumbnails are skipped. Image fetch still works (`pillow` is core).
+
+**PDF text is orthogonal to the flavour axis since mise-mitoki (2026-08-18):** the
+primary is poppler's `pdftotext -layout`, a SYSTEM binary no pip extra can carry —
+so a slim build on a host with poppler gets first-class PDF text, and a full build
+on a host without it degrades to markitdown with a teaching warning (plus a one-shot
+session-start advisory from `ensure-mise.sh`). Without either, Drive server-side
+conversion remains the floor.
 
 Two things follow: (1) **run the test suite with `--extra extraction`** (or
 `--all-extras`) — PDF-extraction tests assume markitdown is present and fail in a
