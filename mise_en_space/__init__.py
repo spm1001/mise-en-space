@@ -132,6 +132,7 @@ _DO_DEFAULTS: dict[str, Any] = {
     "send_updates": None,
     "duration": None,
     "properties": None,
+    "color": None,
 }
 
 

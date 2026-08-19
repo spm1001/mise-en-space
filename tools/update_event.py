@@ -31,8 +31,10 @@ from tools.events_util import (
     error,
     extract_meet_link,
     meet_request,
+    EVENT_COLORS,
     normalise_attendees,
     normalise_recurrence,
+    validate_color,
     validate_properties,
     validate_send_updates,
 )
@@ -58,6 +60,7 @@ def do_update_event(
     meet: bool = False,
     send_updates: str | None = None,
     properties: dict[str, str] | None = None,
+    color: str | None = None,
     confirm: bool = False,
 ) -> DoResult | dict[str, Any]:
     """Edit an event on the user's primary calendar."""
@@ -105,6 +108,7 @@ def do_update_event(
         recurrence_lines = normalise_recurrence(recurrence) if recurrence else []
         explicit_updates = validate_send_updates(send_updates)
         programme_keys = validate_properties(properties) if properties else {}
+        color_id = validate_color(color) if color is not None else None
     except ValueError as e:
         return error("invalid_input", str(e))
 
@@ -127,14 +131,16 @@ def do_update_event(
         changes["attachments"] = _COSMETIC
     if programme_keys:
         changes["properties"] = _COSMETIC
+    if color_id:
+        changes["color"] = _COSMETIC
 
     if not changes:
         return error(
             "invalid_input",
             "Nothing to change — pass content (description), title, location, "
             "time_min+time_max, attendees (added, never removed), recurrence, "
-            "include (Drive attachments), properties (queryable key-values) "
-            "or meet=True.",
+            "include (Drive attachments), properties (queryable key-values), "
+            "color or meet=True.",
         )
 
     # Guests don't own the event's shape. Attendee-ADD is the one edit Google
@@ -237,6 +243,13 @@ def do_update_event(
         if overwritten:
             previous["properties"] = overwritten
         body["extendedProperties"] = {"private": programme_keys}
+    if color_id:
+        body["colorId"] = color_id
+        old_color = event.get("colorId")
+        previous["color"] = (
+            f"{EVENT_COLORS.get(old_color, '?')} (colorId {old_color})"
+            if old_color else "calendar default"
+        )
     if include:
         try:
             new_attachments = build_attachments(include)
@@ -294,6 +307,12 @@ def do_update_event(
     if programme_keys:
         # Read-back of the merged map proves the keys landed beside the rest.
         cues["properties"] = patched.get("extendedProperties", {}).get("private", {})
+    if color_id:
+        landed = patched.get("colorId")
+        cues["color"] = (
+            f"{EVENT_COLORS.get(landed, '?')} (colorId {landed})"
+            if landed else "requested but ABSENT on read-back"
+        )
     meet_link = extract_meet_link(patched)
     if meet and meet_link:
         cues["meet_link"] = meet_link
@@ -341,7 +360,7 @@ def _describe_changes(
         ]
     if meet and "meet" in changes:
         described["meet"] = "add a Meet link"
-    for cosmetic in ("description", "title", "location", "attachments", "properties"):
+    for cosmetic in ("description", "title", "location", "attachments", "properties", "color"):
         if cosmetic in changes:
             described.setdefault("also_cosmetic", []).append(cosmetic)
     return described

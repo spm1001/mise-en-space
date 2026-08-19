@@ -29,8 +29,10 @@ from tools.events_util import (
     error,
     extract_meet_link,
     meet_request,
+    EVENT_COLORS,
     normalise_attendees,
     normalise_recurrence,
+    validate_color,
     validate_properties,
     validate_send_updates,
 )
@@ -50,6 +52,7 @@ def do_create_event(
     include: list[str] | None = None,
     send_updates: str | None = None,
     properties: dict[str, str] | None = None,
+    color: str | None = None,
     confirm: bool = False,
 ) -> DoResult | dict[str, Any]:
     """Create an event on the user's primary calendar."""
@@ -61,6 +64,7 @@ def do_create_event(
         recurrence_lines = normalise_recurrence(recurrence) if recurrence else []
         effective_updates = validate_send_updates(send_updates) or "all"
         programme_keys = validate_properties(properties) if properties else {}
+        color_id = validate_color(color) if color is not None else None
         start, end = build_event_times(
             time_min, time_max, recurring=bool(recurrence_lines),
             warnings=warnings,
@@ -113,6 +117,8 @@ def do_create_event(
     if programme_keys:
         # The adapter adds the mise:minted_by/minted_at stamps on top.
         body["extendedProperties"] = {"private": programme_keys}
+    if color_id:
+        body["colorId"] = color_id
     if emails:
         body["attendees"] = [{"email": e} for e in emails]
     if recurrence_lines:
@@ -163,6 +169,12 @@ def do_create_event(
     stamped = created.get("extendedProperties", {}).get("private")
     if stamped:
         cues["properties"] = stamped
+    if color_id:
+        landed = created.get("colorId")
+        cues["color"] = (
+            f"{EVENT_COLORS.get(landed, '?')} (colorId {landed})"
+            if landed else "requested but ABSENT on read-back"
+        )
     start_tz = start.get("timeZone")
     if start_tz:
         cues["timezone"] = start_tz

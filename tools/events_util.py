@@ -226,6 +226,34 @@ def normalise_attendees(attendees: list[str] | str) -> list[str]:
     return emails
 
 
+# The classic event palette (colors.get 'event' map) — fixed and global, so
+# enumerable here without the calendars-resource scope mise doesn't hold.
+# Labels (eventLabelId) are deliberately NOT surfaced: the palette lives on
+# calendars.get (403 on our scopes) and the write accepts an unknown id and
+# enriches it to a UUID — probed 2026-08-19, mise-kawegu.
+EVENT_COLORS = {
+    "1": "lavender", "2": "sage", "3": "grape", "4": "flamingo",
+    "5": "banana", "6": "tangerine", "7": "peacock", "8": "graphite",
+    "9": "blueberry", "10": "basil", "11": "tomato",
+}
+_COLOR_BY_NAME = {name: cid for cid, name in EVENT_COLORS.items()}
+
+
+def validate_color(color: Any) -> str:
+    """Colour input (id or name, either case) → colorId string.
+
+    Raises teaching ValueError naming the whole palette — eleven entries is
+    small enough to hand the caller the answer inside the refusal.
+    """
+    text = str(color).strip().lower()
+    if text in EVENT_COLORS:
+        return text
+    if text in _COLOR_BY_NAME:
+        return _COLOR_BY_NAME[text]
+    palette = ", ".join(f"{cid}={name}" for cid, name in EVENT_COLORS.items())
+    raise ValueError(f"color must be one of the event palette: {palette}.")
+
+
 def validate_properties(properties: Any) -> dict[str, str]:
     """Caller programme keys → a clean extendedProperties.private dict.
 

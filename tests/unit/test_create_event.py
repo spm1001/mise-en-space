@@ -269,3 +269,38 @@ class TestProperties:
         )
         assert result["error"] is True
         assert "key:value" in result["message"]
+
+
+class TestColor:
+    """color= — the classic 11-colour palette (mise-kawegu). Labels are the
+    recorded negative: unknown eventLabelId is accepted-and-enriched and the
+    palette needs a scope mise doesn't hold (probed 2026-08-19)."""
+
+    @patch("tools.create_event.insert_event", return_value=_created(colorId="11"))
+    @patch(_TZ, return_value="Europe/London")
+    def test_color_name_resolves_and_reads_back(self, _tz, mock_insert) -> None:
+        result = do_create_event(
+            title="T", time_min="2026-09-08T10:00", time_max="2026-09-08T10:30",
+            color="Tomato",
+        )
+        assert mock_insert.call_args[0][0]["colorId"] == "11"
+        assert isinstance(result, DoResult)
+        assert result.cues["color"] == "tomato (colorId 11)"
+
+    @patch("tools.create_event.insert_event", return_value=_created(colorId="5"))
+    @patch(_TZ, return_value="Europe/London")
+    def test_color_id_passes_through(self, _tz, mock_insert) -> None:
+        do_create_event(
+            title="T", time_min="2026-09-08T10:00", time_max="2026-09-08T10:30",
+            color="5",
+        )
+        assert mock_insert.call_args[0][0]["colorId"] == "5"
+
+    @patch(_TZ, return_value="Europe/London")
+    def test_unknown_color_refused_naming_palette(self, _tz) -> None:
+        result = do_create_event(
+            title="T", time_min="2026-09-08T10:00", time_max="2026-09-08T10:30",
+            color="magenta",
+        )
+        assert result["error"] is True
+        assert "11=tomato" in result["message"]

@@ -252,3 +252,26 @@ class TestProperties:
         result = do_update_event(file_id="evt123", properties={"a=b": "x"})
         assert result["error"] is True
         assert "privateExtendedProperty" in result["message"]
+
+
+class TestColor:
+    """color= is cosmetic: quiet recolour, previous carries the old colour."""
+
+    @patch("tools.update_event.patch_event", return_value=_event(colorId="7"))
+    @patch("tools.update_event.get_event")
+    def test_recolour_runs_direct_and_records_previous(self, mock_get, mock_patch) -> None:
+        mock_get.return_value = _event(colorId="5")
+        result = do_update_event(file_id="evt123", color="peacock")
+        assert isinstance(result, DoResult)
+        assert mock_patch.call_args.kwargs["send_updates"] == "none"
+        assert mock_patch.call_args[0][1] == {"colorId": "7"}
+        assert result.cues["previous"]["color"] == "banana (colorId 5)"
+        assert result.cues["color"] == "peacock (colorId 7)"
+
+    @patch("tools.update_event.patch_event", return_value=_event(colorId="7"))
+    @patch("tools.update_event.get_event")
+    def test_uncoloured_event_previous_reads_calendar_default(self, mock_get, mock_patch) -> None:
+        mock_get.return_value = _event()
+        result = do_update_event(file_id="evt123", color="7")
+        assert isinstance(result, DoResult)
+        assert result.cues["previous"]["color"] == "calendar default"
