@@ -206,3 +206,49 @@ class TestErrorPaths:
     def test_update_event_not_in_remote_allowed_ops(self) -> None:
         from tools.remote import REMOTE_ALLOWED_OPS
         assert "update_event" not in REMOTE_ALLOWED_OPS
+
+
+class TestProperties:
+    """properties= is a COSMETIC change: quiet, no gate, merge-not-replace."""
+
+    @patch("tools.update_event.patch_event", return_value=_event(
+        extendedProperties={"private": {
+            "mise:minted_by": "mise", "mise:programme": "1to1-2026",
+        }},
+    ))
+    @patch("tools.update_event.get_event")
+    def test_properties_run_direct_sending_only_new_keys(self, mock_get, mock_patch) -> None:
+        """Patch MERGES the private map per-key (probed 2026-08-19) — the
+        backfill route for events booked before stamping shipped."""
+        mock_get.return_value = _event(
+            extendedProperties={"private": {"mise:minted_by": "mise"}},
+        )
+        result = do_update_event(
+            file_id="evt123", properties={"mise:programme": "1to1-2026"},
+        )
+        assert isinstance(result, DoResult)
+        assert mock_patch.call_args.kwargs["send_updates"] == "none"
+        body = mock_patch.call_args[0][1]
+        assert body == {"extendedProperties": {"private": {"mise:programme": "1to1-2026"}}}
+        assert "properties" in result.cues["changed"]
+        # Read-back shows the merged map — stamps survived beside the new key
+        assert result.cues["properties"]["mise:minted_by"] == "mise"
+
+    @patch("tools.update_event.patch_event", return_value=_event())
+    @patch("tools.update_event.get_event")
+    def test_overwritten_keys_recorded_as_previous(self, mock_get, mock_patch) -> None:
+        mock_get.return_value = _event(
+            extendedProperties={"private": {"mise:programme": "old-prog"}},
+        )
+        result = do_update_event(
+            file_id="evt123", properties={"mise:programme": "new-prog"},
+        )
+        assert isinstance(result, DoResult)
+        assert result.cues["previous"]["properties"] == {"mise:programme": "old-prog"}
+
+    @patch("tools.update_event.get_event")
+    def test_equals_in_key_refused(self, mock_get) -> None:
+        mock_get.return_value = _event()
+        result = do_update_event(file_id="evt123", properties={"a=b": "x"})
+        assert result["error"] is True
+        assert "privateExtendedProperty" in result["message"]

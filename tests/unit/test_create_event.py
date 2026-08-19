@@ -217,3 +217,55 @@ class TestDeliberateBoundaries:
         """A service account has no personal calendar or diary peers."""
         from tools.dispatch import AMBIENT_UNAVAILABLE_OPS
         assert {"create_event", "update_event", "freebusy"} <= AMBIENT_UNAVAILABLE_OPS
+
+
+class TestProperties:
+    """properties= — caller programme keys in extendedProperties.private
+    (mise-gujiro); the adapter layers the mint stamps on top."""
+
+    @patch("tools.create_event.insert_event", return_value=_created(
+        extendedProperties={"private": {
+            "mise:programme": "1to1-2026", "mise:minted_by": "mise",
+        }},
+    ))
+    @patch(_TZ, return_value="Europe/London")
+    def test_properties_land_and_read_back_as_cue(self, _tz, mock_insert) -> None:
+        result = do_create_event(
+            title="LSM catch-up", time_min="2026-09-08T10:00",
+            time_max="2026-09-08T10:30",
+            properties={"mise:programme": "1to1-2026"},
+        )
+        body = mock_insert.call_args[0][0]
+        assert body["extendedProperties"]["private"] == {"mise:programme": "1to1-2026"}
+        # Read-back cue, not an echo — proves the keys landed
+        assert isinstance(result, DoResult)
+        assert result.cues["properties"]["mise:programme"] == "1to1-2026"
+        assert result.cues["properties"]["mise:minted_by"] == "mise"
+
+    @patch("tools.create_event.insert_event", return_value=_created())
+    @patch(_TZ, return_value="Europe/London")
+    def test_values_coerced_to_str(self, _tz, mock_insert) -> None:
+        do_create_event(
+            title="T", time_min="2026-09-08T10:00", time_max="2026-09-08T10:30",
+            properties={"mise:year": 2026},
+        )
+        body = mock_insert.call_args[0][0]
+        assert body["extendedProperties"]["private"] == {"mise:year": "2026"}
+
+    @patch(_TZ, return_value="Europe/London")
+    def test_equals_in_key_refused_with_teaching(self, _tz) -> None:
+        result = do_create_event(
+            title="T", time_min="2026-09-08T10:00", time_max="2026-09-08T10:30",
+            properties={"k=v": "x"},
+        )
+        assert result["error"] is True
+        assert "privateExtendedProperty" in result["message"]
+
+    @patch(_TZ, return_value="Europe/London")
+    def test_non_dict_refused_with_example(self, _tz) -> None:
+        result = do_create_event(
+            title="T", time_min="2026-09-08T10:00", time_max="2026-09-08T10:30",
+            properties="mise:programme=x",
+        )
+        assert result["error"] is True
+        assert "key:value" in result["message"]

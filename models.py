@@ -920,6 +920,10 @@ class CalendarEvent:
     meet_link: str | None = None
     description: str | None = None
     organizer_email: str | None = None
+    # extendedProperties.private — provenance stamps and programme keys
+    # (mise-gujiro). Deliberately NOT rendered in search payloads; the
+    # reconciler reads it straight off the model via the adapter.
+    extended_properties: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

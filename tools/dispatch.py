@@ -140,7 +140,8 @@ DISPATCH: dict[str, Any] = {
         content=p["content"], attendees=p.get("attendees"),
         location=p.get("location"), meet=p.get("meet", False),
         recurrence=p.get("recurrence"), include=p["include"],
-        send_updates=p.get("send_updates"), confirm=p.get("confirm", False),
+        send_updates=p.get("send_updates"), properties=p.get("properties"),
+        confirm=p.get("confirm", False),
     ),
     "update_event": lambda p: do_update_event(
         file_id=p["file_id"], title=p["title"], content=p["content"],
@@ -148,7 +149,7 @@ DISPATCH: dict[str, Any] = {
         time_max=p.get("time_max"), attendees=p.get("attendees"),
         recurrence=p.get("recurrence"), include=p["include"],
         meet=p.get("meet", False), send_updates=p.get("send_updates"),
-        confirm=p.get("confirm", False),
+        properties=p.get("properties"), confirm=p.get("confirm", False),
     ),
     "freebusy": lambda p: do_freebusy(
         attendees=p.get("attendees"), time_min=p.get("time_min"),
@@ -164,7 +165,7 @@ Act on Google Workspace — create, move, edit, draft/reply emails, organise Gma
 Operations: create, copy, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, trash, respond, create_event, update_event, freebusy, setup_oauth.
 Create: content + title + doc_type (doc/sheet/file/folder/form). page_setup='pageless'. file_path= reads from disk. form: content is YAML/JSON spec.
 Edit: overwrite (full replace), prepend/append, replace_text (find + content). Sheets: overwrite=CSV, range='Tab'/'Tab!F9:F15'; cells: [label](url)→link; @url alone→chip (doc lines too). Doc edits return cues.restore_point.
-Calendar: create_event (title + time_min/time_max as start/end + attendees/content/location/meet=True/recurrence='RRULE:…'/include=[Drive ids→attachments]; attendees ⇒ preview, then confirm=True books+invites). update_event (file_id=event or invite-thread id; time/attendees/recurrence changes gated, description edits direct). freebusy (attendees + window, duration mins → common slots + office days). respond (file_id + action=accept|decline|tentative). Details: mise://docs/do.
+Calendar: create_event (title + time_min/time_max as start/end + attendees/content/location/meet=True/recurrence='RRULE:…'/include=[Drive ids→attachments]; attendees ⇒ preview, then confirm=True books+invites). update_event (file_id=event or invite-thread id; time/attendees/recurrence changes gated, description edits direct). freebusy (attendees + window, duration mins → common slots + office days). respond (file_id + action=accept|decline|tentative). properties={k:v} stamps queryable keys on both event ops. Details: mise://docs/do.
 Email: draft (to + subject + content; file_id=draft_id updates it), reply_draft (file_id + content — refuses if thread has a draft; supersede=True discards), archive/star/label. Signature auto-appends — no sign-off in content.
 Trash: file_id (single or list) — Drive→trash (recoverable); Gmail drafts (r+digits) discarded permanently.
 Comments: comment (file_id + content, NEW thread), comment_reply (file_id + comment_id + content/action=resolve|reopen). '[agent] ' prefix.

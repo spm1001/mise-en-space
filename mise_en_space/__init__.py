@@ -131,6 +131,7 @@ _DO_DEFAULTS: dict[str, Any] = {
     "recurrence": None,
     "send_updates": None,
     "duration": None,
+    "properties": None,
 }
 
 

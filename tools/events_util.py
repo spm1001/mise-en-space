@@ -226,6 +226,33 @@ def normalise_attendees(attendees: list[str] | str) -> list[str]:
     return emails
 
 
+def validate_properties(properties: Any) -> dict[str, str]:
+    """Caller programme keys → a clean extendedProperties.private dict.
+
+    Values are coerced to str (a programme year arriving as an int is not an
+    error); keys must be non-empty strings WITHOUT '=' — the equals sign is
+    the privateExtendedProperty filter's own key/value separator, so a key
+    containing one can never be queried back. Raises teaching ValueError.
+    """
+    if not isinstance(properties, dict):
+        raise ValueError(
+            "properties must be an object of key:value pairs, e.g. "
+            "{'mise:programme': '1to1-2026'}."
+        )
+    cleaned: dict[str, str] = {}
+    for key, value in properties.items():
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError(f"properties keys must be non-empty strings, got {key!r}.")
+        if "=" in key:
+            raise ValueError(
+                f"properties key {key!r} contains '=' — that is the "
+                "privateExtendedProperty filter's separator, so the key could "
+                "never be queried. Use ':' or '.' instead."
+            )
+        cleaned[key.strip()] = str(value)
+    return cleaned
+
+
 def validate_send_updates(send_updates: str | None) -> str | None:
     """Pass through a valid sendUpdates value; raise teaching ValueError else."""
     if send_updates is None:

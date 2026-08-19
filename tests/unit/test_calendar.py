@@ -607,3 +607,89 @@ class TestRespondToEvent:
         import pytest as _pytest
         with _pytest.raises(ValueError):
             respond_to_event({"id": "e", "attendees": []}, "accepted")
+
+
+class TestInsertEventStamp:
+    """insert_event auto-stamps provenance (mise-gujiro) — the [agent]-comment
+    pattern for events: UI-invisible, queryable, on every mint."""
+
+    @patch("retry.time.sleep")
+    @patch("adapters.calendar.get_sync_client")
+    def test_every_insert_carries_the_mint_stamps(self, mock_get_client, _sleep) -> None:
+        from adapters.calendar import insert_event
+        client = MagicMock()
+        mock_get_client.return_value = client
+        client.post_json.return_value = {"id": "e1"}
+
+        insert_event({"summary": "Solo", "start": {}, "end": {}})
+
+        private = client.post_json.call_args[1]["json_body"]["extendedProperties"]["private"]
+        assert private["mise:minted_by"] == "mise"
+        # ISO UTC, seconds precision — parseable, not just present
+        from datetime import datetime
+        datetime.fromisoformat(private["mise:minted_at"])
+
+    @patch("retry.time.sleep")
+    @patch("adapters.calendar.get_sync_client")
+    def test_caller_keys_survive_and_stamps_win_collisions(self, mock_get_client, _sleep) -> None:
+        """Programme keys ride beside the stamps; provenance stays trustworthy
+        even against a caller-supplied mise:minted_by."""
+        from adapters.calendar import insert_event
+        client = MagicMock()
+        mock_get_client.return_value = client
+        client.post_json.return_value = {"id": "e1"}
+        body = {"summary": "S", "start": {}, "end": {}, "extendedProperties": {
+            "private": {"mise:programme": "1to1-2026", "mise:minted_by": "spoof"},
+        }}
+
+        insert_event(body)
+
+        private = client.post_json.call_args[1]["json_body"]["extendedProperties"]["private"]
+        assert private["mise:programme"] == "1to1-2026"
+        assert private["mise:minted_by"] == "mise"
+        # The caller's dict is not mutated — stamping copies
+        assert body["extendedProperties"]["private"]["mise:minted_by"] == "spoof"
+
+
+class TestPrivatePropertyFilter:
+    """list_events(private_property=…) — the reconciler's keyed query."""
+
+    @patch("retry.time.sleep")
+    @patch("adapters.calendar.get_sync_client")
+    def test_filter_rides_the_api_params(self, mock_get_client, _sleep) -> None:
+        client = MagicMock()
+        mock_get_client.return_value = client
+        client.get_json.return_value = {"items": []}
+
+        list_events(private_property="mise:programme=1to1-2026")
+
+        params = client.get_json.call_args[1]["params"]
+        assert params["privateExtendedProperty"] == "mise:programme=1to1-2026"
+
+    @patch("retry.time.sleep")
+    @patch("adapters.calendar.get_sync_client")
+    def test_absent_by_default(self, mock_get_client, _sleep) -> None:
+        client = MagicMock()
+        mock_get_client.return_value = client
+        client.get_json.return_value = {"items": []}
+
+        list_events()
+
+        assert "privateExtendedProperty" not in client.get_json.call_args[1]["params"]
+
+
+class TestParseEventProperties:
+    """extendedProperties.private lands on the model for reconciler reads."""
+
+    def test_private_map_parsed(self) -> None:
+        event = _parse_event({
+            "id": "e1", "summary": "S",
+            "start": {"dateTime": "2026-09-08T10:00:00+01:00"},
+            "end": {"dateTime": "2026-09-08T10:30:00+01:00"},
+            "extendedProperties": {"private": {"mise:programme": "1to1-2026"}},
+        })
+        assert event.extended_properties == {"mise:programme": "1to1-2026"}
+
+    def test_defaults_empty(self) -> None:
+        event = _parse_event({"id": "e1", "summary": "S", "start": {}, "end": {}})
+        assert event.extended_properties == {}

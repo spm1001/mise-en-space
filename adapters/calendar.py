@@ -104,6 +104,7 @@ def _parse_event(data: dict[str, Any]) -> CalendarEvent:
         meet_link=meet_link,
         description=data.get("description"),
         organizer_email=organizer.get("email"),
+        extended_properties=data.get("extendedProperties", {}).get("private", {}),
     )
 
 
@@ -130,6 +131,7 @@ def list_events(
     query: str = "",
     time_min: datetime | None = None,
     time_max: datetime | None = None,
+    private_property: str | None = None,
 ) -> CalendarSearchResult:
     """
     List calendar events in a time window, optionally filtered.
@@ -159,6 +161,10 @@ def list_events(
             summary, description, attendees, location). Empty = no filter.
         time_min: Explicit window start (aware datetime).
         time_max: Explicit window end (aware datetime, exclusive).
+        private_property: 'key=value' filter on extendedProperties.private —
+            the reconciler's keyed query (mise-gujiro). Instances of a
+            recurring series inherit the master's properties and each match
+            the filter under singleEvents (probed live 2026-08-19).
 
     Returns:
         CalendarSearchResult, chronological; .truncated True when events
@@ -179,6 +185,8 @@ def list_events(
     }
     if query.strip():
         params["q"] = query.strip()
+    if private_property:
+        params["privateExtendedProperty"] = private_property
 
     items: list[dict[str, Any]] = []
     page_token: str | None = None
@@ -283,7 +291,19 @@ def insert_event(body: dict[str, Any], send_updates: str = "all") -> dict[str, A
     (Attachment write-through verified live 2026-08-19: read-back showed the
     fileUrl enriched to a resolved fileId. The ignore paths are documented
     behaviour, not probed — both params are simply always sent.)
+
+    Every insert is stamped with provenance in extendedProperties.private
+    (mise:minted_by, mise:minted_at) — UI-invisible, queryable via
+    list_events(private_property=…), the [agent]-comment pattern for events
+    (mise-gujiro). Caller keys are preserved; the stamps win a collision so
+    provenance stays trustworthy. Colon-in-key accepted, probed 2026-08-19.
     """
+    private = dict(body.get("extendedProperties", {}).get("private", {}))
+    private.update({
+        "mise:minted_by": "mise",
+        "mise:minted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    })
+    body = {**body, "extendedProperties": {"private": private}}
     client = get_sync_client()
     return client.post_json(
         f"{_CALENDAR_API}/primary/events",
@@ -304,7 +324,10 @@ def patch_event(
 
     Calendar patch semantics replace array fields WHOLESALE (probed live
     2026-08-09, mise-bozumu) — callers building attendees/attachments bodies
-    must send the full merged array, never a delta.
+    must send the full merged array, never a delta. The exception is the
+    extendedProperties.private MAP, which patch merges PER-KEY (probed live
+    2026-08-19, mise-gujiro): sending only new keys adds them, existing keys
+    survive. Arrays replace; maps merge.
     """
     client = get_sync_client()
     return client.patch_json(
