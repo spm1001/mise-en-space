@@ -156,6 +156,35 @@ class TestDoFreebusy:
         assert "calendar.freebusy" in result["message"]
         assert "setup_oauth" in result["message"]
 
+    @patch("tools.freebusy.resolve_calendar_timezone", return_value="Europe/London")
+    @patch("tools.freebusy.list_status_events", return_value=[])
+    @patch("tools.freebusy.current_user_email", return_value=None)
+    @patch("tools.freebusy.freebusy_query")
+    def test_every_timestamp_renders_in_the_users_zone(
+        self, mock_fb, _me, _wl, _tz,
+    ) -> None:
+        # Google answers busy bounds in UTC; the office-hours boundaries are
+        # minted in the user's zone. The first live run leaked both into one
+        # payload — a real one-hour slot rendered start 09:00+01:00 /
+        # end 09:00+00:00, reading as zero-length (2026-08-19). One zone
+        # everywhere is the contract.
+        utc_busy = [(
+            datetime(2026, 9, 8, 8, 0, tzinfo=timezone.utc),
+            datetime(2026, 9, 8, 11, 0, tzinfo=timezone.utc),
+        )]
+        mock_fb.return_value = _fb({"a@itv.com": utc_busy})
+        result = do_freebusy(
+            attendees=["a@itv.com"],
+            time_min="2026-09-08", time_max="2026-09-08", duration=30,
+        )
+        rendered = (
+            [result["window"]["time_min"], result["window"]["time_max"]]
+            + [t for b in result["busy"]["a@itv.com"] for t in (b["start"], b["end"])]
+            + [t for s in result["common_free"] for t in (s["start"], s["end"])]
+        )
+        assert rendered, "probe vacuous — nothing rendered"
+        assert all(t.endswith("+01:00") for t in rendered), rendered
+
     @patch("tools.freebusy.current_user_email", return_value=None)
     def test_bad_duration_refused(self, _me) -> None:
         result = do_freebusy(

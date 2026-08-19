@@ -154,16 +154,32 @@ def do_freebusy(
             "no workingLocation events in the window"
         )
 
+    # Render EVERY timestamp in one zone — the user's. Google returns busy
+    # bounds in UTC while the office-hours day boundaries are minted in the
+    # user's zone, and the first live run leaked both into one payload: a
+    # real 09:00–10:00 London slot rendered as start 09:00+01:00 /
+    # end 09:00+00:00, which reads as zero-length (2026-08-19).
+    tz_name = resolve_calendar_timezone()
+    if not tz_name and duration is not None:
+        warnings.append(
+            "No timezone found on your calendar — office hours (09:00–"
+            "17:30) applied in UTC."
+        )
+    tz = ZoneInfo(tz_name or "UTC")
+
     result: dict[str, Any] = {
         "operation": "freebusy",
         "window": {
-            "time_min": window_min.isoformat(),
-            "time_max": window_max.isoformat(),
+            "time_min": window_min.astimezone(tz).isoformat(),
+            "time_max": window_max.astimezone(tz).isoformat(),
         },
         "people": people,
         "busy": {
             email: [
-                {"start": s.isoformat(), "end": e.isoformat()}
+                {
+                    "start": s.astimezone(tz).isoformat(),
+                    "end": e.astimezone(tz).isoformat(),
+                }
                 for s, e in blocks
             ]
             for email, blocks in busy_by_person.items()
@@ -173,19 +189,16 @@ def do_freebusy(
         result["not_visible"] = not_visible
 
     if duration is not None:
-        tz_name = resolve_calendar_timezone()
-        if not tz_name:
-            warnings.append(
-                "No timezone found on your calendar — office hours (09:00–"
-                "17:30) applied in UTC."
-            )
-        tz = ZoneInfo(tz_name or "UTC")
         all_busy = [b for blocks in busy_by_person.values() for b in blocks]
         slots = _common_free_slots(
             all_busy, window_min, window_max, duration, tz,
         )
         result["common_free"] = [
-            {"start": s.isoformat(), "end": e.isoformat()} for s, e in slots
+            {
+                "start": s.astimezone(tz).isoformat(),
+                "end": e.astimezone(tz).isoformat(),
+            }
+            for s, e in slots
         ]
         result["slot_note"] = (
             f"Slots are >= {duration} min, weekdays {_DAY_START:%H:%M}–"
