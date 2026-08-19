@@ -123,6 +123,14 @@ _DO_DEFAULTS: dict[str, Any] = {
     "restore_comment": True,
     "supersede": False,
     "range": None,
+    "attendees": None,
+    "time_min": None,
+    "time_max": None,
+    "location": None,
+    "meet": False,
+    "recurrence": None,
+    "send_updates": None,
+    "duration": None,
 }
 
 

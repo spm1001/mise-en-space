@@ -25,6 +25,8 @@ from retry import with_retry
 
 # Google Calendar API v3 base URL
 _CALENDAR_API = "https://www.googleapis.com/calendar/v3/calendars"
+# freeBusy is a sibling of /calendars, not under it
+_FREEBUSY_API = "https://www.googleapis.com/calendar/v3/freeBusy"
 
 # Internal pagination: events fetched per page while scanning the window
 _PAGE_SIZE = 250
@@ -269,6 +271,153 @@ def respond_to_event(event: dict[str, Any], response_status: str) -> dict[str, A
         f"{_CALENDAR_API}/primary/events/{event['id']}",
         json_body={"attendees": attendees},
     )
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def insert_event(body: dict[str, Any], send_updates: str = "all") -> dict[str, Any]:
+    """Create an event on the primary calendar, returning the raw event.
+
+    supportsAttachments rides every insert — harmless without attachments,
+    and per Google's reference the API ignores attachments[] without it.
+    conferenceDataVersion=1 likewise gates conferenceData.createRequest.
+    (Attachment write-through verified live 2026-08-19: read-back showed the
+    fileUrl enriched to a resolved fileId. The ignore paths are documented
+    behaviour, not probed — both params are simply always sent.)
+    """
+    client = get_sync_client()
+    return client.post_json(
+        f"{_CALENDAR_API}/primary/events",
+        params={
+            "sendUpdates": send_updates,
+            "supportsAttachments": "true",
+            "conferenceDataVersion": "1",
+        },
+        json_body=body,
+    )
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def patch_event(
+    event_id: str, body: dict[str, Any], send_updates: str = "none",
+) -> dict[str, Any]:
+    """Patch an event on the primary calendar, returning the raw event.
+
+    Calendar patch semantics replace array fields WHOLESALE (probed live
+    2026-08-09, mise-bozumu) — callers building attendees/attachments bodies
+    must send the full merged array, never a delta.
+    """
+    client = get_sync_client()
+    return client.patch_json(
+        f"{_CALENDAR_API}/primary/events/{event_id}",
+        params={
+            "sendUpdates": send_updates,
+            "supportsAttachments": "true",
+            "conferenceDataVersion": "1",
+        },
+        json_body=body,
+    )
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def freebusy_query(
+    emails: list[str], time_min: datetime, time_max: datetime,
+) -> dict[str, Any]:
+    """Free/busy blocks for a set of calendars.
+
+    Returns the raw per-calendar map: email -> {"busy": [...]} or
+    {"errors": [...]}. A notFound error means that calendar isn't VISIBLE to
+    this account (ACL), not that the person is free — callers must surface
+    the difference, or a slot search silently treats an invisible diary as
+    an empty one.
+
+    Needs the calendar.freebusy scope (2026-08-19) — calendar.events does not
+    cover this endpoint, so pre-existing tokens 403 here while every other
+    calendar call works. Callers teach setup_oauth(force=True) on that 403.
+    """
+    client = get_sync_client()
+    response = client.post_json(
+        _FREEBUSY_API,
+        json_body={
+            "timeMin": time_min.isoformat(),
+            "timeMax": time_max.isoformat(),
+            "items": [{"id": email} for email in emails],
+        },
+    )
+    calendars: dict[str, Any] = response.get("calendars", {})
+    return calendars
+
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def list_status_events(
+    calendar_id: str,
+    time_min: datetime,
+    time_max: datetime,
+    event_types: list[str],
+) -> list[dict[str, Any]]:
+    """Status events (workingLocation/outOfOffice/focusTime) from a calendar.
+
+    calendar_id may be a colleague's email — visibility is gated by THEIR
+    calendar sharing (ACL), not by scope: free/busy-only sharing raises
+    NOT_FOUND here while freebusy_query still answers. Callers cue that
+    honestly rather than reading it as "no office days".
+    """
+    client = get_sync_client()
+    response = client.get_json(
+        f"{_CALENDAR_API}/{calendar_id}/events",
+        params={
+            "timeMin": time_min.isoformat(),
+            "timeMax": time_max.isoformat(),
+            "singleEvents": "true",
+            "orderBy": "startTime",
+            "maxResults": _PAGE_SIZE,
+            "eventTypes": event_types,
+        },
+    )
+    items: list[dict[str, Any]] = response.get("items", [])
+    return items
+
+
+# Process-lifetime cache: the user's timezone doesn't change mid-session
+_TZ_CACHE: list[str | None] = []
+
+
+def resolve_calendar_timezone() -> str | None:
+    """The user's IANA timezone, read from their own diary.
+
+    calendars.get('primary') needs a scope mise doesn't hold (probed 403,
+    2026-08-19), but UI-created events carry start.timeZone — the diary
+    itself is the source. Recurring events REQUIRE an IANA zone to survive
+    DST (a fixed offset turns a 10:00 BST series into 09:00 after the clock
+    change), which is why callers resolve this rather than passing offsets.
+
+    Returns None when no recent event carries a zone; callers fall back to
+    UTC with a warning rather than guessing.
+    """
+    if _TZ_CACHE:
+        return _TZ_CACHE[0]
+    client = get_sync_client()
+    now = datetime.now(timezone.utc)
+    try:
+        response = client.get_json(
+            f"{_CALENDAR_API}/primary/events",
+            params={
+                "timeMin": (now - timedelta(days=60)).isoformat(),
+                "timeMax": (now + timedelta(days=60)).isoformat(),
+                "maxResults": 50,
+                "fields": "items(start(timeZone),organizer(self))",
+            },
+        )
+    except Exception:
+        return None  # best-effort — never fail the write over a tz lookup
+    items = response.get("items", [])
+    zones = [i.get("start", {}).get("timeZone") for i in items]
+    self_zones = [
+        z for i, z in zip(items, zones)
+        if z and i.get("organizer", {}).get("self")
+    ]
+    resolved = self_zones[0] if self_zones else next((z for z in zones if z), None)
+    _TZ_CACHE.append(resolved)
+    return resolved
 
 
 def get_event_by_ical_uid(uid: str) -> InviteState | None:

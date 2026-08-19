@@ -474,6 +474,9 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `comment_reply` | Reply to / resolve / reopen a Drive file comment | `file_id`, `comment_id`, plus `content` and/or `action` |
 | `trash` | Trash Drive file(s) / discard Gmail draft(s) | `file_id` (single or list; routed by ID shape) |
 | `respond` | Accept/decline/tentative a calendar invite | `file_id` (invite thread ID or event ID), `action` |
+| `create_event` | Book a calendar event (attendees, Meet, recurrence, Drive attachments) | `title`, `time_min`, `time_max`; attendees ⇒ confirm gate |
+| `update_event` | Edit an event — description/title/location direct, time/attendees/recurrence gated | `file_id` (event ID or invite thread ID) |
+| `freebusy` | Availability for a set of people + common free slots + office days | `attendees`, `time_min`, `time_max` |
 | `setup_oauth` | Bootstrap Google credentials (opens browser) | none (`force=true` to re-auth over existing token) |
 
 **Overwrite** destroys existing content (images, tables, formatting). Use `prepend`/`append`/`replace_text` when existing content matters. On a **Form**, `content` is the same YAML/JSON spec as `create` (title, description, questions) — the edit loop is fetch (structure.json shows current state) → tweak the spec → overwrite. Replaces ALL questions wholesale; if the form already has responses their linkage to old questions is lost, so edit response-bearing forms in the Forms UI. On a **Sheet**, `range=` aims the write (A1 notation, mise-vadoko), three grains: a bare tab name (`range="Costs"`) clears and replaces that whole tab; a bounded range (`range="Costs!F9:F15"`) writes exactly those cells and touches nothing else; an anchor (`range="Costs!F9"`) writes the CSV's shape starting there, no clearing. Content is CSV either way, USER_ENTERED semantics — formulas parse, bare URLs auto-link, `=HYPERLINK("url","label")` renders a labelled link. Cell values also carry link syntax (mise-bazuvo): `[label](url)` becomes a real rich-text link (several per cell work — the multi-artefact index row), and a whole cell of `@url` becomes a smart chip. A chip REPLACES the cell text with the target's live title (rename-proof, icon-bearing) — which is why chips are explicit opt-in and a bare URL stays a URL. **Google Docs take chips too** (mise-rafote): in `create` (doc_type='doc') and `overwrite` on a Doc, a line consisting solely of `@url` becomes a chip — same opt-in grain, whole line instead of whole cell; mid-prose `@url` stays text. Workspace URLs only (the API rejects anything else), and the title is always server-enriched from the live resource — the API refuses a supplied one. `cues.chips_inserted` counts successes; a failed pass restores the literal `@url` text and reports `cues.chip_errors`. Without `range=`, a single-tab sheet gets its tab cleared and replaced (symmetric with create); a **multi-tab sheet refuses** and lists its tabs, because an aimless wholesale write on a shared multi-tab sheet is a footgun. An unknown tab in `range=` errors naming the available tabs. Other tabs are never touched.
@@ -495,6 +498,12 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 **Comment_reply** posts an in-thread reply to a Drive file comment (Doc/Sheet/Slides). Get `comment_id` from a fetched `comments.md` — each comment's header ends with `` · `comment_id` ``. Pass `content` to reply, `action='resolve'` (or `'reopen'`) to close/reopen the thread, or both (a bare resolve needs only `action`). Replies are auto-prefixed `[agent] ` so humans can tell agent replies from their own, and post as *your* authenticated identity — don't reply on a thread that's @-mentioned to a specific person as if you were them.
 
 **Respond** RSVPs a meeting as the authenticated user — the organiser sees the response, exactly as if it were clicked in Calendar. `file_id` takes the invite's Gmail **thread id** (resolved to the live event through the invite's iCalUID, disclosed in `cues.resolved_from_thread`) or the Calendar **event id** directly. `action` is `accept`, `decline`, or `tentative`. Refuses on a cancelled meeting (an RSVP there changes nothing) and on events with no self attendee (your own event, or one you weren't invited to). The write is a read-modify-patch of the full attendees array — other attendees are never touched. A `permission_denied` here usually means the token predates the calendar.events scope (2026-08-09) — re-auth with `setup_oauth` `force=true`. Not available in remote mode.
+
+**Create_event** books an event on the user's primary calendar. `time_min`/`time_max` are the start and end — ISO datetimes (naive ones mean wall-clock time in the user's own timezone, resolved from their diary) or two bare dates for an all-day event (end date exclusive, Google's rule). With `attendees`, the call is a two-step confirm gate: the first call returns a preview with a clash check against the user's own diary — show it, then call again with `confirm=True` to book and send invites in one go (invite-first: `send_updates` defaults to `all`; the invite IS the proposal). Without attendees it books directly. Extras: `content` = description, `location`, `meet=True` mints a fresh Meet link, `recurrence='RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU'` makes a series (a weekly BYDAY that skips the start's own weekday draws a warning — Google keeps the start as a stray extra instance), `include=[Drive file ids]` attaches files to the event. There is no delete op: a mis-booked event is removed in the Calendar UI, which is why the gate previews first.
+
+**Update_event** edits an event — `file_id` is the Calendar event id or the invite's Gmail thread id (resolved like `respond`). Gate grain is blast radius: **structural** changes (both `time_min`+`time_max` to move it, `recurrence` — including converting a single event into a series, `attendees` which are always ADDED never removed, `meet=True`) preview first and email attendees on confirm (`send_updates` default `all`); **cosmetic** changes (`content` = replace description, `title`, `location`, `include` = add attachments) execute directly and quietly (`send_updates` default `none`). `cues.previous` carries the old values — events have no version history, so that cue is the undo reference. Guests can only add attendees (when the organiser allows it); everything else needs the organiser.
+
+**Freebusy** answers "when can these people meet" as data: per-person busy blocks over `time_min`..`time_max`, plus — when `duration` (minutes) is given — computed common free slots (weekdays 09:00–17:30 in the user's timezone), plus each person's office days from their workingLocation events where their sharing allows. Two honesty cues to respect: people in `not_visible` are EXCLUDED from the slot arithmetic (their sharing hides even free/busy — a slot may clash with them), and "location not visible" means their sharing is free/busy-only, never "not in the office". Needs the calendar.freebusy scope (2026-08-19): older tokens 403 here with re-auth advice while every other calendar call still works.
 
 **Setup_oauth** is the bootstrap path for users who haven't authenticated yet. It opens Google's consent screen in their default browser and runs a localhost callback listener; once they approve, the token is saved to macOS Keychain. Returns immediately with the auth URL inline (so the user can paste it manually if browser auto-open fails). If a token already exists, returns `status: already_authenticated`. Use `force=true` to re-auth (e.g. after revoking access). Only available in stdio mode — not exposed in remote mode.
 
@@ -532,6 +541,20 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `reply_all` | bool | False | reply_draft (if True, Cc all original recipients) |
 | `label` | str | None | label (label name — resolved to Gmail label ID automatically) |
 | `remove` | bool | False | label (if True, remove the label instead of adding it) |
+
+### Calendar operations
+
+| Param | Type | Default | Used by |
+|-------|------|---------|---------|
+| `attendees` | list[str] | None | create_event (invitees), update_event (ADDED to the event), freebusy (whose diaries; you are always included) |
+| `time_min` / `time_max` | str | None | create_event + update_event (start/end — ISO datetime, or two bare dates for all-day), freebusy (the window) |
+| `location` | str | None | create_event, update_event (free-text location) |
+| `meet` | bool | False | create_event, update_event (mint a fresh Meet link) |
+| `recurrence` | str or list[str] | None | create_event, update_event (RRULE/RDATE/EXDATE lines — on update, converts a single event to a series) |
+| `include` | list[str] | None | create_event, update_event (Drive file IDs → event attachments) |
+| `send_updates` | str | all (structural) / none (cosmetic) | create_event, update_event ('all', 'externalOnly', 'none' — who gets emailed) |
+| `duration` | int | None | freebusy (minutes — triggers common-slot mining) |
+| `confirm` | bool | False | create_event (with attendees), update_event (structural changes) — first call previews |
 
 ## Deposit-Then-Publish (source param)
 
@@ -685,7 +708,6 @@ do(operation="star", file_id=["thread_1", "thread_2"])
 # Batch returns: {"operation": "archive", "batch": true, "total": 3, "succeeded": 3, "failed": 0, "results": [...]}
 ```
 """
-
 
 def docs_cross_source() -> str:
     """Documentation for cross-source search patterns."""

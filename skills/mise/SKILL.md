@@ -1,6 +1,6 @@
 ---
 name: mise
-description: Orchestrates content fetching via the mise MCP server's search/fetch/do tools. Load before using search/fetch/do — invoke first when you see 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace', 'move this file', 'create a doc', 'triage my inbox', 'archive these', 'draft an email'. Covers research loops, Gmail triage with batch ops, email drafting, and result filtering the tools alone don't know. (user)
+description: Orchestrates content fetching via the mise MCP server's search/fetch/do tools. Load before using search/fetch/do — invoke first when you see 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace', 'move this file', 'create a doc', 'triage my inbox', 'archive these', 'draft an email', 'book a meeting', 'when are they free'. Covers research loops, Gmail triage with batch ops, email drafting, calendar booking and free-slot finding, and result filtering the tools alone don't know. (user)
 allowed-tools: [Bash, Read, "mcp__plugin_mise_mise__*", "mcp__mise__*"]
 ---
 
@@ -454,6 +454,9 @@ search("orgTitle='Head of Strategy'", sources=["people"], base_path="...")
 | `draft` | Compose a new Gmail draft — or update an existing one in place | `to`, `subject`, `content`, optional `include` (Drive file IDs); update: `file_id` (draft ID) + `content` |
 | `reply_draft` | Reply draft in an existing thread | `file_id` (thread ID), `content`, optional `include` |
 | `respond` | Accept/decline/tentative a calendar invite — the RSVP lands live, organiser sees it | `file_id` (invite thread ID or Calendar event ID), `action` (`accept`/`decline`/`tentative`) |
+| `create_event` | Book a calendar event — invites, Meet link, recurrence, Drive attachments | `title`, `time_min`/`time_max` (start/end); with `attendees`: preview → `confirm=True` |
+| `update_event` | Edit an event — quiet description edits direct; time/attendee/series changes gated | `file_id` (event ID or invite thread ID), then the fields to change |
+| `freebusy` | Busy blocks + common free slots + office days for a set of people | `attendees`, `time_min`/`time_max`, optional `duration` (minutes) |
 | `archive` | Remove thread(s) from Inbox | `file_id` (str or list) |
 | `star` | Star thread(s) | `file_id` (str or list) |
 | `label` | Add/remove label on thread(s) | `file_id` (str or list), `label`, optional `remove=True` |
@@ -524,6 +527,34 @@ do(operation="comment_reply", file_id="1abc...", comment_id="AAAA1234", action="
 - **Don't guess the `comment_id`.** It comes from `comments.md` (or a raw Drive comments list), never invented. A wrong id 404s.
 - **Don't double-prefix.** mise adds `[agent] ` itself — write the plain reply text, not `[agent] ...`.
 - **Comments only exist on Google-native files** (Docs/Sheets/Slides). Plain/binary Drive files have no comment threads.
+
+### Calendar: book, edit, find time
+
+The pattern for all calendaring: the human states intent (who, roughly when, what cadence); you reconcile the actual diaries against that intent and propose the delta; one approval executes it. Checking the diary is machine work — `freebusy` answers "when can these people meet" as data, so never eyeball availability across calendars.
+
+```python
+# 1. Find the slot — busy blocks, common free slots, office days, one call
+do(operation="freebusy", attendees=["mat@itv.com", "jon@itv.com"],
+   time_min="2026-09-07", time_max="2026-09-11", duration=30)
+# → common_free: [...], people: {each: busy_blocks + office_days}
+
+# 2. Book it — first call previews (clash check included), nothing sends
+do(operation="create_event", title="LSM catch-up",
+   time_min="2026-09-08T14:00", time_max="2026-09-08T14:30",
+   attendees=["mat@itv.com", "jon@itv.com"], meet=True)
+# → preview: who gets invited, when, clashes. Show the user.
+
+# 3. One yes books the lot — confirm=True sends real invites immediately
+do(operation="create_event", ..., confirm=True)
+```
+
+**The gate is blast radius, not ceremony.** `create_event` with attendees and any `update_event` that moves time, adds people, changes recurrence or adds Meet previews first, then emails attendees on confirm (`send_updates` defaults to `all` — the invite IS the proposal, so send-immediately is the smooth path). Quiet edits — description, title, location, attachments — run directly with no emails, and `cues.previous` carries the old values: events have no version history, so that cue is the only undo reference. A solo event (no attendees) books directly.
+
+**Recurrence is an RRULE line**: `recurrence="RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU"` on create makes a fortnightly series; the same param on `update_event` converts an existing single event into one. Mind the start date: Google keeps a start that falls outside BYDAY as a stray extra instance (the tool warns). Naive times mean wall-clock in the user's own timezone, resolved from their diary — pass offsets only when you mean them.
+
+**freebusy's two honesty cues are load-bearing.** People in `not_visible` have sharing that hides even free/busy — they are EXCLUDED from slot arithmetic, so a proposed slot may clash with them; say so when proposing. And `office_days: "location not visible"` means their sharing is free/busy-only, never "not in the office". `include=[Drive file ids]` on create/update attaches docs to the event (the 1:1-doc-on-the-invite pattern).
+
+**Boundaries:** there is no delete op — a mis-booked event comes off in the Calendar UI (which is why the gate previews first). Attendees are only ever ADDED — removal is a UI job. `freebusy` needs a re-auth on tokens minted before 2026-08-19 (the error teaches `setup_oauth`).
 
 ### Create and Move
 

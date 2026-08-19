@@ -78,6 +78,15 @@ SCOPES = [
     # working for reads; the respond op teaches re-auth on 403.
     'https://www.googleapis.com/auth/calendar.events',
 
+    # Free/busy: colleagues' availability for scheduling (mise-rijeco).
+    # freebusy.query does NOT accept calendar.events (probed live 2026-08-19:
+    # 403 insufficient scopes on the working events token) — its accepted set
+    # is calendar / calendar.readonly / calendar.freebusy / calendar.events.freebusy,
+    # and this is the narrowest of them: free/busy blocks only, nothing else.
+    # Tokens minted before 2026-08-19 keep working for everything except
+    # do(freebusy), which teaches setup_oauth(force=True) on 403.
+    'https://www.googleapis.com/auth/calendar.freebusy',
+
     # Forms: Read and create form structure (questions, sections, options)
     'https://www.googleapis.com/auth/forms.body',
 

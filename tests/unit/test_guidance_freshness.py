@@ -126,6 +126,10 @@ ADJUDICATED: tuple[tuple[str, str, str], ...] = (
      "true by design: label covers mark_read (generic-primitive rule)"),
     ("skills/mise/SKILL.md", "| Looking for a `mark_read` operation | Doesn't exist",
      "true by design: same fact, anti-patterns table render"),
+    ("skills/mise/SKILL.md", "The pattern for all calendaring: the human states intent",
+     "advice: never eyeball availability — freebusy IS the capability being taught"),
+    ("skills/mise/SKILL.md", "**freebusy's two honesty cues are load-bearing.**",
+     "advice: absence-of-location must not read as absence-from-office — honesty steering, true"),
 )
 
 

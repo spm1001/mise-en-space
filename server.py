@@ -300,6 +300,14 @@ def do(
     restore_comment: bool = True,
     supersede: bool = False,
     range: str | None = None,  # noqa: A002 — MCP property name; A1 notation for Sheets
+    attendees: list[str] | str | None = None,
+    time_min: str | None = None,
+    time_max: str | None = None,
+    location: str | None = None,
+    meet: bool = False,
+    recurrence: str | list[str] | None = None,
+    send_updates: str | None = None,
+    duration: int | None = None,
 ) -> dict[str, Any]:
     """Act on Google Workspace."""
     # Build log params — include operation and non-None values that matter,
@@ -313,6 +321,9 @@ def do(
         ("reply_all", reply_all), ("confirm", confirm),
         ("comment_id", comment_id), ("action", action), ("force", force),
         ("supersede", supersede), ("range", range),
+        ("attendees", attendees), ("time_min", time_min), ("time_max", time_max),
+        ("location", location), ("meet", meet), ("recurrence", recurrence),
+        ("send_updates", send_updates), ("duration", duration),
     ]:
         if v is not None and v is not False:
             call_params[k] = v
@@ -364,6 +375,9 @@ def do(
         "page_setup": page_setup, "force": force,
         "restore_comment": restore_comment, "supersede": supersede,
         "range": range,
+        "attendees": attendees, "time_min": time_min, "time_max": time_max,
+        "location": location, "meet": meet, "recurrence": recurrence,
+        "send_updates": send_updates, "duration": duration,
     }
 
     # Validation, metadata prefetch, and execution live in tools/dispatch.py.

@@ -162,7 +162,32 @@ async def main() -> int:
                 print(f"   MISSING: {missing}")
             print()
 
-    total = len(CASES) + 1
+            # do(create_event) preview (mise-rijeco): the new calendar params
+            # (attendees list, time_min/time_max) must cross the wire and coerce,
+            # the gate must fire BEFORE any insert, and the clash check runs
+            # against the real diary. Read-only: preview books nothing.
+            result = await session.call_tool("do", {
+                "operation": "create_event",
+                "title": "smoke preview (never booked)",
+                "time_min": "2026-09-08T14:00",
+                "time_max": "2026-09-08T14:30",
+                "attendees": ["smoke-probe@example.com"],
+                "base_path": "/tmp/mise-smoke",
+            })
+            text = "".join(getattr(block, "text", "") for block in result.content)
+            wanted = ["preview", "confirm=True", "clashes"]
+            missing = [w for w in wanted if w not in text]
+            status = "PASS" if not missing else "FAIL"
+            if missing:
+                failures += 1
+            print(f"[{status}] do(create_event) with attendees, no confirm — "
+                  "previews with a live clash check, books nothing (mise-rijeco)")
+            print(f"   raw: {text[:600]}")
+            if missing:
+                print(f"   MISSING: {missing}")
+            print()
+
+    total = len(CASES) + 2
     print(f"{total - failures}/{total} cases passed")
     return 1 if failures else 0
 

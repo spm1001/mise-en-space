@@ -38,6 +38,9 @@ from tools import (
     do_star,
     do_trash,
     do_respond,
+    do_create_event,
+    do_update_event,
+    do_freebusy,
 )
 
 # Required params per operation — validated before dispatch.
@@ -63,6 +66,9 @@ REQUIRED_PARAMS: dict[str, set[str]] = {
     "setup_oauth": set(),  # no required params — force=true is optional
     "trash": {"file_id"},
     "respond": {"file_id", "action"},
+    "create_event": {"title", "time_min", "time_max"},
+    "update_event": {"file_id"},
+    "freebusy": {"attendees", "time_min", "time_max"},
 }
 
 # Content operations that need mime-type routing (metadata pre-fetched at dispatch)
@@ -129,24 +135,42 @@ DISPATCH: dict[str, Any] = {
     "setup_oauth": lambda p: do_setup_oauth(force=p.get("force", False)),
     "trash": lambda p: do_trash(file_id=p["file_id"]),
     "respond": lambda p: do_respond(file_id=p["file_id"], action=p["action"]),
+    "create_event": lambda p: do_create_event(
+        title=p["title"], time_min=p.get("time_min"), time_max=p.get("time_max"),
+        content=p["content"], attendees=p.get("attendees"),
+        location=p.get("location"), meet=p.get("meet", False),
+        recurrence=p.get("recurrence"), include=p["include"],
+        send_updates=p.get("send_updates"), confirm=p.get("confirm", False),
+    ),
+    "update_event": lambda p: do_update_event(
+        file_id=p["file_id"], title=p["title"], content=p["content"],
+        location=p.get("location"), time_min=p.get("time_min"),
+        time_max=p.get("time_max"), attendees=p.get("attendees"),
+        recurrence=p.get("recurrence"), include=p["include"],
+        meet=p.get("meet", False), send_updates=p.get("send_updates"),
+        confirm=p.get("confirm", False),
+    ),
+    "freebusy": lambda p: do_freebusy(
+        attendees=p.get("attendees"), time_min=p.get("time_min"),
+        time_max=p.get("time_max"), duration=p.get("duration"),
+    ),
 }
 
 
 # Tool descriptions — server.py picks one at decoration time based on _REMOTE_MODE.
 DO_DESCRIPTION_FULL = """\
-Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail.
+Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail, book calendar events.
 
-Operations: create, copy, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, trash, respond, setup_oauth.
-Create: content + title + doc_type (doc/sheet/file/folder/form). page_setup='pageless'. file_path= to read from disk. folder: title only. form: content is YAML/JSON spec (title, description, questions).
-Edit: overwrite (full replace), prepend/append (add to), replace_text (find + content). Sheets: overwrite=CSV, range='Tab'/'Tab!F9:F15' aims one tab/cells; cells: [label](url)→link; @url alone→chip (sheet cell/doc line, create too); replace_text=cell find/replace. Forms: overwrite takes the create spec (replaces all questions). Doc edits return cues.restore_point; overwrite posts a restore-point comment (restore_comment=False skips).
-Respond: file_id (invite thread or event id) + action=accept|decline|tentative.
-Email: draft (to + subject + content; file_id=draft_id updates it in place), reply_draft (file_id + content — refuses if the thread already carries a draft, naming it; supersede=True discards existing thread drafts first), archive/star/label. Drafts auto-append the user's Gmail signature — don't write a sign-off in content.
-Trash: file_id (single or list) — Drive files go to recoverable trash; Gmail draft IDs (r+digits) are discarded permanently.
-Comments: comment (file_id + content — opens a NEW thread), comment_reply (file_id + comment_id [from comments.md] + content and/or action=resolve|reopen). Both auto-prefix '[agent] '.
-Share: file_id + to + role (reader/writer/commenter), confirm=True to execute.
-Copy: file_id (single or list) + folder_id + optional title. Originals untouched; copy-restricted report blocked.
-Move: file_id (single or list) + folder_id.
-setup_oauth: bootstrap Google credentials (browser flow; force=true re-auths)."""
+Operations: create, copy, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, trash, respond, create_event, update_event, freebusy, setup_oauth.
+Create: content + title + doc_type (doc/sheet/file/folder/form). page_setup='pageless'. file_path= reads from disk. form: content is YAML/JSON spec.
+Edit: overwrite (full replace), prepend/append, replace_text (find + content). Sheets: overwrite=CSV, range='Tab'/'Tab!F9:F15'; cells: [label](url)→link; @url alone→chip (doc lines too). Doc edits return cues.restore_point.
+Calendar: create_event (title + time_min/time_max as start/end + attendees/content/location/meet=True/recurrence='RRULE:…'/include=[Drive ids→attachments]; attendees ⇒ preview, then confirm=True books+invites). update_event (file_id=event or invite-thread id; time/attendees/recurrence changes gated, description edits direct). freebusy (attendees + window, duration mins → common slots + office days). respond (file_id + action=accept|decline|tentative). Details: mise://docs/do.
+Email: draft (to + subject + content; file_id=draft_id updates it), reply_draft (file_id + content — refuses if thread has a draft; supersede=True discards), archive/star/label. Signature auto-appends — no sign-off in content.
+Trash: file_id (single or list) — Drive→trash (recoverable); Gmail drafts (r+digits) discarded permanently.
+Comments: comment (file_id + content, NEW thread), comment_reply (file_id + comment_id + content/action=resolve|reopen). '[agent] ' prefix.
+Share: file_id + to + role (reader/writer/commenter), confirm=True executes.
+Copy/Move: file_id (single or list) + folder_id.
+setup_oauth: bootstrap credentials (force=true re-auths)."""
 
 DO_DESCRIPTION_REMOTE = """\
 Act on Google Workspace (remote mode — safe operations only).
@@ -179,6 +203,7 @@ Returns:
 # backend and its Drive half works (a Gmail-id trash errors per-call).
 AMBIENT_UNAVAILABLE_OPS = {
     "draft", "reply_draft", "archive", "star", "label", "respond", "setup_oauth",
+    "create_event", "update_event", "freebusy",
 }
 
 
