@@ -34,9 +34,12 @@ from tools.events_util import (
     EVENT_COLORS,
     normalise_attendees,
     normalise_recurrence,
+    readback_field,
     validate_color,
     validate_properties,
     validate_send_updates,
+    validate_transparency,
+    validate_visibility,
 )
 from tools.respond import _resolve_event_from_thread
 from validation import is_gmail_api_id
@@ -61,6 +64,8 @@ def do_update_event(
     send_updates: str | None = None,
     properties: dict[str, str] | None = None,
     color: str | None = None,
+    visibility: str | None = None,
+    transparency: str | None = None,
     confirm: bool = False,
 ) -> DoResult | dict[str, Any]:
     """Edit an event on the user's primary calendar."""
@@ -109,6 +114,8 @@ def do_update_event(
         explicit_updates = validate_send_updates(send_updates)
         programme_keys = validate_properties(properties) if properties else {}
         color_id = validate_color(color) if color is not None else None
+        vis = validate_visibility(visibility) if visibility is not None else None
+        transp = validate_transparency(transparency) if transparency is not None else None
     except ValueError as e:
         return error("invalid_input", str(e))
 
@@ -133,6 +140,10 @@ def do_update_event(
         changes["properties"] = _COSMETIC
     if color_id:
         changes["color"] = _COSMETIC
+    if vis:
+        changes["visibility"] = _COSMETIC
+    if transp:
+        changes["transparency"] = _COSMETIC
 
     if not changes:
         return error(
@@ -140,7 +151,7 @@ def do_update_event(
             "Nothing to change — pass content (description), title, location, "
             "time_min+time_max, attendees (added, never removed), recurrence, "
             "include (Drive attachments), properties (queryable key-values), "
-            "color or meet=True.",
+            "color, visibility, transparency or meet=True.",
         )
 
     # Guests don't own the event's shape. Attendee-ADD is the one edit Google
@@ -250,6 +261,12 @@ def do_update_event(
             f"{EVENT_COLORS.get(old_color, '?')} (colorId {old_color})"
             if old_color else "calendar default"
         )
+    if vis:
+        body["visibility"] = vis
+        previous["visibility"] = event.get("visibility", "default")
+    if transp:
+        body["transparency"] = transp
+        previous["transparency"] = event.get("transparency", "opaque (busy)")
     if include:
         try:
             new_attachments = build_attachments(include)
@@ -313,6 +330,10 @@ def do_update_event(
             f"{EVENT_COLORS.get(landed, '?')} (colorId {landed})"
             if landed else "requested but ABSENT on read-back"
         )
+    if vis:
+        cues["visibility"] = readback_field(patched, "visibility", vis, "default")
+    if transp:
+        cues["transparency"] = readback_field(patched, "transparency", transp, "opaque")
     meet_link = extract_meet_link(patched)
     if meet and meet_link:
         cues["meet_link"] = meet_link
@@ -360,7 +381,10 @@ def _describe_changes(
         ]
     if meet and "meet" in changes:
         described["meet"] = "add a Meet link"
-    for cosmetic in ("description", "title", "location", "attachments", "properties", "color"):
+    for cosmetic in (
+        "description", "title", "location", "attachments",
+        "properties", "color", "visibility", "transparency",
+    ):
         if cosmetic in changes:
             described.setdefault("also_cosmetic", []).append(cosmetic)
     return described

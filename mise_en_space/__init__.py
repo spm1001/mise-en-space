@@ -133,6 +133,8 @@ _DO_DEFAULTS: dict[str, Any] = {
     "duration": None,
     "properties": None,
     "color": None,
+    "visibility": None,
+    "transparency": None,
 }
 
 

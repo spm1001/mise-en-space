@@ -275,3 +275,25 @@ class TestColor:
         result = do_update_event(file_id="evt123", color="7")
         assert isinstance(result, DoResult)
         assert result.cues["previous"]["color"] == "calendar default"
+
+
+class TestVisibilityTransparency:
+    """Both are cosmetic: quiet, previous carries the old value (API default
+    rendered explicitly when the field was absent)."""
+
+    @patch("tools.update_event.patch_event", return_value=_event(
+        visibility="private", transparency="transparent",
+    ))
+    @patch("tools.update_event.get_event")
+    def test_quiet_with_previous_defaults_spelled_out(self, mock_get, mock_patch) -> None:
+        mock_get.return_value = _event()
+        result = do_update_event(
+            file_id="evt123", visibility="private", transparency="free",
+        )
+        assert isinstance(result, DoResult)
+        assert mock_patch.call_args.kwargs["send_updates"] == "none"
+        body = mock_patch.call_args[0][1]
+        assert body == {"visibility": "private", "transparency": "transparent"}
+        assert result.cues["previous"]["visibility"] == "default"
+        assert result.cues["previous"]["transparency"] == "opaque (busy)"
+        assert result.cues["visibility"] == "private"

@@ -254,6 +254,55 @@ def validate_color(color: Any) -> str:
     raise ValueError(f"color must be one of the event palette: {palette}.")
 
 
+_VISIBILITIES = ("default", "public", "private", "confidential")
+
+# The API words are opaque/transparent; the Calendar UI says Busy/Free —
+# accept both vocabularies, store the API's (mise-kawegu sweep, 2026-08-20).
+_TRANSPARENCIES = {
+    "opaque": "opaque", "busy": "opaque",
+    "transparent": "transparent", "free": "transparent",
+}
+
+
+def validate_visibility(visibility: Any) -> str:
+    """Visibility input → API value. Raises teaching ValueError."""
+    text = str(visibility).strip().lower()
+    if text not in _VISIBILITIES:
+        raise ValueError(
+            f"visibility must be default, public or private (confidential is "
+            f"a legacy synonym of private) — got {visibility!r}."
+        )
+    return text
+
+
+def validate_transparency(transparency: Any) -> str:
+    """Transparency input (API or UI vocabulary) → API value."""
+    text = str(transparency).strip().lower()
+    if text not in _TRANSPARENCIES:
+        raise ValueError(
+            f"transparency must be opaque/busy (blocks the slot) or "
+            f"transparent/free (shows in the diary without eating "
+            f"availability) — got {transparency!r}."
+        )
+    return _TRANSPARENCIES[text]
+
+
+def readback_field(event: dict[str, Any], field: str, requested: str, default: str) -> str:
+    """Honest read-back for fields the API OMITS at their default value.
+
+    Probed 2026-08-20: patching visibility back to 'default' (or transparency
+    to 'opaque') returns the field ABSENT — absence there means the default
+    LANDED, not that the write was dropped. Only a missing non-default value
+    is a real alarm.
+    """
+    landed = event.get(field)
+    if landed:
+        return str(landed)
+    if requested == default:
+        return f"{default} (the default — the API omits it on read-back)"
+    return "requested but ABSENT on read-back"
+
+
 def validate_properties(properties: Any) -> dict[str, str]:
     """Caller programme keys → a clean extendedProperties.private dict.
 

@@ -32,9 +32,12 @@ from tools.events_util import (
     EVENT_COLORS,
     normalise_attendees,
     normalise_recurrence,
+    readback_field,
     validate_color,
     validate_properties,
     validate_send_updates,
+    validate_transparency,
+    validate_visibility,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,6 +56,8 @@ def do_create_event(
     send_updates: str | None = None,
     properties: dict[str, str] | None = None,
     color: str | None = None,
+    visibility: str | None = None,
+    transparency: str | None = None,
     confirm: bool = False,
 ) -> DoResult | dict[str, Any]:
     """Create an event on the user's primary calendar."""
@@ -65,6 +70,8 @@ def do_create_event(
         effective_updates = validate_send_updates(send_updates) or "all"
         programme_keys = validate_properties(properties) if properties else {}
         color_id = validate_color(color) if color is not None else None
+        vis = validate_visibility(visibility) if visibility is not None else None
+        transp = validate_transparency(transparency) if transparency is not None else None
         start, end = build_event_times(
             time_min, time_max, recurring=bool(recurrence_lines),
             warnings=warnings,
@@ -119,6 +126,10 @@ def do_create_event(
         body["extendedProperties"] = {"private": programme_keys}
     if color_id:
         body["colorId"] = color_id
+    if vis:
+        body["visibility"] = vis
+    if transp:
+        body["transparency"] = transp
     if emails:
         body["attendees"] = [{"email": e} for e in emails]
     if recurrence_lines:
@@ -175,6 +186,10 @@ def do_create_event(
             f"{EVENT_COLORS.get(landed, '?')} (colorId {landed})"
             if landed else "requested but ABSENT on read-back"
         )
+    if vis:
+        cues["visibility"] = readback_field(created, "visibility", vis, "default")
+    if transp:
+        cues["transparency"] = readback_field(created, "transparency", transp, "opaque")
     start_tz = start.get("timeZone")
     if start_tz:
         cues["timezone"] = start_tz

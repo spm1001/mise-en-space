@@ -310,6 +310,8 @@ def do(
     duration: int | None = None,
     properties: dict[str, str] | None = None,
     color: str | None = None,
+    visibility: str | None = None,
+    transparency: str | None = None,
 ) -> dict[str, Any]:
     """Act on Google Workspace."""
     # Build log params — include operation and non-None values that matter,
@@ -327,6 +329,7 @@ def do(
         ("location", location), ("meet", meet), ("recurrence", recurrence),
         ("send_updates", send_updates), ("duration", duration),
         ("properties", properties), ("color", color),
+        ("visibility", visibility), ("transparency", transparency),
     ]:
         if v is not None and v is not False:
             call_params[k] = v
@@ -382,6 +385,7 @@ def do(
         "location": location, "meet": meet, "recurrence": recurrence,
         "send_updates": send_updates, "duration": duration,
         "properties": properties, "color": color,
+        "visibility": visibility, "transparency": transparency,
     }
 
     # Validation, metadata prefetch, and execution live in tools/dispatch.py.

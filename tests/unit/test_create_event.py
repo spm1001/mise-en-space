@@ -304,3 +304,54 @@ class TestColor:
         )
         assert result["error"] is True
         assert "11=tomato" in result["message"]
+
+
+class TestVisibilityTransparency:
+    """visibility= and transparency= — the writable-fields sweep (2026-08-20).
+    The API OMITS default values on read-back (probed): absence after
+    requesting the default means it landed, not that it was dropped."""
+
+    @patch("tools.create_event.insert_event", return_value=_created(
+        visibility="private", transparency="transparent",
+    ))
+    @patch(_TZ, return_value="Europe/London")
+    def test_both_land_and_read_back(self, _tz, mock_insert) -> None:
+        result = do_create_event(
+            title="T", time_min="2026-09-08T10:00", time_max="2026-09-08T10:30",
+            visibility="private", transparency="free",
+        )
+        body = mock_insert.call_args[0][0]
+        assert body["visibility"] == "private"
+        assert body["transparency"] == "transparent"  # 'free' is the UI word
+        assert isinstance(result, DoResult)
+        assert result.cues["visibility"] == "private"
+        assert result.cues["transparency"] == "transparent"
+
+    @patch("tools.create_event.insert_event", return_value=_created())
+    @patch(_TZ, return_value="Europe/London")
+    def test_requested_default_absent_on_readback_is_honest(self, _tz, mock_insert) -> None:
+        result = do_create_event(
+            title="T", time_min="2026-09-08T10:00", time_max="2026-09-08T10:30",
+            transparency="busy",
+        )
+        assert isinstance(result, DoResult)
+        assert result.cues["transparency"].startswith("opaque (the default")
+
+    @patch(_TZ, return_value="Europe/London")
+    def test_junk_visibility_refused(self, _tz) -> None:
+        result = do_create_event(
+            title="T", time_min="2026-09-08T10:00", time_max="2026-09-08T10:30",
+            visibility="secret",
+        )
+        assert result["error"] is True
+        assert "private" in result["message"]
+
+    @patch(_TZ, return_value="Europe/London")
+    def test_junk_transparency_teaches_both_vocabularies(self, _tz) -> None:
+        result = do_create_event(
+            title="T", time_min="2026-09-08T10:00", time_max="2026-09-08T10:30",
+            transparency="invisible",
+        )
+        assert result["error"] is True
+        assert "opaque/busy" in result["message"]
+        assert "transparent/free" in result["message"]
