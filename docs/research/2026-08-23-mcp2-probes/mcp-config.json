@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "elicit-probe": {
+      "command": "uv",
+      "args": ["run", "--script", "/home/modha/scratch/elicit-probe/probe_server.py"]
+    }
+  }
+}

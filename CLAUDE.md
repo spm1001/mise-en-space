@@ -33,7 +33,7 @@ tools/          MCP tool definitions + dispatch/remote orchestration (the wiring
 workspace/      File deposit management (.mise/ in cwd)
 resources/      MCP resource text (mise://docs/*) + tool-doc registry
 mise_en_space/  The blessed LIBRARY door (mise-dareti): one class (Mise), search/fetch/do, credentials selected in the constructor — the wheel-consumer contract (glaneur, Garni)
-server.py       FastMCP registration shim (stdio default, --remote for StreamableHTTP) — ≤500 lines, enforced
+server.py       MCPServer registration shim (stdio default, --remote for StreamableHTTP) — ≤500 lines, enforced
 apps-script/    Google Apps Script for email attachment extraction (runs in Google, not Python)
 docs/           Design documents and references
 ```
@@ -226,7 +226,7 @@ Data models have `warnings: list[str]` fields. Extractors populate them during p
 | **No purpose parameter** | This MCP always prepares for LLM consumption. No archival/editing modes. |
 | **Image size skip vs format skip asymmetry** | `att.size > 4.5MB` no longer causes a pre-download skip — oversized images are downloaded and resized. Unsupported MIME types (not in `SUPPORTED_IMAGE_MIME_TYPES`) still skip pre-download. Reason: size is fixable by resizing; unsupported format is not. Don't restore the size check without also removing the resize logic. |
 | **get_deposit_folder wipes on re-fetch** | Every call to `get_deposit_folder` deletes existing files in that folder before returning it. This prevents stale files from previous fetches. Do NOT call `get_deposit_folder` twice for the same folder mid-operation (e.g. inside a retry loop) — the second call will wipe files the first call's writes produced. |
-| **A working-tree edit is NOT reachable from the MCP envelope — and restarting does not help** | The plugin spawns the server with `--project ${CLAUDE_PLUGIN_ROOT}`, i.e. `~/.claude/plugins/cache/batterie/mise/<version>/`. It runs the **published plugin**, never this repo. So a change here is invisible to `mcp__*` calls no matter how many times the session restarts — what's needed is a new *published version*, not a new session. **This row said "smoke-test new features in a fresh session" until 2026-08-03, which is false and cost a session real confusion.** That makes "smoke through the envelope, then publish" circular. Break it with `scripts/smoke_stdio.py`, which spawns `server.py` from the working tree over real stdio MCP — same FastMCP stack, same tool wrapper, same JSON on the wire, just not spawned by Claude Code. After publishing, re-verify against the *installed artefact* under the cache, not the working tree. Corollary worth knowing: a long-running session keeps whatever version it started with, so an old session can be many releases behind with no signal (bds-sawalu). |
+| **A working-tree edit is NOT reachable from the MCP envelope — and restarting does not help** | The plugin spawns the server with `--project ${CLAUDE_PLUGIN_ROOT}`, i.e. `~/.claude/plugins/cache/batterie/mise/<version>/`. It runs the **published plugin**, never this repo. So a change here is invisible to `mcp__*` calls no matter how many times the session restarts — what's needed is a new *published version*, not a new session. **This row said "smoke-test new features in a fresh session" until 2026-08-03, which is false and cost a session real confusion.** That makes "smoke through the envelope, then publish" circular. Break it with `scripts/smoke_stdio.py`, which spawns `server.py` from the working tree over real stdio MCP — same MCPServer (né FastMCP) stack, same tool wrapper, same JSON on the wire, just not spawned by Claude Code. After publishing, re-verify against the *installed artefact* under the cache, not the working tree. Corollary worth knowing: a long-running session keeps whatever version it started with, so an old session can be many releases behind with no signal (bds-sawalu). |
 | **Share requires confirm gate** | `do(operation="share")` without `confirm=True` returns a preview — the API won't execute. Call once to preview, show user, call again with `confirm=True`. Non-Google emails (iCloud, Outlook) automatically fall back to notification email (Google requires it); check `cues.notified` to see which recipients were notified. |
 | **`_REMOTE_MODE` is early** | Set at module load, not in `__main__`. Required because `@mcp.tool(description=...)` fires at decoration time. Don't "clean up" by moving to argparse — breaks conditional tool descriptions. For containers, use `MISE_REMOTE=1` env var (not `--remote` flag) — `sys.argv` is fragile under process managers. |
 | **Remote fetch retry risk** | `get_deposit_folder` wipes on re-call (see above). In remote mode, HTTP client retries or Kube probes can trigger double-wipe. Don't add automatic retry at the HTTP level for fetch operations. |
@@ -255,7 +255,7 @@ Integration tests require `-m integration` flag and real credentials.
 **`tests/bench/` is the model-qualification battery, not part of the test suite** (mise-rolira): a committed, re-runnable harness that takes new model strings — the deposit-format league, the consumer riders, three generations of scorer. It exists so the next model generation gets *measured* against the deposit-format policy (`docs/2026-08-18-deposit-format-policy.md`) rather than assumed; per-rig facts live in `~/notes/practices/model-profiles/`, findings and archived evidence in `~/notes/practices/mise/`. Costs real API money — run deliberately, never in CI.
 
 **The count IS printed — it is just at the bottom of a long scroll.** `uv run --all-extras python
--m pytest` ends with `2514 passed, 100 deselected in 38.58s` (count as of 2026-08-18) as the last line of ~92, because
+-m pytest` ends with `2610 passed, 100 deselected in 41.02s` (count as of 2026-08-23) as the last line of ~92, because
 `addopts` in `pyproject.toml` carries `-q` (which suppresses the *per-test* lines, not the summary)
 plus a ~85-line coverage table that pushes the summary off the top of a truncated view.
 `-m 'not integration'` is baked in too, hence the 100 deselected.
@@ -286,7 +286,7 @@ tidy-looking `pytest -q` here loses the count entirely (walked into live, 2026-0
 Run the bare documented command when you need the number.
 
 **`scripts/smoke_stdio.py` is how you exercise the MCP envelope before publishing.** Unit
-tests can't reach the FastMCP registration, the `@mcp.tool` wrapper, schema coercion or the
+tests can't reach the MCPServer registration, the `@mcp.tool` wrapper, schema coercion or the
 shape of what actually crosses the wire — and the live `mcp__*` tools can't reach your working
 tree (see the Gotchas row above). This spawns `server.py` from the repo and speaks real MCP to
 it, closing that gap. Add a case when you change fetch's failure surface.
