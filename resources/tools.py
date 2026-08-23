@@ -5,12 +5,13 @@ Generates mise://tools/* resources directly from @mcp.tool docstrings.
 Single source of truth — docstrings ARE the documentation.
 
 Architecture Note:
-    This module accesses FastMCP's internal `_tool_manager._tools` structure
+    This module accesses the server's internal `_tool_manager._tools` structure
     because the public `list_tools()` API is async and can't easily run at
-    module load time. If FastMCP internals change, `register_from_mcp()` will
-    log a warning and attempt an async fallback.
+    module load time. If those internals change, `register_from_mcp()` will
+    log a warning and attempt an async fallback. Everything is duck-typed via
+    hasattr, so the FastMCP→MCPServer rename didn't touch this module.
 
-    Tested against: mcp>=1.0.0 (FastMCP)
+    Tested against: mcp>=1.0.0 (FastMCP) and mcp 2.0.0 (MCPServer, 2026-08-23)
 """
 
 import asyncio

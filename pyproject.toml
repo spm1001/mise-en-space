@@ -5,13 +5,14 @@ description = "Google Workspace MCP — mise-en-place for knowledge work"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    # MCP SDK. The <2.0.0 ceiling is a DELIBERATE HOLD, not a stale pin, and the
-    # reason is NOT tasks (there is no Tasks code in this repo): 2.x moves or
-    # removes `mcp.server.fastmcp`, which server.py and resources/docs.py import.
-    # Measured from Dependabot PR #25 — ModuleNotFoundError across every test
-    # module that imports server.py. Raising this is a port of the registration
-    # shim, so treat such a PR as a spec migration. See bon mise-kofoba, mise-veraja.
-    "mcp[cli]>=1.28.1,<2.0.0",
+    # MCP SDK, v2 line (2026-07-28 spec era; serves 2025-era clients unchanged).
+    # The old <2.0.0 ceiling was a deliberate hold (bon mise-veraja, mise-kofoba);
+    # adopted 2026-08-23 after the port was measured at five lines with the suite
+    # green (bon mise-vucufu). v1.x is security-fixes-only upstream. Sync tool
+    # handlers run on worker threads in v2 — serialized to v1 semantics by
+    # server.py's _serialized lock until the concurrency audit (mise-vucufu
+    # step 2) deliberately deletes it.
+    "mcp[cli]>=2.0.0,<3.0.0",
     # Google APIs (httpx + REST, OAuth via jeton)
     "httpx[http2]>=0.28.1",
     "orjson>=3.12.0",

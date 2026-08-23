@@ -24,16 +24,18 @@ Architecture:
 
 import argparse
 import asyncio
+import functools
 import logging
 import os
 import signal
 import sys
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -55,9 +57,30 @@ logger = logging.getLogger(__name__)
 # argparse runs in __main__. The argparse block in __main__ validates properly.
 _REMOTE_MODE = "--remote" in sys.argv or os.environ.get("MISE_REMOTE") == "1"
 
+# mcp 2.x runs sync (def) tool handlers on anyio worker threads, so two tool
+# bodies can interleave; 1.x ran them inline on the event loop, one at a time.
+# This lock keeps one-at-a-time until the thread-safety audit (mise-vucufu
+# step 2) deletes it. Bodies still gain a loop-free thread, which un-breaks
+# asyncio.run() in adapters/gmail_browser.py and adapters/cdp.py — dead through
+# the envelope on all of v1 (mise-wamoco). NB an anyio limiter cap is NOT a
+# substitute: the stdio transport's blocked stdin read shares that pool and a
+# capacity of 1 starves tool bodies into deadlock (measured 2026-08-23).
+_TOOL_SERIALIZER = threading.Lock()
+
+
+def _serialized(fn: Any) -> Any:
+    """One tool body at a time. functools.wraps preserves the signature the
+    SDK reads to generate the tool schema (inspect.signature follows
+    __wrapped__), so parameters survive the decorator."""
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        with _TOOL_SERIALIZER:
+            return fn(*args, **kwargs)
+    return wrapper
+
 
 @asynccontextmanager
-async def lifespan(app: FastMCP) -> AsyncIterator[None]:
+async def lifespan(app: MCPServer) -> AsyncIterator[None]:
     """Run startup tasks — best-effort orphan cleanup."""
     try:
         count = await asyncio.to_thread(cleanup_orphaned_temp_files)
@@ -68,7 +91,7 @@ async def lifespan(app: FastMCP) -> AsyncIterator[None]:
     yield
 
 # Initialize MCP server
-mcp = FastMCP("Google Workspace v2", lifespan=lifespan)
+mcp = MCPServer("Google Workspace v2", lifespan=lifespan)
 
 
 # ============================================================================
@@ -85,6 +108,7 @@ async def health_check(request: Request) -> JSONResponse:
 # ============================================================================
 
 @mcp.tool()
+@_serialized
 def search(
     query: str = "",
     sources: list[str] | None = None,
@@ -202,6 +226,7 @@ def _log_search_result(call_params: dict[str, Any], result: dict[str, Any]) -> N
 
 
 @mcp.tool()
+@_serialized
 def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs: list[str] | None = None, recursive: bool = False, suggestions: str = "accepted", raw: bool = False, thumbnails: bool = True) -> dict[str, Any]:
     """
     Fetch content to .mise/ — auto-detects type (Drive file, Gmail thread, folder).
@@ -272,6 +297,7 @@ def _log_fetch_result(call_params: dict[str, Any], result: dict[str, Any]) -> No
 
 
 @mcp.tool(description=DO_DESCRIPTION_REMOTE if _REMOTE_MODE else DO_DESCRIPTION_FULL)
+@_serialized
 def do(
     operation: str,
     content: str | None = None,

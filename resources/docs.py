@@ -15,7 +15,7 @@ server.py next to the registry build (ordering is load-bearing).
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.mcpserver import MCPServer
 
 
 def docs_overview() -> str:
@@ -886,7 +886,7 @@ Slides get selective thumbnails — only fetched for:
 Text-only slides and stock photos are skipped.
 """
 
-def register_docs_resources(mcp: "FastMCP") -> None:
+def register_docs_resources(mcp: "MCPServer") -> None:
     """Attach the documentation resources to the server (called from server.py)."""
     mcp.resource("mise://docs/overview")(docs_overview)
     mcp.resource("mise://docs/search")(docs_search)
