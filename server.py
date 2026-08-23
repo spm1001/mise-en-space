@@ -33,7 +33,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -57,7 +57,7 @@ _REMOTE_MODE = "--remote" in sys.argv or os.environ.get("MISE_REMOTE") == "1"
 
 
 @asynccontextmanager
-async def lifespan(app: FastMCP) -> AsyncIterator[None]:
+async def lifespan(app: MCPServer) -> AsyncIterator[None]:
     """Run startup tasks — best-effort orphan cleanup."""
     try:
         count = await asyncio.to_thread(cleanup_orphaned_temp_files)
@@ -68,7 +68,7 @@ async def lifespan(app: FastMCP) -> AsyncIterator[None]:
     yield
 
 # Initialize MCP server
-mcp = FastMCP("Google Workspace v2", lifespan=lifespan)
+mcp = MCPServer("Google Workspace v2", lifespan=lifespan)
 
 
 # ============================================================================
