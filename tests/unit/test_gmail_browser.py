@@ -76,6 +76,11 @@ class TestFailOpen:
         monkeypatch.setattr(
             gb, "_candidate_endpoints", lambda: ["http://127.0.0.1:1"]
         )
-        assert resolve_gmail_url_via_browser(
+        resolution, skip_reason = resolve_gmail_url_via_browser(
             "https://mail.google.com/mail/u/0/#all/KtbxLwghjwWScTGNNHctnzRVJkLPKbVvSB"
-        ) is None
+        )
+        assert resolution is None
+        # Fail-open is not fail-silent: the reason names the designed
+        # failure so the caller can surface it (mise-pagigo)
+        assert skip_reason is not None
+        assert "endpoint" in skip_reason

@@ -3233,7 +3233,7 @@ class TestSelfSentCandidates:
 
     def test_candidates_attached_to_the_refusal(self):
         with patch("tools.fetch.router.resolve_gmail_url_via_browser",
-                   return_value=None), \
+                   return_value=(None, "no live CDP browser endpoint (test)")), \
              patch("tools.fetch.router.search_threads",
                    return_value=self._sent_results()) as mock_search:
             result = do_fetch(self.KTBX_URL)
@@ -3255,10 +3255,15 @@ class TestSelfSentCandidates:
         assert "say so" in result.message
         # And the serialized payload carries them
         assert result.to_dict()["candidates"] == result.candidates
+        # And the refusal discloses WHY the browser route fell back —
+        # a reasonless fallback is indistinguishable from a broken one
+        # (mise-wamoco caught exactly that; mise-pagigo is the rule)
+        assert "tried first and fell back" in result.message
+        assert "no live CDP browser endpoint (test)" in result.message
 
     def test_candidates_failure_never_doubles_the_error(self):
         with patch("tools.fetch.router.resolve_gmail_url_via_browser",
-                   return_value=None), \
+                   return_value=(None, "no live CDP browser endpoint (test)")), \
              patch("tools.fetch.router.search_threads",
                    side_effect=MiseError(ErrorKind.NETWORK_ERROR, "boom")):
             result = do_fetch(self.KTBX_URL)
@@ -3301,7 +3306,7 @@ class TestBrowserResolvedSelfSentUrl:
 
     def test_browser_hit_fetches_the_resolved_thread_with_cue(self):
         with patch("tools.fetch.router.resolve_gmail_url_via_browser",
-                   return_value=self._resolution()) as mock_resolve, \
+                   return_value=(self._resolution(), None)) as mock_resolve, \
              patch("tools.fetch.router.search_threads") as mock_search, \
              patch("tools.fetch.router.fetch_gmail",
                    return_value=self._fetch_result()) as mock_fetch:
@@ -3317,7 +3322,7 @@ class TestBrowserResolvedSelfSentUrl:
 
     def test_browser_hit_composes_with_attachment(self):
         with patch("tools.fetch.router.resolve_gmail_url_via_browser",
-                   return_value=self._resolution()), \
+                   return_value=(self._resolution(), None)), \
              patch("tools.fetch.router.fetch_attachment",
                    return_value=self._fetch_result()) as mock_att:
             result = do_fetch(self.KTBX_URL, attachment="contract.docx")

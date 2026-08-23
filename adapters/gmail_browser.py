@@ -11,9 +11,12 @@ its rendered DOM (`data-legacy-thread-id`).
 
 Fail-open EVERYWHERE, by design: no CDP endpoint, no websockets package, a
 lapsed session (the page bounces to an SSO wall and the attribute never
-appears), a timeout — all return None, and the caller falls back to the
-teaching error + candidates. This adapter can add a route; it must never
-add a failure mode.
+appears), a timeout — all yield a None resolution, and the caller falls back
+to the teaching error + candidates. This adapter can add a route; it must
+never add a failure mode. But fail-open is not fail-SILENT: every None
+carries a skip_reason the caller surfaces, and an undesigned exception is
+logged before falling back — this route spent its whole mcp-1.x life dead
+through the envelope with nothing showing (mise-wamoco, mise-pagigo).
 
 Posture matches genai.py/cdp.py: a cookie/browser-dependent bonus, never a
 primary path. The primary paths are the deterministic ones in mise-lerulo
@@ -28,6 +31,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
+from async_bridge import run_async_blocking
+from logging_config import logger
 from validation import GMAIL_API_ID_PATTERN
 
 try:
@@ -174,34 +179,51 @@ async def _drive_tab(ws_url: str, url: str, deadline: float) -> BrowserResolutio
 
 def resolve_gmail_url_via_browser(
     url: str, timeout_s: float = RESOLVE_TIMEOUT_S
-) -> BrowserResolution | None:
+) -> tuple[BrowserResolution | None, str | None]:
     """Open an unresolvable Gmail permalink in a logged-in Chrome and read
-    the thread id from the rendered DOM. None on ANY failure — the caller
-    always has a fallback and this route must never become a second error.
+    the thread id from the rendered DOM. Returns (resolution, skip_reason):
+    on ANY failure the resolution is None — the caller always has a fallback
+    and this route must never become a second error — and skip_reason says
+    why, for the caller to surface. A fallback that doesn't say why it fired
+    hides its own breakage: this route was dead through the envelope for its
+    whole v1 life and nothing showed (mise-wamoco, mise-pagigo).
 
     The tab is opened in the background (Chrome's /json/new does not steal
     focus) and closed in a finally, so a human watching the browser sees at
     most a brief extra tab.
     """
     if not WEBSOCKETS_AVAILABLE:
-        return None
+        return None, "websockets library not installed (slim build)"
     endpoint = _live_endpoint()
     if endpoint is None:
-        return None
+        return None, (
+            "no live CDP browser endpoint (checked MISE_CDP_ENDPOINT/PASSE_CDP, "
+            "then localhost:9223/9222)"
+        )
 
     target_id: str | None = None
     try:
         target = _http_json(f"{endpoint}/json/new", method="PUT")
         if not isinstance(target, dict):
-            return None
+            return None, "CDP /json/new returned an unexpected payload"
         target_id = target.get("id")
         ws_url = target.get("webSocketDebuggerUrl")
         if not ws_url:
-            return None
+            return None, "CDP target carried no webSocketDebuggerUrl"
         deadline = time.monotonic() + timeout_s
-        return asyncio.run(_drive_tab(ws_url, url, deadline))
-    except Exception:
-        return None
+        resolution = run_async_blocking(_drive_tab(ws_url, url, deadline))
+        if resolution is None:
+            return None, (
+                f"the browser opened the page but no thread id rendered within "
+                f"{timeout_s:.0f}s (lapsed login, SSO wall, or not a thread page)"
+            )
+        return resolution, None
+    except Exception as e:
+        # Fail open on the failures this route designed for; fail LOUD on the
+        # ones it didn't — an undesigned exception goes to the log AND the
+        # caller, never silently to None (mise-pagigo).
+        logger.warning(f"browser resolution failed unexpectedly: {e!r}")
+        return None, f"unexpected failure: {e!r}"
     finally:
         if target_id:
             try:

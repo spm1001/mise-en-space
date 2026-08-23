@@ -83,6 +83,9 @@ packages = ["extractors", "adapters", "tools", "workspace", "mise_en_space"]
 # Everything below completes the wheel for library consumers (glaneur
 # imports adapters/extractors, whose closure reaches these root modules).
 "cues_util.py" = "cues_util.py"
+# adapters/gmail_browser.py and adapters/cdp.py import this root module, so
+# wheel consumers reaching either adapter need it (the mise-ditoja class).
+"async_bridge.py" = "async_bridge.py"
 "filters.py" = "filters.py"
 # filters.py's data file — without it, wheel consumers die on the first
 # non-empty attachment list (mise-ditoja; glaneur.service, nightly from

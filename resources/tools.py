@@ -14,9 +14,10 @@ Architecture Note:
     Tested against: mcp>=1.0.0 (FastMCP) and mcp 2.0.0 (MCPServer, 2026-08-23)
 """
 
-import asyncio
 import logging
 from typing import Any, Callable
+
+from async_bridge import run_async_blocking
 
 logger = logging.getLogger(__name__)
 
@@ -126,17 +127,11 @@ class ToolResourceRegistry:
                 logger.error(f"Async tool registration failed: {e}")
             return count
 
-        # Run the async function
+        # Run the async function. run_async_blocking handles the
+        # already-running-loop case by thread, so the fallback now works
+        # there too (it used to warn and give up).
         try:
-            # Check if there's already a running loop
-            try:
-                asyncio.get_running_loop()
-                # Can't run async in already-running loop without nest_asyncio
-                logger.warning("Cannot run async fallback: event loop already running")
-                return 0
-            except RuntimeError:
-                # No running loop - safe to use asyncio.run()
-                return asyncio.run(_async_register())
+            return run_async_blocking(_async_register())
         except Exception as e:
             logger.error(f"Async fallback failed: {e}")
             return 0

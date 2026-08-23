@@ -30,6 +30,8 @@ import re
 import time
 import urllib.request
 import urllib.error
+
+from logging_config import logger
 from dataclasses import dataclass
 from typing import Any
 
@@ -228,7 +230,11 @@ def get_video_summary(file_id: str) -> VideoSummary | None:
             )
         # Other errors (404 = video not processed, etc.)
         return None
-    except Exception:
+    except Exception as e:
+        # Fail open (caller treats None as "no summary available") but never
+        # silently — an undesigned failure is otherwise indistinguishable
+        # from "video not processed" (mise-pagigo).
+        logger.warning(f"GenAI summary fetch failed unexpectedly: {e!r}")
         return None
 
 

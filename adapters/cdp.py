@@ -10,6 +10,9 @@ import json
 import urllib.request
 from typing import Any
 
+from async_bridge import run_async_blocking
+from logging_config import logger
+
 # Optional websockets import — only needed if CDP is available
 try:
     import websockets
@@ -82,12 +85,16 @@ def get_google_cookies() -> dict[str, str] | None:
             "https://www.google.com",
             "https://appsgenaiserver-pa.clients6.google.com"
         ]
-        cookies = asyncio.run(_get_cookies_async(urls))
+        cookies = run_async_blocking(_get_cookies_async(urls))
 
         # Convert to dict
         return {c["name"]: c["value"] for c in cookies}
 
-    except Exception:
+    except Exception as e:
+        # Fail open (genai treats a None as "no browser") but never silently:
+        # an undesigned failure reaches the log — this call sat dead behind a
+        # bare except for all of mcp 1.x (mise-wamoco, mise-pagigo).
+        logger.warning(f"CDP cookie fetch failed unexpectedly: {e!r}")
         return None
 
 

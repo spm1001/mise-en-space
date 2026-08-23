@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from adapters.http_client import get_sync_client
+from logging_config import logger
 from markdown_import import _FENCE_OPEN_RE
 from validation import _WORKSPACE_FILE_DOMAINS
 
@@ -210,8 +211,12 @@ def restore_placeholders(doc_id: str, replacements: list[tuple[str, str]]) -> No
                 for placeholder, literal in replacements
             ]},
         )
-    except Exception:
-        pass
+    except Exception as e:
+        # A failed restore leaves sentinel placeholders in the user's doc —
+        # the one outcome the atomic-chips contract promises can't happen.
+        # Can't raise here (we're already on a failure path), so log loudly
+        # instead of passing silently (mise-pagigo).
+        logger.warning(f"chip placeholder restore failed, sentinel residue possible: {e!r}")
 
 
 def _restore_chip_placeholders(doc_id: str, refs: list[ChipRef]) -> None:

@@ -157,10 +157,20 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
             # URLs are excluded: the UI renders an error page for those, so
             # an attempt could only burn the timeout.
             resolution = None
+            browser_skip_reason = None
             if is_self_sent_gmail_url(file_id) and extract_gmail_permmsgid(file_id) is None:
-                resolution = resolve_gmail_url_via_browser(file_id)
+                resolution, browser_skip_reason = resolve_gmail_url_via_browser(file_id)
             if resolution is None:
                 error = FetchError(kind="invalid_input", message=problem)
+                # Disclose WHY the browser route fell back — a fallback that
+                # doesn't say why it fired is indistinguishable from a broken
+                # one, which is how this route stayed dead for months
+                # (mise-wamoco, mise-pagigo).
+                if browser_skip_reason:
+                    error.message += (
+                        f" (The logged-in-browser route was tried first and "
+                        f"fell back: {browser_skip_reason}.)"
+                    )
                 # Attach recent sent threads so the caller confirms a
                 # candidate (or says they can't) instead of silently
                 # substituting.
