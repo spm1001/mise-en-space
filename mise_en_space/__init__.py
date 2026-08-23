@@ -175,6 +175,7 @@ class Mise:
         raw_query: str | None = None,
         time_min: str | None = None,
         time_max: str | None = None,
+        calendar_id: str | None = None,
     ) -> SearchResult:
         """Find files/emails/events; metadata plus preview, results deposited.
 
@@ -196,6 +197,7 @@ class Mise:
             raw_query=raw_query,
             time_min=time_min,
             time_max=time_max,
+            calendar_id=calendar_id,
         )
 
     def fetch(

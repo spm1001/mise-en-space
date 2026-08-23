@@ -924,6 +924,11 @@ class CalendarEvent:
     # (mise-gujiro). Deliberately NOT rendered in search payloads; the
     # reconciler reads it straight off the model via the adapter.
     extended_properties: dict[str, str] = field(default_factory=dict)
+    # Colleague-diary detail lane (mise-wavotu): 'transparent' means the event
+    # does NOT block freebusy (humanly-absent pattern); event_type is the
+    # API's ('outOfOffice', 'focusTime', 'workingLocation', 'default').
+    transparency: str | None = None
+    event_type: str | None = None
 
 
 @dataclass

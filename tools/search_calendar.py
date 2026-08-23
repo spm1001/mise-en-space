@@ -14,6 +14,35 @@ from typing import Any
 
 from models import CalendarEvent
 
+# A resource calendar's address — the organiser of a room hold, not a person.
+_ROOM_SUFFIX = "@resource.calendar.google.com"
+
+
+def validate_calendar_id(
+    calendar_id: str, folder_id: str | None, raw_query: str | None
+) -> None:
+    """The colleague-diary lane's boundary checks (mise-wavotu). Raises ValueError."""
+    if "@" not in calendar_id and calendar_id != "primary":
+        raise ValueError(
+            f"calendar_id {calendar_id!r} doesn't look like a calendar — pass a "
+            "colleague's email address (or 'primary' for your own diary)."
+        )
+    if folder_id is not None or raw_query:
+        raise ValueError(
+            "calendar_id cannot combine with folder_id or raw_query — those scope "
+            "the search to Drive, which would silently drop the calendar lane."
+        )
+
+
+def calendar_acl_note(calendar_id: str) -> str:
+    """Honest next-move text when a colleague's calendar detail is refused."""
+    return (
+        f"{calendar_id}'s event detail is not visible to your account — their "
+        "sharing is likely free/busy-only, which hides titles while "
+        "do(operation='freebusy') still answers busy/free for them. This is "
+        "their sharing setting, not an error."
+    )
+
 
 def format_calendar_result(event: CalendarEvent) -> dict[str, Any]:
     """Convert CalendarEvent to JSON-serializable dict for search results."""
@@ -31,6 +60,14 @@ def format_calendar_result(event: CalendarEvent) -> dict[str, Any]:
             for a in human_attendees[:10]  # Cap for token efficiency
         ],
     }
+    # Detail lane (mise-wavotu): emit only when informative, judge nothing —
+    # soft-vs-hard is the READER's call; these are the facts that inform it.
+    if event.transparency == "transparent":
+        result["transparency"] = "transparent"  # shows free to freebusy
+    if event.event_type and event.event_type != "default":
+        result["event_type"] = event.event_type
+    if event.organizer_email and event.organizer_email.endswith(_ROOM_SUFFIX):
+        result["room_hold"] = True  # organiser is a resource calendar — a room, not a person
     if event.attachments:
         result["attachments"] = [
             {"file_id": a.file_id, "title": a.title}

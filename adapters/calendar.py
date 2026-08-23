@@ -105,6 +105,8 @@ def _parse_event(data: dict[str, Any]) -> CalendarEvent:
         description=data.get("description"),
         organizer_email=organizer.get("email"),
         extended_properties=data.get("extendedProperties", {}).get("private", {}),
+        transparency=data.get("transparency"),
+        event_type=data.get("eventType"),
     )
 
 
@@ -132,6 +134,7 @@ def list_events(
     time_min: datetime | None = None,
     time_max: datetime | None = None,
     private_property: str | None = None,
+    calendar_id: str = "primary",
 ) -> CalendarSearchResult:
     """
     List calendar events in a time window, optionally filtered.
@@ -165,6 +168,10 @@ def list_events(
             the reconciler's keyed query (mise-gujiro). Instances of a
             recurring series inherit the master's properties and each match
             the filter under singleEvents (probed live 2026-08-19).
+        calendar_id: Whose calendar — 'primary' or a colleague's email
+            (mise-wavotu). Visibility gated by THEIR sharing, exactly like
+            list_status_events: free/busy-only sharing raises NOT_FOUND here
+            while freebusy_query still answers.
 
     Returns:
         CalendarSearchResult, chronological; .truncated True when events
@@ -194,7 +201,7 @@ def list_events(
         if page_token:
             params["pageToken"] = page_token
         response = client.get_json(
-            f"{_CALENDAR_API}/primary/events",
+            f"{_CALENDAR_API}/{calendar_id}/events",
             params=params,
         )
         items.extend(response.get("items", []))

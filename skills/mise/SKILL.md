@@ -554,6 +554,8 @@ do(operation="create_event", ..., confirm=True)
 
 **freebusy's two honesty cues are load-bearing.** People in `not_visible` have sharing that hides even free/busy — they are EXCLUDED from slot arithmetic, so a proposed slot may clash with them; say so when proposing. And `office_days: "location not visible"` means their sharing is free/busy-only, never "not in the office". `include=[Drive file ids]` on create/update attaches docs to the event (the 1:1-doc-on-the-invite pattern).
 
+**Reading a colleague's diary in detail: `search(calendar_id="them@example.com")`** — forces the calendar source; window params compose. freebusy says *occupied*; this lane says *what kind of occupied*, where their sharing allows: events carry `transparency: "transparent"` (shows free to freebusy — the humanly-absent pattern, e.g. all-day conferences), `event_type` (`outOfOffice` / `focusTime` / `workingLocation`), and `room_hold: true` when the organiser is a resource calendar — a room's own 9–5 hold, not a person. **Soft-vs-hard is YOUR call as reader**: an 08:00 "Clear inboxes" is probably bookable-over and an all-day "AL" is not — the fields carry facts, never verdicts. A free/busy-only colleague refuses with a cue naming `do(freebusy)` as what still answers; that is their sharing setting, not an error.
+
 **Boundaries:** there is no delete op — a mis-booked event comes off in the Calendar UI (which is why the gate previews first). Attendees are only ever ADDED — removal is a UI job. `freebusy` needs a re-auth on tokens minted before 2026-08-19 (the error teaches `setup_oauth`).
 
 ### Create and Move

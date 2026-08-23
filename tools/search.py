@@ -35,6 +35,8 @@ from validation import (
 )
 from token_store import ambient_mode, override_path
 from tools.search_calendar import (
+    calendar_acl_note,
+    validate_calendar_id,
     _build_meeting_context_index,
     _enrich_drive_results_with_meetings,
     calendar_truncated_cue,
@@ -144,6 +146,7 @@ def do_search(
     raw_query: str | None = None,
     time_min: str | None = None,
     time_max: str | None = None,
+    calendar_id: str | None = None,
 ) -> SearchResult:
     """
     Search across Drive, Gmail, Activity, and Calendar.
@@ -184,6 +187,9 @@ def do_search(
             Requires 'calendar' in sources.
         time_max: Calendar window end — ISO date or datetime. A bare date runs
             to the END of that day. Overrides the default 7-days-forward bound.
+        calendar_id: Whose calendar the calendar source reads — a colleague's
+            email (mise-wavotu). Forces sources=['calendar']. Detail is gated
+            by THEIR sharing; a free/busy-only refusal is cued honestly.
 
     Returns:
         SearchResult with path to deposited file and result counts
@@ -195,6 +201,13 @@ def do_search(
         # (mise-kivane). Ambient mode narrows identically: no mailbox (wasagu).
         narrow = override_path() is not None or ambient_mode()
         sources = ["drive"] if narrow else ["drive", "gmail"]
+
+    # Colleague-diary detail lane (mise-wavotu): read another person's visible
+    # calendar. Forces the calendar source (like folder_id forces drive), and
+    # must land BEFORE the window validation reads `sources`.
+    if calendar_id:
+        validate_calendar_id(calendar_id, folder_id, raw_query)
+        sources = ["calendar"]
 
     # Explicit calendar window (mise-riduka). Parsed at the boundary so garbage
     # fails loudly, and REFUSED when it could only be dropped — a window that
@@ -312,7 +325,8 @@ def do_search(
         # nearest-NOW kept on overflow (mise-bidopi — the cap must not eat
         # the future); an explicit window keeps the chronological head.
         return list_events(max_results=max_results, query=query,
-                           time_min=window_min, time_max=window_max)
+                           time_min=window_min, time_max=window_max,
+                           calendar_id=calendar_id or "primary")
 
     # Run searches in parallel
     futures: dict[str, Future[Any]] = {}
@@ -398,6 +412,12 @@ def do_search(
             calendar_search = futures["calendar"].result()
             calendar_events = calendar_search.events
             result.calendar_results = [format_calendar_result(e) for e in calendar_events]
+            if calendar_id:
+                result.cues["calendar_id"] = (
+                    f"reading {calendar_id}'s calendar — detail is gated by "
+                    "their sharing; transparency/event_type/room_hold fields "
+                    "carry the judgement facts, the judging is yours"
+                )
             explicit_window = window_min is not None or window_max is not None
             if explicit_window:
                 result.cues["calendar_window"] = calendar_window_cue(window_min, window_max)
@@ -406,7 +426,10 @@ def do_search(
                     len(calendar_events), explicit_window
                 )
         except MiseError as e:
-            result.errors.append(f"Calendar search failed: {e.message}")
+            msg = f"Calendar search failed: {e.message}"
+            if calendar_id:
+                msg += " " + calendar_acl_note(calendar_id)
+            result.errors.append(msg)
         except Exception as e:
             result.errors.append(f"Calendar search failed: {str(e)}")
 

@@ -119,6 +119,7 @@ def search(
     raw_query: str | None = None,
     time_min: str | None = None,
     time_max: str | None = None,
+    calendar_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Search across Drive and Gmail.
@@ -137,17 +138,16 @@ def search(
             Values: folder, doc, spreadsheet, sheet, slides, presentation, pdf, image, video, form
         raw_query: Drive query language, unescaped (Drive only; excludes other sources).
             Use instead of query when you need what one fullText clause can't say:
-            `name contains 'PCA'`, `or` between synonyms, `not`, `modifiedTime > '2025-01-01'`,
-            `'x@y.com' in owners`. `trashed = false` and any type/folder_id are ANDed on.
+            `name contains`, `or`, `not`, `modifiedTime >`, `'x' in owners`.
+            `trashed = false` and any type/folder_id are ANDed on.
             NB plain `query` is AND across words — one term the estate doesn't use returns zero.
         time_min: Calendar window start — ISO date/datetime, any range (historical fine),
             no query term needed ('what is in the diary 3–5 Aug?').
         time_max: Window end; a bare date runs to the END of that day.
+        calendar_id: colleague's email — their visible diary, ACL-gated; forces sources=['calendar'].
 
     Returns:
-        path: Path to deposited search results JSON
-        query: The search query
-        sources: Sources searched
+        path: Path to deposited search results JSON; query/sources echoed
         drive_count/gmail_count/activity_count/calendar_count: per-source counts
         cues: Scope notes and warnings
     """
@@ -208,7 +208,7 @@ def search(
     try:
         result = do_search(query, sources, max_results, base_path=Path(base_path),
                            folder_id=folder_id, type=type, raw_query=raw_query,
-                           time_min=time_min, time_max=time_max).to_dict()
+                           time_min=time_min, time_max=time_max, calendar_id=calendar_id).to_dict()
     except ValueError as e:
         result = {"error": True, "kind": "invalid_input", "message": str(e)}
     _log_search_result(call_params, result)
