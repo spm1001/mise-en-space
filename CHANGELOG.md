@@ -6,7 +6,7 @@
 > intentionally absent — the shipped version number can therefore be ahead of
 > the newest entry here.
 
-## [Unreleased] (mise-vubeku)
+## [1.75.3] - 2026-08-24 (mise-vubeku)
 
 ### Added
 - **serverInfo carries the suite version** — `initialize` now reports the
