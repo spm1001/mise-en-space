@@ -1,0 +1,119 @@
+{
+  "arm": "A",
+  "crops": true,
+  "identity": null,
+  "surface": "tube, mise working-tree library, serial, thumbnails=False",
+  "total_secs": 325.3,
+  "files": [
+    {
+      "name": "2026.08_RTL-Group_Interim-Results-2026_analyst-presentation.pdf",
+      "secs": 27.5,
+      "pdf_pages": 27,
+      "page_markers": 27,
+      "last_modified_by": "Sameer Modha",
+      "crop_count": 17,
+      "anchor_lines": 19,
+      "content_sha": "35a2250d4b91384e",
+      "deposit_bytes": 16104916
+    },
+    {
+      "name": "2026.08_RTL-Group_Interim-Results-2026_journalist-presentation.pdf",
+      "secs": 32.6,
+      "pdf_pages": 19,
+      "page_markers": 19,
+      "last_modified_by": "Sameer Modha",
+      "crop_count": 17,
+      "anchor_lines": 17,
+      "content_sha": "178dc21136fbe9fc",
+      "deposit_bytes": 16081118
+    },
+    {
+      "name": "Banijay-StrategicUpdateMarch2026-3.pdf",
+      "secs": 99.0,
+      "pdf_pages": 51,
+      "page_markers": 51,
+      "last_modified_by": "Sameer Modha",
+      "crop_count": 48,
+      "anchor_lines": 49,
+      "content_sha": "b06c0b29e5d52853",
+      "deposit_bytes": 9103207
+    },
+    {
+      "name": "BanijayGroupH12026results.pdf",
+      "secs": 46.1,
+      "pdf_pages": 39,
+      "page_markers": 39,
+      "last_modified_by": "Sameer Modha",
+      "crop_count": 40,
+      "anchor_lines": 42,
+      "content_sha": "c984111609a6872e",
+      "deposit_bytes": 12998920
+    },
+    {
+      "name": "BanijayGroupPRH12026.pdf",
+      "secs": 2.7,
+      "pdf_pages": 24,
+      "page_markers": 24,
+      "last_modified_by": "Sameer Modha",
+      "crop_count": 0,
+      "anchor_lines": 0,
+      "content_sha": "ad62911e4ef148e6",
+      "deposit_bytes": 68022
+    },
+    {
+      "name": "H12026-BanijayGroupNV-AnnexesInterimFinancialReport.pdf",
+      "secs": 5.2,
+      "pdf_pages": 70,
+      "page_markers": 70,
+      "last_modified_by": "Sameer Modha",
+      "crop_count": 4,
+      "anchor_lines": 4,
+      "content_sha": "e8987337171afc25",
+      "deposit_bytes": 2163185
+    },
+    {
+      "name": "ITV-plc-2026-half-year-report.pdf",
+      "secs": 3.8,
+      "pdf_pages": 45,
+      "page_markers": 45,
+      "last_modified_by": "Sameer Modha",
+      "crop_count": 0,
+      "anchor_lines": 0,
+      "content_sha": "8c9ee7de9cf8eb87",
+      "deposit_bytes": 263891
+    },
+    {
+      "name": "PR-BanijayEntertainmentandAll3Mediacombinationcompleted-1.pdf",
+      "secs": 1.9,
+      "pdf_pages": 4,
+      "page_markers": 4,
+      "last_modified_by": "Sameer Modha",
+      "crop_count": 0,
+      "anchor_lines": 0,
+      "content_sha": "11fdc3ca1342bb5f",
+      "deposit_bytes": 14743
+    },
+    {
+      "name": "RTL-Group-Interim-Report-2026.pdf",
+      "secs": 60.5,
+      "pdf_pages": 48,
+      "page_markers": 48,
+      "last_modified_by": "Sameer Modha",
+      "crop_count": 7,
+      "anchor_lines": 7,
+      "content_sha": "a43535da22adf52b",
+      "deposit_bytes": 41850661
+    },
+    {
+      "name": "bbc-annual-report-and-accounts-25-26.pdf",
+      "secs": 45.8,
+      "pdf_pages": 256,
+      "page_markers": 256,
+      "last_modified_by": "Sameer Modha",
+      "crop_count": 70,
+      "anchor_lines": 71,
+      "content_sha": "c6d2ed836af6e9c1",
+      "deposit_bytes": 23305687
+    }
+  ]
+}

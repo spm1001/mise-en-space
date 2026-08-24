@@ -13,9 +13,11 @@ pdftotext -layout is the PDF text primary (mise-mitoki, census 2026-08-17:
 97.4% verbatim value survival vs markitdown's 93.0%, 100% on big-table
 pages, ~55× faster, and it emits the form feeds page citations ride on).
 
-count_pdf_pages degrades to None wherever pdf2image or the poppler system
-package is absent (slim build; mise-releko) — callers treat None as
-"unknown", never as a page count. run_pdftotext raises instead (the caller
+count_pdf_pages degrades to None wherever the poppler system package is
+absent (slim build; mise-releko) — callers treat None as "unknown",
+never as a page count. It shells pdfinfo directly (mise-tanoti): the
+pdf2image wrapper it used to ride lives in the extraction extra, so core
+installs got None with the binary right there on PATH. run_pdftotext raises instead (the caller
 owns the fallback chain and the teaching warning).
 """
 
@@ -63,9 +65,9 @@ def count_pdf_pages(
         if file_path is None:
             assert file_bytes is not None
             with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-                tmp.write(file_bytes)
                 file_path = Path(tmp.name)
-            tmp_created = True
+                tmp_created = True  # before write: a failed write must still unlink
+                tmp.write(file_bytes)
         proc = subprocess.run(
             [_poppler_bin("pdfinfo"), str(file_path)],
             capture_output=True,
@@ -82,7 +84,10 @@ def count_pdf_pages(
             proc.stdout.decode("utf-8", errors="replace"),
             re.MULTILINE,
         )
-        return int(match.group(1)) if match else None
+        # Falsy guard keeps the old wrapper's contract: 0 pages reads as
+        # unknown, never as a count (essayeur parity catch, 2026-08-24).
+        pages = int(match.group(1)) if match else 0
+        return pages if pages else None
     except Exception as e:
         logger.debug("pdfinfo page count unavailable: %s", e)
         return None

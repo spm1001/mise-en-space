@@ -37,7 +37,6 @@ def main() -> int:
 
     base = Path(tempfile.mkdtemp(prefix=f"tanoti-{args.arm}-"))
     m = Mise(base_path=base)
-    identity = cues_util.current_user_email()
 
     listing = list_folder(CORPUS_ROOT)
     pdfs = sorted(
@@ -67,9 +66,15 @@ def main() -> int:
             "last_modified_by": manifest.get("last_modified_by"),
             "crop_count": manifest.get("crop_count", 0),
             "anchor_lines": content.count("exhibit:"),
+            # Anchor insertion adds blank lines around each anchor, so the
+            # comparable stream drops anchor lines AND blank lines — the
+            # first cut kept the blanks and its own artefacts showed
+            # differing shas on every crop-bearing file (essayeur catch,
+            # 2026-08-24: substance was equal, the instrument said not).
             "content_sha": __import__("hashlib").sha256(
                 "\n".join(
-                    l for l in content.splitlines() if "exhibit:" not in l
+                    l for l in content.splitlines()
+                    if "exhibit:" not in l and l.strip()
                 ).encode()
             ).hexdigest()[:16],
             "deposit_bytes": sum(
@@ -79,6 +84,9 @@ def main() -> int:
         print(f"  {f.name}: {dt:.1f}s pages={manifest.get('pdf_pages')} "
               f"crops={manifest.get('crop_count', 0)} by={manifest.get('last_modified_by')!r}")
     total = time.monotonic() - t_all
+    # Identity resolves lazily at first API call — read it AFTER the walk
+    # (the first cut read it before and committed identity: null).
+    identity = cues_util.current_user_email()
 
     out = {
         "arm": args.arm, "crops": crops, "identity": identity,
