@@ -215,6 +215,22 @@ class TestAppendTabRouting:
         assert result["cues"]["tab_id"] == "t.minted123"
         mock_add.assert_called_once()
 
+    def test_tab_on_create_refuses_not_drops(self) -> None:
+        """Accept-and-drop rail: the wisuzu brief's draft grammar put tab=
+        on create — that guess must teach, never silently mint a tabless doc."""
+        from server import do
+
+        result = do(operation="create", content="body", title="T", tab="Redraft")
+        assert result["error"] is True
+        assert "append" in result["message"]
+
+    def test_tab_on_overwrite_refuses_not_drops(self) -> None:
+        from server import do
+
+        result = do(operation="overwrite", file_id="doc123", content="c", tab="X")
+        assert result["error"] is True
+        assert "append" in result["message"]
+
     @patch("tools.edit._append")
     def test_no_tab_keeps_existing_append_path(self, mock_append) -> None:
         mock_append.return_value = DoResult(

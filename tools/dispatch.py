@@ -246,6 +246,19 @@ def run_operation(operation: str, params: dict[str, Any]) -> dict[str, Any]:
         return {"error": True, "kind": "INVALID_INPUT",
                 "message": f"'{operation}' requires: {', '.join(sorted(missing))}"}
 
+    # tab= is append-only today; on any other op it would be accepted and
+    # silently dropped (this codebase's characteristic bug) — and the
+    # wisuzu brief's own draft grammar put it on create, so the wrong guess
+    # is the likely one. Refuse and teach instead.
+    if params.get("tab") is not None and operation != "append":
+        return {"error": True, "kind": "invalid_input",
+                "message": "tab= applies to 'append' only: do(append, "
+                           "file_id=…, content=…, tab='Title') places content "
+                           "in a NEW tab of an existing Google Doc. Writing "
+                           "INTO an existing tab isn't supported — surgical "
+                           "ops address the first tab, and rich overwrite "
+                           "cannot target a tab."}
+
     # Pre-fetch metadata for content operations — one Drive API call shared
     # by routing logic and handler, instead of each handler fetching its own.
     if operation in CONTENT_OPS and params.get("file_id"):
