@@ -130,6 +130,7 @@ def main() -> int:
         verdicts["C_readback"] = "; ".join(
             f"{name}={'PASS' if ok else 'FAIL'}" for name, ok in c_checks
         )
+        c_failed = not all(ok for _, ok in c_checks)
 
         # --- Probe D: caller-supplied tabId (single-batch add+fill viability) ---
         try:
@@ -157,7 +158,10 @@ def main() -> int:
             verdicts["D_supplied_tabId"] = f"REFUSED — {type(e).__name__}: {e}"
 
         print_verdicts(verdicts)
-        return 0
+        # Machine-trustable green: fail the exit code if any behavioural check
+        # failed (refuter catch 2026-08-24 — the first cut returned 0 on FAILs).
+        b_failed = verdicts.get("B_insertText_by_tabId", "").startswith("FAILED")
+        return 1 if (c_failed or b_failed) else 0
     finally:
         trashed = m.do("trash", file_id=doc_id)
         print(f"cleanup: trash -> {'OK' if not trashed.get('error') else trashed}")
