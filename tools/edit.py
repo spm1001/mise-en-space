@@ -20,6 +20,11 @@ from adapters.http_client import get_sync_client
 from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 from tools.common import NO_MATCH_WARNING, markdown_marker_hint
+from tools.doc_control_chars import (
+    apply_sanitise_cues,
+    find_string_warning,
+    sanitise_for_insert,
+)
 from tools.doc_tabs import add_tab_with_content, get_doc_tabs_meta
 from tools.plain_file import plain_prepend, plain_append, plain_replace_text
 from tools.restore_point import capture_restore_point, merge_restore_cues
@@ -109,11 +114,17 @@ def do_prepend(
         return {"error": True, "kind": "invalid_input", "message": str(e)}
     if metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
         return plain_prepend(file_id, content, metadata)
+    # Google Doc path only: insertText deletes \f and \x00 silently
+    # (mise-melaso). Plain files above keep both — their bytes go up
+    # untouched — so the transform must sit BELOW that routing.
+    content, cc_state = sanitise_for_insert(content)
     restore_cues = capture_restore_point(file_id)
     try:
-        return merge_restore_cues(_prepend(file_id, content), restore_cues)
+        result = _prepend(file_id, content)
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
+    apply_sanitise_cues(result.cues, cc_state)
+    return merge_restore_cues(result, restore_cues)
 
 
 def do_append(
@@ -142,11 +153,16 @@ def do_append(
         return _append_as_tab(file_id, content, tab, metadata)
     if metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
         return plain_append(file_id, content, metadata)
+    # Google Doc path only — see do_prepend for why this sits below the
+    # plain-file routing (mise-melaso).
+    content, cc_state = sanitise_for_insert(content)
     restore_cues = capture_restore_point(file_id)
     try:
-        return merge_restore_cues(_append(file_id, content), restore_cues)
+        result = _append(file_id, content)
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
+    apply_sanitise_cues(result.cues, cc_state)
+    return merge_restore_cues(result, restore_cues)
 
 
 # Always-on honesty cue for tab content: the rich-markdown door (Drive's
@@ -197,6 +213,10 @@ def _append_as_tab(
         return {"error": True, "kind": e.kind.value, "message": e.message}
     existing_titles = [t["title"] for t in doc_meta["tabs"]]
 
+    # Tab fill is the same insertText engine as prepend/append, so it eats
+    # \f and \x00 the same way (mise-melaso).
+    content, cc_state = sanitise_for_insert(content)
+
     restore_cues = capture_restore_point(file_id)
     try:
         minted = add_tab_with_content(file_id, tab_title, content)
@@ -211,12 +231,15 @@ def _append_as_tab(
         "inserted_chars": len(content),
         "note": _TAB_PLAIN_TEXT_NOTE,
     }
+    apply_sanitise_cues(cues, cc_state)
     if tab_title in existing_titles:
-        cues["warnings"] = [
+        # append, not assign: a control-character disclosure may already be
+        # sitting in this list, and a second warning must not silence it.
+        cues.setdefault("warnings", []).append(
             f"A tab titled {tab_title!r} already existed — the new tab is a "
             f"second one with the same title (ids differ; the new one is "
             f"{tab_id})."
-        ]
+        )
     result = DoResult(
         file_id=file_id,
         title=doc_meta["title"],
@@ -253,11 +276,22 @@ def do_replace_text(
         return sheet_replace_text(file_id, find, content, metadata)
     if metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
         return plain_replace_text(file_id, find, content, metadata)
+    # Google Doc path only (mise-melaso). The replacement text rides
+    # replaceAllText, which eats \f and \x00 exactly as insertText does;
+    # and a `find` carrying either can never match, because no Doc can hold
+    # them — worth saying before the caller reads a 0-occurrence no-op as
+    # "that text isn't in the document".
+    find_warning = find_string_warning(find)
+    content, cc_state = sanitise_for_insert(content)
     restore_cues = capture_restore_point(file_id)
     try:
         result = _replace_text(file_id, find, content)
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
+    if isinstance(result, DoResult):
+        apply_sanitise_cues(result.cues, cc_state)
+        if find_warning:
+            result.cues.setdefault("warnings", []).append(find_warning)
     # A no-op edit creates no revision, so the anchor captured above still points
     # at the LIVE document — accurate, but indistinguishable from the anchor of an
     # edit that landed, which is exactly the false reassurance nacolu is about.

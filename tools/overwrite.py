@@ -25,6 +25,7 @@ from models import DoResult, ErrorKind, MiseError
 from tools.common import resolve_source as _resolve_source
 from workspace.manager import deposit_lock_for_source
 from tools.doc_chips import CHIP_REF_RE, insert_chips_in_doc, parse_chip_refs
+from tools.doc_control_chars import apply_sanitise_cues, sanitise_for_import
 from tools.doc_tabs import get_doc_tabs_meta
 from tools.doc_footnotes import apply_footnote_cues, footnotes_for_import
 from tools.form_edit import form_overwrite
@@ -206,6 +207,14 @@ def do_overwrite(
 
     title = metadata.get("name", "Untitled") if metadata else None
 
+    # Control characters Drive's markdown import destroys (mise-melaso).
+    # Sharper here than anywhere else: a \x00 truncates the import at that
+    # byte, and overwrite has ALREADY replaced the document — so the old
+    # content is gone and only the head of the new content arrives, under
+    # an HTTP 200 (measured 2026-08-24). Runs before the chip and footnote
+    # passes so everything downstream sees content that will survive.
+    content, cc_state = sanitise_for_import("doc", content)
+
     # Whole-line @url smart-chip requests, same opt-in grain as create
     # (mise-rafote): parse to placeholders before the markdown import, insert
     # real chips after it.
@@ -238,6 +247,9 @@ def do_overwrite(
 
     # Literal [^N] anchors become real Docs footnotes (mise-rubucu)
     apply_footnote_cues(result.cues, file_id, footnote_state)
+
+    # What the control-character pass changed on the way in (mise-melaso)
+    apply_sanitise_cues(result.cues, cc_state)
 
     return merge_restore_cues(result, restore_cues)
 

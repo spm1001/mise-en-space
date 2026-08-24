@@ -31,6 +31,7 @@ from workspace.manager import deposit_lock_for_source
 from tools.common import resolve_source as _resolve_source
 from tools.doc_chips import (CHIP_REF_RE, ChipRef, find_placeholder_indices,
                              insert_chips_in_doc, parse_chip_refs, restore_placeholders)
+from tools.doc_control_chars import apply_sanitise_cues, sanitise_for_import
 from tools.doc_footnotes import apply_footnote_cues, footnotes_for_import
 from tools.form_create import create_form
 from validation import validate_drive_id, sanitize_title
@@ -402,6 +403,12 @@ def _do_create_internal(
             "No title provided. Pass 'title' or include it in the source manifest.",
         )
 
+    # Control chars the markdown import destroys — \f deleted, \x00 silently
+    # TRUNCATING the doc from that byte on (mise-melaso). Runs before the
+    # image/chip/footnote passes so all three, including footnote text going
+    # up by its own insertText, work on content that will survive the write.
+    content, cc_state = sanitise_for_import(doc_type, content)
+
     # Check for local image refs in doc content
     image_refs: list[_ImageRef] = []
     image_base_path: Path | None = None
@@ -465,6 +472,7 @@ def _do_create_internal(
         # Post-creation: literal [^N] anchors become real Docs footnotes (mise-rubucu)
         if isinstance(result, DoResult):
             apply_footnote_cues(result.cues, result.file_id, footnote_state)
+            apply_sanitise_cues(result.cues, cc_state)  # mise-melaso
 
         # Enrich manifest if created from source. Under the deposit lock:
         # unlocked, this read-modify-write racing a fetch of the same resource
