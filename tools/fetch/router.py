@@ -2,10 +2,10 @@
 Fetch routing — ID detection and do_fetch entry point.
 """
 
-import threading
 from pathlib import Path
 
 from adapters.gmail import search_threads
+from workspace.manager import deposit_lock as _deposit_lock
 from adapters.gmail_browser import resolve_gmail_url_via_browser
 from adapters.gmail_ids import get_thread_id_for_draft, get_thread_id_for_rfc822_message_id
 from models import MiseError, ErrorKind, FetchResult, FetchError
@@ -22,18 +22,12 @@ from .drive import fetch_drive
 # fetch options (tabs=, thumbnails=, suggestions=) the survivor is a chimera of
 # two runs. So the dispatch below serializes per RESOLVED id: same-id fetches
 # queue (rare, correct), different-id fetches — the CC parallel-hydration case
-# the lift exists for — stay fully parallel. RLock, not Lock, so a same-thread
-# re-entry (e.g. a future handler calling back into do_fetch) degrades to
-# harmless rather than deadlock. In-process only: two SERVERS sharing a cwd
-# could always race this wipe, serializer or no serializer — unchanged scope.
-_DEPOSIT_LOCKS: dict[str, threading.RLock] = {}
-_DEPOSIT_LOCKS_GUARD = threading.Lock()
-
-
-def _deposit_lock(resource_id: str) -> threading.RLock:
-    """One RLock per resolved resource id, minted on first use."""
-    with _DEPOSIT_LOCKS_GUARD:
-        return _DEPOSIT_LOCKS.setdefault(resource_id, threading.RLock())
+# the lift exists for — stay fully parallel. The registry lives in
+# workspace/manager.py so the do(source=) readers and the gmail
+# message→thread rescue converge on the same locks. One known divergence is
+# handled at the rescue itself (tools/fetch/gmail.py): a bare MESSAGE id
+# locks here on the message id, and fetch_gmail takes the resolved THREAD
+# id's lock as a second, inner take before touching the deposit.
 
 
 def detect_id_type(input_id: str) -> tuple[str, str, UrlDecorations]:

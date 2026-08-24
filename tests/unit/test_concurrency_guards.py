@@ -143,3 +143,65 @@ def test_refresh_is_single_flight_across_threads() -> None:
         "is broken; the dead-grant reload path can interleave its credential swap"
     )
     assert client._credentials.valid
+
+
+# ---------------------------------------------------------------------------
+# Guard 2b: lock-KEY convergence across the surfaces that touch one deposit
+# (fetch dispatch vs do(source=) readers). The cold review of 2026-08-24 showed
+# the guard class fails at the KEY, not the lock: two spellings of one resource
+# holding two locks over one folder re-opens the wipe race.
+# ---------------------------------------------------------------------------
+
+def test_fetch_and_source_readers_converge_on_one_lock(tmp_path: Path) -> None:
+    """deposit_lock_for_source(deposit-of-X) must return the SAME RLock object
+    the fetch dispatch takes for X — otherwise do(create/overwrite, source=)
+    and a concurrent fetch of X are 'guarded' by two different locks, which is
+    no guard at all."""
+    import json as _json
+
+    from workspace.manager import deposit_lock, deposit_lock_for_source
+
+    rid = "1XCONVERGENCE_TEST_RESOURCE_IDXXXXXXXXXXXXXX"
+    dep = tmp_path / "doc--convergence--1XCONVERGENC"
+    dep.mkdir()
+    (dep / "manifest.json").write_text(_json.dumps({"id": rid, "type": "doc"}))
+
+    assert deposit_lock_for_source(dep) is deposit_lock(rid), (
+        "source-reader lock and fetch lock diverge for the same resource id"
+    )
+    # Manifest-less deposits fall back to the resolved path — still one lock
+    # per folder, so two source-readers of one folder converge too.
+    bare = tmp_path / "no-manifest"
+    bare.mkdir()
+    assert deposit_lock_for_source(bare) is deposit_lock_for_source(bare)
+
+
+# ---------------------------------------------------------------------------
+# Guard 4: the sync-client singleton mints exactly once under a thread burst
+# ---------------------------------------------------------------------------
+
+def test_sync_client_mint_is_single_flight(monkeypatch) -> None:
+    """Eight threads race get_sync_client() on a cold singleton. The unlocked
+    check-then-act minted N clients — N httpx pools, N-1 of them leaked for
+    process lifetime (cold review, 2026-08-24). Locked: exactly one mint, all
+    callers handed the same object."""
+    import adapters.http_client as hc
+
+    mints: list[object] = []
+    mint_lock = threading.Lock()
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            with mint_lock:
+                mints.append(self)
+            time.sleep(0.05)  # hold the window open
+
+    monkeypatch.setattr(hc, "MiseSyncClient", _FakeClient)
+    monkeypatch.setattr(hc, "_sync_client", None)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        clients = list(pool.map(lambda _: hc.get_sync_client(), range(8)))
+
+    monkeypatch.setattr(hc, "_sync_client", None)  # never leak the fake
+    assert len(mints) == 1, f"{len(mints)} clients minted — the mint lock is broken"
+    assert all(c is clients[0] for c in clients)

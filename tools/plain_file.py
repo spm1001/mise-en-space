@@ -18,6 +18,7 @@ from adapters.drive import (
 from models import DoResult
 from retry import with_retry
 from tools.common import NO_MATCH_WARNING, resolve_source as _resolve_source
+from workspace.manager import deposit_lock_for_source
 
 
 # Large file warning threshold (5MB)
@@ -121,12 +122,14 @@ def plain_overwrite(
                 "message": "Provide 'content' or 'source', not both"}
 
     if resolved_source:
-        # Read from deposit folder — look for any content file
-        content_file = _find_content_file(resolved_source)
-        if not content_file:
-            return {"error": True, "kind": "invalid_input",
-                    "message": f"No content file in source folder: {resolved_source}"}
-        file_bytes = content_file.read_bytes()
+        # Read from deposit folder — under the deposit lock, so a concurrent
+        # fetch's wipe-and-rewrite can't tear this read (mise-bapije).
+        with deposit_lock_for_source(resolved_source):
+            content_file = _find_content_file(resolved_source)
+            if not content_file:
+                return {"error": True, "kind": "invalid_input",
+                        "message": f"No content file in source folder: {resolved_source}"}
+            file_bytes = content_file.read_bytes()
     elif content:
         file_bytes = content.encode("utf-8")
     else:

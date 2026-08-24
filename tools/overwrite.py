@@ -23,6 +23,7 @@ from adapters.drive import (
 from markdown_import import convert_fenced_blocks
 from models import DoResult, MiseError
 from tools.common import resolve_source as _resolve_source
+from workspace.manager import deposit_lock_for_source
 from tools.doc_chips import CHIP_REF_RE, insert_chips_in_doc, parse_chip_refs
 from tools.form_edit import form_overwrite
 from tools.plain_file import plain_overwrite
@@ -133,16 +134,21 @@ def do_overwrite(
     if metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
         return plain_overwrite(file_id, content, source, base_path, metadata)
 
-    # Google Doc path — read content from source if needed
+    # Google Doc path — read content from source if needed. Under the deposit
+    # lock: a concurrent fetch of the same resource wipes-then-rewrites this
+    # folder, and an unlocked read torn mid-rewrite would replace a live Doc's
+    # content with a partial file, silently (cold review, mise-bapije
+    # 2026-08-24 — restore_point is recovery, not prevention).
     if resolved_source:
-        content_file = resolved_source / "content.md"
-        if not content_file.exists():
-            return {
-                "error": True,
-                "kind": "invalid_input",
-                "message": f"No content.md in source folder: {resolved_source}",
-            }
-        content = content_file.read_text(encoding="utf-8")
+        with deposit_lock_for_source(resolved_source):
+            content_file = resolved_source / "content.md"
+            if not content_file.exists():
+                return {
+                    "error": True,
+                    "kind": "invalid_input",
+                    "message": f"No content.md in source folder: {resolved_source}",
+                }
+            content = content_file.read_text(encoding="utf-8")
 
     title = metadata.get("name", "Untitled") if metadata else None
 

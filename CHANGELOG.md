@@ -18,11 +18,18 @@
 ### Added
 - Per-resource deposit lock on the fetch dispatch: concurrent fetches of the
   SAME id queue (the deposit wipe can no longer eat a sibling's in-flight
-  writes); different ids stay fully parallel.
+  writes); different ids stay fully parallel. After a cold review the same
+  lock also covers do(create/overwrite) `source=` reads and manifest
+  enrichment (keyed to converge with the fetch path), and the Gmail
+  message→thread rescue takes a second take on the resolved id so both
+  spellings of one thread hold one lock.
 - O_EXCL search-deposit naming: the same-second name collision is now settled
   by the filesystem, closing the TOCTOU the old `exists()` loop left open.
 - Single-flight token refresh in the sync client: one thread refreshes,
-  siblings re-check and skip — covers the dead-grant reload's credential swap.
+  siblings re-check and skip — covers the dead-grant reload's credential
+  swap, with identity caches cleared BEFORE the swap so no window can stamp
+  the old account's identity beside the new account's data. The client
+  singleton itself now mints under a lock.
 
 ## [1.8.1] - 2026-07-12
 

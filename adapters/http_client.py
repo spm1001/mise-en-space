@@ -464,13 +464,20 @@ class MiseSyncClient:
                     + " Once a fresh token lands, this server picks it up on "
                     "the next call — no restart needed."
                 )
+            # The new grant may belong to a different account. Clear
+            # identity-derived caches BEFORE swapping the credentials in:
+            # sibling threads skip this lock the moment the new credentials
+            # look valid, so any window must read as "identity unknown"
+            # (enrichment skips honestly) — never the OLD account's email or
+            # directory profiles stamped beside the NEW account's data (cold
+            # review, mise-bapije 2026-08-24).
+            from adapters.people import clear_profile_cache
+            from cues_util import clear_user_email_cache, resolve_user_email_eager
+            clear_user_email_cache()
+            clear_profile_cache()
             self._credentials = fresh
             if not self._credentials.valid:
                 self._credentials.refresh(GoogleAuthRequest())
-            # The new grant may belong to a different account — re-resolve so
-            # the _identity cue stays honest (best-effort inside).
-            from cues_util import clear_user_email_cache, resolve_user_email_eager
-            clear_user_email_cache()
             resolve_user_email_eager(self, token_path)
 
     def _auth_headers(self) -> dict[str, str]:
@@ -702,6 +709,7 @@ def clear_http_client() -> None:
 
 # Sync client — for Phase 1 (adapter migration while tools stay sync)
 _sync_client: MiseSyncClient | None = None
+_sync_client_mint = threading.Lock()
 
 
 def get_sync_client() -> MiseSyncClient:
@@ -709,10 +717,17 @@ def get_sync_client() -> MiseSyncClient:
 
     Phase 1 only — used during adapter migration. When the full chain
     goes async, switch to get_http_client() and remove this.
+
+    Minted under a lock: tool bodies run concurrently (mise-bapije), and an
+    unlocked check-then-act here let a first-burst pair construct two clients
+    — two httpx pools (the loser's never closed), two credential loads.
+    Double-checked so the steady state stays lock-free.
     """
     global _sync_client
     if _sync_client is None:
-        _sync_client = MiseSyncClient()
+        with _sync_client_mint:
+            if _sync_client is None:
+                _sync_client = MiseSyncClient()
     return _sync_client
 
 

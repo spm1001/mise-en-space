@@ -11,6 +11,7 @@ what it needs. No context window spam.
 import json
 import os
 import re
+import threading
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
@@ -62,6 +63,42 @@ def slugify(text: str, max_length: int = 50) -> str:
         text = text[:max_length].rsplit("-", 1)[0]
 
     return text or "untitled"
+
+
+# ---------------------------------------------------------------------------
+# Per-resource deposit locks (mise-bapije). Tool bodies run concurrently; a
+# deposit folder is the one per-resource shared state, and get_deposit_folder's
+# wipe-on-refetch eats a sibling's in-flight writes without this. The registry
+# lives HERE, not in the fetch router, because do(create/overwrite, source=)
+# READS deposits and enrich_manifest REWRITES one — the cold review of
+# 2026-08-24 found both unguarded. Keys are full resource ids, so a fetch of X
+# and a do() consuming X's deposit converge on one lock. RLock: a same-thread
+# second take (e.g. the gmail message→thread rescue re-keying) is free.
+# In-process only — two servers sharing a cwd could always race the wipe.
+_DEPOSIT_LOCKS: dict[str, threading.RLock] = {}
+_DEPOSIT_LOCKS_GUARD = threading.Lock()
+
+
+def deposit_lock(resource_id: str) -> threading.RLock:
+    """One RLock per resource id, minted on first use."""
+    with _DEPOSIT_LOCKS_GUARD:
+        return _DEPOSIT_LOCKS.setdefault(resource_id, threading.RLock())
+
+
+def deposit_lock_for_source(source_path: Path) -> threading.RLock:
+    """Lock for a deposit folder consumed as do() `source=` input.
+
+    Keys on the manifest's full resource id so it converges with the lock a
+    concurrent fetch of the same resource holds; a manifest-less or unreadable
+    deposit falls back to the resolved path (same-folder readers still
+    converge; there is no fetch to collide with when no id exists).
+    """
+    key: str | None = None
+    try:
+        key = json.loads((source_path / "manifest.json").read_text(encoding="utf-8")).get("id")
+    except (OSError, json.JSONDecodeError):
+        pass
+    return deposit_lock(key or str(source_path.resolve()))
 
 
 def get_deposit_folder(

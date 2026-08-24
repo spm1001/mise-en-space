@@ -27,6 +27,7 @@ from markdown_import import convert_fenced_blocks
 from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 from workspace import enrich_manifest
+from workspace.manager import deposit_lock_for_source
 from tools.common import resolve_source as _resolve_source
 from tools.doc_chips import (CHIP_REF_RE, ChipRef, find_placeholder_indices,
                              insert_chips_in_doc, parse_chip_refs, restore_placeholders)
@@ -361,17 +362,21 @@ def _do_create_internal(
     if source and content:
         return _create_error("invalid_input", "Provide either 'content' or 'source', not both.")
 
-    # Check for multi-tab sheet deposit (source with tabs in manifest)
+    # Check for multi-tab sheet deposit (source with tabs in manifest).
+    # Source reads hold the deposit lock: a concurrent fetch of the same
+    # resource wipes-then-rewrites this folder, and an unlocked read can be
+    # torn mid-rewrite (cold review, mise-bapije 2026-08-24).
     multi_tab_data: list[tuple[str, str]] | None = None
     if source and doc_type == "sheet":
-        manifest = _read_manifest(source)
-        if manifest.get("tabs"):
-            try:
-                multi_tab_data = _read_multi_tab_source(source)
-            except MiseError as e:
-                return _create_error(e.kind.value, e.message)
-            if not title:
-                title = manifest.get("title")
+        with deposit_lock_for_source(source):
+            manifest = _read_manifest(source)
+            if manifest.get("tabs"):
+                try:
+                    multi_tab_data = _read_multi_tab_source(source)
+                except MiseError as e:
+                    return _create_error(e.kind.value, e.message)
+                if not title:
+                    title = manifest.get("title")
 
     if source and not multi_tab_data:
         if doc_type == "file":
@@ -380,7 +385,8 @@ def _do_create_internal(
                 "doc_type='file' does not support source. Pass content inline.",
             )
         try:
-            source_content, manifest_title = _read_source(source, doc_type)
+            with deposit_lock_for_source(source):
+                source_content, manifest_title = _read_source(source, doc_type)
         except MiseError as e:
             return _create_error(e.kind.value, e.message)
         content = source_content
@@ -452,15 +458,20 @@ def _do_create_internal(
             if chip_result.get("chip_errors"):
                 result.cues["chip_errors"] = chip_result["chip_errors"]
 
-        # Enrich manifest if created from source
+        # Enrich manifest if created from source. Under the deposit lock:
+        # unlocked, this read-modify-write racing a fetch of the same resource
+        # writes a stale manifest back over the fetch's fresh one (cold
+        # review, mise-bapije 2026-08-24). Locked, the orderings are both
+        # sound — enrich-then-fetch loses only the stamps to newer truth.
         if source and isinstance(result, DoResult):
             try:
-                enrich_manifest(source, {
-                    "status": "created",
-                    "file_id": result.file_id,
-                    "web_link": result.web_link,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                })
+                with deposit_lock_for_source(source):
+                    enrich_manifest(source, {
+                        "status": "created",
+                        "file_id": result.file_id,
+                        "web_link": result.web_link,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    })
             except FileNotFoundError:
                 pass  # No manifest to enrich — deposit was content-only
 
