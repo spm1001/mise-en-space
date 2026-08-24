@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>We stopped guessing how AI reads our documents — ITV Measurement</title>
+<!-- MIT artefact: measurement-week showpiece (board: mise-gogovi).
+     Source of the words: ~/notes/practices/mise/showpiece-draft.md (v2, 2026-08-19),
+     Sameer's voice — factual updates only, each one logged on the board.
+     House style injected at publish via manifest "css": "styles/house.css".
+     Charts: inline SVG on var(--s2)/var(--s6) so print re-dresses automatically. -->
+<style>
+  /* Chart-local layout only — colours come from the house sheet's vars. */
+  figure.chart { margin: 1.6rem 0; }
+  figure.chart svg { width: 100%; height: auto; display: block; }
+  figure.chart figcaption { font-size: .85rem; color: var(--ink-2); margin-top: .5rem; }
+  .bar-label { font: 600 13px/1 system-ui, sans-serif; fill: var(--ink); }
+  .bar-name  { font: 400 13px/1 system-ui, sans-serif; fill: var(--ink-2); }
+  .bar-note  { font: italic 12px/1.3 system-ui, sans-serif; fill: var(--ink-2); }
+</style>
+</head>
+<body>
+<header>
+<h1>We stopped guessing how AI reads our documents</h1>
+<p class="standfirst">Every AI workflow we run starts the same way: a document becomes text, and a model reads it. For a year we ran that step on folklore — plausible beliefs about which converter is best, which format models prefer, when they need a database engine. In one week in August we spent a few hundred dollars of API time replacing the folklore with measurements. Six findings. Every one of them contradicts something we'd have confidently written down a fortnight ago.</p>
+</header>
+<main>
+
+<div class="stats">
+  <div class="stat"><span class="num">636</span><span class="label">extraction probes over 70 real PDFs from our own Drive</span></div>
+  <div class="stat"><span class="num">918</span><span class="label">format-league runs across three models</span></div>
+  <div class="stat"><span class="num">60</span><span class="label">routing-obedience runs</span></div>
+  <div class="stat"><span class="num">6</span><span class="label">findings, each one a surprise</span></div>
+</div>
+
+<h2>1. The published leaderboard inverted on our corpus</h2>
+<p>The parser-benchmark literature says docling is the class act (READoc scores it 58.8 against markitdown's 35.2). On our 70 real PDFs it came last — 75.7% of probed values survived extraction, against 97.4% for pdftotext, a twenty-year-old command-line tool. And it failed in the treacherous direction: its layout model classifies text regions of hybrid decks as pictures and throws away text layers that were perfectly good, at 17 seconds a slice with a 5.4GB install. The humble tool won on every document variant and runs 55&times; faster than the incumbent. A benchmark rank is a hypothesis about your corpus, not a fact about it — adopt-before-build has to end with local verification.</p>
+
+<figure class="chart" id="chart-census">
+<svg viewBox="0 0 620 128" role="img" aria-label="Bar chart: share of probed values surviving extraction. pdftotext 97.4%, markitdown 93.0%, docling 75.7%.">
+  <line x1="150" y1="6" x2="150" y2="118" stroke="var(--hair)" stroke-width="1"/>
+  <text class="bar-name" x="142" y="27" text-anchor="end">pdftotext -layout</text>
+  <path d="M150,12 h385.6 a4,4 0 0 1 4,4 v14 a4,4 0 0 1 -4,4 h-385.6 z" fill="var(--s2)"><title>pdftotext -layout — 97.4% of 610 text-reachable probed values survived</title></path>
+  <text class="bar-label" x="547" y="27">97.4%</text>
+  <text class="bar-name" x="142" y="63" text-anchor="end">markitdown</text>
+  <path d="M150,48 h368.0 a4,4 0 0 1 4,4 v14 a4,4 0 0 1 -4,4 h-368.0 z" fill="var(--s2)"><title>markitdown — 93.0% survived</title></path>
+  <text class="bar-label" x="530" y="63">93.0%</text>
+  <text class="bar-name" x="142" y="99" text-anchor="end">docling</text>
+  <path d="M150,84 h298.8 a4,4 0 0 1 4,4 v14 a4,4 0 0 1 -4,4 h-298.8 z" fill="var(--s2)"><title>docling — 75.7% survived; READoc's published top pick</title></path>
+  <text class="bar-label" x="460" y="99">75.7%</text>
+  <text class="bar-note" x="510" y="99">the published pick</text>
+</svg>
+<figcaption>Share of probed values surviving extraction — 610 text-reachable probes over 70 real Drive PDFs. The published READoc benchmark scores docling 58.8 against markitdown's 35.2; our corpus inverted it.</figcaption>
+</figure>
+
+<h2>2. We benchmarked seven formats; the winners were two sentences</h2>
+<p>The format league asked which deposit format — CSV, aligned text, markdown tables, minified JSON, and friends — models read most accurately. Answer: with one condition met, <em>they all tie at ceiling</em>. The two biggest effects we measured all week weren't formats at all. Telling a tool-less model to "show your working in text" took Gemini Flash from 8 computation misses to 364/364 — every previous miss flipped correct, with visible arithmetic. And a one-line disclosure instruction (below) took it from never mentioning corrupted data to mentioning it every time. We went in to benchmark formats; the levers were sitting beside the formats, in the prompt. (One format did lose: minified JSON costs up to 40% more tokens on Gemini's tokeniser — up to 64% on Claude's — and recruits slower methods. Banned.)</p>
+
+<figure class="chart" id="chart-tokens">
+<svg viewBox="0 0 620 268" role="img" aria-label="Bar chart: input-token overhead versus aligned text, Gemini tokeniser. TSV, dual, aligned-hr, CSV and minified markdown all within 3%. Minified JSON plus 37.5%.">
+  <text class="bar-name" x="142" y="20" text-anchor="end">aligned text</text>
+  <text class="bar-note" x="154" y="20">baseline — 200,118 tokens at the 2,000-row slice</text>
+  <line x1="150" y1="34" x2="150" y2="258" stroke="var(--hair)" stroke-width="1"/>
+  <text class="bar-name" x="142" y="55" text-anchor="end">TSV</text>
+  <path d="M150,40 h1.0 a4,4 0 0 1 4,4 v14 a4,4 0 0 1 -4,4 h-1.0 z" fill="var(--s2)"><title>TSV — +0.5% vs aligned (mean across slices)</title></path>
+  <text class="bar-label" x="163" y="55">+0.5%</text>
+  <text class="bar-name" x="142" y="91" text-anchor="end">dual</text>
+  <path d="M150,76 h2.0 a4,4 0 0 1 4,4 v14 a4,4 0 0 1 -4,4 h-2.0 z" fill="var(--s2)"><title>dual — +0.6% vs aligned</title></path>
+  <text class="bar-label" x="164" y="91">+0.6%</text>
+  <text class="bar-name" x="142" y="127" text-anchor="end">aligned-hr</text>
+  <path d="M150,112 h4.0 a4,4 0 0 1 4,4 v14 a4,4 0 0 1 -4,4 h-4.0 z" fill="var(--s2)"><title>aligned-hr — +0.8% vs aligned</title></path>
+  <text class="bar-label" x="166" y="127">+0.8%</text>
+  <text class="bar-name" x="142" y="163" text-anchor="end">CSV</text>
+  <path d="M150,148 h6.0 a4,4 0 0 1 4,4 v14 a4,4 0 0 1 -4,4 h-6.0 z" fill="var(--s2)"><title>CSV — +1.0% vs aligned</title></path>
+  <text class="bar-label" x="168" y="163">+1.0%</text>
+  <text class="bar-name" x="142" y="199" text-anchor="end">minified markdown</text>
+  <path d="M150,184 h25.0 a4,4 0 0 1 4,4 v14 a4,4 0 0 1 -4,4 h-25.0 z" fill="var(--s2)"><title>minified markdown — +2.9% vs aligned</title></path>
+  <text class="bar-label" x="187" y="199">+2.9%</text>
+  <text class="bar-name" x="142" y="235" text-anchor="end">minified JSON</text>
+  <path d="M150,220 h371.0 a4,4 0 0 1 4,4 v14 a4,4 0 0 1 -4,4 h-371.0 z" fill="var(--s6)"><title>minified JSON — +37.5% vs aligned on Gemini's tokeniser; +64% on Claude's. Banned as a deposit format.</title></path>
+  <text class="bar-label" x="512" y="235" text-anchor="end" fill="var(--ground)">+37.5% — banned</text>
+</svg>
+<figcaption>Input-token overhead vs aligned text — Gemini tokeniser, mean across slices; the 2,000-row slice anchors the absolute. The same minified JSON on Claude's tokeniser costs +64%. A token cost has to name its tokeniser — the tax doesn't travel, it compounds.</figcaption>
+</figure>
+
+<h2>3. The model that fixes your data without telling you</h2>
+<p>We planted sabotage: a spreadsheet whose header row lies about its columns. Gemini Flash silently <em>repaired</em> it — worked out the real mapping from the data, answered correctly, and never once mentioned the headers were wrong. Zero disclosures in 84 runs. From the outside, its silent-right is indistinguishable from its silent-wrong, which is the worst possible property in an unattended pipeline. One sentence in the system prompt — flag internal inconsistencies prominently — took disclosure to 42/42, and the control (a clean twin of the file) raised no false alarms. That sentence shipped into Garni's production prompt the same day.</p>
+
+<figure class="chart" id="chart-sentences">
+<p style="font-size:.85rem; color:var(--ink-2); margin:0 0 .3rem;"><span class="swatch" style="background:var(--ink-2)"></span> without the disclosure sentence&emsp;<span class="swatch" style="background:var(--s2)"></span> with it</p>
+<svg viewBox="0 0 620 128" role="img" aria-label="Bar chart: runs disclosing the sabotage. Gemini Flash without the sentence 0 of 84. Flash with the sentence 42 of 42. Claudes without the sentence 7 of 8.">
+  <line x1="150" y1="6" x2="150" y2="118" stroke="var(--hair)" stroke-width="1"/>
+  <text class="bar-name" x="142" y="27" text-anchor="end">Flash, no sentence</text>
+  <rect x="150" y="12" width="2" height="22" fill="var(--ink-2)"><title>Gemini Flash, bare prompt — 0 disclosures in 84 runs (39 silent-right, 3 silent-wrong; then 42 silent-right)</title></rect>
+  <text class="bar-label" x="160" y="27">0 of 84</text>
+  <text class="bar-name" x="142" y="63" text-anchor="end">Flash + the sentence</text>
+  <path d="M150,48 h396.0 a4,4 0 0 1 4,4 v14 a4,4 0 0 1 -4,4 h-396.0 z" fill="var(--s2)"><title>Gemini Flash with the one-line disclosure instruction — 42 of 42 disclosed, and 42 of 42 correct</title></path>
+  <text class="bar-label" x="490" y="63" fill="var(--ground)">42 of 42</text>
+  <text class="bar-name" x="142" y="99" text-anchor="end">Claudes, no sentence</text>
+  <path d="M150,84 h346.0 a4,4 0 0 1 4,4 v14 a4,4 0 0 1 -4,4 h-346.0 z" fill="var(--ink-2)"><title>Claudes, bare prompt — 7 of 8 disclosed unprompted (Opus 4/4, Fable 3/4)</title></path>
+  <text class="bar-label" x="504" y="99">7 of 8</text>
+</svg>
+<figcaption>Runs that disclosed the planted sabotage. The clean-twin control raised no false alarms.</figcaption>
+</figure>
+
+<h2>4. Nobody used the fancy engines</h2>
+<p>We'd half-written advice telling AI analysts to use DuckDB or Polars for big files. So we installed both and watched what tooled Claudes actually chose, on tasks up to 50,000 rows: awk, grep, jq and stdlib python — every single time. Engines: zero uses. Results: 18/18 correct at 31–85 cents a run. The advice we nearly shipped named tools its readers demonstrably don't reach for. (DuckDB keeps a when-clause for sustained multi-query analysis and joins. The when-clause is doing a lot of work.)</p>
+
+<h2>5. Hints work at eye level, and nowhere else</h2>
+<p>Same routing hint, word for word, in two places: inside <code>manifest.json</code>, and as a README beside the data. The manifest version was <em>read</em> in 15 of 20 runs — and obeyed in zero. The README version changed behaviour in 4 of 10. Position alone was worth +40 points of obedience. Metadata is where eyes go for orientation; text at eye level is what changes hands. This one now shapes everything we ship: routing guidance goes in the response a model actually reads, never in a metadata field we merely hope it honours.</p>
+
+<h2>6. Models are now rigs we qualify, not vibes we trust</h2>
+<p>All of the above is per-model, per-harness — Flash needs the working-shown sentence, Claudes disclose sabotage unprompted 7 times in 8. So the week's findings are filed as <em>datasheets per rig</em> (model + harness + prompt), with a re-runnable battery that takes a new model string. When Gemini 4 or the next Claude lands, we don't re-litigate opinions: we spend an afternoon and ~$50, re-run the battery, and read what actually moved — and every policy that depended on the old numbers names exactly which facts it depends on.</p>
+
+<h2>What changed in the tools, because of this</h2>
+<ul>
+<li><strong>mise, since suite 1.67.0 (19 August):</strong> pdftotext is now the PDF extraction primary — best fidelity on every variant we measured. And because ~3% of values in real PDFs exist <em>only inside chart images</em> (concentrated in chart-heavy conference and research decks), PDF deposits now extract embedded charts as image crops, each announced by a grep-able anchor in the text at the exact page — so a text-first reader knows where the pixels are, and a vision-capable one goes and looks. Garni's retrieval loop consumes exactly this.</li>
+<li><strong>Garni's production prompt</strong> carries the measured disclosure sentence; the show-working sentence is filed to follow it.</li>
+<li><strong>The deposit-format policy</strong> is written down with the deciding number beside every verdict, and a dependency line naming the per-rig facts that would invalidate it.</li>
+</ul>
+
+<p>The meta-finding costs one line: measurement beat opinion every time we tried it, and the biggest effects were never where we were looking.</p>
+
+<h2>The crib: what to do differently on Monday</h2>
+<p>Every Don't below is something we did, or came within a commit of shipping, in the last fortnight.</p>
+
+<table>
+<thead><tr><th></th><th>Do</th><th>Don't</th></tr></thead>
+<tbody>
+<tr><td><strong>Picking tools</strong></td><td>Run the candidate over twenty of <em>your own</em> documents and count what survives, before adopting.</td><td>Pick a parser off a leaderboard. The published table ranked docling top; our corpus ranked it last.</td></tr>
+<tr><td><strong>Tool-less readers</strong></td><td>Paste this, verbatim: <em>"You have no tools in this environment — answer directly from the content shown above, showing any working in text."</em></td><td>Fiddle with the data format hoping accuracy improves. Every format tied; this sentence was worth 8 misses &rarr; 364/364.</td></tr>
+<tr><td><strong>Unattended readers</strong></td><td>Give them: <em>"If the data appears internally inconsistent, mislabelled, or corrupted, state that prominently in your answer."</em></td><td>Read a correct answer as evidence the data was clean. Flash repaired sabotaged headers silently, 84 times out of 84.</td></tr>
+<tr><td><strong>Querying data</strong></td><td>grep / awk / jq / stdlib python for one-shot questions, up to at least 50,000 rows.</td><td>Tell an AI analyst to "use DuckDB or Polars" for occasional queries. We nearly shipped that advice; measured readers chose the engines zero times.</td></tr>
+<tr><td><strong>Placing instructions</strong></td><td>Put the instruction where eyes land: the response itself, a README beside the data, line 1 of the file.</td><td>Put behaviour-changing hints in metadata. Our manifest hint was read in 15 runs out of 20 — and obeyed in none.</td></tr>
+<tr><td><strong>New model drops</strong></td><td>Re-run the battery (an afternoon, ~$50), read the datasheet, <em>then</em> port your prompts.</td><td>Assume prompt behaviour transfers. Claudes disclose sabotage unprompted 7 times in 8; Flash, never — same task, same data.</td></tr>
+</tbody>
+</table>
+
+</main>
+<footer>
+<p>ITV Measurement Innovation Team — measurement week of 17 August 2026, page updated 24 August 2026. Numbers are from the week's probe records; the battery re-runs on demand. ITV estimates, provided without guarantees and subject to updates.</p>
+</footer>
+</body>
+</html>
