@@ -15,6 +15,9 @@
   .bar-label { font: 600 13px/1 system-ui, sans-serif; fill: var(--ink); }
   .bar-name  { font: 400 13px/1 system-ui, sans-serif; fill: var(--ink-2); }
   .bar-note  { font: italic 12px/1.3 system-ui, sans-serif; fill: var(--ink-2); }
+  figure.triptych img { width: 100%; height: auto; display: block; border: 1px solid var(--hair); border-radius: 4px; }
+  figure.triptych .panel { margin: 0 0 .8rem; break-inside: avoid; }
+  figure.triptych .panel-label { font-size: .85rem; color: var(--ink-2); margin: .25rem 0 .8rem; }
 </style>
 </head>
 <body>
@@ -49,6 +52,13 @@
   <text class="bar-note" x="510" y="99">the published pick</text>
 </svg>
 <figcaption>Share of probed values surviving extraction — 610 text-reachable probes over 70 real Drive PDFs. The published READoc benchmark scores docling 58.8 against markitdown's 35.2; our corpus inverted it.</figcaption>
+</figure>
+
+<figure class="chart triptych" id="triptych-donut">
+<div class="panel"><img src="t7_a.png" alt="Original slide: Banijay Group Strategic Update, page 9 — a donut chart of revenue split with percentages around it" loading="lazy"><p class="panel-label">(a) the original page — Banijay Group Strategic Update, March 2026, p9</p></div>
+<div class="panel"><img src="t7_b.png" alt="The same page with all images and vector graphics filtered out, greyscale — sparse floating text fragments" loading="lazy"><p class="panel-label">(b) the glyph lane — what pdftotext sees</p></div>
+<div class="panel"><img src="t7_c.png" alt="The same page with the production filter's verdict banner: no crop possible, graphics are vector-drawn, fallback to the whole-page thumbnail" loading="lazy"><p class="panel-label">(c) the production filter's verdict — no crop possible (vector-drawn), so the fallback: whole-page thumbnail</p></div>
+<figcaption>The same failure, seen rather than scored: the text layer of this page gives a reader the headline plus a spatial scatter — 67% … &euro;4.9bn … 33% … 14% … 44% … 21% — with nothing binding any percentage to its business line. The numbers only mean something in the pixels, which is why PDF deposits now ship the pixels alongside the text: a chart crop where one can be cut, the whole page where the graphics are vector-drawn — this page's own verdict, visible in panel (c).</figcaption>
 </figure>
 
 <h2>2. We benchmarked seven formats; the winners were two sentences</h2>
