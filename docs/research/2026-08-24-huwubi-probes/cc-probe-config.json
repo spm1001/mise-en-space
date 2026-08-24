@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "cc-probe": {
+      "command": "uv",
+      "args": ["run", "--script", "/home/modha/repos/spm1001/mise-en-space/docs/research/2026-08-24-huwubi-probes/cc_probe_server.py"]
+    }
+  }
+}
