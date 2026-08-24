@@ -37,7 +37,6 @@ See the [documentation](https://example.com/docs) for more details[^1].
   - Sub-item
 
 
----
 [^1]: Additional context about the documentation.
 
 

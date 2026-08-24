@@ -889,4 +889,7 @@ def _render_footnote_definitions(
     if not definitions:
         return ""
 
-    return "\n\n---\n" + "\n".join(definitions) + "\n"
+    # No "---" separator: plain markdown footnote definitions round-trip
+    # cleanly, while a separator re-imports as a REAL horizontal rule and
+    # md→Doc→md→Doc accretes one per cycle (essayeur, 2026-08-24, mise-rubucu).
+    return "\n\n" + "\n".join(definitions) + "\n"

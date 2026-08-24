@@ -175,3 +175,194 @@ class TestInsertFootnotes:
         assert any("footnote pass failed" in e for e in errors)
         restore = client.post_json.call_args_list[-1].kwargs["json_body"]["requests"][0]
         assert "[^1]: Definition." in restore["insertText"]["text"]
+
+
+class TestEssayeurCatches:
+    """Regression pins for the 2026-08-24 essayeur findings (mise-rubucu)."""
+
+    def test_fenced_code_is_not_footnote_syntax(self):
+        content = (
+            "Real[^1] anchor.\n\n"
+            "```md\nuse [^1] to mark a footnote\n[^2]: this is not a definition\n```\n\n"
+            "[^1]: Real definition.\n"
+        )
+        body, defs, warnings = parse_footnotes(content)
+
+        assert defs == {"1": "Real definition."}
+        assert "use [^1] to mark a footnote" in body  # fence content untouched
+        assert "[^2]: this is not a definition" in body
+        assert not any("[^2]" in w for w in warnings)  # code never warns
+
+    def test_inline_code_is_not_an_anchor(self):
+        content = "The syntax `[^1]` marks a footnote[^1].\n\n[^1]: Def.\n"
+        body, defs, warnings = parse_footnotes(content)
+
+        # Only the real anchor counts — one anchor + one def extracts cleanly.
+        assert defs == {"1": "Def."}
+        assert "`[^1]`" in body
+
+    def test_duplicate_definition_left_literal_with_warning(self):
+        content = "Use[^1] it.\n\n[^1]: First definition\n[^1]: Second definition\n"
+        body, defs, warnings = parse_footnotes(content)
+
+        assert defs == {}
+        assert "[^1]: First definition" in body
+        assert "[^1]: Second definition" in body
+        assert any("defined 2 times" in w for w in warnings)
+
+    def test_orphan_anchors_with_no_defs_at_all_still_warn(self):
+        from tools.doc_footnotes import footnotes_for_import
+
+        content, (defs, warnings) = footnotes_for_import("doc", "Bare anchor[^3] here.\n")
+
+        assert defs == {}
+        assert any("[^3]" in w and "no definitions" in w for w in warnings)
+
+    def test_gfm_no_space_definition_parses(self):
+        content = "Use[^1].\n\n[^1]:Tight definition\n"
+        body, defs, warnings = parse_footnotes(content)
+
+        assert defs == {"1": "Tight definition"}
+
+    def test_crlf_definition_has_no_trailing_cr(self):
+        content = "Use[^1].\r\n\r\n[^1]: Definition text\r\n"
+        body, defs, warnings = parse_footnotes(content)
+
+        assert defs == {"1": "Definition text"}
+
+    @patch("tools.doc_footnotes.get_sync_client")
+    @patch("tools.doc_chips.get_sync_client")
+    def test_ambiguous_anchor_refused_not_guessed(
+        self, mock_chips_client: MagicMock, mock_client: MagicMock
+    ):
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_chips_client.return_value = client
+        client.get_json.return_value = {
+            "revisionId": "rev-1",
+            "body": {
+                "content": [
+                    {
+                        "paragraph": {
+                            "elements": [
+                                {"startIndex": 1, "endIndex": 30, "textRun": {"content": "One[^1] and again [^1] twice.\n"}}
+                            ]
+                        }
+                    }
+                ]
+            },
+        }
+        client.post_json.return_value = {}
+
+        result = insert_footnotes_in_doc("doc1", {"1": "Def."})
+
+        assert "footnotes_inserted" not in result
+        assert any("ambiguous" in e for e in result["footnote_errors"])
+        # Only call: the definition restore — never a createFootnote guess.
+        for call in client.post_json.call_args_list:
+            reqs = call.kwargs["json_body"]["requests"]
+            assert all("createFootnote" not in r for r in reqs)
+
+    @patch("tools.doc_footnotes.get_sync_client")
+    @patch("tools.doc_chips.get_sync_client")
+    def test_write_control_pins_revision(
+        self, mock_chips_client: MagicMock, mock_client: MagicMock
+    ):
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_chips_client.return_value = client
+        client.get_json.return_value = {
+            "revisionId": "rev-42",
+            "body": {
+                "content": [
+                    {
+                        "paragraph": {
+                            "elements": [
+                                {"startIndex": 1, "endIndex": 17, "textRun": {"content": "Alpha[^1] beta.\n"}}
+                            ]
+                        }
+                    }
+                ]
+            },
+        }
+        client.post_json.side_effect = [
+            {"replies": [{"createFootnote": {"footnoteId": "kix.f1"}}, {}]},
+            {},
+        ]
+
+        result = insert_footnotes_in_doc("doc1", {"1": "Def."})
+
+        assert result == {"footnotes_inserted": 1}
+        batch1 = client.post_json.call_args_list[0].kwargs["json_body"]
+        assert batch1["writeControl"] == {"requiredRevisionId": "rev-42"}
+
+    @patch("tools.doc_footnotes.get_sync_client")
+    @patch("tools.doc_chips.get_sync_client")
+    def test_fill_failure_reports_empty_footnotes_truthfully(
+        self, mock_chips_client: MagicMock, mock_client: MagicMock
+    ):
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_chips_client.return_value = client
+        client.get_json.return_value = {
+            "body": {
+                "content": [
+                    {
+                        "paragraph": {
+                            "elements": [
+                                {"startIndex": 1, "endIndex": 17, "textRun": {"content": "Alpha[^1] beta.\n"}}
+                            ]
+                        }
+                    }
+                ]
+            },
+        }
+        client.post_json.side_effect = [
+            {"replies": [{"createFootnote": {"footnoteId": "kix.f1"}}, {}]},
+            Exception("fill boom"),
+            {},  # restore
+        ]
+
+        result = insert_footnotes_in_doc("doc1", {"1": "Def."})
+
+        assert "footnotes_inserted" not in result
+        errors = result["footnote_errors"]
+        assert any("exist EMPTY" in e for e in errors)
+        assert not any("anchors remain literal" in e for e in errors)  # the old false message
+
+
+class TestUtf16Locator:
+    """find_placeholder_meta counts in UTF-16 units (essayeur B1)."""
+
+    @patch("tools.doc_chips.get_sync_client")
+    def test_astral_chars_before_anchor(self, mock_client: MagicMock):
+        from tools.doc_chips import find_placeholder_meta
+
+        client = MagicMock()
+        mock_client.return_value = client
+        # "Hi 🚀🎉 x[^1] end.\n" — python len counts 🚀/🎉 as 1 each; Docs
+        # counts 2 each. Paragraph starts at index 1.
+        text = "Hi \U0001F680\U0001F389 x[^1] end.\n"
+        client.get_json.return_value = {
+            "revisionId": "r",
+            "body": {
+                "content": [
+                    {
+                        "paragraph": {
+                            "elements": [
+                                {"startIndex": 1, "textRun": {"content": text}}
+                            ]
+                        }
+                    }
+                ]
+            },
+        }
+
+        found, counts, rev = find_placeholder_meta("doc1", ["[^1]"])
+
+        # Before the anchor: "Hi 🚀🎉 x" = 7 code points but 9 UTF-16 units
+        # (each emoji is a surrogate pair) — naive len() arithmetic would
+        # report 8 and corrupt the doc (essayeur B1).
+        assert found["[^1]"] == (1 + 9, 1 + 9 + 4)
+        assert counts["[^1]"] == 1
+        assert rev == "r"

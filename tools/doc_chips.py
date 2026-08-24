@@ -88,12 +88,40 @@ def parse_chip_refs(content: str) -> tuple[str, list[ChipRef]]:
     return "\n".join(out_lines), refs
 
 
+def _utf16_len(s: str) -> int:
+    """Length in UTF-16 code units — the unit Docs API indices count in.
+
+    Python string offsets count code points, so any astral character
+    (emoji, some CJK) before a match desynchronises naive arithmetic: an
+    essayeur probe (2026-08-24, mise-rubucu) showed two emoji before a
+    footnote anchor eating adjacent letters while the cues stayed green.
+    """
+    return sum(2 if ord(ch) > 0xFFFF else 1 for ch in s)
+
+
 def find_placeholder_indices(
     doc_id: str, placeholders: list[str],
 ) -> dict[str, tuple[int, int]]:
     """Find start/end indices of placeholder text in a Google Doc.
 
-    Returns {placeholder: (startIndex, endIndex)} for each found placeholder.
+    Returns {placeholder: (startIndex, endIndex)} — first occurrence in
+    document order — in UTF-16 code units (the Docs API's index unit).
+    """
+    indices, _, _ = find_placeholder_meta(doc_id, placeholders)
+    return indices
+
+
+def find_placeholder_meta(
+    doc_id: str, placeholders: list[str],
+) -> tuple[dict[str, tuple[int, int]], dict[str, int], str | None]:
+    """Find placeholder ranges plus the metadata honest callers need.
+
+    Returns (indices, occurrence_counts, revision_id): indices are the
+    FIRST occurrence in document order, in UTF-16 code units (see
+    _utf16_len); counts let a caller refuse ambiguous matches instead of
+    guessing which occurrence the author meant; revision_id feeds
+    writeControl so a concurrent edit between this read and the write
+    fails loudly instead of shifting every range.
 
     Concatenates all text runs in each paragraph before searching, so
     placeholders that span text run boundaries are still found.
@@ -101,10 +129,11 @@ def find_placeholder_indices(
     client = get_sync_client()
     doc = client.get_json(
         f"{_DOCS_API}/{doc_id}",
-        params={"fields": "body(content(paragraph(elements(textRun(content),startIndex,endIndex))))"},
+        params={"fields": "revisionId,body(content(paragraph(elements(textRun(content),startIndex,endIndex))))"},
     )
 
     result: dict[str, tuple[int, int]] = {}
+    counts: dict[str, int] = {}
     placeholder_set = set(placeholders)
 
     for item in doc.get("body", {}).get("content", []):
@@ -120,13 +149,16 @@ def find_placeholder_indices(
 
         # Search for each placeholder in the concatenated paragraph text
         for ph in placeholder_set:
-            offset = para_text.find(ph)
-            if offset >= 0:
-                start = para_start + offset
-                end = start + len(ph)
-                result[ph] = (start, end)
+            n_here = para_text.count(ph)
+            if not n_here:
+                continue
+            counts[ph] = counts.get(ph, 0) + n_here
+            if ph not in result:  # first occurrence in document order wins
+                offset = para_text.find(ph)
+                start = para_start + _utf16_len(para_text[:offset])
+                result[ph] = (start, start + _utf16_len(ph))
 
-    return result
+    return result, counts, doc.get("revisionId")
 
 
 def insert_chips_in_doc(doc_id: str, refs: list[ChipRef]) -> dict[str, Any]:
