@@ -24,12 +24,10 @@ Architecture:
 
 import argparse
 import asyncio
-import functools
 import logging
 import os
 import signal
 import sys
-import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -57,28 +55,16 @@ logger = logging.getLogger(__name__)
 # argparse runs in __main__. The argparse block in __main__ validates properly.
 _REMOTE_MODE = "--remote" in sys.argv or os.environ.get("MISE_REMOTE") == "1"
 
-# mcp 2.x runs sync (def) tool handlers on anyio worker threads, so two tool
-# bodies can interleave; 1.x ran them inline on the event loop, one at a time.
-# This lock keeps one-at-a-time until the thread-safety audit (mise-vucufu
-# step 2) deletes it. Bodies still gain a loop-free thread, which un-breaks
-# asyncio.run() in adapters/gmail_browser.py and adapters/cdp.py — dead through
-# the envelope on all of v1 (mise-wamoco). NB an anyio limiter cap is NOT a
-# substitute: the stdio transport's blocked stdin read shares that pool and a
-# capacity of 1 starves tool bodies into deadlock (measured 2026-08-23).
-_TOOL_SERIALIZER = threading.Lock()
-
-
-def _serialized(fn: Any) -> Any:
-    """One tool body at a time. functools.wraps preserves the signature the
-    SDK reads to generate the tool schema (inspect.signature follows
-    __wrapped__), so parameters survive the decorator."""
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        with _TOOL_SERIALIZER:
-            return fn(*args, **kwargs)
-    return wrapper
-
-
+# mcp 2.x runs sync (def) tool handlers on anyio worker threads, so tool
+# bodies run CONCURRENTLY — deliberately, since the thread-safety audit
+# (mise-bapije, 2026-08-24). The interim `_serialized` threading.Lock from the
+# 1.71.0 migration is deleted; the guards that replaced it live where the
+# shared state lives: a per-resource lock on the fetch dispatch
+# (tools/fetch/router.py), O_EXCL search-deposit naming (workspace/manager.py),
+# and a single-flight token-refresh lock (adapters/http_client.py). NB an
+# anyio limiter cap is NOT a substitute for any of this: the stdio transport's
+# blocked stdin read shares that pool and a capacity of 1 starves tool bodies
+# into deadlock (measured 2026-08-23).
 @asynccontextmanager
 async def lifespan(app: MCPServer) -> AsyncIterator[None]:
     """Run startup tasks — best-effort orphan cleanup."""
@@ -108,7 +94,6 @@ async def health_check(request: Request) -> JSONResponse:
 # ============================================================================
 
 @mcp.tool()
-@_serialized
 def search(
     query: str = "",
     sources: list[str] | None = None,
@@ -226,7 +211,6 @@ def _log_search_result(call_params: dict[str, Any], result: dict[str, Any]) -> N
 
 
 @mcp.tool()
-@_serialized
 def fetch(file_id: str, base_path: str = "", attachment: str | None = None, tabs: list[str] | None = None, recursive: bool = False, suggestions: str = "accepted", raw: bool = False, thumbnails: bool = True) -> dict[str, Any]:
     """
     Fetch content to .mise/ — auto-detects type (Drive file, Gmail thread, folder).
@@ -297,7 +281,6 @@ def _log_fetch_result(call_params: dict[str, Any], result: dict[str, Any]) -> No
 
 
 @mcp.tool(description=DO_DESCRIPTION_REMOTE if _REMOTE_MODE else DO_DESCRIPTION_FULL)
-@_serialized
 def do(
     operation: str,
     content: str | None = None,

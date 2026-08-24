@@ -32,6 +32,7 @@ QueryParamsType = dict[str, Any] | list[tuple[str, str]] | None
 
 import json
 import logging
+import threading
 from pathlib import Path
 
 import httpx
@@ -399,17 +400,35 @@ class MiseSyncClient:
         )
         token_path = resolve_token_path(TOKEN_FILE)
         self._credentials = _load_and_diagnose_credentials(token_path)
+        # Single-flight refresh: tool bodies run on concurrent worker threads
+        # since the serializer lift (mise-bapije, 2026-08-24). Google tolerates
+        # a double refresh, so a stampede was benign-by-argument; the lock makes
+        # it safe-by-construction — one thread refreshes, siblings re-check
+        # validity under the lock and skip. It also covers the dead-grant
+        # reload path, which SWAPS self._credentials and re-resolves the
+        # identity cue: unlocked, two threads could interleave that swap.
+        # (The async client needs none of this: one event loop, and its
+        # refresh call blocks the loop, so no interleaving inside refresh.)
+        self._refresh_lock = threading.Lock()
         # Resolve authenticated identity once, eagerly. Keeps response
         # serialisation pure — to_dict() never triggers HTTP.
         from cues_util import resolve_user_email_eager
         resolve_user_email_eager(self, token_path)
 
     def _ensure_valid_token(self) -> None:
-        """Refresh the access token if expired."""
+        """Refresh the access token if expired (single-flight under the lock)."""
         if not self._credentials.valid:
-            self._refresh_or_reload()
+            with self._refresh_lock:
+                if not self._credentials.valid:  # a sibling may have refreshed
+                    self._refresh_or_reload_locked()
 
     def _refresh_or_reload(self) -> None:
+        """Serialized entry for callers that must force a refresh (the 401
+        retry), where a validity re-check would wrongly skip."""
+        with self._refresh_lock:
+            self._refresh_or_reload_locked()
+
+    def _refresh_or_reload_locked(self) -> None:
         """Refresh the access token; on a dead grant, re-read the token file.
 
         Credentials load once at client creation, so a long-running server

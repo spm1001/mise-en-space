@@ -9,6 +9,7 @@ what it needs. No context window spam.
 """
 
 import json
+import os
 import re
 import unicodedata
 from datetime import datetime, timezone
@@ -374,13 +375,24 @@ def write_search_results(
     src = "-".join(slugify(s, max_length=12) for s in sorted(sources)) if sources else ""
     stem = f"search--{slug}--{src}--{timestamp}" if src else f"search--{slug}--{timestamp}"
 
+    # Claim the name by O_EXCL creation, not by an exists() check: with tool
+    # bodies running concurrently (mise-bapije), two threads can pass the same
+    # exists() probe in the same second and the second write_text would
+    # silently destroy the first — the TOCTOU face of the same collision the
+    # suffix loop was built for (mise-gemowa). O_EXCL makes the filesystem the
+    # arbiter: exactly one thread wins each name, the loser moves to -2.
     file_path = mise_fetch / f"{stem}.json"
     n = 2
-    while file_path.exists():
-        file_path = mise_fetch / f"{stem}-{n}.json"
-        n += 1
+    while True:
+        try:
+            fd = os.open(file_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            break
+        except FileExistsError:
+            file_path = mise_fetch / f"{stem}-{n}.json"
+            n += 1
 
-    file_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2)
     return file_path
 
 

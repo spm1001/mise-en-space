@@ -130,6 +130,10 @@ ADJUDICATED: tuple[tuple[str, str, str], ...] = (
      "advice: never eyeball availability — freebusy IS the capability being taught"),
     ("skills/mise/SKILL.md", "**freebusy's two honesty cues are load-bearing.**",
      "advice: absence-of-location must not read as absence-from-office — honesty steering, true"),
+    ("skills/mise/SKILL.md", "**Reading a colleague's diary in detail: `search(calendar_id=",
+     "true ACL boundary: a free/busy-only colleague's diary refuses the detail lane "
+     "by the OWNER's sharing setting — do(freebusy) still answers (mise-wavotu; "
+     "enrolled 2026-08-24, the ship predated this lint run)"),
 )
 
 

@@ -6,6 +6,24 @@
 > intentionally absent — the shipped version number can therefore be ahead of
 > the newest entry here.
 
+## [Unreleased] — banked 2026-08-24, publish pending (mise-bapije)
+
+### Changed
+- **Tool bodies run concurrently** — the interim `_serialized` lock from the
+  mcp 2.x migration is deleted after the thread-safety audit. Measured on a
+  real stdio session, parallel 3-fetch (doc + sheet + slides, live Drive):
+  **5.14s → 2.36s median (2.2×)** — wall clock now tracks the slowest fetch,
+  not the sum. Deposits verified intact on every run.
+
+### Added
+- Per-resource deposit lock on the fetch dispatch: concurrent fetches of the
+  SAME id queue (the deposit wipe can no longer eat a sibling's in-flight
+  writes); different ids stay fully parallel.
+- O_EXCL search-deposit naming: the same-second name collision is now settled
+  by the filesystem, closing the TOCTOU the old `exists()` loop left open.
+- Single-flight token refresh in the sync client: one thread refreshes,
+  siblings re-check and skip — covers the dead-grant reload's credential swap.
+
 ## [1.8.1] - 2026-07-12
 
 ### Fixed
