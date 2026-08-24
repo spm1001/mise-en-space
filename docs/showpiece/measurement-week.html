@@ -5,11 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>We stopped guessing how AI reads our documents — ITV Measurement</title>
-<!-- MIT artefact: measurement-week showpiece (board: mise-gogovi).
-     Source of the words: ~/notes/practices/mise/showpiece-draft.md (v2, 2026-08-19),
-     Sameer's voice — factual updates only, each one logged on the board.
-     House style injected at publish via manifest "css": "styles/house.css".
-     Charts: inline SVG on var(--s2)/var(--s6) so print re-dresses automatically. -->
+<!-- ITV Measurement Innovation Team artefact. House style injected at publish;
+     charts are inline SVG on the house vars so print re-dresses automatically. -->
 <style>
   /* Chart-local layout only — colours come from the house sheet's vars. */
   figure.chart { margin: 1.6rem 0; }
@@ -115,7 +112,7 @@
 
 <h2>What changed in the tools, because of this</h2>
 <ul>
-<li><strong>mise, since suite 1.67.0 (19 August):</strong> pdftotext is now the PDF extraction primary — best fidelity on every variant we measured. And because ~3% of values in real PDFs exist <em>only inside chart images</em> (concentrated in chart-heavy conference and research decks), PDF deposits now extract embedded charts as image crops, each announced by a grep-able anchor in the text at the exact page — so a text-first reader knows where the pixels are, and a vision-capable one goes and looks. Garni's retrieval loop consumes exactly this.</li>
+<li><strong>mise, since suite 1.67.0 (18 August):</strong> pdftotext is now the PDF extraction primary — best fidelity on every variant we measured. And because ~3% of values in real PDFs exist <em>only inside chart images</em> (concentrated in chart-heavy conference and research decks), PDF deposits now extract embedded charts as image crops, each announced by a grep-able anchor in the text at the exact page — so a text-first reader knows where the pixels are, and a vision-capable one goes and looks. Garni's retrieval loop is being built to consume exactly this.</li>
 <li><strong>Garni's production prompt</strong> carries the measured disclosure sentence; the show-working sentence is filed to follow it.</li>
 <li><strong>The deposit-format policy</strong> is written down with the deciding number beside every verdict, and a dependency line naming the per-rig facts that would invalidate it.</li>
 </ul>
