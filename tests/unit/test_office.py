@@ -516,3 +516,61 @@ class TestDocxFigures:
 
         assert result.figures == []
         assert any("source not downloaded" in w for w in result.warnings)
+
+    @patch("adapters.office.convert_via_drive")
+    def test_salvage_refuses_when_vml_breaks_alignment(self, mock_convert: MagicMock) -> None:
+        # Essayeur probe 2026-08-24: legacy VML (w:pict) shifts Drive's imageN
+        # numbering against the blip order — salvage must refuse, not guess.
+        import io
+        import zipfile
+
+        from adapters.conversion import ConversionResult
+
+        mock_convert.return_value = ConversionResult(
+            content="![][image1]\n", temp_file_deleted=True, warnings=[]
+        )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr(
+                "word/document.xml",
+                '<w:document><w:body><w:pict><v:imagedata r:id="rId7"/></w:pict>'
+                '<w:drawing><a:blip r:embed="rId8"/></w:drawing></w:body></w:document>',
+            )
+            zf.writestr(
+                "word/_rels/document.xml.rels",
+                '<Relationships><Relationship Id="rId8" Target="media/image1.png"/></Relationships>',
+            )
+            zf.writestr("word/media/image1.png", b"real-photo-bytes")
+
+        result = convert_office_content("docx", file_bytes=buf.getvalue(), file_id="f1")
+
+        assert result.figures == []  # crucially: NOT real-photo-bytes under image1's name
+        assert any("refusing to guess" in w and "legacy VML" in w for w in result.warnings)
+
+    @patch("adapters.office.convert_via_drive")
+    def test_salvage_refuses_when_native_chart_present(self, mock_convert: MagicMock) -> None:
+        import io
+        import zipfile
+
+        from adapters.conversion import ConversionResult
+
+        mock_convert.return_value = ConversionResult(
+            content="![][image1]\n", temp_file_deleted=True, warnings=[]
+        )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr(
+                "word/document.xml",
+                '<w:document><w:body><w:drawing><a:blip r:embed="rId8"/></w:drawing></w:body></w:document>',
+            )
+            zf.writestr(
+                "word/_rels/document.xml.rels",
+                '<Relationships><Relationship Id="rId8" Target="media/image1.png"/></Relationships>',
+            )
+            zf.writestr("word/media/image1.png", b"photo")
+            zf.writestr("word/charts/chart1.xml", "<c:chartSpace/>")
+
+        result = convert_office_content("docx", file_bytes=buf.getvalue(), file_id="f1")
+
+        assert result.figures == []
+        assert any("refusing to guess" in w and "native charts" in w for w in result.warnings)

@@ -152,11 +152,39 @@ def convert_office_content(
 
 _VIEWABLE_IMAGE_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
 
-# a:blip r:embed inside document.xml, in document order — the k-th blip is
-# the k-th rendered image, which is how Drive's export numbers imageN refs
-# (verified against two real docs, 2026-08-24, mise-gerefe).
+# a:blip r:embed inside document.xml, in document order. The salvage premise
+# is that Drive's export numbers imageN in the same order — which holds ONLY
+# when every image-producing element is a plain body blip. The premise was
+# checked live 2026-08-24 on retained-base64 numbering alone (no real doc has
+# yet exercised salvage), and an essayeur probe proved it BREAKS silently —
+# wrong bytes, confident warning — with native charts, legacy VML (w:pict),
+# or mc:AlternateContent duplicating blips. Hence the alignment gate below:
+# when any of those constructs is present, salvage REFUSES rather than
+# guessing (the checkbox-oracle precedent: count-mismatch → warn, never guess).
 _BLIP_PATTERN = re.compile(rb'<a:blip[^>]*r:embed="(rId\d+)"')
 _REL_PATTERN = re.compile(rb'Id="(rId\d+)"[^>]*Target="([^"]+)"')
+_DRAWING_START_PATTERN = re.compile(rb"<w:drawing[ >/]")
+_MISALIGNMENT_XML_MARKERS: list[tuple[re.Pattern[bytes], str]] = [
+    (re.compile(rb"<w:pict[ >/]"), "legacy VML images (w:pict)"),
+    (re.compile(rb"<mc:AlternateContent[ >/]"), "AlternateContent fallbacks"),
+    (re.compile(rb"<w:object[ >/]"), "embedded OLE objects"),
+]
+
+
+def _salvage_misalignment_reasons(doc_xml: bytes, archive_names: set[str], blip_count: int) -> list[str]:
+    """Constructs that break the imageN ↔ blip-order premise, by name."""
+    reasons = [label for pattern, label in _MISALIGNMENT_XML_MARKERS if pattern.search(doc_xml)]
+    if any(n.startswith("word/charts/") for n in archive_names):
+        reasons.append("native charts (word/charts/)")
+    if any(n.startswith("word/embeddings/") for n in archive_names):
+        reasons.append("embedded objects (word/embeddings/)")
+    drawing_count = len(_DRAWING_START_PATTERN.findall(doc_xml))
+    if drawing_count != blip_count:
+        reasons.append(
+            f"{drawing_count} drawing(s) vs {blip_count} image blip(s) — "
+            "shapes, SmartArt or text boxes present"
+        )
+    return reasons
 
 
 def _process_docx_figures(
@@ -196,11 +224,23 @@ def _process_docx_figures(
                 file_path,
             )
 
-    if figures:
-        names = ", ".join(name for name, _ in figures)
+    tier1_count = len(extraction.figures)
+    if tier1_count:
+        names = ", ".join(f.filename for f in extraction.figures)
+        note = ""
+        nonviewable = [
+            f.filename
+            for f in extraction.figures
+            if f.filename.rsplit(".", 1)[-1] not in _VIEWABLE_IMAGE_EXTS
+        ]
+        if nonviewable:
+            note = (
+                f" Note {', '.join(nonviewable)}: vector/unusual format(s) most "
+                "readers cannot render — view the source document for those."
+            )
         warnings.append(
-            f"{len(figures)} embedded image(s) extracted to sidecar files "
-            f"({names}), referenced from content.md — no base64 left inline."
+            f"{tier1_count} embedded image(s) extracted to sidecar files "
+            f"({names}), referenced from content.md — no base64 left inline.{note}"
         )
     if salvaged:
         warnings.append(
@@ -247,6 +287,18 @@ def _salvage_docx_figures(
                 else b""
             )
             blips = _BLIP_PATTERN.findall(doc_xml)
+            misaligned = _salvage_misalignment_reasons(doc_xml, names, len(blips))
+            if misaligned:
+                # Drawing-order matching would attach the WRONG image bytes
+                # silently here — refuse rather than guess (essayeur probe,
+                # 2026-08-24: charts/VML/AlternateContent all shift the map).
+                unrecoverable.extend(
+                    f"{ref} (the document carries {'; '.join(misaligned)}, which "
+                    "breaks drawing-order matching — refusing to guess which "
+                    "media file this reference names)"
+                    for ref in dangling_refs
+                )
+                return content, figures, salvaged, unrecoverable
             rel_map = {rid: target for rid, target in _REL_PATTERN.findall(rels)}
             counter = len(figures)
             for ref in dangling_refs:

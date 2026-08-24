@@ -3,8 +3,8 @@ DOCX markup counter — pure functions detecting flattened Word markup.
 
 No I/O, no API calls. Takes raw XML bytes from a .docx archive and counts
 the markup that Drive's markdown export silently flattens: tracked changes
-(a tracked-DELETED clause reads as ordinary present text), comments, and
-inline images. The counts feed cue warnings so the reader knows to go to
+(a tracked-DELETED clause reads as ordinary present text) and comments.
+The counts feed cue warnings so the reader knows to go to
 the source document rather than trusting a clean-looking extraction.
 
 Deliberately regex-on-bytes, not an XML parse: .docx arrives from email
@@ -24,7 +24,6 @@ _DEL_PATTERN = re.compile(rb"<w:del[ >/]")
 _MOVE_PATTERN = re.compile(rb"<w:move(?:From|To)[ >/]")
 _AUTHOR_PATTERN = re.compile(rb'w:author="([^"]*)"')
 _COMMENT_PATTERN = re.compile(rb"<w:comment[ >/]")
-_DRAWING_PATTERN = re.compile(rb"<w:drawing[ >/]")
 
 
 @dataclass
@@ -36,7 +35,6 @@ class DocxMarkupCounts:
     moves: int = 0
     authors: list[str] = field(default_factory=list)  # distinct, sorted
     comments: int = 0
-    inline_images: int = 0
 
     @property
     def tracked_changes(self) -> int:
@@ -44,7 +42,7 @@ class DocxMarkupCounts:
 
     @property
     def has_flattened_content(self) -> bool:
-        return bool(self.tracked_changes or self.comments or self.inline_images)
+        return bool(self.tracked_changes or self.comments)
 
 
 def count_docx_markup(
@@ -71,7 +69,6 @@ def count_docx_markup(
         moves=len(_MOVE_PATTERN.findall(document_xml)),
         authors=sorted(a for a in authors if a),
         comments=len(_COMMENT_PATTERN.findall(comments_xml or b"")),
-        inline_images=len(_DRAWING_PATTERN.findall(document_xml)),
     )
 
 
@@ -102,10 +99,8 @@ def format_markup_warnings(counts: DocxMarkupCounts) -> list[str]:
             f"{counts.comments} Word comment(s) were not extracted — "
             "discussion context is missing from this content."
         )
-    # Inline images are no longer warned about here: they are extracted to
-    # sidecar figure files with a reconciled warning by the office adapter
-    # (extractors/markdown_images.py + _process_docx_figures, mise-gerefe).
-    # The old warning counted <w:drawing> in the source and called every
-    # image "dropped" even when Drive's export retained them all as base64
-    # — measured 0-for-3 inverted on a real doc, 2026-08-13.
+    # Images are handled by the office adapter (extractors/markdown_images.py
+    # + _process_docx_figures, mise-gerefe) — extracted to sidecar files with
+    # a reconciled warning, replacing the old source-side <w:drawing> count
+    # that was measured 0-for-3 inverted on a real doc (2026-08-13).
     return warnings

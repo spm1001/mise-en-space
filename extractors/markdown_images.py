@@ -23,11 +23,16 @@ import re
 from dataclasses import dataclass, field
 
 # `[imageN]: <data:image/png;base64,AAAA…>` — Drive writes the whole
-# definition on one line, with or without angle brackets.
+# definition on one line, with or without angle brackets. The payload class
+# deliberately excludes whitespace: a payload WRAPPED across lines must not
+# match, because a multi-line match can truncate at a coincidentally-valid
+# length and ship corrupt figure bytes with no note (essayeur probe,
+# 2026-08-24). A wrapped definition therefore degrades to the old behaviour
+# — base64 stays inline, content intact.
 _REF_DEF_PATTERN = re.compile(
-    r"^\[(?P<ref>[^\]]+)\]:\s*<?"
-    r"data:image/(?P<subtype>[A-Za-z0-9.+-]+);base64,(?P<payload>[A-Za-z0-9+/=\s]+?)"
-    r">?\s*$",
+    r"^\[(?P<ref>[^\]]+)\]:[ \t]*<?"
+    r"data:image/(?P<subtype>[A-Za-z0-9.+-]+);base64,(?P<payload>[A-Za-z0-9+/=]+)"
+    r">?[ \t]*$",
     re.MULTILINE,
 )
 
@@ -101,7 +106,7 @@ def extract_markdown_images(
 
     def _decode(payload: str) -> bytes | None:
         try:
-            return base64.b64decode(re.sub(r"\s+", "", payload), validate=True)
+            return base64.b64decode(payload, validate=True)
         except (binascii.Error, ValueError):
             return None
 

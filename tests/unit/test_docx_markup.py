@@ -74,11 +74,14 @@ class TestCountDocxMarkup:
     def test_no_comments_xml_means_zero(self) -> None:
         assert count_docx_markup(_doc("")).comments == 0
 
-    def test_inline_images_counted(self) -> None:
+    def test_drawings_are_not_counted_here(self) -> None:
+        # Image handling moved wholesale to the office adapter (mise-gerefe);
+        # this module counts only what stays flattened: tracked changes + comments.
         xml = _doc("<w:r><w:drawing><pic/></w:drawing></w:r><w:r><w:drawing/></w:r>")
         counts = count_docx_markup(xml)
 
-        assert counts.inline_images == 2
+        assert not counts.has_flattened_content
+        assert not hasattr(counts, "inline_images")
 
     def test_clean_document(self) -> None:
         counts = count_docx_markup(_doc("<w:r><w:t>plain text</w:t></w:r>"))
@@ -108,10 +111,8 @@ class TestFormatMarkupWarnings:
         assert "FLATTENED" in text
         assert "deleted text reads as present" in text
 
-    def test_comments_warn_but_images_do_not(self) -> None:
-        # Images no longer warn here: they're extracted to sidecar figure
-        # files with a reconciled warning by the office adapter (mise-gerefe).
-        counts = DocxMarkupCounts(comments=4, inline_images=2)
+    def test_comments_warn(self) -> None:
+        counts = DocxMarkupCounts(comments=4)
         warnings = format_markup_warnings(counts)
 
         assert len(warnings) == 1
