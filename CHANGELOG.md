@@ -6,6 +6,20 @@
 > intentionally absent — the shipped version number can therefore be ahead of
 > the newest entry here.
 
+## [Unreleased] (mise-vubeku)
+
+### Added
+- **serverInfo carries the suite version** — `initialize` now reports the
+  version from the plugin manifest (or the wheel's dist version), so a
+  long-running session pinned to an old release is diagnosable from the
+  client side. Previously mise sent an empty string.
+
+### Changed
+- `mise://tools/*` docs register through the public `list_tools()` API only;
+  the fast path reading the SDK's private tool registry is deleted. Side
+  benefit: `mise://tools/do` now renders the full curated operations text
+  instead of a one-line docstring.
+
 ## [1.74.0] - 2026-08-24 (mise-bapije)
 
 ### Changed

@@ -27,7 +27,11 @@ SAFE_HEADROOM = 100
 @pytest.fixture(scope="module")
 def tools():
     import server
-    return server.mcp._tool_manager._tools
+    from async_bridge import run_async_blocking
+
+    # Public API only (mise-vubeku): what list_tools() advertises IS what the
+    # ceiling applies to — measuring the wire objects measures the real thing.
+    return {t.name: t for t in run_async_blocking(server.mcp.list_tools())}
 
 
 @pytest.mark.parametrize("name", ["search", "fetch", "do"])

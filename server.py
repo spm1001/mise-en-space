@@ -24,6 +24,8 @@ Architecture:
 
 import argparse
 import asyncio
+import importlib.metadata
+import json
 import logging
 import os
 import signal
@@ -76,8 +78,22 @@ async def lifespan(app: MCPServer) -> AsyncIterator[None]:
         logger.debug(f"Startup orphan cleanup skipped: {e}")
     yield
 
+def _plugin_version() -> str:
+    """Suite version for serverInfo: plugin.json (stamped at each publish) or
+    the installed wheel's dist version; '' when neither resolves — honest,
+    never hardcoded (mise-vubeku)."""
+    try:
+        pj = Path(__file__).resolve().parent / ".claude-plugin" / "plugin.json"
+        return str(json.loads(pj.read_text()).get("version") or "")
+    except Exception:
+        try:
+            return importlib.metadata.version("mise-en-space")
+        except Exception:
+            return ""
+
+
 # Initialize MCP server
-mcp = MCPServer("Google Workspace v2", lifespan=lifespan)
+mcp = MCPServer("Google Workspace v2", version=_plugin_version(), lifespan=lifespan)
 
 
 # ============================================================================

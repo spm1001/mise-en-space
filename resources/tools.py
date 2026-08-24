@@ -1,17 +1,19 @@
 """
 Tool Documentation Resources
 
-Generates mise://tools/* resources directly from @mcp.tool docstrings.
-Single source of truth — docstrings ARE the documentation.
+Generates mise://tools/* resources from the tool text the server actually
+advertises — single source of truth is the server's own registry.
 
 Architecture Note:
-    This module accesses the server's internal `_tool_manager._tools` structure
-    because the public `list_tools()` API is async and can't easily run at
-    module load time. If those internals change, `register_from_mcp()` will
-    log a warning and attempt an async fallback. Everything is duck-typed via
-    hasattr, so the FastMCP→MCPServer rename didn't touch this module.
-
-    Tested against: mcp>=1.0.0 (FastMCP) and mcp 2.0.0 (MCPServer, 2026-08-23)
+    Registration rides the PUBLIC async `list_tools()` API only; the fast
+    path that read the SDK's private tool registry was deleted (mise-vubeku,
+    2026-08-24).
+    list_tools() returns wire Tool objects (name + description, no function),
+    so each tool registers a stub carrying the description as its docstring.
+    For search/fetch the description IS the docstring (bare @mcp.tool());
+    for do() it is the curated DO_DESCRIPTION — richer than the one-line
+    docstring the old path rendered. Async-from-sync goes through
+    async_bridge, the one door.
 """
 
 import logging
@@ -72,97 +74,43 @@ class ToolResourceRegistry:
         if uri in self._cache:
             del self._cache[uri]
 
-    def _register_from_mcp_sync(self, mcp_server: Any) -> int:
-        """
-        Synchronous registration using FastMCP internal API.
-
-        WARNING: This accesses undocumented internal structure `_tool_manager._tools`.
-        If FastMCP changes this structure, registration will fail silently and
-        we'll fall back to async registration.
-
-        Returns:
-            Number of tools registered
-        """
-        count = 0
-        if hasattr(mcp_server, '_tool_manager'):
-            tool_manager = mcp_server._tool_manager
-            if hasattr(tool_manager, '_tools'):
-                for name, tool in tool_manager._tools.items():
-                    if hasattr(tool, 'fn'):
-                        self.register_tool(name, tool.fn)
-                        count += 1
-        return count
-
-    def _register_from_mcp_async(self, mcp_server: Any) -> int:
-        """
-        Async fallback using public FastMCP API.
-
-        Uses `mcp_server.list_tools()` which is the official public API.
-        Called only if sync registration fails.
-
-        Returns:
-            Number of tools registered
-        """
-        async def _async_register() -> int:
-            count = 0
-            try:
-                tools = await mcp_server.list_tools()
-                for tool in tools:
-                    # The public API gives us Tool objects with name and description
-                    # but not the original function. We create a stub that returns
-                    # the description as its docstring.
-                    name = tool.name
-                    description = tool.description or ""
-
-                    # Create a stub function with the docstring
-                    def make_stub(doc: str) -> Callable[[], None]:
-                        def stub() -> None:
-                            pass
-                        stub.__doc__ = doc
-                        return stub
-
-                    self.register_tool(name, make_stub(description))
-                    count += 1
-            except Exception as e:
-                logger.error(f"Async tool registration failed: {e}")
-            return count
-
-        # Run the async function. run_async_blocking handles the
-        # already-running-loop case by thread, so the fallback now works
-        # there too (it used to warn and give up).
-        try:
-            return run_async_blocking(_async_register())
-        except Exception as e:
-            logger.error(f"Async fallback failed: {e}")
-            return 0
-
     def register_from_mcp(self, mcp_server: Any) -> None:
         """
-        Register all tools from a FastMCP server instance.
+        Register every tool the server advertises, via public list_tools().
 
-        Attempts sync registration first (faster, uses internal API).
-        Falls back to async registration if sync fails.
-        Logs warning if no tools are registered.
+        The wire Tool objects carry name + description but not the original
+        function, so each registers a stub whose docstring is the description.
+        Logs a warning when registration comes back empty — mise://tools/*
+        would otherwise be silently absent.
 
         Args:
-            mcp_server: FastMCP instance with registered tools
+            mcp_server: MCPServer instance with registered tools
         """
-        # Try sync registration first (faster)
-        count = self._register_from_mcp_sync(mcp_server)
+        async def _register_all() -> int:
+            count = 0
+            for tool in await mcp_server.list_tools():
+                def make_stub(doc: str) -> Callable[[], None]:
+                    def stub() -> None:
+                        pass
+                    stub.__doc__ = doc
+                    return stub
 
-        if count == 0:
-            # Sync failed - try async fallback
-            logger.warning(
-                "Sync tool registration found 0 tools. "
-                "FastMCP internal API may have changed. Trying async fallback..."
-            )
-            count = self._register_from_mcp_async(mcp_server)
+                self.register_tool(tool.name, make_stub(tool.description or ""))
+                count += 1
+            return count
+
+        # run_async_blocking handles the already-running-loop case by thread.
+        try:
+            count = run_async_blocking(_register_all())
+        except Exception as e:
+            logger.error(f"Tool registration via list_tools() failed: {e}")
+            count = 0
 
         if count == 0:
             logger.warning(
                 "Tool resource registry is empty after registration. "
                 "mise://tools/* resources will not be available. "
-                "This may indicate a FastMCP API change - check tools.py"
+                "This may indicate an MCP SDK API change - check tools.py"
             )
         else:
             logger.info(f"Tool resource registry: {count} tools registered for mise://tools/* documentation")

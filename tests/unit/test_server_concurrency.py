@@ -45,8 +45,8 @@ async def _run_two_calls(name: str, fn) -> None:
             server.mcp.call_tool(name, {"tag": 2}),
         )
     finally:
-        # Same internal structure resources/tools.py reads; keep the singleton clean.
-        server.mcp._tool_manager._tools.pop(name, None)
+        # Public API (mise-vubeku); keep the module-level server singleton clean.
+        server.mcp.remove_tool(name)
 
 
 def _overlapped(events: list[tuple[str, int]]) -> bool:
