@@ -939,7 +939,6 @@ dependencies = [
     { name = "pillow" },
     { name = "pyyaml" },
     { name = "regex" },
-    { name = "websockets" },
 ]
 
 [package.optional-dependencies]
@@ -953,6 +952,7 @@ dev = [
 extraction = [
     { name = "markitdown", extra = ["pdf"] },
     { name = "pdf2image" },
+    { name = "websockets" },
 ]
 macos = [
     { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'" },
@@ -985,7 +985,7 @@ requires-dist = [
     { name = "regex", specifier = ">=2026.7.19" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.16.3" },
     { name = "types-markdown", marker = "extra == 'dev'", specifier = ">=3.5" },
-    { name = "websockets", specifier = ">=17.0.1" },
+    { name = "websockets", marker = "extra == 'extraction'", specifier = ">=17.0.1" },
 ]
 provides-extras = ["dev", "extraction", "macos"]
 

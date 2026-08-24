@@ -25,6 +25,7 @@ from models import DoResult, MiseError
 from tools.common import resolve_source as _resolve_source
 from workspace.manager import deposit_lock_for_source
 from tools.doc_chips import CHIP_REF_RE, insert_chips_in_doc, parse_chip_refs
+from tools.doc_footnotes import apply_footnote_cues, footnotes_for_import
 from tools.form_edit import form_overwrite
 from tools.plain_file import plain_overwrite
 from tools.restore_point import capture_restore_point, merge_restore_cues
@@ -159,6 +160,9 @@ def do_overwrite(
     if content and CHIP_REF_RE.search(content):
         content, chip_refs = parse_chip_refs(content)
 
+    # Markdown footnotes: strip definitions pre-import, real footnotes after (mise-rubucu)
+    content, footnote_state = footnotes_for_import("doc", content)
+
     # Pre-edit restore point (Google Doc path only — we're past all other
     # routing). Overwrite replaces the doc wholesale, so it also gets the
     # UI-visible marker comment unless opted out. Captured BEFORE the write.
@@ -175,6 +179,9 @@ def do_overwrite(
             result.cues["chips_inserted"] = chip_result["chips_inserted"]
         if chip_result.get("chip_errors"):
             result.cues["chip_errors"] = chip_result["chip_errors"]
+
+    # Literal [^N] anchors become real Docs footnotes (mise-rubucu)
+    apply_footnote_cues(result.cues, file_id, footnote_state)
 
     return merge_restore_cues(result, restore_cues)
 

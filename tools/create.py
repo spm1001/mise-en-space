@@ -31,6 +31,7 @@ from workspace.manager import deposit_lock_for_source
 from tools.common import resolve_source as _resolve_source
 from tools.doc_chips import (CHIP_REF_RE, ChipRef, find_placeholder_indices,
                              insert_chips_in_doc, parse_chip_refs, restore_placeholders)
+from tools.doc_footnotes import apply_footnote_cues, footnotes_for_import
 from tools.form_create import create_form
 from validation import validate_drive_id, sanitize_title
 
@@ -414,6 +415,9 @@ def _do_create_internal(
     if doc_type == "doc" and content and CHIP_REF_RE.search(content):
         content, chip_refs = parse_chip_refs(content)
 
+    # Markdown footnotes: strip definitions pre-import, real footnotes after (mise-rubucu)
+    content, footnote_state = footnotes_for_import(doc_type, content)
+
     try:
         if doc_type == "file":
             file_bytes = file_path.read_bytes() if file_path else None
@@ -457,6 +461,10 @@ def _do_create_internal(
                 result.cues["chips_inserted"] = chip_result["chips_inserted"]
             if chip_result.get("chip_errors"):
                 result.cues["chip_errors"] = chip_result["chip_errors"]
+
+        # Post-creation: literal [^N] anchors become real Docs footnotes (mise-rubucu)
+        if isinstance(result, DoResult):
+            apply_footnote_cues(result.cues, result.file_id, footnote_state)
 
         # Enrich manifest if created from source. Under the deposit lock:
         # unlocked, this read-modify-write racing a fetch of the same resource
