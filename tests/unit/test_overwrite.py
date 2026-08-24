@@ -20,19 +20,9 @@ def _stub_restore_point(monkeypatch):
     )
 
 
-@_pytest.fixture(autouse=True)
-def _stub_single_tab_doc(monkeypatch):
-    """Neutralise the multi-tab guard's documents.get (mise-wisuzu) — a
-    single-tab answer lets every pre-existing doc-path test run unchanged.
-    The guard's own behaviours (refusal, fail-open) are tested in
-    test_doc_tabs.py with explicit patches over this stub."""
-    monkeypatch.setattr(
-        "tools.overwrite.get_doc_tabs_meta",
-        lambda file_id: {
-            "title": "Test Doc",
-            "tabs": [{"tab_id": "t.0", "title": "Tab 1", "index": 0, "depth": 0}],
-        },
-    )
+# The multi-tab guard's documents.get is stubbed single-tab for ALL unit
+# tests in tests/unit/conftest.py (_single_tab_doc_guard) — guard behaviour
+# is tested in test_doc_tabs.py with explicit patches over that stub.
 
 
 GOOGLE_DOC_MIME = "application/vnd.google-apps.document"

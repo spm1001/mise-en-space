@@ -21,7 +21,7 @@ from adapters.drive import (
     upload_file_content,
 )
 from markdown_import import convert_fenced_blocks
-from models import DoResult, MiseError
+from models import DoResult, ErrorKind, MiseError
 from tools.common import resolve_source as _resolve_source
 from workspace.manager import deposit_lock_for_source
 from tools.doc_chips import CHIP_REF_RE, insert_chips_in_doc, parse_chip_refs
@@ -158,18 +158,37 @@ def do_overwrite(
     # probe_drive_import_vs_tabs.py: both the second tab and the original
     # tab's content destroyed under an HTTP 200). Refuse rather than corrupt
     # — the same contract choice the multi-tab sheet path made (mise-vadoko).
-    # Fail-open on a failed read (a Drive-scoped credential can write where
-    # a Docs-scoped read is refused), with the gap disclosed as a warning.
+    # The read is retried (with_retry on get_doc_tabs_meta); after that it
+    # fails OPEN only on a permission-shaped refusal (a Drive-scoped
+    # credential can write where a Docs-scoped read is refused) and CLOSED
+    # on everything else — a transient surviving three retries, or schema
+    # drift, must not become a silent multi-tab destruction (essayeur
+    # catch 2026-08-24: the original except-Exception fail-open caught
+    # exactly the transient class, and warned only AFTER the write).
     guard_warning: str | None = None
+    doc_tabs: list[dict[str, Any]] = []
+    guard_refusal = (
+        "Could not verify this doc's tab structure before overwriting "
+        "({detail}) — refusing rather than risk silently destroying tabs "
+        "(the import flattens a multi-tab doc to one tab). Retry, or use "
+        "replace_text / prepend / append."
+    )
     try:
         doc_tabs = get_doc_tabs_meta(file_id)["tabs"]
-    except Exception as e:  # noqa: BLE001 — guard never blocks a legit overwrite
-        doc_tabs = []
-        guard_warning = (
-            f"Could not check this doc's tab structure before overwriting "
-            f"({type(e).__name__}) — if the doc has multiple tabs, overwrite "
-            f"destroys every tab but the first."
-        )
+    except MiseError as e:
+        if e.kind == ErrorKind.PERMISSION_DENIED:
+            guard_warning = (
+                f"Could not check this doc's tab structure before "
+                f"overwriting (permission refused on the Docs read) — if "
+                f"the doc has multiple tabs, this overwrite destroyed every "
+                f"tab but the first."
+            )
+        else:
+            return {"error": True, "kind": e.kind.value,
+                    "message": guard_refusal.format(detail=e.message)}
+    except Exception as e:  # noqa: BLE001 — schema drift fails CLOSED
+        return {"error": True, "kind": "internal",
+                "message": guard_refusal.format(detail=type(e).__name__)}
     if len(doc_tabs) > 1:
         tab_titles = ", ".join(repr(t["title"]) for t in doc_tabs[:5])
         return {
@@ -180,7 +199,8 @@ def do_overwrite(
                 f"would silently DESTROY every tab but the first (measured "
                 f"2026-08-24). To add content as a new tab: do(append, "
                 f"file_id=…, content=…, tab='Title'). For in-place edits: "
-                f"replace_text / prepend / append."
+                f"replace_text (applies across ALL tabs) or prepend/append "
+                f"(first tab only)."
             ),
         }
 

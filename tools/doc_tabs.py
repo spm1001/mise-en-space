@@ -30,7 +30,8 @@ tools/overwrite.py counts tabs through this module and refuses first.
 from typing import Any
 
 from adapters.http_client import get_sync_client
-from models import ErrorKind, MiseError
+from models import MiseError
+from retry import with_retry
 
 _DOCS_API = "https://docs.googleapis.com/v1/documents"
 
@@ -42,12 +43,16 @@ _TAB_PROPS_FIELDS = (
 )
 
 
+@with_retry(max_attempts=3, delay_ms=1000)
 def get_doc_tabs_meta(file_id: str) -> dict[str, Any]:
     """Doc title plus flat tab properties, depth-first — content never fetched.
 
     Returns ``{"title": str, "tabs": [{"tab_id", "title", "index", "depth"}]}``.
     ``includeTabsContent`` stays false; the fields mask keeps the response to
     properties only, so this costs one small GET regardless of doc size.
+    Idempotent read — retried freely, and with_retry converts wire errors
+    (httpx) to MiseError so callers' ``except MiseError`` actually fires
+    (essayeur catch 2026-08-24: the raw client raises httpx.HTTPStatusError).
     """
     client = get_sync_client()
     doc = client.get_json(
@@ -72,18 +77,15 @@ def get_doc_tabs_meta(file_id: str) -> dict[str, Any]:
     return {"title": doc.get("title", "Untitled"), "tabs": tabs}
 
 
-def add_tab_with_content(
-    file_id: str, tab_title: str, text: str
-) -> dict[str, Any]:
-    """Add a tab and place plain text in it — two sequential batchUpdates.
+@with_retry(max_attempts=3, delay_ms=1000)
+def _add_tab(file_id: str, tab_title: str) -> dict[str, Any]:
+    """Batch 1 — add ONLY. The server mints the tabId; supplying one is a 400.
 
-    Returns the minted tabProperties dict (tabId, title, index). Never
-    collapse this into one batch: the single-batch shape returns 200 and
-    writes the ORIGINAL tab (see module docstring).
+    Retry semantics: a 429 means the request was rejected, so retrying is
+    safe; a 5xx retry could double-mint a VISIBLE empty tab — recoverable in
+    the UI, the same accepted trade as _append's double-insert risk.
     """
     client = get_sync_client()
-
-    # Batch 1 — add only. The server mints the tabId; supplying one is a 400.
     resp = client.post_json(
         f"{_DOCS_API}/{file_id}:batchUpdate",
         json_body={
@@ -92,26 +94,49 @@ def add_tab_with_content(
             ]
         },
     )
-    minted = resp["replies"][0]["addDocumentTab"]["tabProperties"]
+    minted: dict[str, Any] = resp["replies"][0]["addDocumentTab"]["tabProperties"]
+    return minted
 
-    # Batch 2 — fill by the minted tabId. A fresh tab's body is a single
-    # newline; index 1 is the start of its text. No retry wrapper on this
-    # flow: re-running after a partial failure would mint a SECOND tab, so
-    # a batch-2 failure surfaces loudly with the orphan named instead.
-    try:
-        client.post_json(
-            f"{_DOCS_API}/{file_id}:batchUpdate",
-            json_body={
-                "requests": [
-                    {
-                        "insertText": {
-                            "location": {"tabId": minted["tabId"], "index": 1},
-                            "text": text,
-                        }
+
+@with_retry(max_attempts=3, delay_ms=1000)
+def _fill_tab(file_id: str, tab_id: str, text: str) -> None:
+    """Batch 2 — fill by the minted tabId. A fresh tab's body is a single
+    newline; index 1 is the start of its text. A retry can only ever
+    double-insert into the NEW tab — never touch the original."""
+    client = get_sync_client()
+    client.post_json(
+        f"{_DOCS_API}/{file_id}:batchUpdate",
+        json_body={
+            "requests": [
+                {
+                    "insertText": {
+                        "location": {"tabId": tab_id, "index": 1},
+                        "text": text,
                     }
-                ]
-            },
-        )
+                }
+            ]
+        },
+    )
+
+
+def add_tab_with_content(
+    file_id: str, tab_title: str, text: str
+) -> dict[str, Any]:
+    """Add a tab and place plain text in it — two sequential batchUpdates.
+
+    Returns the minted tabProperties dict (tabId, title, index). Never
+    collapse this into one batch: the single-batch shape returns 200 and
+    writes the ORIGINAL tab (see module docstring).
+
+    The two batches are separately @with_retry-wrapped so wire errors reach
+    this orchestrator as MiseError (the raw client raises httpx types — an
+    ``except MiseError`` around a bare post_json is dead code, essayeur
+    catch 2026-08-24). A fill failure after the add is enriched with the
+    orphan tab named, so the caller never blind-retries into a second tab.
+    """
+    minted = _add_tab(file_id, tab_title)
+    try:
+        _fill_tab(file_id, minted["tabId"], text)
     except MiseError as e:
         raise MiseError(
             e.kind,

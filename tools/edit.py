@@ -32,14 +32,63 @@ _DOCS_API = "https://docs.googleapis.com/v1/documents"
 
 
 def _get_doc_meta(client: Any, file_id: str) -> dict[str, Any]:
-    """Fetch document title and end index."""
+    """Fetch document title, first-tab end index + id, and tab titles.
+
+    One GET, read entirely through the TABS view: the API refuses a fields
+    mask mixing legacy text-level fields with tabs ("Field mask may not
+    contain legacy text-level Document resource fields while requesting
+    tabs content", 400 — measured live 2026-08-24, a rule no mocked test
+    could see). endIndex comes from the first tab's documentTab.body, and
+    the first tab's id is returned so prepend/append can address their
+    target EXPLICITLY rather than through the undocumented no-tabId
+    default. Tab titles feed the multi-tab aiming disclosures: prepend/
+    append write the first tab; replaceAllText with no tabsCriteria
+    applies to ALL tabs (essayeur catch 2026-08-24, verified live)."""
     doc = client.get_json(
         f"{_DOCS_API}/{file_id}",
-        params={"fields": "title,body(content(endIndex))"},
+        params={
+            "includeTabsContent": "true",
+            "fields": (
+                "title,tabs(tabProperties,"
+                "documentTab(body(content(endIndex))))"
+            ),
+        },
     )
-    body_content = doc.get("body", {}).get("content", [])
-    end_index = body_content[-1].get("endIndex", 1) if body_content else 1
-    return {"title": doc.get("title", "Untitled"), "end_index": end_index}
+    tabs = doc.get("tabs", [])
+    first = tabs[0] if tabs else {}
+    first_body = (
+        first.get("documentTab", {}).get("body", {}).get("content", [])
+    )
+    end_index = first_body[-1].get("endIndex", 1) if first_body else 1
+    return {
+        "title": doc.get("title", "Untitled"),
+        "end_index": end_index,
+        "first_tab_id": first.get("tabProperties", {}).get("tabId"),
+        "tab_titles": [
+            t.get("tabProperties", {}).get("title") for t in tabs
+        ],
+    }
+
+
+def _first_tab_location(meta: dict[str, Any], index: int) -> dict[str, Any]:
+    """Location addressing the first tab explicitly when its id is known."""
+    location: dict[str, Any] = {"index": index}
+    if meta.get("first_tab_id"):
+        location["tabId"] = meta["first_tab_id"]
+    return location
+
+
+def _multi_tab_insert_warning(meta: dict[str, Any], op: str) -> str | None:
+    """Warning for prepend/append on a multi-tab doc — the write lands in
+    the first tab only, which is invisible from the 200."""
+    titles = meta.get("tab_titles") or []
+    if len(titles) <= 1:
+        return None
+    return (
+        f"This doc has {len(titles)} tabs — {op} wrote into the FIRST tab "
+        f"({titles[0]!r}) only. To add content as its own tab instead: "
+        f"do(append, file_id=…, content=…, tab='Title')."
+    )
 
 
 def do_prepend(
@@ -226,15 +275,18 @@ def _prepend(file_id: str, text: str) -> DoResult:
 
     client.post_json(
         f"{_DOCS_API}/{file_id}:batchUpdate",
-        json_body={"requests": [{"insertText": {"location": {"index": 1}, "text": text}}]},
+        json_body={"requests": [{"insertText": {"location": _first_tab_location(meta, 1), "text": text}}]},
     )
 
+    cues: dict[str, Any] = {"inserted_chars": len(text)}
+    if warning := _multi_tab_insert_warning(meta, "prepend"):
+        cues["warnings"] = [warning]
     return DoResult(
         file_id=file_id,
         title=meta["title"],
         web_link=f"https://docs.google.com/document/d/{file_id}/edit",
         operation="prepend",
-        cues={"inserted_chars": len(text)},
+        cues=cues,
     )
 
 
@@ -249,15 +301,18 @@ def _append(file_id: str, text: str) -> DoResult:
 
     client.post_json(
         f"{_DOCS_API}/{file_id}:batchUpdate",
-        json_body={"requests": [{"insertText": {"location": {"index": insert_index}, "text": text}}]},
+        json_body={"requests": [{"insertText": {"location": _first_tab_location(meta, insert_index), "text": text}}]},
     )
 
+    cues: dict[str, Any] = {"inserted_chars": len(text)}
+    if warning := _multi_tab_insert_warning(meta, "append"):
+        cues["warnings"] = [warning]
     return DoResult(
         file_id=file_id,
         title=meta["title"],
         web_link=f"https://docs.google.com/document/d/{file_id}/edit",
         operation="append",
-        cues={"inserted_chars": len(text)},
+        cues=cues,
     )
 
 
@@ -291,6 +346,18 @@ def _replace_text(file_id: str, find: str, replace: str) -> DoResult:
         # text. A plain .md file or a sheet cell holds them literally, which is
         # why the sibling paths take the bare warning.
         cues["warning"] = NO_MATCH_WARNING + markdown_marker_hint(find)
+    # replaceAllText with no tabsCriteria applies to ALL tabs (discovery rev
+    # 20260817; verified live on a 2-tab doc, essayeur 2026-08-24). On a
+    # multi-tab doc that must be disclosed, not silent — a redraft tab
+    # placed beside a live draft shares most of its strings with it.
+    tab_titles = meta.get("tab_titles") or []
+    if occurrences > 0 and len(tab_titles) > 1:
+        names = ", ".join(repr(t) for t in tab_titles[:5])
+        cues.setdefault("warnings", []).append(
+            f"This doc has {len(tab_titles)} tabs ({names}) and replace_text "
+            f"applies across ALL of them — occurrences_changed is the total "
+            f"across tabs. To revert: cues.restore_point."
+        )
 
     return DoResult(
         file_id=file_id,

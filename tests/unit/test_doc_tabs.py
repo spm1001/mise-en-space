@@ -11,11 +11,26 @@ tabId ride the add (a categorical 400 on the real API).
 
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from models import DoResult, ErrorKind, MiseError
 from tools.doc_tabs import add_tab_with_content, get_doc_tabs_meta
-from tools.edit import do_append
+from tools.edit import do_append, do_replace_text
+
+
+def _http_error(status: int, reason: str = "boom") -> httpx.HTTPStatusError:
+    """A REAL wire-shaped error. MiseSyncClient raises httpx.HTTPStatusError,
+    not MiseError — a test injecting MiseError exercises an exception type
+    the wire never produces (essayeur catch 2026-08-24: the first orphan
+    test passed while the production path was dead code)."""
+    req = httpx.Request(
+        "POST", "https://docs.googleapis.com/v1/documents/doc123:batchUpdate"
+    )
+    resp = httpx.Response(
+        status, request=req, json={"error": {"message": reason}}
+    )
+    return httpx.HTTPStatusError(str(status), request=req, response=resp)
 
 GOOGLE_DOC_MIME = "application/vnd.google-apps.document"
 GOOGLE_SHEET_MIME = "application/vnd.google-apps.spreadsheet"
@@ -82,10 +97,13 @@ class TestAddTabWithContent:
 
     @patch("tools.doc_tabs.get_sync_client")
     def test_fill_failure_names_the_orphan_tab(self, mock_get) -> None:
+        """Uses the REAL exception type the wire produces (httpx), so this
+        test is red if the httpx→MiseError conversion ever drops out of the
+        fill path again."""
         client = _mock_client_for_add()
         client.post_json.side_effect = [
             {"replies": [{"addDocumentTab": {"tabProperties": MINTED}}]},
-            MiseError(ErrorKind.RATE_LIMITED, "quota", retryable=True),
+            _http_error(400, "bad insert"),
         ]
         mock_get.return_value = client
 
@@ -215,6 +233,20 @@ class TestAppendTabRouting:
         assert result["cues"]["tab_id"] == "t.minted123"
         mock_add.assert_called_once()
 
+    @patch("tools.edit.get_doc_tabs_meta")
+    def test_meta_read_wire_error_returns_kinded_error(self, mock_meta) -> None:
+        """A 403 on the pre-add tabs read must surface with its real kind,
+        not a generic INTERNAL — proves the tab path's except-MiseError is
+        live against converted wire errors."""
+        mock_meta.side_effect = MiseError(
+            ErrorKind.PERMISSION_DENIED, "no docs scope"
+        )
+        result = do_append(
+            "doc123", "body", metadata={"mimeType": GOOGLE_DOC_MIME}, tab="R"
+        )
+        assert result["error"] is True
+        assert result["kind"] == "permission_denied"
+
     def test_tab_on_create_refuses_not_drops(self) -> None:
         """Accept-and-drop rail: the wisuzu brief's draft grammar put tab=
         on create — that guess must teach, never silently mint a tabless doc."""
@@ -297,11 +329,11 @@ class TestOverwriteMultiTabGuard:
         "tools.overwrite.get_doc_tabs_meta",
         side_effect=MiseError(ErrorKind.PERMISSION_DENIED, "no docs scope"),
     )
-    def test_guard_read_failure_fails_open_with_warning(
+    def test_guard_permission_refusal_fails_open_with_warning(
         self, _meta, mock_upload, _r
     ) -> None:
         """A Drive-scoped credential can write where a Docs read is refused
-        — the guard must not block, but the gap is disclosed."""
+        — permission-shaped failure is the ONE fail-open case, disclosed."""
         from tools.overwrite import do_overwrite
 
         result = do_overwrite(
@@ -310,3 +342,97 @@ class TestOverwriteMultiTabGuard:
         assert isinstance(result, DoResult)
         assert any("tab structure" in w for w in result.cues["warnings"])
         mock_upload.assert_called_once()
+
+    @patch("tools.overwrite.capture_restore_point", return_value={})
+    @patch("tools.overwrite.upload_file_content")
+    @patch(
+        "tools.overwrite.get_doc_tabs_meta",
+        side_effect=MiseError(ErrorKind.RATE_LIMITED, "quota", retryable=True),
+    )
+    def test_guard_transient_failure_fails_closed(
+        self, _meta, mock_upload, _r
+    ) -> None:
+        """A transient that survives the read's retries must NOT become a
+        silent multi-tab destruction — refuse, don't proceed (essayeur
+        catch: the first cut failed open on exactly this class)."""
+        from tools.overwrite import do_overwrite
+
+        result = do_overwrite(
+            "doc123", content="new", metadata={"mimeType": GOOGLE_DOC_MIME, "name": "D"}
+        )
+        assert result["error"] is True
+        assert "refusing" in result["message"]
+        mock_upload.assert_not_called()
+
+    @patch("tools.overwrite.capture_restore_point", return_value={})
+    @patch("tools.overwrite.upload_file_content")
+    @patch("tools.overwrite.get_doc_tabs_meta", side_effect=KeyError("tabs"))
+    def test_guard_schema_drift_fails_closed(
+        self, _meta, mock_upload, _r
+    ) -> None:
+        from tools.overwrite import do_overwrite
+
+        result = do_overwrite(
+            "doc123", content="new", metadata={"mimeType": GOOGLE_DOC_MIME, "name": "D"}
+        )
+        assert result["error"] is True
+        mock_upload.assert_not_called()
+
+
+# =============================================================================
+# Surgical-op aiming disclosure on multi-tab docs (essayeur F1)
+# =============================================================================
+
+def _client_with_meta(tabs: list[str], occurrences: int = 2) -> MagicMock:
+    client = MagicMock()
+    client.get_json.return_value = {
+        "title": "Doc",
+        "tabs": [
+            {
+                "tabProperties": {"tabId": f"t.{i}", "title": t},
+                "documentTab": {"body": {"content": [{"endIndex": 40}]}},
+            }
+            for i, t in enumerate(tabs)
+        ],
+    }
+    client.post_json.return_value = {
+        "replies": [{"replaceAllText": {"occurrencesChanged": occurrences}}]
+    }
+    return client
+
+
+class TestSurgicalOpAimingDisclosure:
+    @patch("tools.edit.get_sync_client")
+    def test_replace_text_multi_tab_discloses_all_tabs(self, mock_get) -> None:
+        """replaceAllText with no tabsCriteria hits ALL tabs (verified live)
+        — on a multi-tab doc the total must say so, loudly."""
+        mock_get.return_value = _client_with_meta(["Tab 1", "Redraft"], 2)
+        result = do_replace_text(
+            "doc123", find="Dear all", content="Dear team",
+            metadata={"mimeType": GOOGLE_DOC_MIME},
+        )
+        assert isinstance(result, DoResult)
+        assert result.cues["occurrences_changed"] == 2
+        assert any("ALL" in w for w in result.cues["warnings"])
+
+    @patch("tools.edit.get_sync_client")
+    def test_replace_text_single_tab_stays_quiet(self, mock_get) -> None:
+        mock_get.return_value = _client_with_meta(["Tab 1"], 1)
+        result = do_replace_text(
+            "doc123", find="x", content="y",
+            metadata={"mimeType": GOOGLE_DOC_MIME},
+        )
+        assert isinstance(result, DoResult)
+        assert "warnings" not in result.cues
+
+    @patch("tools.edit.get_sync_client")
+    def test_append_multi_tab_warns_first_tab_only(self, mock_get) -> None:
+        client = _client_with_meta(["Tab 1", "Redraft"])
+        client.post_json.return_value = {}
+        mock_get.return_value = client
+        result = do_append(
+            "doc123", "more text", metadata={"mimeType": GOOGLE_DOC_MIME}
+        )
+        assert isinstance(result, DoResult)
+        assert any("FIRST tab" in w for w in result.cues["warnings"])
+        assert any("'Tab 1'" in w for w in result.cues["warnings"])

@@ -46,11 +46,22 @@ def _plain_file_metadata(
 
 
 def _mock_sync_client(end_index: int = 50, title: str = "Test Doc"):
-    """Create a mock httpx sync client with standard document response."""
+    """Create a mock httpx sync client with standard document response.
+
+    Tabs-view shape: _get_doc_meta reads endIndex through the first tab's
+    documentTab.body — the API refuses a mask mixing legacy body fields
+    with tabs (measured live 2026-08-24)."""
     mock_client = MagicMock()
     mock_client.get_json.return_value = {
         "title": title,
-        "body": {"content": [{"endIndex": 1}, {"endIndex": end_index}]},
+        "tabs": [
+            {
+                "tabProperties": {"tabId": "t.0", "title": "Tab 1"},
+                "documentTab": {
+                    "body": {"content": [{"endIndex": 1}, {"endIndex": end_index}]}
+                },
+            }
+        ],
     }
     return mock_client
 

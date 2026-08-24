@@ -450,7 +450,7 @@ search("orgTitle='Head of Strategy'", sources=["people"], base_path="...")
 | `overwrite` | Replace full file content (Google Doc or plain file; Sheets: CSV content, `range=` aims a tab or cells; Forms: YAML/JSON spec replaces all questions) | `file_id`, `content` OR `source` |
 | `prepend` | Insert at start of file | `file_id`, `content` |
 | `append` | Insert at end of file — or, with `tab='Title'`, place content in a NEW Google Doc tab | `file_id`, `content`, optional `tab` |
-| `replace_text` | Find-and-replace in file (Sheets: across cell values, all tabs) | `file_id`, `find`, `content` |
+| `replace_text` | Find-and-replace in file — applies across ALL tabs, Docs and Sheets alike (probed 2026-08-24) | `file_id`, `find`, `content` |
 | `draft` | Compose a new Gmail draft — or update an existing one in place | `to`, `subject`, `content`, optional `include` (Drive file IDs); update: `file_id` (draft ID) + `content` |
 | `reply_draft` | Reply draft in an existing thread | `file_id` (thread ID), `content`, optional `include` |
 | `respond` | Accept/decline/tentative a calendar invite — the RSVP lands live, organiser sees it | `file_id` (invite thread ID or Calendar event ID), `action` (`accept`/`decline`/`tentative`) |
@@ -470,7 +470,7 @@ search("orgTitle='Head of Strategy'", sources=["people"], base_path="...")
 
 **Overwrite destroys everything** — images, tables, formatting, all gone. It's a full replacement from markdown. Use it when you're publishing a complete new version of a document. On a **multi-tab Google Doc it refuses outright**: the underlying import replaces the whole file, silently destroying every tab but the first (measured 2026-08-24), so the error teaches the alternatives instead.
 
-**A new tab is the non-destructive home for a parallel version.** `append` with `tab='Redraft v2'` places `content` in a NEW tab of the doc — existing tabs are never touched, and the result's `web_link` deep-links straight to it. One honest limit: tab content is **plain text** (markdown is not rendered in tabs — the rich import path can't target one; probed 2026-08-24), so put rich redrafts in prose, not markup. A duplicate tab title warns rather than refuses.
+**A new tab is the non-destructive home for a parallel version.** `append` with `tab='Redraft v2'` places `content` in a NEW tab of the doc — existing tabs are never touched, and the result's `web_link` deep-links straight to it. One honest limit: tab content is **plain text** (markdown is not rendered in tabs — the rich import path can't target one; probed 2026-08-24), so put rich redrafts in prose, not markup. A duplicate tab title warns rather than refuses. And mind `replace_text` near parallel-version tabs: it applies across ALL tabs (probed 2026-08-24), and a redraft shares most of its strings with the original — the result cues a warning on multi-tab docs.
 
 **Every Doc edit leaves a restore point.** Mutating a Google Doc (overwrite, prepend, append, replace_text) first captures the pre-edit revision and returns it as `cues.restore_point {revision_id, modified_time}` — the exact File → Version history entry to revert to. `overwrite` also posts an `[agent]` comment in the doc naming that entry, so the human can find the restore point from inside the doc without asking. Pass `restore_comment=False` on shared docs where a comment notification would be noise. If a revert is needed, point the human at Version history → the cued timestamp (a program cannot restore or name versions — that's UI-only).
 

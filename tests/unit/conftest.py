@@ -32,3 +32,24 @@ def _hermetic_credentials(monkeypatch, tmp_path):
     cues_util.clear_user_email_cache()
     yield
     cues_util.clear_user_email_cache()
+
+
+@pytest.fixture(autouse=True)
+def _single_tab_doc_guard(monkeypatch):
+    """Overwrite's multi-tab guard (mise-wisuzu) reads documents.get before
+    any doc overwrite and FAILS CLOSED on an unexpected error — so every
+    unmocked doc-path overwrite test would refuse instead of exercising its
+    subject. Default the read to a single-tab answer.
+
+    Vacuous-by-construction warning (the test_edit.py restore-point stub's
+    sibling): with this in place, no test outside test_doc_tabs.py can see
+    the guard at all. Any assertion about the guard's behaviour belongs in
+    tests/unit/test_doc_tabs.py::TestOverwriteMultiTabGuard, which patches
+    over this stub explicitly."""
+    monkeypatch.setattr(
+        "tools.overwrite.get_doc_tabs_meta",
+        lambda file_id: {
+            "title": "Test Doc",
+            "tabs": [{"tab_id": "t.0", "title": "Tab 1", "index": 0, "depth": 0}],
+        },
+    )
