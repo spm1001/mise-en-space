@@ -105,7 +105,10 @@ DISPATCH: dict[str, Any] = {
         range_=p.get("range"),
     ),
     "prepend": lambda p: do_prepend(file_id=p["file_id"], content=p["content"], metadata=p.get("_metadata")),
-    "append": lambda p: do_append(file_id=p["file_id"], content=p["content"], metadata=p.get("_metadata")),
+    "append": lambda p: do_append(
+        file_id=p["file_id"], content=p["content"],
+        metadata=p.get("_metadata"), tab=p.get("tab"),
+    ),
     "replace_text": lambda p: do_replace_text(
         file_id=p["file_id"], find=p["find"], content=p["content"],
         metadata=p.get("_metadata"),
@@ -167,13 +170,13 @@ Act on Google Workspace — create, move, edit, draft/reply emails, organise Gma
 
 Operations: create, copy, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, trash, respond, create_event, update_event, freebusy, setup_oauth.
 Create: content + title + doc_type (doc/sheet/file/folder/form). page_setup='pageless'. file_path= reads from disk. form: content is YAML/JSON spec.
-Edit: overwrite (full replace), prepend/append, replace_text (find + content). Sheets: overwrite=CSV, range='Tab'/'Tab!F9:F15'; cells: [label](url)→link; @url alone→chip (doc lines too). Doc edits return cues.restore_point.
-Calendar: create_event (title + time_min/time_max as start/end + attendees/content/location/meet=True/recurrence='RRULE:…'/include=[Drive ids→attachments]; attendees ⇒ preview, then confirm=True books+invites). update_event (file_id=event or invite-thread id; time/attendees/recurrence changes gated, description edits direct). freebusy (attendees + window, duration mins → common slots + office days). respond (file_id + action=accept|decline|tentative). properties={k:v} stamps queryable keys; color=, visibility=, transparency=(busy|free) on both event ops. Details: mise://docs/do.
+Edit: overwrite (full replace), prepend/append, replace_text (find + content); append tab='T' adds a new doc tab (plain text). Sheets: overwrite=CSV, range='Tab'/'Tab!F9:F15'; cells: [label](url)→link; @url alone→chip (doc lines too). Doc edits return cues.restore_point.
+Calendar: create_event (title + time_min/time_max as start/end + attendees/content/location/meet=True/recurrence='RRULE:…'/include=[Drive ids→attachments]; attendees ⇒ preview, then confirm=True books+invites). update_event (file_id=event/invite-thread id; time/attendees/recurrence gated, description edits direct). freebusy (attendees + window, duration mins → slots + office days). respond (file_id + action=accept|decline|tentative). properties={k:v} stamps queryable keys; color=, visibility=, transparency=(busy|free) on both event ops. Details: mise://docs/do.
 Email: draft (to + subject + content; file_id=draft_id updates it), reply_draft (file_id + content — refuses if thread has a draft; supersede=True discards), archive/star/label. Signature auto-appends — no sign-off in content.
-Trash: file_id (single or list) — Drive→trash (recoverable); Gmail drafts (r+digits) discarded permanently.
+Trash: file_id(s) — Drive→trash (recoverable); Gmail drafts (r+digits) discarded permanently.
 Comments: comment (file_id + content, NEW thread), comment_reply (file_id + comment_id + content/action=resolve|reopen). '[agent] ' prefix.
 Share: file_id + to + role (reader/writer/commenter), confirm=True executes.
-Copy/Move: file_id (single or list) + folder_id.
+Copy/Move: file_id(s) + folder_id.
 setup_oauth: bootstrap credentials (force=true re-auths)."""
 
 DO_DESCRIPTION_REMOTE = """\

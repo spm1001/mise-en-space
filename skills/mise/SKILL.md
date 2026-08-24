@@ -449,7 +449,7 @@ search("orgTitle='Head of Strategy'", sources=["people"], base_path="...")
 | `share` | Share file with people (confirm gate) | `file_id`, `to`, `confirm=True` |
 | `overwrite` | Replace full file content (Google Doc or plain file; Sheets: CSV content, `range=` aims a tab or cells; Forms: YAML/JSON spec replaces all questions) | `file_id`, `content` OR `source` |
 | `prepend` | Insert at start of file | `file_id`, `content` |
-| `append` | Insert at end of file | `file_id`, `content` |
+| `append` | Insert at end of file — or, with `tab='Title'`, place content in a NEW Google Doc tab | `file_id`, `content`, optional `tab` |
 | `replace_text` | Find-and-replace in file (Sheets: across cell values, all tabs) | `file_id`, `find`, `content` |
 | `draft` | Compose a new Gmail draft — or update an existing one in place | `to`, `subject`, `content`, optional `include` (Drive file IDs); update: `file_id` (draft ID) + `content` |
 | `reply_draft` | Reply draft in an existing thread | `file_id` (thread ID), `content`, optional `include` |
@@ -468,7 +468,9 @@ search("orgTitle='Head of Strategy'", sources=["people"], base_path="...")
 
 **All edit operations work on both Google Docs and plain files** (markdown, JSON, SVG, YAML, etc. stored in Drive). The tool auto-detects the file type and uses the right API — Docs API for Google Docs, Drive Files API for everything else. No extra flags needed.
 
-**Overwrite destroys everything** — images, tables, formatting, all gone. It's a full replacement from markdown. Use it when you're publishing a complete new version of a document.
+**Overwrite destroys everything** — images, tables, formatting, all gone. It's a full replacement from markdown. Use it when you're publishing a complete new version of a document. On a **multi-tab Google Doc it refuses outright**: the underlying import replaces the whole file, silently destroying every tab but the first (measured 2026-08-24), so the error teaches the alternatives instead.
+
+**A new tab is the non-destructive home for a parallel version.** `append` with `tab='Redraft v2'` places `content` in a NEW tab of the doc — existing tabs are never touched, and the result's `web_link` deep-links straight to it. One honest limit: tab content is **plain text** (markdown is not rendered in tabs — the rich import path can't target one), so put rich redrafts in prose, not markup. A duplicate tab title warns rather than refuses.
 
 **Every Doc edit leaves a restore point.** Mutating a Google Doc (overwrite, prepend, append, replace_text) first captures the pre-edit revision and returns it as `cues.restore_point {revision_id, modified_time}` — the exact File → Version history entry to revert to. `overwrite` also posts an `[agent]` comment in the doc naming that entry, so the human can find the restore point from inside the doc without asking. Pass `restore_comment=False` on shared docs where a comment notification would be noise. If a revert is needed, point the human at Version history → the cued timestamp (a program cannot restore or name versions — that's UI-only).
 
@@ -479,6 +481,7 @@ search("orgTitle='Head of Strategy'", sources=["people"], base_path="...")
 | Publishing a complete document from scratch | `overwrite` |
 | Replacing a draft with a final version | `overwrite` |
 | Adding meeting notes to an existing doc | `append` |
+| A redraft beside a live shared draft, same doc | `append` with `tab='Title'` (new tab, plain text) |
 | Adding a header/disclaimer to a doc | `prepend` |
 | Updating a specific section or value | `replace_text` |
 | Doc has images, tables, or rich formatting | `prepend`/`append`/`replace_text` (never overwrite) |

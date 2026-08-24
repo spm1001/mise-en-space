@@ -25,6 +25,7 @@ from models import DoResult, MiseError
 from tools.common import resolve_source as _resolve_source
 from workspace.manager import deposit_lock_for_source
 from tools.doc_chips import CHIP_REF_RE, insert_chips_in_doc, parse_chip_refs
+from tools.doc_tabs import get_doc_tabs_meta
 from tools.doc_footnotes import apply_footnote_cues, footnotes_for_import
 from tools.form_edit import form_overwrite
 from tools.plain_file import plain_overwrite
@@ -151,6 +152,38 @@ def do_overwrite(
                 }
             content = content_file.read_text(encoding="utf-8")
 
+    # Multi-tab guard (mise-wisuzu): overwrite rides Drive's whole-file
+    # markdown import, which FLATTENS a multi-tab doc to a single tab —
+    # measured live 2026-08-24 (docs/research/2026-08-24-givige-tab-probe/
+    # probe_drive_import_vs_tabs.py: both the second tab and the original
+    # tab's content destroyed under an HTTP 200). Refuse rather than corrupt
+    # — the same contract choice the multi-tab sheet path made (mise-vadoko).
+    # Fail-open on a failed read (a Drive-scoped credential can write where
+    # a Docs-scoped read is refused), with the gap disclosed as a warning.
+    guard_warning: str | None = None
+    try:
+        doc_tabs = get_doc_tabs_meta(file_id)["tabs"]
+    except Exception as e:  # noqa: BLE001 — guard never blocks a legit overwrite
+        doc_tabs = []
+        guard_warning = (
+            f"Could not check this doc's tab structure before overwriting "
+            f"({type(e).__name__}) — if the doc has multiple tabs, overwrite "
+            f"destroys every tab but the first."
+        )
+    if len(doc_tabs) > 1:
+        tab_titles = ", ".join(repr(t["title"]) for t in doc_tabs[:5])
+        return {
+            "error": True, "kind": "invalid_input",
+            "message": (
+                f"This doc has {len(doc_tabs)} tabs ({tab_titles}) and "
+                f"overwrite rides Drive's whole-file markdown import, which "
+                f"would silently DESTROY every tab but the first (measured "
+                f"2026-08-24). To add content as a new tab: do(append, "
+                f"file_id=…, content=…, tab='Title'). For in-place edits: "
+                f"replace_text / prepend / append."
+            ),
+        }
+
     title = metadata.get("name", "Untitled") if metadata else None
 
     # Whole-line @url smart-chip requests, same opt-in grain as create
@@ -172,6 +205,9 @@ def do_overwrite(
         result = _overwrite_doc(file_id, content, title=title)  # type: ignore[arg-type]
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
+
+    if guard_warning:
+        result.cues.setdefault("warnings", []).append(guard_warning)
 
     if chip_refs:
         chip_result = insert_chips_in_doc(file_id, chip_refs)

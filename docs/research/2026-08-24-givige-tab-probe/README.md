@@ -33,6 +33,7 @@ The outcome's pre-registered `--badly` (Sameer): *"if we miss some clever and si
 | `probe_add_tab.py` | The A/B/C/D probe, self-cleaning; exit code now fails on any behavioural FAIL (refuter catch — the first cut returned 0 regardless) |
 | `probe_supplied_tabid.py` | D2: supplied-tabId 400 is categorical, not a format complaint (both formats, body captured in docstring) |
 | `probe_one_batch_fill.py` | Refuter's falsifier: one-batch add-and-fill → 200 but text lands in the ORIGINAL tab |
+| `probe_drive_import_vs_tabs.py` | Build-phase falsifier sweep (mise-wisuzu): the Drive markdown import engine aimed at a doc with a fresh index-0 tab **flattens the doc to ONE tab** — new tab destroyed, original content destroyed, surviving tab keeps the ORIGINAL's id (`t.0`), all under a 200. Kills the full-fidelity-into-a-tab route AND measures the mise-vuloju watch item: un-guarded `do(overwrite)` on a multi-tab Doc was silent multi-tab destruction (now refused, `tools/overwrite.py`). Bonus negative: markdown H1s import as HEADING_1 paragraphs, never as tabs — no import-side tab syntax exists. |
 
 ## Open edges for wisuzu (named, not probed)
 
