@@ -374,7 +374,7 @@ Token storage: macOS Keychain (`mise-oauth-token`) is the source of truth. `~/.c
 ## How to Add a New do() Operation
 
 1. **Implementation** — Create `tools/{op}.py` with `do_{op}()` that validates its own params (accepts `str | None`) and returns `DoResult` on success or error dict on failure
-2. **Dispatch** — Add handler to `DISPATCH` dict and required params to `REQUIRED_PARAMS` in `tools/dispatch.py`
+2. **Dispatch** — Add handler to `DISPATCH` dict, required params to `REQUIRED_PARAMS`, and the params the lambda actually passes to `OP_PARAMS`, all in `tools/dispatch.py`. `OP_PARAMS` is what stops a param the op doesn't consume from being accepted and dropped in silence (mise-fumuda) — one flat param list serves all ops, so the schema can't do it. A test parses the lambdas and fails if the two disagree, in either direction: forget an entry and every caller passing that param gets refused; over-claim and the drop comes back. A **new param** also needs a `DO_PARAM_DEFAULTS` entry (same file) matching its `do()` signature default, or the gate cannot tell "the caller passed this" from "the default arrived"
 3. **Register** — Add name to `OPERATIONS` in `tools/__init__.py`
 4. **Export** — Add `do_{op}` to `tools/__init__.py` imports and `__all__`
 5. **Resource docs** — Update `docs_do()` in `resources/docs.py` with new operation

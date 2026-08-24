@@ -246,3 +246,32 @@ async def test_mcp_door_stdio_credential_free_walk(tmp_path):
                     f"MCP DOOR: the refusal for {file_id!r} leaked the "
                     "credential error into its payload — fail-open broke"
                 )
+
+            # do()'s wrong-op param gate (mise-fumuda) — pure validation, so
+            # it belongs on the credential-free walk. The unit tests call the
+            # decorated function directly; only here does the refusal cross a
+            # real wire, with pydantic coercing the arguments on the way in.
+            for args, expected in (
+                (
+                    {"operation": "append", "file_id": "doc1",
+                     "file_path": "/tmp/nowhere.md"},
+                    ["file_path=", "create", "overwrite"],
+                ),
+                (
+                    {"operation": "create", "title": "T", "content": "body",
+                     "tab": "Redraft"},
+                    ["tab=", "append", "NEW tab"],
+                ),
+            ):
+                result = await session.call_tool("do", args)
+                text = "".join(getattr(b, "text", "") for b in result.content)
+                missing = [want for want in expected if want not in text]
+                assert not missing, (
+                    f"MCP DOOR: do({args['operation']}) with a param it cannot "
+                    f"consume lost its teaching text {missing}; got: {text[:400]}"
+                )
+                assert "deliberately-absent" not in text, (
+                    f"MCP DOOR: do({args['operation']}) reached the credential "
+                    "layer — the param gate did not refuse first, so the param "
+                    "was on its way to being dropped in silence"
+                )

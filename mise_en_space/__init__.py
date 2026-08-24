@@ -80,6 +80,7 @@ import token_store
 from adapters.http_client import clear_http_client, clear_sync_client
 from models import FetchError, FetchResult, MiseError, SearchResult
 from tools import OPERATIONS, do_fetch, do_search
+from tools.dispatch import DO_PARAM_DEFAULTS as _DO_DEFAULTS
 from tools.dispatch import run_operation
 
 __all__ = [
@@ -91,52 +92,14 @@ __all__ = [
     "SearchResult",
 ]
 
-# The full parameter surface of do(), mirroring server.py's do() wrapper —
-# dispatch handlers index params with p["key"], so every key must be present
-# (a partial dict raises KeyErrors dressed as INTERNAL errors).
-# tests/unit/test_facade.py pins this against server.do's real signature,
-# so a param added there without a matching entry here fails loudly.
-_DO_DEFAULTS: dict[str, Any] = {
-    "content": None,
-    "title": None,
-    "doc_type": "doc",
-    "folder_id": None,
-    "page_setup": None,
-    "file_id": None,
-    "destination_folder_id": None,
-    "source": None,
-    "base_path": None,
-    "file_path": None,
-    "find": None,
-    "to": None,
-    "subject": None,
-    "cc": None,
-    "include": None,
-    "reply_all": False,
-    "role": None,
-    "confirm": False,
-    "label": None,
-    "remove": False,
-    "comment_id": None,
-    "action": None,
-    "force": False,
-    "restore_comment": True,
-    "supersede": False,
-    "range": None,
-    "tab": None,
-    "attendees": None,
-    "time_min": None,
-    "time_max": None,
-    "location": None,
-    "meet": False,
-    "recurrence": None,
-    "send_updates": None,
-    "duration": None,
-    "properties": None,
-    "color": None,
-    "visibility": None,
-    "transparency": None,
-}
+# _DO_DEFAULTS is the full parameter surface of do(), mirroring server.py's
+# do() wrapper — dispatch handlers index params with p["key"], so every key
+# must be present (a partial dict raises KeyErrors dressed as INTERNAL errors).
+# It is imported from tools.dispatch (as DO_PARAM_DEFAULTS) rather than kept
+# here: run_operation needs the same defaults to tell a caller-supplied param
+# from a signature default, and two copies of a 39-key table drift in silence.
+# tests/unit/test_facade.py pins it against server.do's real signature, so a
+# param added there without a matching entry fails loudly.
 
 
 class Mise:

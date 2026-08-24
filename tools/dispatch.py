@@ -5,10 +5,13 @@ Thirteen-plus operations route through one MCP tool, so the knowledge of
 "which params does each op need" lives here (runtime validation) rather
 than in the MCP schema — a deliberate token-budget trade-off (the do()
 tool description stays compact; see understanding.md "generic primitive").
+That trade-off has a cost the schema would otherwise carry: every param
+validates for every op, so this module also has to say which params each
+op CONSUMES (OP_PARAMS) — anything else is dropped without a word.
 
 server.py's do() wrapper handles logging and the remote-mode gate, then
 calls run_operation(). Tests verify OPERATIONS/DISPATCH/REQUIRED_PARAMS
-stay in sync automatically (tests/unit/test_dispatch.py).
+and OP_PARAMS stay in sync automatically (tests/unit/test_dispatch.py).
 """
 
 from typing import Any
@@ -73,6 +76,114 @@ REQUIRED_PARAMS: dict[str, set[str]] = {
 
 # Content operations that need mime-type routing (metadata pre-fetched at dispatch)
 CONTENT_OPS = {"overwrite", "prepend", "append", "replace_text"}
+
+# The whole do() param surface with its defaults — one flat list serving all
+# 22 operations, mirroring server.py's do() signature. This is the single
+# source of truth for it: mise_en_space imports it as _DO_DEFAULTS to build a
+# complete params dict, and run_operation reads it to tell "the caller passed
+# this" from "the signature default arrived", which it otherwise cannot —
+# server.py's do() sends every key on every call, most of them None.
+# tests/unit/test_facade.py::test_do_defaults_mirror_servers_signature pins it
+# against the real signature, so a param added there without an entry here
+# fails loudly.
+DO_PARAM_DEFAULTS: dict[str, Any] = {
+    "content": None, "title": None, "doc_type": "doc", "folder_id": None,
+    "page_setup": None, "file_id": None, "destination_folder_id": None,
+    "source": None, "base_path": None, "file_path": None, "find": None,
+    "to": None, "subject": None, "cc": None, "include": None,
+    "reply_all": False, "role": None, "confirm": False, "label": None,
+    "remove": False, "comment_id": None, "action": None, "force": False,
+    "restore_comment": True, "supersede": False, "range": None, "tab": None,
+    "attendees": None, "time_min": None, "time_max": None, "location": None,
+    "meet": False, "recurrence": None, "send_updates": None, "duration": None,
+    "properties": None, "color": None, "visibility": None, "transparency": None,
+}
+
+# Which params each op actually CONSUMES — read straight off the DISPATCH
+# lambdas below, in the same order, so the two can be diffed by eye.
+#
+# Why this exists: do() is one tool with one flat param list, so the MCP schema
+# accepts every param name for every operation. A param an op's lambda doesn't
+# pass is dropped on the floor — the handler never sees it, nothing warns, and
+# the operation succeeds having ignored what the caller asked for. That is this
+# codebase's characteristic bug (mise-fumuda). The tab= rail shipped for
+# mise-wisuzu was the one-param version of this map.
+#
+# The map records what the lambda PASSES, not what the handler goes on to use,
+# and that direction is deliberate: erring wide can only leave the gate too
+# permissive (which is the status quo), never refuse a call that would have
+# worked. tests/unit/test_dispatch.py::TestOpParamsMatchDispatch pins it
+# against the lambdas by parsing them, so drift fails there rather than in
+# production — in BOTH directions: under-claiming here makes the gate refuse a
+# param the op really does take (mutation-controlled, 2026-08-24).
+OP_PARAMS: dict[str, frozenset[str]] = {
+    "create": frozenset({"content", "title", "doc_type", "folder_id", "source",
+                         "base_path", "file_path", "page_setup"}),
+    "copy": frozenset({"file_id", "folder_id", "title"}),
+    "move": frozenset({"file_id", "folder_id", "destination_folder_id"}),
+    "rename": frozenset({"file_id", "title"}),
+    "share": frozenset({"file_id", "to", "role", "confirm"}),
+    "overwrite": frozenset({"file_id", "content", "source", "base_path",
+                            "file_path", "restore_comment", "range"}),
+    "prepend": frozenset({"file_id", "content"}),
+    "append": frozenset({"file_id", "content", "tab"}),
+    "replace_text": frozenset({"file_id", "find", "content"}),
+    "draft": frozenset({"to", "subject", "content", "cc", "include", "file_id"}),
+    "reply_draft": frozenset({"file_id", "content", "cc", "include",
+                              "reply_all", "supersede"}),
+    "archive": frozenset({"file_id"}),
+    "star": frozenset({"file_id"}),
+    "label": frozenset({"file_id", "label", "remove"}),
+    "comment": frozenset({"file_id", "content"}),
+    "comment_reply": frozenset({"file_id", "comment_id", "content", "action"}),
+    "setup_oauth": frozenset({"force"}),
+    "trash": frozenset({"file_id"}),
+    "respond": frozenset({"file_id", "action"}),
+    "create_event": frozenset({"title", "time_min", "time_max", "content",
+                               "attendees", "location", "meet", "recurrence",
+                               "include", "send_updates", "properties", "color",
+                               "visibility", "transparency", "confirm"}),
+    "update_event": frozenset({"file_id", "title", "content", "location",
+                               "time_min", "time_max", "attendees", "recurrence",
+                               "include", "meet", "send_updates", "properties",
+                               "color", "visibility", "transparency", "confirm"}),
+    "freebusy": frozenset({"attendees", "time_min", "time_max", "duration"}),
+}
+
+# param -> the ops that consume it. Inverted rather than written out twice.
+PARAM_OWNERS: dict[str, frozenset[str]] = {
+    param: frozenset(op for op, consumed in OP_PARAMS.items() if param in consumed)
+    for param in DO_PARAM_DEFAULTS
+}
+
+# Params exempt from the wrong-op gate — policy, deliberately kept apart from
+# the consumption record above so neither can be edited by accident.
+#
+# base_path is the deposit root: create/overwrite are the only ops that read a
+# deposit, but mise_en_space's Mise(base_path=...) stamps it onto EVERY do()
+# call it makes. Gating it would refuse every facade call from a base_path-
+# configured handle — a live break in the library door, not a hypothetical.
+UNGATED_PARAMS = frozenset({"base_path"})
+
+# Extra teaching for params whose owner list alone doesn't explain the miss.
+# The tab= text is the wisuzu rail's, kept verbatim.
+PARAM_HINTS: dict[str, str] = {
+    "tab": "do(append, file_id=…, content=…, tab='Title') places content in a "
+           "NEW tab of an existing Google Doc. Writing INTO an existing tab "
+           "isn't supported — prepend/append address the first tab, "
+           "replace_text applies across ALL tabs, and rich overwrite cannot "
+           "target a tab.",
+    "file_path": "file_path= reads a file from the SERVER's disk as the whole "
+                 "new body; the surgical edits take the text itself as content=.",
+    "source": "source= replays a previously fetched .mise deposit as the whole "
+              "new body; the surgical edits take the text itself as content=.",
+    "range": "range= is Sheets A1 notation ('Tab' or 'Tab!F9:F15') scoping how "
+             "much of a sheet a full replace clears — a blast-radius limiter, "
+             "not an insertion point.",
+    "file_id": "file_id= names an artefact that already exists; to change one, "
+               "reach for overwrite/prepend/append/replace_text.",
+}
+
 
 # Dispatch table for do() operations.
 # Each handler receives the full params dict and handles its own validation.
@@ -214,6 +325,46 @@ AMBIENT_UNAVAILABLE_OPS = {
 }
 
 
+def wrong_op_params(operation: str, params: dict[str, Any]) -> list[str]:
+    """Params the caller supplied that `operation` will silently ignore.
+
+    "Supplied" means present AND different from do()'s signature default —
+    server.py sends every key on every call, so presence alone proves nothing.
+    Sorted, so the message is stable.
+    """
+    return sorted(
+        param
+        for param, owners in PARAM_OWNERS.items()
+        if operation not in owners
+        and param not in UNGATED_PARAMS
+        and param in params
+        and params[param] != DO_PARAM_DEFAULTS[param]
+    )
+
+
+def _wrong_op_message(operation: str, offenders: list[str]) -> str:
+    """Teaching text: what was ignored, and which op takes it instead."""
+    named = ", ".join(f"{p}=" for p in offenders)
+    parts = [
+        (
+            f"'{operation}' does not take {named} — do()'s param list is flat "
+            f"across all {len(DISPATCH)} operations, so what an operation doesn't "
+            "consume is dropped in silence rather than refused by the schema."
+        )
+    ]
+    for param in offenders:
+        owners = PARAM_OWNERS[param]
+        parts.append(
+            f"{param}= applies to: {', '.join(sorted(owners))}."
+            if owners else
+            f"{param}= is consumed by no operation."
+        )
+        hint = PARAM_HINTS.get(param)
+        if hint:
+            parts.append(hint)
+    return " ".join(parts)
+
+
 def run_operation(operation: str, params: dict[str, Any]) -> dict[str, Any]:
     """
     Validate and execute one do() operation.
@@ -240,25 +391,24 @@ def run_operation(operation: str, params: dict[str, Any]) -> dict[str, Any]:
                            "rename, share, overwrite, prepend, append, replace_text, "
                            "comment, comment_reply, trash) remain available."}
 
+    # A param this op doesn't consume would be accepted and silently dropped
+    # (OP_PARAMS above). Refuse and name the op that takes it.
+    #
+    # This runs BEFORE the required-params check on purpose. The two errors
+    # compete, and the missing-param one is the misleading half: a caller
+    # mirroring overwrite's grammar with do(append, file_id=…, file_path='x.md')
+    # was told only "append requires: content" — true, unhelpful, and silent on
+    # the param that was the actual mistake (mise-fumuda's motivating case).
+    offenders = wrong_op_params(operation, params)
+    if offenders:
+        return {"error": True, "kind": "invalid_input",
+                "message": _wrong_op_message(operation, offenders)}
+
     required = REQUIRED_PARAMS.get(operation, set())
     missing = {p for p in required if params.get(p) is None}
     if missing:
         return {"error": True, "kind": "INVALID_INPUT",
                 "message": f"'{operation}' requires: {', '.join(sorted(missing))}"}
-
-    # tab= is append-only today; on any other op it would be accepted and
-    # silently dropped (this codebase's characteristic bug) — and the
-    # wisuzu brief's own draft grammar put it on create, so the wrong guess
-    # is the likely one. Refuse and teach instead.
-    if params.get("tab") is not None and operation != "append":
-        return {"error": True, "kind": "invalid_input",
-                "message": "tab= applies to 'append' only: do(append, "
-                           "file_id=…, content=…, tab='Title') places content "
-                           "in a NEW tab of an existing Google Doc. Writing "
-                           "INTO an existing tab isn't supported — "
-                           "prepend/append address the first tab, "
-                           "replace_text applies across ALL tabs, and rich "
-                           "overwrite cannot target a tab."}
 
     # Pre-fetch metadata for content operations — one Drive API call shared
     # by routing logic and handler, instead of each handler fetching its own.

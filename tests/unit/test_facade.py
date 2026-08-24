@@ -139,6 +139,27 @@ class TestFacadeContract:
         with pytest.raises(TypeError, match="nonsense"):
             Mise().do("create", nonsense=1)
 
+    def test_base_path_survives_the_wrong_op_gate(self, tmp_path):
+        """Mise(base_path=…) stamps base_path onto EVERY do() call it makes,
+        while only create and overwrite consume it. run_operation's wrong-op
+        gate (mise-fumuda) exempts it for exactly this reason — without the
+        exemption every call from a base_path-configured handle would refuse,
+        which is a live break in the library door, not a hypothetical."""
+        from unittest.mock import patch
+
+        import tools.dispatch as dispatch_mod
+
+        with patch.dict(dispatch_mod.DISPATCH, {"star": lambda p: {"operation": "star"}}):
+            result = Mise(base_path=tmp_path).do("star", file_id="f1")
+        assert result == {"operation": "star"}
+
+    def test_facade_still_reaches_the_wrong_op_gate(self, tmp_path):
+        """The exemption is base_path, not the gate — a genuinely wrong param
+        through the facade must still teach."""
+        result = Mise(base_path=tmp_path).do("star", file_id="f1", tab="T")
+        assert result["error"] is True
+        assert "append" in result["message"]
+
     def test_do_fills_the_full_param_dict(self, monkeypatch):
         captured = {}
 

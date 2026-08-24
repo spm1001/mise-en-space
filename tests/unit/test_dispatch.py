@@ -2,6 +2,7 @@
 
 import tempfile
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch, MagicMock
 
 import orjson
@@ -100,6 +101,254 @@ class TestSignatureCarriesEveryDispatchParam:
             "and pydantic will silently drop callers' values. Add them to the "
             "do() signature in server.py (and the params dict + call_params list)."
         )
+
+
+# =============================================================================
+# The wrong-op param gate (mise-fumuda)
+# =============================================================================
+#
+# do() is one tool with one flat param list, so its schema accepts every param
+# name for every operation and the dispatch lambdas decide what actually
+# reaches a handler. Anything a lambda doesn't pass is dropped without a word.
+# OP_PARAMS records what each lambda passes; run_operation refuses on the
+# mismatch. Two things need pinning: that the record is TRUE of the lambdas,
+# and that the gate fires across the whole matrix rather than the one param
+# (tab=) the wisuzu rail covered.
+
+
+def _lambda_reads() -> dict[str, set[str]]:
+    """What each DISPATCH lambda actually reads out of the params dict.
+
+    Parsed from the source with ast rather than restated: the lambdas are the
+    only place that decides what reaches a handler, so a hand-written map is a
+    claim ABOUT them and has to be checked against them. ast (not regex)
+    because a param read inside a conditional must still count — the map has
+    to stay a superset of real consumption or the gate starts refusing calls
+    that would have worked.
+    """
+    import ast
+
+    source = (Path(__file__).parents[2] / "tools" / "dispatch.py").read_text()
+    table = None
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", "") == "DISPATCH":
+            table = node.value
+    assert isinstance(table, ast.Dict), "DISPATCH is no longer a literal dict — retune this parse"
+
+    reads: dict[str, set[str]] = {}
+    for key, handler in zip(table.keys, table.values):
+        keys: set[str] = set()
+        for node in ast.walk(handler):
+            index = None
+            if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id == "p":
+                index = node.slice
+            elif (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "get"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "p"
+                and node.args
+            ):
+                index = node.args[0]
+            if index is None:
+                continue
+            assert isinstance(index, ast.Constant), (
+                f"the {key.value!r} handler reads params by a computed key — this parse "
+                "can only see literals, so OP_PARAMS would silently under-claim and the "
+                "gate would refuse a param the op really does consume"
+            )
+            keys.add(index.value)
+        reads[key.value] = keys
+    return reads
+
+
+class TestOpParamsMatchDispatch:
+    """OP_PARAMS records exactly what the DISPATCH lambdas pass to handlers."""
+
+    def test_op_params_matches_the_lambdas(self) -> None:
+        from tools.dispatch import OP_PARAMS
+
+        injected_by_run_operation = {"_metadata"}
+        actual = {op: keys - injected_by_run_operation for op, keys in _lambda_reads().items()}
+        declared = {op: set(params) for op, params in OP_PARAMS.items()}
+
+        assert declared == actual, (
+            "OP_PARAMS has drifted from the DISPATCH lambdas. Whatever a lambda passes "
+            "is what the handler can see; everything else is dropped in silence, and "
+            "the gate in run_operation reads this map to say so. Update OP_PARAMS."
+        )
+
+    def test_every_consumed_param_has_a_default(self) -> None:
+        """A param the gate can fire on needs a default to compare against."""
+        from tools.dispatch import DO_PARAM_DEFAULTS, OP_PARAMS
+
+        consumed = set().union(*OP_PARAMS.values())
+        assert consumed <= set(DO_PARAM_DEFAULTS)
+
+    def test_param_owners_covers_the_whole_signature(self) -> None:
+        """Every do() param is in the matrix — including any consumed by no op."""
+        import inspect
+
+        from tools.dispatch import PARAM_OWNERS
+
+        signature = {n for n in inspect.signature(do).parameters if n != "operation"}
+        assert set(PARAM_OWNERS) == signature
+
+
+# A value distinguishable from each param's default, for probing the gate.
+# Types are plausible rather than load-bearing: the gate refuses before any
+# handler runs, so nothing coerces these.
+_PROBE_OVERRIDES: dict[str, Any] = {
+    "doc_type": "sheet",
+    "include": ["1AbC"],
+    "attendees": ["someone@example.com"],
+    "properties": {"k": "v"},
+    "duration": 30,
+    "recurrence": "RRULE:FREQ=WEEKLY",
+    "file_id": "probe-file-id",
+}
+
+
+def _probe_value(param: str, default: Any) -> Any:
+    if param in _PROBE_OVERRIDES:
+        return _PROBE_OVERRIDES[param]
+    if isinstance(default, bool):
+        return not default
+    return "probe"
+
+
+class TestWrongOpParamsRefuse:
+    """The whole (param x operation) matrix, not just tab= (mise-fumuda).
+
+    The positive direction runs through server.do — the real caller path —
+    because the gate refuses before any handler, so nothing reaches the wire.
+    The negative direction asserts on the pure predicate instead: calling a
+    legitimate (param, op) pair through do() would run the handler.
+    """
+
+    def test_every_wrong_pairing_refuses_and_names_an_owner(self) -> None:
+        from tools.dispatch import (
+            DO_PARAM_DEFAULTS,
+            PARAM_OWNERS,
+            UNGATED_PARAMS,
+        )
+
+        checked = 0
+        for param, owners in sorted(PARAM_OWNERS.items()):
+            if param in UNGATED_PARAMS or not owners:
+                continue
+            value = _probe_value(param, DO_PARAM_DEFAULTS[param])
+            for op in sorted(OPERATIONS - owners):
+                result = do(operation=op, **{param: value})
+                assert result.get("error") is True, (
+                    f"do({op}, {param}=...) was accepted — the param cannot reach the "
+                    f"handler, so it is being dropped in silence"
+                )
+                assert result["kind"] == "invalid_input"
+                assert f"{param}=" in result["message"]
+                for owner in owners:
+                    assert owner in result["message"], (
+                        f"the refusal for {param}= on {op} must name {owner}, "
+                        f"which does take it: {result['message']}"
+                    )
+                checked += 1
+        # The matrix is the point — a collapsed one would pass vacuously.
+        # 741 of the 858 cells (22 ops x 39 params) are wrong pairings; the
+        # other 117 are the legitimate ones plus base_path's exemption, both
+        # covered below. Measured 2026-08-24.
+        assert checked > 700, f"only {checked} wrong pairings exercised"
+
+    def test_every_legitimate_pairing_passes_the_gate(self) -> None:
+        from tools.dispatch import DO_PARAM_DEFAULTS, PARAM_OWNERS, wrong_op_params
+
+        checked = 0
+        for param, owners in PARAM_OWNERS.items():
+            value = _probe_value(param, DO_PARAM_DEFAULTS[param])
+            for op in owners:
+                assert wrong_op_params(op, {param: value}) == [], (
+                    f"{param}= is consumed by {op} — the gate must not refuse it"
+                )
+                checked += 1
+        assert checked > 90, f"only {checked} legitimate pairings exercised"
+
+    def test_defaults_alone_never_trip_the_gate(self) -> None:
+        """server.py sends every key on every call, most of them None.
+
+        This is the guard that matters: if the gate read presence rather than
+        difference-from-default, every do() call in the product would refuse.
+        """
+        from tools.dispatch import DO_PARAM_DEFAULTS, wrong_op_params
+
+        for op in OPERATIONS:
+            assert wrong_op_params(op, dict(DO_PARAM_DEFAULTS)) == []
+
+    def test_partial_params_dict_is_tolerated(self) -> None:
+        """Callers inside the repo pass sparse dicts to run_operation."""
+        from tools.dispatch import wrong_op_params
+
+        assert wrong_op_params("star", {"file_id": "f1"}) == []
+        assert wrong_op_params("star", {}) == []
+
+    def test_base_path_is_exempt_on_every_op(self) -> None:
+        """mise_en_space stamps base_path onto every facade call — gating it
+        would refuse them all (the exemption is pinned end-to-end in
+        tests/unit/test_facade.py)."""
+        from tools.dispatch import wrong_op_params
+
+        for op in OPERATIONS:
+            assert wrong_op_params(op, {"base_path": "/tmp/anywhere"}) == []
+
+    def test_two_wrong_params_are_both_named(self) -> None:
+        result = do(operation="append", file_id="doc1", content="c",
+                    source="deposit", range="Sheet1!A1")
+        assert result["error"] is True
+        assert "source=" in result["message"]
+        assert "range=" in result["message"]
+
+
+class TestWrongOpParamsTeach:
+    """The refusal has to say what to do instead — the brief's motivating
+    cases, each one a caller mirroring another op's grammar."""
+
+    def test_file_path_on_append_names_its_owners_not_just_content(self) -> None:
+        """The reported bug: do(append, file_path=...) answered 'requires
+        content', which is true, unhelpful, and silent about the real mistake."""
+        result = do(operation="append", file_id="doc1", file_path="/tmp/x.md")
+        assert result["error"] is True
+        assert "file_path=" in result["message"]
+        assert "create" in result["message"] and "overwrite" in result["message"]
+
+    def test_source_on_append_teaches_content(self) -> None:
+        result = do(operation="append", file_id="doc1", content="c", source="dep")
+        assert result["error"] is True
+        assert "content=" in result["message"]
+
+    def test_range_on_append_names_overwrite(self) -> None:
+        result = do(operation="append", file_id="s1", content="a,b", range="Tab!A1:B2")
+        assert result["error"] is True
+        assert "overwrite" in result["message"]
+
+    def test_title_on_overwrite_names_rename(self) -> None:
+        result = do(operation="overwrite", file_id="doc1", content="c", title="New")
+        assert result["error"] is True
+        assert "rename" in result["message"]
+
+    def test_gate_precedes_the_required_params_check(self) -> None:
+        """Ordering is the fix, not a detail: with the required-params check
+        first, the wrong param stays hidden behind 'append requires: content'
+        until the caller has already retried."""
+        result = do(operation="append", file_path="/tmp/x.md")
+        assert result["error"] is True
+        assert "file_path=" in result["message"]
+
+    def test_tab_teaching_survives_the_generalisation(self) -> None:
+        """The wisuzu one-param rail folded into the matrix — its text stays."""
+        result = do(operation="create", content="body", title="T", tab="Redraft")
+        assert result["error"] is True
+        assert "append" in result["message"]
+        assert "NEW tab" in result["message"]
+        assert "replace_text applies across ALL tabs" in result["message"]
 
 
 class TestRunOperationNeverRaises:
