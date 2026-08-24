@@ -102,9 +102,10 @@ def format_markup_warnings(counts: DocxMarkupCounts) -> list[str]:
             f"{counts.comments} Word comment(s) were not extracted — "
             "discussion context is missing from this content."
         )
-    if counts.inline_images:
-        warnings.append(
-            f"{counts.inline_images} inline image(s) were dropped from the "
-            "markdown — figures, diagrams, or image-based redlines are not shown."
-        )
+    # Inline images are no longer warned about here: they are extracted to
+    # sidecar figure files with a reconciled warning by the office adapter
+    # (extractors/markdown_images.py + _process_docx_figures, mise-gerefe).
+    # The old warning counted <w:drawing> in the source and called every
+    # image "dropped" even when Drive's export retained them all as base64
+    # — measured 0-for-3 inverted on a real doc, 2026-08-13.
     return warnings

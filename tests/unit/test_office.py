@@ -430,3 +430,89 @@ class TestDocxMarkupInspection:
         result = convert_office_content("docx", file_path=docx_path, file_id="f1")
 
         assert any("FLATTENED" in w for w in result.warnings)
+
+
+class TestDocxFigures:
+    """DOCX figures become sidecar files with a reconciled warning (mise-gerefe)."""
+
+    PNG_B64 = __import__("base64").b64encode(b"\x89PNG-fake").decode()
+
+    @staticmethod
+    def _make_docx_with_media(media: dict[str, bytes], blip_rids: list[str]) -> bytes:
+        import io
+        import zipfile
+
+        drawings = "".join(
+            f'<w:drawing><a:blip r:embed="{rid}"/></w:drawing>' for rid in blip_rids
+        )
+        rels = "".join(
+            f'<Relationship Id="{rid}" Target="media/{name}"/>'
+            for rid, name in zip(blip_rids, media)
+        )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("word/document.xml", f"<w:document><w:body>{drawings}</w:body></w:document>")
+            zf.writestr("word/_rels/document.xml.rels", f"<Relationships>{rels}</Relationships>")
+            for name, data in media.items():
+                zf.writestr(f"word/media/{name}", data)
+        return buf.getvalue()
+
+    @patch("adapters.office.convert_via_drive")
+    def test_base64_defs_become_figure_files(self, mock_convert: MagicMock) -> None:
+        from adapters.conversion import ConversionResult
+
+        md = f"![][image1]\n\n[image1]: <data:image/png;base64,{self.PNG_B64}>\n"
+        mock_convert.return_value = ConversionResult(
+            content=md, temp_file_deleted=True, warnings=[]
+        )
+        docx = self._make_docx_with_media({"image1.png": b"\x89PNG-fake"}, ["rId8"])
+
+        result = convert_office_content("docx", file_bytes=docx, file_id="f1")
+
+        assert result.figures == [("figure-1.png", b"\x89PNG-fake")]
+        assert "data:image" not in result.content
+        assert "[image1]: figure-1.png" in result.content
+        assert any("extracted to sidecar" in w for w in result.warnings)
+        assert not any("dropped from the markdown" in w for w in result.warnings)
+
+    @patch("adapters.office.convert_via_drive")
+    def test_dangling_ref_salvaged_from_archive(self, mock_convert: MagicMock) -> None:
+        from adapters.conversion import ConversionResult
+
+        mock_convert.return_value = ConversionResult(
+            content="A chart: ![][image1]\n", temp_file_deleted=True, warnings=[]
+        )
+        docx = self._make_docx_with_media({"image1.png": b"salvaged-bytes"}, ["rId8"])
+
+        result = convert_office_content("docx", file_bytes=docx, file_id="f1")
+
+        assert result.figures == [("figure-1.png", b"salvaged-bytes")]
+        assert "[image1]: figure-1.png" in result.content
+        assert any("recovered from the .docx" in w for w in result.warnings)
+
+    @patch("adapters.office.convert_via_drive")
+    def test_dangling_emf_named_unrecoverable(self, mock_convert: MagicMock) -> None:
+        from adapters.conversion import ConversionResult
+
+        mock_convert.return_value = ConversionResult(
+            content="![][image1]\n", temp_file_deleted=True, warnings=[]
+        )
+        docx = self._make_docx_with_media({"image1.emf": b"emf-bytes"}, ["rId8"])
+
+        result = convert_office_content("docx", file_bytes=docx, file_id="f1")
+
+        assert result.figures == []
+        assert any("could NOT be recovered" in w and "emf" in w for w in result.warnings)
+
+    @patch("adapters.office.convert_via_drive")
+    def test_exfil_path_dangling_named_not_downloaded(self, mock_convert: MagicMock) -> None:
+        from adapters.conversion import ConversionResult
+
+        mock_convert.return_value = ConversionResult(
+            content="![][image1]\n", temp_file_deleted=True, warnings=[]
+        )
+
+        result = convert_office_content("docx", source_file_id="drive-file", file_id="f1")
+
+        assert result.figures == []
+        assert any("source not downloaded" in w for w in result.warnings)

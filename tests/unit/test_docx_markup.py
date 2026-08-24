@@ -108,10 +108,11 @@ class TestFormatMarkupWarnings:
         assert "FLATTENED" in text
         assert "deleted text reads as present" in text
 
-    def test_comments_and_images_each_warn(self) -> None:
+    def test_comments_warn_but_images_do_not(self) -> None:
+        # Images no longer warn here: they're extracted to sidecar figure
+        # files with a reconciled warning by the office adapter (mise-gerefe).
         counts = DocxMarkupCounts(comments=4, inline_images=2)
         warnings = format_markup_warnings(counts)
 
-        assert len(warnings) == 2
-        assert any("4 Word comment(s)" in w for w in warnings)
-        assert any("2 inline image(s)" in w for w in warnings)
+        assert len(warnings) == 1
+        assert "4 Word comment(s)" in warnings[0]

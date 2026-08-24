@@ -171,6 +171,17 @@ def write_content(
     return file_path
 
 
+def write_figures(folder: Path, figures: list[tuple[str, bytes]]) -> None:
+    """
+    Write figure sidecar files (filename, bytes) into the deposit folder.
+
+    DOCX fetches carry embedded images out of content.md as figure files
+    (mise-gerefe); call before _build_cues so they land in cues.files.
+    """
+    for figure_name, figure_bytes in figures:
+        (folder / figure_name).write_bytes(figure_bytes)
+
+
 def write_thumbnail(
     folder: Path,
     image_bytes: bytes,

@@ -26,7 +26,7 @@ from extractors.sheets import extract_sheets_content
 from extractors.slides import extract_slides_content
 from extractors.video import extract_video_content
 from models import FetchResult, FetchError, EmailContext
-from workspace import get_deposit_folder, write_content, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata
+from workspace import get_deposit_folder, write_content, write_figures, write_manifest, write_thumbnail, write_image, write_chart, write_charts_metadata
 
 from .common import (
     _build_cues, _build_email_context_metadata, _deposit_pdf_thumbnails,
@@ -583,6 +583,7 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
     # Deposit to workspace
     folder = get_deposit_folder(office_type, title, file_id, base_path=base_path)
     content_path = write_content(folder, result.content, filename=filename)
+    write_figures(folder, result.figures)
 
     # Write per-tab CSVs for multi-tab XLSX
     tabs_info: list[dict[str, str]] = []

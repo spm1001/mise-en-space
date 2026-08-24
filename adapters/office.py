@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +19,7 @@ from adapters.conversion import convert_via_drive, drive_temp_file
 from adapters.drive import download_file, download_file_to_temp, get_file_size, STREAMING_THRESHOLD_BYTES
 from adapters.sheets import fetch_spreadsheet
 from extractors.docx_markup import count_docx_markup, format_markup_warnings
+from extractors.markdown_images import extract_markdown_images
 from extractors.sheets import extract_sheets_content
 
 logger = logging.getLogger(__name__)
@@ -63,6 +65,7 @@ class OfficeConversionResult:
     spreadsheet_data: SpreadsheetData | None = None  # XLSX: carries tab data for per-tab deposit
     raw_bytes: bytes | None = None  # Original file bytes for raw deposit (XLSX, small files)
     raw_temp_path: Path | None = None  # Original file on disk for raw deposit (XLSX, large streamed files)
+    figures: list[tuple[str, bytes]] = field(default_factory=list)  # DOCX: (filename, bytes) sidecar images for the deposit
 
 
 def convert_office_content(
@@ -115,21 +118,162 @@ def convert_office_content(
     )
 
     warnings = list(conversion_result.warnings)
-    # Drive export flattens tracked changes, comments, and inline images
-    # silently — a tracked-DELETED clause reads as present text. Warn so
-    # the reader knows to go to source. Needs the raw bytes, so the
-    # source_file_id path (server-side copy, nothing downloaded) is not
-    # inspected — accepted MVP gap, see mise-kecigu.
+    content = conversion_result.content
+    figures: list[tuple[str, bytes]] = []
+
+    if office_type == "docx":
+        # Lift embedded images out of the markdown into sidecar figure files,
+        # salvage export-dropped images from the .docx itself, and warn with
+        # the real reconciliation (mise-gerefe — the old warning counted
+        # <w:drawing> in the source and called every image "dropped" even
+        # when Drive retained them all as base64).
+        content, figures, figure_warnings = _process_docx_figures(
+            content, file_bytes, file_path
+        )
+        warnings.extend(figure_warnings)
+
+    # Drive export flattens tracked changes and comments silently — a
+    # tracked-DELETED clause reads as present text. Warn so the reader knows
+    # to go to source. Needs the raw bytes, so the source_file_id path
+    # (server-side copy, nothing downloaded) is not inspected — accepted MVP
+    # gap, see mise-kecigu.
     if office_type == "docx" and (file_bytes is not None or file_path is not None):
         warnings.extend(_inspect_docx_markup(file_bytes, file_path))
 
     return OfficeConversionResult(
-        content=conversion_result.content,
+        content=content,
         source_type=office_type,
         export_format=export_format,
         extension=extension,
         warnings=warnings,
+        figures=figures,
     )
+
+
+_VIEWABLE_IMAGE_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
+
+# a:blip r:embed inside document.xml, in document order — the k-th blip is
+# the k-th rendered image, which is how Drive's export numbers imageN refs
+# (verified against two real docs, 2026-08-24, mise-gerefe).
+_BLIP_PATTERN = re.compile(rb'<a:blip[^>]*r:embed="(rId\d+)"')
+_REL_PATTERN = re.compile(rb'Id="(rId\d+)"[^>]*Target="([^"]+)"')
+
+
+def _process_docx_figures(
+    markdown: str,
+    file_bytes: bytes | None,
+    file_path: Path | None,
+) -> tuple[str, list[tuple[str, bytes]], list[str]]:
+    """
+    Rewrite a docx markdown export so images live as sidecar figure files.
+
+    Three tiers, each disclosed: base64 data URIs are lifted to figure files
+    (extractors/markdown_images); references Drive's export dropped are
+    salvaged from the .docx archive's own media parts, matched by drawing
+    order; whatever remains unrecoverable is named, never silently absent.
+
+    Returns (rewritten_markdown, figures, warnings). Never raises — on any
+    archive surprise the salvage tier degrades to an honest warning.
+    """
+    extraction = extract_markdown_images(markdown)
+    content = extraction.markdown
+    figures: list[tuple[str, bytes]] = [
+        (f.filename, f.data) for f in extraction.figures
+    ]
+    warnings: list[str] = []
+
+    salvaged: list[str] = []  # "image2 → figure-3.png"
+    unrecoverable: list[str] = []  # "image2 (emf vector)"
+    if extraction.dangling_refs:
+        if file_bytes is None and file_path is None:
+            unrecoverable = [f"{ref} (source not downloaded)" for ref in extraction.dangling_refs]
+        else:
+            content, figures, salvaged, unrecoverable = _salvage_docx_figures(
+                content,
+                figures,
+                extraction.dangling_refs,
+                file_bytes,
+                file_path,
+            )
+
+    if figures:
+        names = ", ".join(name for name, _ in figures)
+        warnings.append(
+            f"{len(figures)} embedded image(s) extracted to sidecar files "
+            f"({names}), referenced from content.md — no base64 left inline."
+        )
+    if salvaged:
+        warnings.append(
+            f"{len(salvaged)} image(s) missing from Drive's markdown export "
+            f"were recovered from the .docx itself ({'; '.join(salvaged)}; "
+            "matched by drawing order)."
+        )
+    if unrecoverable:
+        warnings.append(
+            f"{len(unrecoverable)} image reference(s) could NOT be recovered "
+            f"({'; '.join(unrecoverable)}) — view the source document for "
+            "these figures."
+        )
+    warnings.extend(extraction.notes)
+    return content, figures, warnings
+
+
+def _salvage_docx_figures(
+    content: str,
+    figures: list[tuple[str, bytes]],
+    dangling_refs: list[str],
+    file_bytes: bytes | None,
+    file_path: Path | None,
+) -> tuple[str, list[tuple[str, bytes]], list[str], list[str]]:
+    """
+    Recover dangling imageN references from the .docx archive's media parts.
+
+    Drive's export numbers imageN in document order, matching the order of
+    <a:blip r:embed> occurrences in word/document.xml; each rId resolves to
+    a media part via the relationships file. Best-effort: any failure turns
+    into an unrecoverable entry, never an exception.
+    """
+    salvaged: list[str] = []
+    unrecoverable: list[str] = []
+    try:
+        source: io.BytesIO | Path
+        source = io.BytesIO(file_bytes) if file_bytes is not None else cast(Path, file_path)
+        with zipfile.ZipFile(source) as archive:
+            names = set(archive.namelist())
+            doc_xml = archive.read("word/document.xml") if "word/document.xml" in names else b""
+            rels = (
+                archive.read("word/_rels/document.xml.rels")
+                if "word/_rels/document.xml.rels" in names
+                else b""
+            )
+            blips = _BLIP_PATTERN.findall(doc_xml)
+            rel_map = {rid: target for rid, target in _REL_PATTERN.findall(rels)}
+            counter = len(figures)
+            for ref in dangling_refs:
+                m = re.fullmatch(r"image(\d+)", ref)
+                idx = int(m.group(1)) - 1 if m else -1
+                if not (0 <= idx < len(blips)):
+                    unrecoverable.append(f"{ref} (no matching drawing in the source)")
+                    continue
+                target = rel_map.get(blips[idx], b"").decode("utf-8", errors="replace")
+                zip_path = "word/" + target.lstrip("/") if not target.startswith("word/") else target
+                if zip_path not in names:
+                    unrecoverable.append(f"{ref} (media part {target or 'unknown'} not found)")
+                    continue
+                ext = zip_path.rsplit(".", 1)[-1].lower() if "." in zip_path else "bin"
+                if ext not in _VIEWABLE_IMAGE_EXTS:
+                    unrecoverable.append(f"{ref} (only available as {ext} inside the .docx)")
+                    continue
+                counter += 1
+                filename = f"figure-{counter}.{ext}"
+                figures.append((filename, archive.read(zip_path)))
+                content += f"\n[{ref}]: {filename}\n"
+                salvaged.append(f"{ref} → {filename}")
+    except Exception:
+        logger.debug("docx figure salvage failed", exc_info=True)
+        remaining = set(dangling_refs) - {s.split(" ")[0] for s in salvaged}
+        unrecoverable.extend(f"{ref} (source archive unreadable)" for ref in sorted(remaining))
+    return content, figures, salvaged, unrecoverable
 
 
 def _inspect_docx_markup(

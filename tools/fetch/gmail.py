@@ -16,7 +16,7 @@ from extractors.image import resize_image_bytes
 from models import FetchResult, FetchError, InviteState, MiseError, ErrorKind
 from validation import is_gmail_api_id, diagnose_fetch_404
 from workspace.manager import deposit_lock
-from workspace import get_deposit_folder, write_content, write_manifest, write_image, write_raw
+from workspace import get_deposit_folder, write_content, write_figures, write_manifest, write_image, write_raw
 
 from .common import _build_cues, _deposit_pdf_thumbnails, pdf_page_fidelity
 from .gmail_attachments import (
@@ -510,6 +510,7 @@ def fetch_attachment(
 
         folder = get_deposit_folder(office_type, title, thread_id, base_path=base_path)
         content_path = write_content(folder, result.content, filename=content_filename)
+        write_figures(folder, result.figures)
 
         # Before _build_cues so the raw filename lands in cues.files.
         raw_extras = _deposit_raw(folder, content_bytes, attachment_name) if raw else {}
