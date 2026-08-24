@@ -20,7 +20,6 @@ dependencies = [
     # Form spec parsing
     "pyyaml>=6.0",
     "regex>=2026.7.19",
-    "websockets>=17.0.1",
     # Image extraction (resize/validate, SVG→PNG). Core because it's cheap (~14M)
     # and image fetch should work in every flavour, including the embedded build.
     "pillow>=12.3.0",
@@ -44,6 +43,13 @@ mise = "cli:main"
 extraction = [
     "markitdown[pdf]>=0.1.7",
     "pdf2image>=1.17.0",
+    # CDP browser lane (self-sent Gmail resolution, Chrome PDF thumbs).
+    # Optional at runtime by design — adapters/cdp.py and gmail_browser.py
+    # guard the import and fail open ("slim build"). Moved out of core
+    # 2026-08-24 (Garni consumer rewrite, agsp-cudoba): the hard core floor
+    # collided with google-antigravity's websockets<17 cap in a strict
+    # resolve, while every full build already installs this extra.
+    "websockets>=17.0.1",
 ]
 macos = [
     "pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'",
