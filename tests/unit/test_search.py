@@ -429,6 +429,118 @@ class TestRawQuery:
         assert mock_write.call_args.args[0] == "name contains 'PCA'"
 
 
+class TestNameSemanticsCue:
+    """mise-jefaki — a zero on a punctuated name-contains term must teach
+    Drive's whole-token matching instead of reading as absence. The measured
+    semantics (2026-08-24, docs/research/2026-08-24-jefaki-name-probe/):
+    names split on punctuation/space/letter-digit boundaries, a multi-token
+    term is an AND of whole tokens, only a literal whole-name prefix
+    substring-matches."""
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_zero_hits_on_punctuated_term_fires_cue(self, mock_drive, mock_write) -> None:
+        mock_drive.return_value = DriveSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search(raw_query="name contains 'cudoba-probe'")
+
+        assert "drive_name_semantics" in result.cues
+        cue = result.cues["drive_name_semantics"]
+        assert "'cudoba-probe'" in cue
+        assert "TOKENS" in cue
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_hits_suppress_the_cue(self, mock_drive, mock_write) -> None:
+        """A found file needs no teaching — the cue is for the lying null."""
+        mock_drive.return_value = DriveSearchResults(
+            results=[DriveSearchResult(file_id="d1", name="cudoba-probe.md",
+                                       mime_type="text/plain")],
+        )
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search(raw_query="name contains 'cudoba-probe'")
+
+        assert "drive_name_semantics" not in result.cues
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_unpunctuated_term_gains_no_cue(self, mock_drive, mock_write) -> None:
+        """A single-token term already IS what Drive matches — zero really is
+        zero (for the covered corpus) and the cue would cry wolf."""
+        mock_drive.return_value = DriveSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search(raw_query="name contains 'cudoba'")
+
+        assert "drive_name_semantics" not in result.cues
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_threads')
+    @patch('tools.search.search_files')
+    def test_plain_query_zero_gains_no_cue(self, mock_drive, mock_gmail, mock_write) -> None:
+        """The cue reads raw_query only — plain `query` builds a fullText
+        clause, where token semantics are not the trap being taught."""
+        mock_drive.return_value = DriveSearchResults(results=[])
+        mock_gmail.return_value = GmailSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search("cudoba-probe")
+
+        assert "drive_name_semantics" not in result.cues
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_underscore_and_dot_terms_fire_too(self, mock_drive, mock_write) -> None:
+        mock_drive.return_value = DriveSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        for term in ("a_b", "report.pdf"):
+            result = do_search(raw_query=f"name contains '{term}'")
+            assert "drive_name_semantics" in result.cues, term
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_non_name_clause_gains_no_cue(self, mock_drive, mock_write) -> None:
+        """fullText contains a hyphenated term is a different instrument with
+        different semantics — the cue must not claim to explain it."""
+        mock_drive.return_value = DriveSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search(raw_query="fullText contains 'cudoba-probe'")
+
+        assert "drive_name_semantics" not in result.cues
+
+
+class TestIncompleteSearchCue:
+    """corpora=allDrives lets Google stop before covering every drive and say
+    so only via incompleteSearch — a zero from an abandoned search must not
+    read as a population (mise-jefaki)."""
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_incomplete_adds_cue(self, mock_drive, mock_write) -> None:
+        mock_drive.return_value = DriveSearchResults(results=[], incomplete=True)
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search(raw_query="name contains 'x'")
+
+        assert "drive_incomplete" in result.cues
+        assert "PARTIAL" in result.cues["drive_incomplete"]
+
+    @patch('tools.search.write_search_results')
+    @patch('tools.search.search_files')
+    def test_complete_search_gains_no_cue(self, mock_drive, mock_write) -> None:
+        """Positive control — without it the cue could be unconditional."""
+        mock_drive.return_value = DriveSearchResults(results=[])
+        mock_write.return_value = "/tmp/fake/search-results.json"
+
+        result = do_search(raw_query="name contains 'x'")
+
+        assert "drive_incomplete" not in result.cues
+
+
 class TestPreviewPartialCue:
     """The preview is the only thing an LLM caller reliably reads, so it must
     advertise its own incompleteness. Distinct from drive_truncated: this is

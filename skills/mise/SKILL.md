@@ -309,6 +309,14 @@ other sources don't speak it); `trashed = false` is ANDed on for you. Typing Dri
 plain `query` is **refused with a pointer here** — it used to silently keyword-search the operator
 words and return confident nonsense.
 
+**`name contains` matches whole TOKENS, not substrings** (measured 2026-08-24, mise-jefaki):
+names split on punctuation, spaces and letter–digit boundaries (`report-2026.pdf` → report, 2026,
+pdf), a multi-token term is an AND of its whole tokens in any order, and the only substring
+honoured is a literal prefix of the entire name. So a full hyphenated filename is findable as
+typed; a fragment cut mid-token returns zero with no error. A zero-hit punctuated term draws the
+`drive_name_semantics` cue with the working alternatives, and `drive_incomplete` means Google
+stopped before covering every shared drive — treat that zero as partial, not as a population.
+
 Type values: `folder`, `doc`, `spreadsheet` / `sheet`, `slides` / `presentation`, `pdf`, `image`, `video`, `form`. Type filter applies to Drive only — ignored for Gmail.
 
 ### Search Returns Two Things: a `preview` and a Deposit

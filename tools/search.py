@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from adapters.drive import search_files
-from adapters.gmail import _is_own_address, search_threads
+from adapters.gmail import search_threads
 from adapters.activity import search_comment_activities
 from adapters.calendar import list_events
 from adapters.people import attach_profiles, expand_profile, search_people
@@ -18,9 +18,7 @@ from models import (
     CalendarEvent,
     CalendarSearchResult,
     CommentActivity,
-    DriveSearchResult,
     DriveSearchResults,
-    GmailSearchResult,
     GmailSearchResults,
     MiseError,
     PeopleSearchResults,
@@ -28,12 +26,19 @@ from models import (
 )
 from validation import (
     escape_drive_query,
-    gmail_thread_web_url,
     parse_time_window,
     sanitize_gmail_query,
     validate_drive_id,
 )
 from token_store import ambient_mode, override_path
+from tools.search_drive_cues import drive_incomplete_cue, name_semantics_cue
+# Re-exported for callers and tests that have always imported these from here;
+# they moved to a sibling for the module-size ceiling (mise-jefaki).
+from tools.search_format import (
+    format_activity_result,
+    format_drive_result,
+    format_gmail_result,
+)
 from tools.search_calendar import (
     calendar_acl_note,
     validate_calendar_id,
@@ -66,77 +71,6 @@ _TYPE_ALIASES: frozenset[str] = frozenset({"document", "sheet", "presentation"})
 VALID_TYPE_FILTERS: frozenset[str] = frozenset(_TYPE_MIME_MAP)
 # Canonical names for user-facing messages (no aliases, alphabetical)
 CANONICAL_TYPE_NAMES: frozenset[str] = VALID_TYPE_FILTERS - _TYPE_ALIASES
-
-
-def format_drive_result(result: DriveSearchResult) -> dict[str, Any]:
-    """Convert DriveSearchResult to JSON-serializable dict."""
-    output: dict[str, Any] = {
-        "id": result.file_id,
-        "name": result.name,
-        "mimeType": result.mime_type,
-        "created": result.created_time.isoformat() if result.created_time else None,
-        "modified": result.modified_time.isoformat() if result.modified_time else None,
-        "url": result.web_view_link,
-        "owners": result.owners,
-        # Shared Drive files have no owners — the last-modifier is the only
-        # honest author signal there (mise-tanoti)
-        "last_modified_by": result.last_modified_by,
-        "snippet": result.snippet,
-    }
-
-    # Add email context for exfil'd files (cross-source linkage)
-    if result.email_context:
-        output["email_context"] = result.email_context.to_cue()
-
-    return output
-
-
-def format_gmail_result(result: GmailSearchResult) -> dict[str, Any]:
-    """Convert GmailSearchResult to JSON-serializable dict."""
-    out = {
-        "thread_id": result.thread_id,
-        "subject": result.subject,
-        "snippet": result.snippet,  # drawn from the LATEST message
-        "date": result.date.isoformat() if result.date else None,
-        "from": result.from_address,  # thread ORIGINATOR — see last_sender for the latest voice
-        "last_sender": result.last_sender,
-        "from_me": result.from_me,  # None = identity unresolved, not "someone else"
-        "unread_count": result.unread_count,
-        "message_count": result.message_count,
-        "has_attachments": result.has_attachments,
-        "attachment_names": result.attachment_names,
-        "is_unread": result.is_unread,
-        "labels": result.label_ids,
-        "has_invite": result.has_invite,  # thread carries a calendar invite (mise-pinodi)
-    }
-    # Clickable web URL — only when another party is visibly at an endpoint of
-    # the thread (originator or latest sender provably not the user). A thread
-    # authored solely by the user may be self-sent (thread-a), whose web token
-    # cannot be derived from the API id (mise-lerulo); identity-unresolved
-    # threads could be either. Both omit the field rather than risk a link
-    # that opens the wrong conversation (mise-hetaba).
-    if (_is_own_address(result.from_address) is False
-            or _is_own_address(result.last_sender) is False):
-        link = gmail_thread_web_url(result.thread_id)
-        if link:
-            out["web_link"] = link
-    return out
-
-
-def format_activity_result(activity: CommentActivity) -> dict[str, Any]:
-    """Convert CommentActivity to JSON-serializable dict for search results."""
-    result: dict[str, Any] = {
-        "file_id": activity.target.file_id,
-        "file_name": activity.target.file_name,
-        "mime_type": activity.target.mime_type,
-        "url": activity.target.web_link,
-        "action_type": activity.action_type,
-        "actor": activity.actor.name,
-        "timestamp": activity.timestamp,
-    }
-    if activity.mentioned_users:
-        result["mentioned_users"] = activity.mentioned_users
-    return result
 
 
 def do_search(
@@ -361,6 +295,17 @@ def do_search(
                     "This is a ceiling, not a population: do not read an absence here "
                     "as proof a file doesn't exist. Narrow the query or raise max_results."
                 )
+            if drive_search.incomplete:
+                # Google's own abandonment flag, distinct from drive_truncated
+                # (ours). Cue text + rationale: tools/search_drive_cues.py.
+                result.cues["drive_incomplete"] = drive_incomplete_cue()
+            if not result.drive_results and raw_query:
+                # A zero on a punctuated name term reads as absence and often
+                # is not — teach Drive's whole-token matching at the moment
+                # the null would otherwise be believed (mise-jefaki).
+                semantics = name_semantics_cue(raw_query)
+                if semantics:
+                    result.cues["drive_name_semantics"] = semantics
         except MiseError as e:
             result.errors.append(f"Drive search failed: {e.message}")
         except Exception as e:

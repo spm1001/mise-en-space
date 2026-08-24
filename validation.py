@@ -777,6 +777,42 @@ def looks_like_drive_query(query: str) -> bool:
     return any(p.search(query) for p in _DRIVE_OPERATOR_PATTERNS)
 
 
+# The term of every `name contains '…'` clause. Drive escapes a literal single
+# quote as \' inside the quoted term, so the term body is any run of
+# non-quote/non-backslash characters or backslash-escaped pairs.
+_NAME_CONTAINS_TERM_RE = re.compile(
+    r"\bname\s+contains\s+'((?:[^'\\]|\\.)*)'", re.I
+)
+
+# Separators Drive tokenises filenames on, as measured (mise-jefaki, 2026-08-24;
+# raw results in docs/research/2026-08-24-jefaki-name-probe/). Letter↔digit
+# boundaries also split ('arm2' → arm, 2) but leave no character to look for.
+_NAME_TOKEN_SEPARATORS = frozenset("-_. ")
+
+
+def name_contains_terms(raw_query: str) -> list[str]:
+    """Extract the term of each `name contains '…'` clause in a raw Drive query.
+
+    Unescapes Drive's \\' and \\\\ so callers see the literal term. Used by the
+    search tool to recognise the zero-hits-on-a-punctuated-name shape and teach
+    Drive's whole-token matching semantics (mise-jefaki) instead of letting the
+    null read as absence.
+    """
+    return [
+        m.group(1).replace("\\'", "'").replace("\\\\", "\\")
+        for m in _NAME_CONTAINS_TERM_RE.finditer(raw_query)
+    ]
+
+
+def has_tokenising_separator(term: str) -> bool:
+    """Does this name-contains term contain a separator Drive tokenises on?
+
+    True means the term is NOT one indivisible token to Drive — a zero-hit
+    search with such a term is the shape the mise-jefaki teaching cue fires on.
+    """
+    return any(c in _NAME_TOKEN_SEPARATORS for c in term)
+
+
 def sanitize_gmail_query(query: str) -> str:
     """
     Sanitize user input for Gmail search queries.

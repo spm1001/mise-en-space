@@ -108,6 +108,10 @@ SEARCH_RESULT_FIELDS = (
     # asked for, and Drive search silently capped at one page for a year
     # (mise-werevi). Shadow-field-mask trap; assert on the mask, not the caller.
     "nextPageToken,"
+    # incompleteSearch is the price of corpora=allDrives (mise-jefaki): Google
+    # may give up before covering every shared drive and says so ONLY here.
+    # Same shadow-mask trap as nextPageToken — absent from the mask, never sent.
+    "incompleteSearch,"
     "files("
     "id,"
     "name,"
@@ -305,7 +309,9 @@ def search_files(
 
     Returns:
         DriveSearchResults — results plus an EXACT `truncated` flag (a surviving
-        nextPageToken means more matched, whatever the result count says).
+        nextPageToken means more matched, whatever the result count says) and an
+        `incomplete` flag (Google's own incompleteSearch: some corpora were not
+        covered, so a zero may be partial rather than a population).
 
     Raises:
         MiseError: On API failure
@@ -319,6 +325,7 @@ def search_files(
     page_token: str | None = None
     pages = 0
     truncated = False
+    incomplete = False
 
     while True:
         params: dict[str, Any] = {
@@ -330,11 +337,20 @@ def search_files(
             "supportsAllDrives": str(include_shared_drives).lower(),
             "includeItemsFromAllDrives": str(include_shared_drives).lower(),
         }
+        if include_shared_drives:
+            # includeItemsFromAllDrives does NOT widen the searched corpus past
+            # the default `user` (created/opened/directly-shared), so a Shared
+            # Drive file another identity created was invisible to every bare
+            # name/fullText query while parents-scoped listings found it. The
+            # trade is incompleteSearch, captured below. Measured mise-jefaki:
+            # docs/research/2026-08-24-jefaki-name-probe/.
+            params["corpora"] = "allDrives"
         if page_token:
             params["pageToken"] = page_token
 
         response = client.get_json(f"{_DRIVE_API}", params=params)
         pages += 1
+        incomplete = incomplete or bool(response.get("incompleteSearch"))
 
         for file in response.get("files", []):
             owners = [
@@ -368,7 +384,9 @@ def search_files(
             truncated = True           # a live token means more genuinely matched
             break
 
-    return DriveSearchResults(results=results[:max_results], truncated=truncated)
+    return DriveSearchResults(
+        results=results[:max_results], truncated=truncated, incomplete=incomplete
+    )
 
 
 # Common MIME types for reference

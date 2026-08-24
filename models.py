@@ -504,6 +504,11 @@ class DriveSearchResults:
     """
     results: list[DriveSearchResult]
     truncated: bool = False
+    # Google's own incompleteSearch flag — the price of corpora=allDrives
+    # (mise-jefaki): some corpora were not covered before the API gave up, so a
+    # short or empty result set may be partial. Distinct from `truncated`, which
+    # is OUR cap on a search that matched more; this is THEIR abandonment.
+    incomplete: bool = False
 
 
 # ============================================================================

@@ -1321,6 +1321,110 @@ class TestSearchFilesScoped:
         assert call_kwargs.get("includeItemsFromAllDrives") == "true"
 
 
+class TestSearchCorpora:
+    """mise-jefaki — the corpus a name search actually covers.
+
+    includeItemsFromAllDrives alone does NOT widen the searched corpus: it only
+    admits shared-drive items into whatever corpus the query already covers,
+    and the default is `user` (created by / opened by / directly shared).
+    Measured live 2026-08-24 on the incident's own artefact: a Shared Drive
+    file another identity created returned 0 from the default corpus and 1
+    with corpora=allDrives — for name contains AND exact name equality alike,
+    while a parents-scoped listing found it under either. The hyphenated
+    filename the incident blamed was innocent.
+    """
+
+    @patch('adapters.drive.get_sync_client')
+    def test_corpora_alldrives_sent_with_shared_drives(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"files": []}
+
+        with patch('retry.time.sleep'):
+            search_files("name contains 'cudoba-probe' and trashed = false")
+
+        params = mock_client.get_json.call_args.kwargs["params"]
+        assert params.get("corpora") == "allDrives"
+
+    @patch('adapters.drive.get_sync_client')
+    def test_no_corpora_when_shared_drives_excluded(self, mock_get_client) -> None:
+        """corpora=allDrives REQUIRES both boolean flags true — sending it with
+        include_shared_drives=False would be a 400, and the caller asked for
+        My-Drive-only anyway."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {"files": []}
+
+        with patch('retry.time.sleep'):
+            search_files("name contains 'x'", include_shared_drives=False)
+
+        params = mock_client.get_json.call_args.kwargs["params"]
+        assert "corpora" not in params
+
+    def test_incomplete_search_is_in_the_fields_mask(self) -> None:
+        """Assert on the MASK (the werevi lesson): a field absent from the mask
+        is never sent, so the flag wouldn't be ignored — it would never arrive."""
+        from adapters.drive import SEARCH_RESULT_FIELDS
+        assert "incompleteSearch" in SEARCH_RESULT_FIELDS
+
+    @patch('adapters.drive.get_sync_client')
+    def test_incomplete_search_sets_flag(self, mock_get_client) -> None:
+        """Google abandoning corpora is reported, not swallowed."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
+            "files": [{"id": "f1", "name": "F", "mimeType": "application/pdf"}],
+            "incompleteSearch": True,
+        }
+
+        with patch('retry.time.sleep'):
+            results = search_files("name contains 'x'")
+
+        assert results.incomplete is True
+
+    @patch('adapters.drive.get_sync_client')
+    def test_complete_search_is_not_flagged(self, mock_get_client) -> None:
+        """Positive control for the test above — without it, `incomplete` could
+        be hardwired True and both would pass."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.return_value = {
+            "files": [{"id": "f1", "name": "F", "mimeType": "application/pdf"}],
+        }
+
+        with patch('retry.time.sleep'):
+            results = search_files("name contains 'x'")
+
+        assert results.incomplete is False
+
+    @patch('adapters.drive.get_sync_client')
+    def test_incomplete_on_any_page_sticks(self, mock_get_client) -> None:
+        """A multi-page search where only page 1 was incomplete is still an
+        incomplete population — the flag must not be overwritten by page 2."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = [
+            {
+                "files": [
+                    {"id": f"f{i}", "name": f"F{i}", "mimeType": "application/pdf"}
+                    for i in range(100)
+                ],
+                "nextPageToken": "more",
+                "incompleteSearch": True,
+            },
+            {
+                "files": [
+                    {"id": "g1", "name": "G", "mimeType": "application/pdf"}
+                ],
+            },
+        ]
+
+        with patch('retry.time.sleep'):
+            results = search_files("test", max_results=150)
+
+        assert results.incomplete is True
+
+
 class TestReplyToComment:
     """Test reply_to_comment with mocked HTTP client."""
 

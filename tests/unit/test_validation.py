@@ -19,10 +19,12 @@ from validation import (
     diagnose_gmail_url,
     gmail_fragment_segments,
     gmail_thread_web_url,
+    has_tokenising_separator,
     is_gmail_web_id,
     is_gmail_api_id,
     is_self_sent_gmail_url,
     looks_like_drive_query,
+    name_contains_terms,
     sanitize_gmail_query,
     sanitize_title,
     validate_drive_id,
@@ -330,6 +332,63 @@ class TestQueryEscaping:
         """Unicode characters pass through."""
         assert sanitize_gmail_query("日本語 email") == "日本語 email"
         assert sanitize_gmail_query("émoji 🎉") == "émoji 🎉"
+
+
+class TestNameContainsTerms:
+    """mise-jefaki — pulling the terms out of raw Drive queries so the search
+    tool can recognise the zero-hits-on-a-punctuated-name shape."""
+
+    def test_single_clause(self):
+        assert name_contains_terms("name contains 'cudoba-probe'") == ["cudoba-probe"]
+
+    def test_multiple_clauses(self):
+        q = "name contains 'a-b' and name contains 'c_d'"
+        assert name_contains_terms(q) == ["a-b", "c_d"]
+
+    def test_case_insensitive_keywords(self):
+        assert name_contains_terms("NAME CONTAINS 'x-y'") == ["x-y"]
+
+    def test_escaped_quote_in_term(self):
+        # Drive escapes a literal single quote as \' inside the quoted term.
+        assert name_contains_terms(r"name contains 'it\'s-here'") == ["it's-here"]
+
+    def test_other_clauses_ignored(self):
+        q = "fullText contains 'a-b' and mimeType = 'application/pdf'"
+        assert name_contains_terms(q) == []
+
+    def test_no_clause(self):
+        assert name_contains_terms("trashed = false") == []
+
+    def test_composed_query_extracts_only_name_terms(self):
+        q = ("trashed = false and (name contains 'report-2026' "
+             "or fullText contains 'other-term')")
+        assert name_contains_terms(q) == ["report-2026"]
+
+
+class TestHasTokenisingSeparator:
+    """The separators are the measured set Drive splits filenames on
+    (docs/research/2026-08-24-jefaki-name-probe/): hyphen, underscore,
+    dot, space. Letter-digit boundaries split too but have no character."""
+
+    def test_hyphen(self):
+        assert has_tokenising_separator("cudoba-probe") is True
+
+    def test_underscore(self):
+        assert has_tokenising_separator("a_b") is True
+
+    def test_dot(self):
+        assert has_tokenising_separator("report.pdf") is True
+
+    def test_space(self):
+        assert has_tokenising_separator("annual report") is True
+
+    def test_single_token(self):
+        assert has_tokenising_separator("cudoba") is False
+
+    def test_digit_boundary_alone_is_not_flagged(self):
+        # 'arm2' does split at the letter-digit boundary, but the term is
+        # still findable as typed (both its tokens are whole), so no cue.
+        assert has_tokenising_separator("arm2") is False
 
 
 class TestValidateDriveId:
