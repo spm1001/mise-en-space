@@ -93,6 +93,7 @@ FILE_METADATA_FIELDS = (
     "modifiedTime,"
     "size,"
     "owners(displayName,emailAddress),"
+    "lastModifyingUser(displayName,emailAddress),"  # Shared Drive author signal (mise-tanoti)
     "webViewLink,"
     "parents,"
     "description"  # Contains Message ID for exfil'd email attachments
@@ -114,6 +115,8 @@ SEARCH_RESULT_FIELDS = (
     "createdTime,"
     "modifiedTime,"
     "owners(displayName),"
+    # Shared Drive files have NO owners — the only author signal (mise-tanoti)
+    "lastModifyingUser(displayName,emailAddress),"
     "webViewLink,"
     "description"  # Contains Message ID for exfil'd email attachments
     ")"
@@ -338,6 +341,7 @@ def search_files(
                 o.get("displayName", o.get("emailAddress", ""))
                 for o in file.get("owners", [])
             ]
+            lmu = file.get("lastModifyingUser", {})
             description = file.get("description")
             email_context = parse_email_context(description)
 
@@ -350,6 +354,7 @@ def search_files(
                     modified_time=_parse_datetime(file.get("modifiedTime")),
                     snippet=file.get("contentSnippet"),
                     owners=owners,
+                    last_modified_by=lmu.get("displayName") or lmu.get("emailAddress"),
                     web_view_link=file.get("webViewLink"),
                     description=description,
                     email_context=email_context,

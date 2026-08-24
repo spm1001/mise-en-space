@@ -450,6 +450,9 @@ class DriveSearchResult:
     # For triage
     snippet: str | None = None
     owners: list[str] = field(default_factory=list)
+    # Shared Drive files have no owners — last-modifier is the only honest
+    # author signal there (mise-tanoti); None when Drive omits it.
+    last_modified_by: str | None = None
     web_view_link: str | None = None
 
     # For cross-source linkage

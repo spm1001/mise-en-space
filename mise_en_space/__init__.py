@@ -211,14 +211,17 @@ class Mise:
         suggestions: str = "accepted",
         raw: bool = False,
         thumbnails: bool = True,
+        crops: bool = True,
     ) -> FetchResult | FetchError:
         """Deposit one artefact's converted content; return path + cues.
 
         Accepts Drive file ids, Gmail thread/message ids, and folder ids
         (`recursive=True` for the full tree, depth 5). The deposit folder
         layout is in the module docstring; `result.path` names it.
-        `thumbnails=False` skips page/slide thumbnail rendering — the
-        wall-clock lever for text-only corpus hydration.
+        `thumbnails=False` skips page/slide thumbnail rendering, and
+        `crops=False` skips PDF embedded-graphic crop extraction (plus its
+        content.md anchors) — together the wall-clock levers for text-only
+        corpus hydration (mise-giwawa, mise-tanoti).
         """
         return do_fetch(
             file_id,
@@ -229,6 +232,7 @@ class Mise:
             suggestions=suggestions,
             raw=raw,
             thumbnails=thumbnails,
+            crops=crops,
         )
 
     def do(self, operation: str, **params: Any) -> dict[str, Any]:

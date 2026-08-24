@@ -44,21 +44,51 @@ def count_pdf_pages(
     *,
     file_path: Path | None = None,
 ) -> int | None:
-    """Return the PDF's page count via pdfinfo, or None if unavailable."""
-    try:
-        from pdf2image import pdfinfo_from_bytes, pdfinfo_from_path
+    """Return the PDF's page count via poppler's pdfinfo, or None if unavailable.
 
-        if file_path is not None:
-            info = pdfinfo_from_path(str(file_path))
-        elif file_bytes is not None:
-            info = pdfinfo_from_bytes(file_bytes)
-        else:
+    Shells the system binary directly — until 2026-08-24 this rode the
+    pdf2image wrapper, which lives in the EXTRACTION extra, so every core
+    (slim/library) install returned None even with /usr/bin/pdfinfo on
+    PATH: Garni's Cloud Run image and the tube core-install measurement
+    both showed pdf_pages=None on all 10 real corpus PDFs while
+    page_markers counted fine, and the wujoga citation-fidelity warning
+    could never fire (mise-tanoti). The wrapper only wraps this same
+    binary; the direct call works on every flavour that has poppler —
+    the same dependency the pdftotext PRIMARY already needs.
+    """
+    if file_path is None and file_bytes is None:
+        return None
+    tmp_created = False
+    try:
+        if file_path is None:
+            assert file_bytes is not None
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp.write(file_bytes)
+                file_path = Path(tmp.name)
+            tmp_created = True
+        proc = subprocess.run(
+            [_poppler_bin("pdfinfo"), str(file_path)],
+            capture_output=True,
+            timeout=30,
+        )
+        if proc.returncode != 0:
+            logger.debug(
+                "pdfinfo exit %s: %s", proc.returncode,
+                proc.stderr.decode("utf-8", errors="replace")[:200],
+            )
             return None
-        pages = info.get("Pages")
-        return int(pages) if pages else None
+        match = re.search(
+            r"^Pages:\s+(\d+)",
+            proc.stdout.decode("utf-8", errors="replace"),
+            re.MULTILINE,
+        )
+        return int(match.group(1)) if match else None
     except Exception as e:
         logger.debug("pdfinfo page count unavailable: %s", e)
         return None
+    finally:
+        if tmp_created and file_path is not None:
+            file_path.unlink(missing_ok=True)
 
 
 def run_pdftotext(

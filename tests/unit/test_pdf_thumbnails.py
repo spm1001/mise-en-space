@@ -387,7 +387,7 @@ class TestThumbnailsOptOut:
 
         fetch_pdf("abc123", "Test PDF", {"mimeType": "application/pdf"}, thumbnails=False)
 
-        mock_extract.assert_called_once_with("abc123", thumbnails=False)
+        mock_extract.assert_called_once_with("abc123", thumbnails=False, crops=True)
 
 
 class TestPageCap:

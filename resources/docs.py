@@ -347,6 +347,7 @@ Fetch content to filesystem. Writes to `.mise/` in current directory.
 | `recursive` | bool | Folder IDs only: full indented tree, depth 5 (default: immediate listing) |
 | `raw` | bool | With `attachment=`: also deposit the untouched original bytes (PDF/Office originals are otherwise converted and discarded) |
 | `thumbnails` | bool | Default True. False skips PDF page and Slides thumbnail rendering — much faster and lighter for text-only use (154s → 59s on a 256-page PDF) |
+| `crops` | bool | Default True. False also skips PDF embedded-graphic crop extraction and its content.md `exhibit:` anchors — the other text-only lever (10-PDF corpus walk 325s → 32s, measured 2026-08-24). Extracted text is identical either way |
 
 ## Tab Filtering (Sheets)
 

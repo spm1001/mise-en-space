@@ -173,3 +173,69 @@ class TestCropsReachManifest:
         written = mock_write.call_args[0][1]
         assert "exhibit: crop_p001_i000.png" in written
         assert (tmp_path / "crop_p001_i000.png").exists()
+
+
+class TestCropsOptOut:
+    """crops=False (mise-tanoti): the text-only consumer's lever. The cost
+    is extraction CPU (117MB / ~5min on the Garni 10-PDF corpus), so the
+    skip must happen at the ADAPTER's extract call, not at deposit time —
+    and with extraction skipped, no anchors are written, so nothing
+    dangles. Default stays True: the deposit contract is unchanged for
+    consumers who don't opt out."""
+
+    @patch("adapters.pdf.render_pdf_pages")
+    @patch("adapters.pdf.extract_pdf_crops")
+    @patch("adapters.pdf.convert_pdf_content")
+    @patch("adapters.pdf.download_file", return_value=b"%PDF")
+    @patch("adapters.pdf.get_file_size", return_value=100)
+    def test_crops_false_skips_extraction(
+        self, _size, _dl, mock_convert, mock_extract, _render
+    ) -> None:
+        from adapters.pdf import fetch_and_convert_pdf
+        mock_convert.return_value = PdfConversionResult(
+            content="text", method="pdftotext", char_count=4
+        )
+        fetch_and_convert_pdf("abc", thumbnails=False, crops=False)
+        mock_extract.assert_not_called()
+
+    @patch("adapters.pdf.render_pdf_pages")
+    @patch("adapters.pdf.extract_pdf_crops", return_value=[])
+    @patch("adapters.pdf.convert_pdf_content")
+    @patch("adapters.pdf.download_file", return_value=b"%PDF")
+    @patch("adapters.pdf.get_file_size", return_value=100)
+    def test_crops_default_still_extracts(
+        self, _size, _dl, mock_convert, mock_extract, _render
+    ) -> None:
+        from adapters.pdf import fetch_and_convert_pdf
+        mock_convert.return_value = PdfConversionResult(
+            content="text", method="pdftotext", char_count=4
+        )
+        fetch_and_convert_pdf("abc", thumbnails=False)
+        mock_extract.assert_called_once()
+
+    @patch("tools.fetch.drive.fetch_and_convert_pdf")
+    @patch("tools.fetch.drive.get_deposit_folder")
+    @patch("tools.fetch.drive.write_content")
+    @patch("tools.fetch.drive.write_manifest")
+    def test_fetch_pdf_threads_crops_and_deposit_stays_clean(
+        self, mock_manifest, mock_write, mock_folder, mock_extract, tmp_path: Path
+    ) -> None:
+        """Deposit contract with crops=False: no crop keys in the manifest,
+        no anchor lines in content.md, no PNGs — and the flag reaches the
+        adapter rather than being dropped at the tools layer."""
+        from tools.fetch import fetch_pdf
+        mock_extract.return_value = PdfConversionResult(
+            content="page text", method="pdftotext", char_count=9
+        )
+        mock_folder.return_value = tmp_path
+        mock_write.return_value = tmp_path / "content.md"
+
+        fetch_pdf("abc", "T", {"mimeType": "application/pdf"}, crops=False)
+
+        assert mock_extract.call_args.kwargs.get("crops") is False
+        extra = mock_manifest.call_args.kwargs.get("extra") or mock_manifest.call_args[1].get("extra")
+        assert "crop_count" not in extra
+        assert "crops" not in extra
+        written = mock_write.call_args[0][1]
+        assert "exhibit:" not in written
+        assert not list(tmp_path.glob("crop_*.png"))

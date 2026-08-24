@@ -383,6 +383,39 @@ class TestSearchFiles:
         from adapters.drive import SEARCH_RESULT_FIELDS
         assert "nextPageToken" in SEARCH_RESULT_FIELDS
 
+    def test_last_modifying_user_is_in_both_masks(self) -> None:
+        """Same shadow-field-mask discipline for the last-modifier
+        (mise-tanoti): Shared Drive files have no owners, so the manifest's
+        'by <who>' provenance can only come from lastModifyingUser — and a
+        field absent from the mask is never sent."""
+        from adapters.drive import FILE_METADATA_FIELDS, SEARCH_RESULT_FIELDS
+        assert "lastModifyingUser" in SEARCH_RESULT_FIELDS
+        assert "lastModifyingUser" in FILE_METADATA_FIELDS
+
+    @patch("adapters.drive.get_sync_client")
+    def test_search_result_carries_last_modified_by(self, mock_get) -> None:
+        client = MagicMock()
+        client.get_json.return_value = {
+            "files": [
+                {
+                    "id": "f1", "name": "corpus.pdf",
+                    "mimeType": "application/pdf",
+                    "lastModifyingUser": {
+                        "displayName": "Jane Analyst",
+                        "emailAddress": "jane@example.com",
+                    },
+                },
+                {"id": "f2", "name": "no-modifier.pdf",
+                 "mimeType": "application/pdf"},
+            ]
+        }
+        mock_get.return_value = client
+        from adapters.drive import search_files
+
+        results = search_files("corpus").results
+        assert results[0].last_modified_by == "Jane Analyst"
+        assert results[1].last_modified_by is None
+
 
 # ============================================================================
 # FETCH FILE COMMENTS (mocked client + get_file_metadata)

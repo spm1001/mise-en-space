@@ -316,14 +316,38 @@ class TestCountPdfPages:
         fixture = Path("fixtures/pdf/two_pages.pdf").read_bytes()
         assert count_pdf_pages(file_bytes=fixture) == 2
 
+    def test_counts_real_fixture_by_path(self) -> None:
+        from adapters.pdf_info import count_pdf_pages
+        assert count_pdf_pages(file_path=Path("fixtures/pdf/two_pages.pdf")) == 2
+
+    def test_counts_without_pdf2image(self, monkeypatch) -> None:
+        """The core-install pin (mise-tanoti): pdf2image lives in the
+        extraction extra, and the old wrapper-riding implementation
+        returned None on every core install even with pdfinfo on PATH —
+        Garni's image and the tube core measurement both hit it. The count
+        must not consult pdf2image at all."""
+        import sys
+        monkeypatch.setitem(sys.modules, "pdf2image", None)  # import → error
+        from adapters.pdf_info import count_pdf_pages
+        fixture = Path("fixtures/pdf/two_pages.pdf").read_bytes()
+        assert count_pdf_pages(file_bytes=fixture) == 2
+
     def test_no_input_returns_none(self) -> None:
         from adapters.pdf_info import count_pdf_pages
         assert count_pdf_pages() is None
 
-    @patch("pdf2image.pdfinfo_from_bytes", side_effect=Exception("no poppler"))
-    def test_poppler_failure_returns_none(self, mock_info: MagicMock) -> None:
+    @patch(
+        "adapters.pdf_info._poppler_bin",
+        side_effect=FileNotFoundError("pdfinfo not found"),
+    )
+    def test_poppler_absent_returns_none(self, mock_bin: MagicMock) -> None:
         from adapters.pdf_info import count_pdf_pages
         assert count_pdf_pages(file_bytes=b"%PDF") is None
+
+    def test_corrupt_pdf_returns_none(self) -> None:
+        """pdfinfo non-zero exit degrades to None, never raises."""
+        from adapters.pdf_info import count_pdf_pages
+        assert count_pdf_pages(file_bytes=b"not a pdf at all") is None
 
     @patch("adapters.pdf.count_pdf_pages", return_value=7)
     @patch("adapters.pdf.convert_via_drive")
@@ -411,7 +435,7 @@ class TestFetchPdf:
         assert result.metadata["title"] == "Test Document"
         assert result.metadata["extraction_method"] == "markitdown"
 
-        mock_extract.assert_called_once_with("abc123", thumbnails=True)
+        mock_extract.assert_called_once_with("abc123", thumbnails=True, crops=True)
         mock_write_content.assert_called_once()
         mock_write_manifest.assert_called_once()
 

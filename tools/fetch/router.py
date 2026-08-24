@@ -95,7 +95,7 @@ def _self_sent_candidates() -> list[dict[str, str]] | None:
     return candidates or None
 
 
-def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None = None, recursive: bool = False, tabs: list[str] | None = None, suggestions: str = "accepted", raw: bool = False, thumbnails: bool = True) -> FetchResult | FetchError:
+def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None = None, recursive: bool = False, tabs: list[str] | None = None, suggestions: str = "accepted", raw: bool = False, thumbnails: bool = True, crops: bool = True) -> FetchResult | FetchError:
     """
     Main fetch entry point.
 
@@ -239,7 +239,7 @@ def do_fetch(file_id: str, base_path: Path | None = None, attachment: str | None
             elif source == "gmail":
                 result = fetch_gmail(normalized_id, base_path=base_path)
             else:
-                result = fetch_drive(normalized_id, base_path=base_path, recursive=recursive, tabs=tabs, suggestions=suggestions, thumbnails=thumbnails)
+                result = fetch_drive(normalized_id, base_path=base_path, recursive=recursive, tabs=tabs, suggestions=suggestions, thumbnails=thumbnails, crops=crops)
 
         # Disclose any resolution (draft→thread, Message-ID→thread, or
         # browser-resolved a-family URL) as a cue — resolve-and-cue, never

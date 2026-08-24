@@ -2139,7 +2139,7 @@ class TestDoFetchRouting:
         """Drive IDs route to fetch_drive."""
         mock_drive.return_value = FetchResult(path="/p", content_file="/p/c.md", format="markdown", type="doc", metadata={})
         result = do_fetch("f1")
-        mock_drive.assert_called_once_with("f1", base_path=None, recursive=False, tabs=None, suggestions="accepted", thumbnails=True)
+        mock_drive.assert_called_once_with("f1", base_path=None, recursive=False, tabs=None, suggestions="accepted", thumbnails=True, crops=True)
 
     @patch("tools.fetch.router.detect_id_type", return_value=("drive", "f1", UrlDecorations()))
     @patch("tools.fetch.router.fetch_drive")
@@ -2147,7 +2147,7 @@ class TestDoFetchRouting:
         """thumbnails=False reaches fetch_drive intact (mise-giwawa)."""
         mock_drive.return_value = FetchResult(path="/p", content_file="/p/c.md", format="markdown", type="doc", metadata={})
         do_fetch("f1", thumbnails=False)
-        mock_drive.assert_called_once_with("f1", base_path=None, recursive=False, tabs=None, suggestions="accepted", thumbnails=False)
+        mock_drive.assert_called_once_with("f1", base_path=None, recursive=False, tabs=None, suggestions="accepted", thumbnails=False, crops=True)
 
     def test_mise_error_caught(self):
         """MiseError becomes FetchError."""
@@ -2176,7 +2176,7 @@ class TestDoFetchRouting:
         """base_path is forwarded to fetcher."""
         mock_drive.return_value = FetchResult(path="/p", content_file="/p/c.md", format="markdown", type="doc", metadata={})
         do_fetch("f1", base_path=Path("/custom"))
-        mock_drive.assert_called_once_with("f1", base_path=Path("/custom"), recursive=False, tabs=None, suggestions="accepted", thumbnails=True)
+        mock_drive.assert_called_once_with("f1", base_path=Path("/custom"), recursive=False, tabs=None, suggestions="accepted", thumbnails=True, crops=True)
 
 
 class TestExtractParticipants:

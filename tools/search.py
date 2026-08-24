@@ -78,6 +78,9 @@ def format_drive_result(result: DriveSearchResult) -> dict[str, Any]:
         "modified": result.modified_time.isoformat() if result.modified_time else None,
         "url": result.web_view_link,
         "owners": result.owners,
+        # Shared Drive files have no owners — the last-modifier is the only
+        # honest author signal there (mise-tanoti)
+        "last_modified_by": result.last_modified_by,
         "snippet": result.snippet,
     }
 

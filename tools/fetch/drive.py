@@ -30,20 +30,17 @@ from workspace import get_deposit_folder, write_content, write_figures, write_ma
 
 from .common import (
     _build_cues, _build_email_context_metadata, _deposit_pdf_thumbnails,
-    _enrich_with_comments, _write_per_tab_csvs, deposit_pdf_crops, is_text_file, pdf_page_fidelity,
+    _enrich_with_comments, _write_per_tab_csvs, add_file_provenance,
+    deposit_pdf_crops, is_text_file, pdf_page_fidelity,
 )
 from .decorations import build_doc_structure, build_slides_index
 
 
-def _add_file_dates(extra: dict[str, Any], metadata: dict[str, Any]) -> None:
-    """Add created/modified timestamps from Drive metadata to manifest extra dict."""
-    if metadata.get("createdTime"):
-        extra["created_time"] = metadata["createdTime"]
-    if metadata.get("modifiedTime"):
-        extra["modified_time"] = metadata["modifiedTime"]
+# Manifest provenance (dates + last-modifier) lives in common.py beside the
+# other cross-fetcher deposit helpers — logic there, call sites here.
 
 
-def fetch_drive(file_id: str, base_path: Path | None = None, recursive: bool = False, tabs: list[str] | None = None, suggestions: str = "accepted", thumbnails: bool = True) -> FetchResult | FetchError:
+def fetch_drive(file_id: str, base_path: Path | None = None, recursive: bool = False, tabs: list[str] | None = None, suggestions: str = "accepted", thumbnails: bool = True, crops: bool = True) -> FetchResult | FetchError:
     """Fetch Drive file, route by type, extract content, deposit to workspace."""
     # Get metadata to determine type
     metadata = get_file_metadata(file_id)
@@ -67,7 +64,7 @@ def fetch_drive(file_id: str, base_path: Path | None = None, recursive: bool = F
     elif is_media_file(mime_type):
         return fetch_video(file_id, title, metadata, email_context, base_path=base_path)
     elif mime_type == "application/pdf":
-        return fetch_pdf(file_id, title, metadata, email_context, base_path=base_path, thumbnails=thumbnails)
+        return fetch_pdf(file_id, title, metadata, email_context, base_path=base_path, thumbnails=thumbnails, crops=crops)
     elif (office_type := get_office_type_from_mime(mime_type)):
         return fetch_office(file_id, title, metadata, office_type, email_context, base_path=base_path)
     elif is_text_file(mime_type):
@@ -223,7 +220,7 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: 
     if doc_data.suggestion_count > 0:
         extra["suggestion_count"] = doc_data.suggestion_count
         extra["suggestions_mode"] = doc_data.suggestions_mode
-    _add_file_dates(extra, metadata)
+    add_file_provenance(extra, metadata)
     write_manifest(folder, "doc", title, doc_id, extra=extra)
 
     result_metadata: dict[str, Any] = {"title": title, "mimeType": metadata.get("mimeType")}
@@ -301,7 +298,7 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
         extra["warnings"] = sheet_data.warnings
     if open_comment_count > 0:
         extra["open_comment_count"] = open_comment_count
-    _add_file_dates(extra, metadata)
+    add_file_provenance(extra, metadata)
     write_manifest(folder, "sheet", title, sheet_id, extra=extra)
 
     result_meta: dict[str, Any] = {
@@ -376,7 +373,7 @@ def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], ema
         extra["warnings"] = presentation_data.warnings
     if open_comment_count > 0:
         extra["open_comment_count"] = open_comment_count
-    _add_file_dates(extra, metadata)
+    add_file_provenance(extra, metadata)
     write_manifest(folder, "slides", title, presentation_id, extra=extra)
 
     result_meta: dict[str, Any] = {
@@ -428,7 +425,7 @@ def fetch_form_file(file_id: str, title: str, metadata: dict[str, Any], email_co
     }
     if form_data.get("linkedSheetId"):
         extra["linked_sheet_id"] = form_data["linkedSheetId"]
-    _add_file_dates(extra, metadata)
+    add_file_provenance(extra, metadata)
     write_manifest(folder, "form", title, file_id, extra=extra)
 
     result_meta: dict[str, Any] = {
@@ -491,7 +488,7 @@ def fetch_video(file_id: str, title: str, metadata: dict[str, Any], email_contex
     }
     if duration_ms:
         extra["duration_ms"] = int(duration_ms)
-    _add_file_dates(extra, metadata)
+    add_file_provenance(extra, metadata)
     write_manifest(folder, "video", title, file_id, extra=extra)
 
     result_meta: dict[str, Any] = {
@@ -514,15 +511,16 @@ def fetch_video(file_id: str, title: str, metadata: dict[str, Any], email_contex
     )
 
 
-def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None, thumbnails: bool = True) -> FetchResult:
+def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context: EmailContext | None = None, *, base_path: Path | None = None, thumbnails: bool = True, crops: bool = True) -> FetchResult:
     """
     Fetch PDF file with hybrid extraction strategy.
 
     Uses adapters/pdf.py which tries markitdown first, falls back to Drive
-    conversion for complex/image-heavy PDFs.
+    conversion for complex/image-heavy PDFs. crops=False skips embedded-
+    graphic extraction (anchors ride result.crops, so nothing dangles).
     """
     # Extract via adapter (handles download + hybrid extraction + thumbnail rendering)
-    result = fetch_and_convert_pdf(file_id, thumbnails=thumbnails)
+    result = fetch_and_convert_pdf(file_id, thumbnails=thumbnails, crops=crops)
 
     # Deposit to workspace (crops first — the helper anchors them into result.content)
     folder = get_deposit_folder("pdf", title, file_id, base_path=base_path)
@@ -541,7 +539,7 @@ def fetch_pdf(file_id: str, title: str, metadata: dict[str, Any], email_context:
     }
     if result.warnings:
         extra["warnings"] = result.warnings
-    _add_file_dates(extra, metadata)
+    add_file_provenance(extra, metadata)
     write_manifest(folder, "pdf", title, file_id, extra=extra)
 
     result_meta: dict[str, Any] = {
@@ -621,7 +619,7 @@ def fetch_office(file_id: str, title: str, metadata: dict[str, Any], office_type
         extra_office["raw_file"] = raw_file
     if result.warnings:
         extra_office["warnings"] = result.warnings
-    _add_file_dates(extra_office, metadata)
+    add_file_provenance(extra_office, metadata)
     write_manifest(folder, office_type, title, file_id, extra=extra_office if extra_office else None)
 
     result_meta: dict[str, Any] = {
@@ -681,7 +679,7 @@ def fetch_text(file_id: str, title: str, metadata: dict[str, Any], email_context
         "mime_type": mime_type,
         "char_count": len(content),
     }
-    _add_file_dates(extra, metadata)
+    add_file_provenance(extra, metadata)
     write_manifest(folder, "text", title, file_id, extra=extra)
 
     result_meta: dict[str, Any] = {
@@ -772,7 +770,7 @@ def fetch_image_file(file_id: str, title: str, metadata: dict[str, Any], email_c
             extra["has_rendered_png"] = False
     if result.warnings:
         extra["warnings"] = result.warnings
-    _add_file_dates(extra, metadata)
+    add_file_provenance(extra, metadata)
     write_manifest(folder, "image", title, file_id, extra=extra)
 
     # Build result metadata

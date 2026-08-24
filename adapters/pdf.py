@@ -168,6 +168,7 @@ def fetch_and_convert_pdf(
     file_id: str,
     min_chars_threshold: int = DEFAULT_MIN_CHARS_THRESHOLD,
     thumbnails: bool = True,
+    crops: bool = True,
 ) -> PdfConversionResult:
     """
     Download PDF from Drive and extract content.
@@ -179,6 +180,7 @@ def fetch_and_convert_pdf(
         file_id: Drive file ID
         min_chars_threshold: Minimum chars to consider markitdown successful
         thumbnails: False skips page-thumbnail rendering entirely (mise-giwawa)
+        crops: False skips embedded-graphic crop extraction (mise-tanoti)
 
     Returns:
         PdfConversionResult with content and extraction method used
@@ -188,7 +190,9 @@ def fetch_and_convert_pdf(
 
     if file_size > STREAMING_THRESHOLD_BYTES:
         # Large file: stream to temp, extract from path
-        return _fetch_and_convert_pdf_large(file_id, min_chars_threshold, thumbnails=thumbnails)
+        return _fetch_and_convert_pdf_large(
+            file_id, min_chars_threshold, thumbnails=thumbnails, crops=crops
+        )
     else:
         # Small file: load into memory
         pdf_bytes = download_file(file_id)
@@ -197,14 +201,18 @@ def fetch_and_convert_pdf(
             file_id=file_id,
             min_chars_threshold=min_chars_threshold,
         )
-        # Crops are unconditional (unlike thumbnails): a few KB of embedded
-        # graphics vs 10s of MB of page renders, and they serve the TEXT
-        # lane — the anchors in content.md are how a text-first reader
-        # learns a value lives in pixels (mise-jopohi). Never blocks.
-        try:
-            result.crops = extract_pdf_crops(file_bytes=pdf_bytes)
-        except Exception as e:
-            result.warnings.append(f"Graphic-crop extraction unavailable: {e}")
+        # Crops default ON: they serve the TEXT lane — the anchors in
+        # content.md are how a text-first reader learns a value lives in
+        # pixels (mise-jopohi). This comment used to argue "a few KB, so
+        # unconditional"; the Garni corpus falsified the size premise
+        # (117MB / ~5min of a 10-PDF walk, 48 crops on one 51-page deck),
+        # so crops=False is the text-only consumer's opt-out (mise-tanoti).
+        # With crops skipped, no anchors are written — nothing dangles.
+        if crops:
+            try:
+                result.crops = extract_pdf_crops(file_bytes=pdf_bytes)
+            except Exception as e:
+                result.warnings.append(f"Graphic-crop extraction unavailable: {e}")
         if thumbnails:
             try:
                 result.thumbnails = render_pdf_pages(file_bytes=pdf_bytes)
@@ -216,7 +224,7 @@ def fetch_and_convert_pdf(
 def _fetch_and_convert_pdf_large(
     file_id: str,
     min_chars_threshold: int = DEFAULT_MIN_CHARS_THRESHOLD,
-    *, thumbnails: bool = True,
+    *, thumbnails: bool = True, crops: bool = True,
 ) -> PdfConversionResult:
     """
     Extract large PDF using streaming download.
@@ -234,10 +242,11 @@ def _fetch_and_convert_pdf_large(
         )
         result.warnings.insert(0, "Large file: using streaming download")
         # Crops + thumbnails before the temp file is unlinked
-        try:
-            result.crops = extract_pdf_crops(file_path=tmp_path)
-        except Exception as e:
-            result.warnings.append(f"Graphic-crop extraction unavailable: {e}")
+        if crops:
+            try:
+                result.crops = extract_pdf_crops(file_path=tmp_path)
+            except Exception as e:
+                result.warnings.append(f"Graphic-crop extraction unavailable: {e}")
         if thumbnails:
             try:
                 result.thumbnails = render_pdf_pages(file_path=tmp_path)

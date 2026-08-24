@@ -1628,3 +1628,46 @@ class TestSearchGate:
                         base_path="/tmp")
         assert result["kind"] == "invalid_input"
         assert "calendar" in result["message"]
+
+
+class TestLastModifiedByInResults:
+    """mise-tanoti: 'modified <date> by <who>' must be renderable from mise
+    data alone — Shared Drive files have no owners, so last_modified_by is
+    the only honest author signal a consumer can show."""
+
+    def test_format_drive_result_carries_last_modified_by(self) -> None:
+        from models import DriveSearchResult
+        from tools.search import format_drive_result
+
+        r = DriveSearchResult(
+            file_id="f1", name="corpus.pdf", mime_type="application/pdf",
+            last_modified_by="Jane Analyst",
+        )
+        assert format_drive_result(r)["last_modified_by"] == "Jane Analyst"
+
+    def test_manifest_extra_carries_last_modified_by(self) -> None:
+        from tools.fetch.common import add_file_provenance
+
+        extra: dict = {}
+        add_file_provenance(extra, {
+            "modifiedTime": "2026-08-24T09:16:46Z",
+            "lastModifyingUser": {
+                "displayName": "Jane Analyst",
+                "emailAddress": "jane@example.com",
+            },
+        })
+        assert extra["last_modified_by"] == "Jane Analyst"
+        assert extra["modified_time"] == "2026-08-24T09:16:46Z"
+
+    def test_manifest_extra_falls_back_to_email_and_omits_when_absent(self) -> None:
+        from tools.fetch.common import add_file_provenance
+
+        extra: dict = {}
+        add_file_provenance(extra, {
+            "lastModifyingUser": {"emailAddress": "sa@project.iam.gserviceaccount.com"},
+        })
+        assert extra["last_modified_by"] == "sa@project.iam.gserviceaccount.com"
+
+        extra2: dict = {}
+        add_file_provenance(extra2, {"modifiedTime": "2026-08-24T09:00:00Z"})
+        assert "last_modified_by" not in extra2

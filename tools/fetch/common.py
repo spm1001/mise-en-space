@@ -122,6 +122,24 @@ def _deposit_pdf_thumbnails(
     return extras
 
 
+def add_file_provenance(extra: dict[str, Any], metadata: dict[str, Any]) -> None:
+    """Add created/modified timestamps + last-modifier to a manifest extra dict.
+
+    last_modified_by rides here because every Drive deposit route funnels
+    through this helper: Shared Drive files have NO owners, so the
+    last-modifier is the only honest author signal a manifest can carry
+    (mise-tanoti — Garni's MANIFEST 'modified <date> by <who>' line).
+    """
+    if metadata.get("createdTime"):
+        extra["created_time"] = metadata["createdTime"]
+    if metadata.get("modifiedTime"):
+        extra["modified_time"] = metadata["modifiedTime"]
+    lmu = metadata.get("lastModifyingUser", {})
+    modifier = lmu.get("displayName") or lmu.get("emailAddress")
+    if modifier:
+        extra["last_modified_by"] = modifier
+
+
 def deposit_pdf_crops(folder: Path, result: PdfConversionResult) -> dict[str, Any]:
     """
     Write embedded-graphic crops and anchor them in the content (mise-jopohi).
