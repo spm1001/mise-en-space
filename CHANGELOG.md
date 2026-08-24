@@ -6,7 +6,7 @@
 > intentionally absent — the shipped version number can therefore be ahead of
 > the newest entry here.
 
-## [Unreleased] — banked 2026-08-24, publish pending (mise-bapije)
+## [1.74.0] - 2026-08-24 (mise-bapije)
 
 ### Changed
 - **Tool bodies run concurrently** — the interim `_serialized` lock from the
