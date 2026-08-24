@@ -1,0 +1,43 @@
+{
+  "probe": "mise-jefaki step 1 \u2014 battery 5 (multi-token literal name prefix)",
+  "started_utc": "2026-08-24T16:48:27.246095+00:00",
+  "queries": {
+    "literal_prefix_2tok": {
+      "term": "jefaki-arm",
+      "count": 1,
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md"
+      ]
+    },
+    "literal_prefix_3tok": {
+      "term": "jefaki-arm2-hyph",
+      "count": 1,
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md"
+      ]
+    },
+    "literal_prefix_ext": {
+      "term": "jefaki-arm2-hyphen-probe.m",
+      "count": 1,
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md"
+      ]
+    },
+    "midname_multitok": {
+      "term": "efaki-arm2",
+      "count": 0,
+      "hits": []
+    }
+  },
+  "control": [
+    "jefaki-arm2-hyphen-probe.md"
+  ],
+  "cleanup": {
+    "deleted": [
+      "jefaki-arm2-hyphen-probe.md",
+      "jefaki-arm2-probe-folder-5"
+    ],
+    "failed": []
+  },
+  "finished_utc": "2026-08-24T16:48:30.069544+00:00"
+}

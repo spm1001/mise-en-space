@@ -1,0 +1,104 @@
+{
+  "probe": "mise-jefaki step 1 \u2014 battery 3 (corpora mechanism, read-only)",
+  "started_utc": "2026-08-24T16:45:19.532968+00:00",
+  "steps": {
+    "files_get_by_id": {
+      "id": "1SklXLZ1fhUFBC6E_2KC7B6vdbvZDu0gmd_XWyTiRPek",
+      "name": "cudoba-probe.md",
+      "mimeType": "application/vnd.google-apps.document",
+      "parents": [
+        "14nZWynXvSv694Tppuq0hVdlkOg77a4DE"
+      ],
+      "createdTime": "2026-08-24T09:16:42.798Z",
+      "driveId": "0AL6R-4PN6073Uk9PVA",
+      "lastModifyingUser": {
+        "displayName": "agent-spike"
+      }
+    },
+    "mise_search_files_default": {
+      "count": 0,
+      "hits": []
+    },
+    "direct_default_corpora": {
+      "q": "name contains 'cudoba-probe' and trashed = false",
+      "extra": {},
+      "count": 0,
+      "hits": []
+    },
+    "direct_allDrives": {
+      "q": "name contains 'cudoba-probe' and trashed = false",
+      "extra": {
+        "corpora": "allDrives"
+      },
+      "count": 1,
+      "hits": [
+        "cudoba-probe.md"
+      ]
+    },
+    "direct_drive_scoped": {
+      "q": "name contains 'cudoba-probe' and trashed = false",
+      "extra": {
+        "corpora": "drive",
+        "driveId": "0AL6R-4PN6073Uk9PVA"
+      },
+      "count": 1,
+      "hits": [
+        "cudoba-probe.md"
+      ]
+    },
+    "parents_default_corpora": {
+      "q": "'14nZWynXvSv694Tppuq0hVdlkOg77a4DE' in parents and trashed = false",
+      "extra": {},
+      "count": 20,
+      "hits": [
+        "cudoba-probe.md",
+        "somiho-probe.md",
+        "Banijay Source Ledger",
+        "Banijay Group Strategic Story (March 2026 - H1 2026)",
+        "Production Business Comparison - Source Ledger (ledger.csv)",
+        "Like-for-Like Production Business Comparison (Fremantle, Banijay Entertainment, BBC Studios)",
+        "ITV Studios Competitor Analysis - Source Ledger CSV",
+        "ITV Studios Competitor Analysis - Banijay, Fremantle, BBC Studios",
+        "Source Ledger - Competitor Analysis",
+        "ITV Studios Competitor Analysis: Banijay, Fremantle, BBC Studios",
+        "production_comparison_ledger.csv",
+        "Like-for-Like Production Comparison: Fremantle, Banijay Entertainment, BBC Studios",
+        "Competitor Analysis Source Ledger",
+        "Competitor Analysis - Banijay Fremantle BBC Studios",
+        "Major Competitor Analysis: Banijay, Fremantle, and BBC Studios",
+        "Strategic Memo: Architecture & Persona Optimization for the Strategy Atelier Co-Pilot",
+        "Architecture Design: Hybrid Text-Visual Document Ingestion Pipeline",
+        "ITV Studios & Partner Brand Logos Factsheet",
+        "Global Podcast Business Factsheet & Value Chain Analysis (ITV Studios)",
+        "Global Podcast Factsheet - Source Ledger (ledger.csv)"
+      ]
+    },
+    "exact_name_default": {
+      "q": "name = 'cudoba-probe.md' and trashed = false",
+      "extra": {},
+      "count": 0,
+      "hits": []
+    },
+    "exact_name_allDrives": {
+      "q": "name = 'cudoba-probe.md' and trashed = false",
+      "extra": {
+        "corpora": "allDrives"
+      },
+      "count": 1,
+      "hits": [
+        "cudoba-probe.md"
+      ]
+    },
+    "somiho_allDrives": {
+      "q": "name contains 'somiho' and trashed = false",
+      "extra": {
+        "corpora": "allDrives"
+      },
+      "count": 1,
+      "hits": [
+        "somiho-probe.md"
+      ]
+    }
+  },
+  "finished_utc": "2026-08-24T16:45:25.150682+00:00"
+}

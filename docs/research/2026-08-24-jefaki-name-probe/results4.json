@@ -1,0 +1,51 @@
+{
+  "probe": "mise-jefaki step 1 \u2014 battery 4 (digit boundary + self-created shared-drive visibility)",
+  "started_utc": "2026-08-24T16:47:06.859491+00:00",
+  "part_a": {
+    "control": [
+      "jefaki-arm2-hyphen-probe.md"
+    ],
+    "bare_digit_2": {
+      "term": "2",
+      "count": 1,
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md"
+      ]
+    },
+    "arm_prefix": {
+      "term": "arm",
+      "count": 1,
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md"
+      ]
+    },
+    "rm2_substring": {
+      "term": "rm2",
+      "count": 0,
+      "hits": []
+    },
+    "jefak_first_prefix": {
+      "term": "jefak",
+      "count": 1,
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md"
+      ]
+    },
+    "hyph_later_prefix": {
+      "term": "hyph",
+      "count": 0,
+      "hits": []
+    }
+  },
+  "part_b": {
+    "skipped": "drives.create refused: Client error '403 Forbidden' for url 'https://www.googleapis.com/drive/v3/drives?requestId=94908568-d556-474d-9f4a-b525b69b7845'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403"
+  },
+  "cleanup": {
+    "deleted": [
+      "jefaki-arm2-hyphen-probe.md",
+      "jefaki-arm2-probe-folder-4"
+    ],
+    "failed": []
+  },
+  "finished_utc": "2026-08-24T16:47:09.682584+00:00"
+}

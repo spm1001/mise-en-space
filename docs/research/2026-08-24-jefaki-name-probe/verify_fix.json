@@ -1,0 +1,39 @@
+{
+  "started_utc": "2026-08-24T16:54:23.250569+00:00",
+  "checks": {
+    "adapter_cudoba": {
+      "hits": [
+        "cudoba-probe.md"
+      ],
+      "incomplete": false
+    },
+    "tool_somiho": {
+      "drive_results": [
+        "somiho-probe.md"
+      ],
+      "cues": {
+        "sources_note": "Gmail excluded \u2014 raw_query scopes to Drive only"
+      },
+      "errors": []
+    },
+    "tool_cue_on_null": {
+      "drive_results": [],
+      "has_semantics_cue": true,
+      "cue_text": "0 Drive hits for the name term 'jefaki-arm2-nonexistent' \u2014 a null that is easy to over-read. Drive matches whole name TOKENS, not substrings: names split on punctuation, spaces and letter-digit boundaries (report-2026.pdf tokenises to report, 2026, pdf), a multi-token term is an AND of its whole tokens in any order, and the only substring honoured is a literal prefix of the ENTIRE name \u2014 so report-20 matches, eport-2026 never can. If the file may exist: retry with one whole token, exact equality (name = with the full filename), a fullText search, or a folder listing. Measured 2026-08-24 (mise-jefaki)."
+    },
+    "mydrive_sample": [
+      "melaso-arm1 verify disclosure (scratch, safe to trash)",
+      "MIT Scorecard 2024\u20132027",
+      "Untitled document",
+      "ITV Formatter \u2014 Feedback",
+      "Lantern Sketch for 2027"
+    ],
+    "mydrive_name_search": {
+      "token": "melaso",
+      "target": "melaso-arm1 verify disclosure (scratch, safe to trash)",
+      "found": true,
+      "n_hits": 1
+    }
+  },
+  "finished_utc": "2026-08-24T16:54:25.882539+00:00"
+}

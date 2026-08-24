@@ -1,0 +1,197 @@
+{
+  "probe": "mise-jefaki step 1 \u2014 Drive name-contains tokenisation",
+  "started_utc": "2026-08-24T16:40:45.513637+00:00",
+  "files": [
+    "jefaki-arm2-hyphen-probe.md",
+    "jefaki-arm2_underscore_probe.md",
+    "jefaki-arm2.dot.probe.md"
+  ],
+  "queries": {
+    "control_first_token": {
+      "clause": "name contains 'jefaki'",
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md",
+        "jefaki-arm2.dot.probe.md",
+        "jefaki-arm2_underscore_probe.md"
+      ],
+      "count": 3
+    },
+    "full_hyphen_name": {
+      "clause": "name contains 'jefaki-arm2-hyphen-probe.md'",
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md"
+      ],
+      "count": 1
+    },
+    "hyphen_name_no_ext": {
+      "clause": "name contains 'jefaki-arm2-hyphen-probe'",
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md"
+      ],
+      "count": 1
+    },
+    "hyphen_pair": {
+      "clause": "name contains 'jefaki-arm2'",
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md",
+        "jefaki-arm2.dot.probe.md",
+        "jefaki-arm2_underscore_probe.md"
+      ],
+      "count": 3
+    },
+    "second_token": {
+      "clause": "name contains 'arm2'",
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md",
+        "jefaki-arm2.dot.probe.md",
+        "jefaki-arm2_underscore_probe.md"
+      ],
+      "count": 3
+    },
+    "inner_token_hyphen": {
+      "clause": "name contains 'hyphen'",
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md"
+      ],
+      "count": 1
+    },
+    "inner_token_prefix": {
+      "clause": "name contains 'hyph'",
+      "hits": [],
+      "count": 0
+    },
+    "mid_token_substring": {
+      "clause": "name contains 'efaki'",
+      "hits": [],
+      "count": 0
+    },
+    "trailing_hyphen": {
+      "clause": "name contains 'jefaki-'",
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md",
+        "jefaki-arm2.dot.probe.md",
+        "jefaki-arm2_underscore_probe.md"
+      ],
+      "count": 3
+    },
+    "underscore_inner": {
+      "clause": "name contains 'underscore'",
+      "hits": [
+        "jefaki-arm2_underscore_probe.md"
+      ],
+      "count": 1
+    },
+    "underscore_chunk": {
+      "clause": "name contains 'arm2_underscore_probe'",
+      "hits": [
+        "jefaki-arm2_underscore_probe.md"
+      ],
+      "count": 1
+    },
+    "full_underscore_name": {
+      "clause": "name contains 'jefaki-arm2_underscore_probe.md'",
+      "hits": [
+        "jefaki-arm2_underscore_probe.md"
+      ],
+      "count": 1
+    },
+    "dot_inner": {
+      "clause": "name contains 'dot'",
+      "hits": [
+        "jefaki-arm2.dot.probe.md"
+      ],
+      "count": 1
+    },
+    "extension_token": {
+      "clause": "name contains 'md'",
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md",
+        "jefaki-arm2.dot.probe.md",
+        "jefaki-arm2_underscore_probe.md"
+      ],
+      "count": 3
+    },
+    "full_dot_name": {
+      "clause": "name contains 'jefaki-arm2.dot.probe.md'",
+      "hits": [
+        "jefaki-arm2.dot.probe.md"
+      ],
+      "count": 1
+    },
+    "space_multiword": {
+      "clause": "name contains 'jefaki arm2'",
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md",
+        "jefaki-arm2.dot.probe.md",
+        "jefaki-arm2_underscore_probe.md"
+      ],
+      "count": 3
+    },
+    "case_upper": {
+      "clause": "name contains 'JEFAKI'",
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md",
+        "jefaki-arm2.dot.probe.md",
+        "jefaki-arm2_underscore_probe.md"
+      ],
+      "count": 3
+    },
+    "probe_token": {
+      "clause": "name contains 'probe'",
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md",
+        "jefaki-arm2.dot.probe.md",
+        "jefaki-arm2_underscore_probe.md"
+      ],
+      "count": 3
+    },
+    "anded_tokens_hyphen": {
+      "clause": "name contains 'jefaki' and name contains 'arm2' and name contains 'hyphen' and name contains 'probe'",
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md"
+      ],
+      "count": 1
+    },
+    "exact_equals_hyphen": {
+      "clause": "name = 'jefaki-arm2-hyphen-probe.md'",
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md"
+      ],
+      "count": 1
+    },
+    "fulltext_hyphen_name": {
+      "clause": "fullText contains 'jefaki-arm2-hyphen-probe'",
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md"
+      ],
+      "count": 1
+    },
+    "fulltext_control": {
+      "clause": "fullText contains 'jefaki'",
+      "hits": [
+        "jefaki-arm2-hyphen-probe.md",
+        "jefaki-arm2.dot.probe.md",
+        "jefaki-arm2_underscore_probe.md"
+      ],
+      "count": 3
+    }
+  },
+  "control_poll": {
+    "hits": [
+      "jefaki-arm2-hyphen-probe.md",
+      "jefaki-arm2.dot.probe.md",
+      "jefaki-arm2_underscore_probe.md"
+    ],
+    "all_three_indexed": true
+  },
+  "cleanup": {
+    "deleted": [
+      "jefaki-arm2.dot.probe.md",
+      "jefaki-arm2_underscore_probe.md",
+      "jefaki-arm2-hyphen-probe.md",
+      "jefaki-arm2-probe-folder"
+    ],
+    "failed": []
+  },
+  "finished_utc": "2026-08-24T16:40:53.439781+00:00"
+}
