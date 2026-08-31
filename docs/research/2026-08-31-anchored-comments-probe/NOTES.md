@@ -35,9 +35,25 @@ mise's existing `comments.md` machinery reads Drive `comments.list`. For the API
 - Sheets/Slides preview reads needed no extra params — `commentsViewMode` alone was honoured.
 - `resolved` on the Drive plane came back absent (not `false`) for open threads — the usual jq-null trap when consuming.
 
-## Likely build items (held until the eyeball answers land)
+## Re-read after Sameer's UI replies (evidence 25–32, same evening)
 
-- `comments.md` slide/cell locators for Slides/Sheets fetches (preview read or legible Drive anchors, whichever proves true for UI-authored comments).
-- Anchored `do(comment)` — anchor param (slide id / A1 / text quote), assignee option.
-- mise-mikawi fix: route Doc comment creation through Docs-API `insertComment` (visibility pending check #1).
-- Resolve/reopen already exists in `do(comment_reply)` via the Drive plane — consider whether the batchUpdate plane buys anything extra there (probably not; don't churn).
+Sameer replied in the UI on all three probe artefacts; the replies arrive cleanly in the preview reads (25–27) — but replies aren't new threads, so the UI-authored-anchor question was settled read-only against **live colleague-commented files** found via Drive activity (evidence 31–32, REDACTED to structure because this repo is public):
+
+- **Sheets — confirmed.** Two pre-existing colleague threads on the Melt SoW sheet both carry workbook-range anchorIds resolving to exact GridRanges (C12, D14), each with `plainTextQuote` (the anchored cell text). UI-authored comments are fully locatable.
+- **Docs — confirmed, with an honest edge.** Of two threads on the ADR 044A draft, one carries `kix.` anchorId + a 161-char `plainTextQuote`; the other has neither — a document-level or anchor-orphaned thread, rendered distinguishably rather than silently alike.
+- **Slides — still pending**: needs one NEW UI thread (not a reply) on the probe deck; no commented deck surfaced in recent activity.
+
+Also from the thread replies: Sameer's mechanism detail for mise-mikawi — last week's unanchored comments "went straight to 'resolved'", pointing at the UI's hide-resolved-by-default rather than never-rendered (though today's control reads `resolved: false` on the Drive plane, so the auto-resolve may be conditional — the eyeball on the control still discriminates). And the direction note: agent-identity commenting via a service account (`mit.kg@itv.com` flavour) + `assigneeEmailAddress` is the mise-lobuha shape these endpoints now make real.
+
+## Build items (filed 2026-08-31)
+
+- **mise-dukacu** — `comments.md` slide/cell locators for Slides/Sheets fetches (preview read or legible Drive anchors; Slides UI-authored confirmation pending as above).
+- **mise-jupuja** — anchored `do(comment)` (slide id / A1 / doc text quote) + `assignee=`, on the batchUpdate plane; unanchored default unchanged pending the mikawi visibility answer.
+- mise-mikawi annotated with the mechanism detail and the Docs-API fix route.
+- Resolve/reopen stays on `do(comment_reply)`'s existing Drive plane — the batchUpdate plane is shape-identical there and buys nothing (probed 23/24); deliberate non-adoption.
+
+## Still open on mise-picihi
+
+1. UI eyeball on the probe doc: anchored Docs-API comment visible? `CONTROL:` Drive-plane comment visible or hidden?
+2. One new UI comment thread on the probe deck, then a re-read for its anchor.
+3. Assignee lever unprobed (needs a consenting second account — or the future agent identity).

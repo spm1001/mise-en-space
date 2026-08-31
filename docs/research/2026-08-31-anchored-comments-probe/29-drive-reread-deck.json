@@ -1,0 +1,25 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://www.googleapis.com/drive/v3/files/1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM/comments?fields=comments(id,content,anchor,resolved,replies(content))&pageSize=50"
+  },
+  "status": 200,
+  "response": {
+    "comments": [
+      {
+        "replies": [
+          {
+            "content": "Reply via Slides API \u2014 left open for UI eyeball."
+          },
+          {
+            "content": "Nice - thank you"
+          }
+        ],
+        "id": "AAACGW2am2w",
+        "content": "Anchored probe comment on slide 1 via Slides API (mise-picihi).",
+        "resolved": false,
+        "anchor": "{\"uid\":1413975053,\"pages\":[\"p\"],\"type\":\"page\"}"
+      }
+    ]
+  }
+}

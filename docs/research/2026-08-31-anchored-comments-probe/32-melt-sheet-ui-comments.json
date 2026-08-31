@@ -1,0 +1,57 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://sheets.googleapis.com/v4/spreadsheets/1ima2XhARDK4V89T2zpvxrPj8AIGHJ1ft5DYYoruvTIc?commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED&fields=spreadsheetId,comments,sheets(properties(sheetId),commentAnchors)",
+    "note": "REDACTED evidence \u2014 live third-party file, public repo"
+  },
+  "status": 200,
+  "response_redacted": {
+    "threads": [
+      {
+        "commentId": "AAACBi0AmFE",
+        "status": "OPEN",
+        "anchorId_present": true,
+        "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"1139048517\"}",
+        "plainTextQuote_present": true,
+        "plainTextQuote_len": 29,
+        "head_content_len": 55,
+        "reply_count": 0
+      },
+      {
+        "commentId": "AAACBi0AmFA",
+        "status": "OPEN",
+        "anchorId_present": true,
+        "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"2133564404\"}",
+        "plainTextQuote_present": true,
+        "plainTextQuote_len": 292,
+        "head_content_len": 34,
+        "reply_count": 0
+      }
+    ],
+    "commentAnchors_by_sheet": [
+      {
+        "sheetId": 0,
+        "commentAnchors": [
+          {
+            "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"1139048517\"}",
+            "range": {
+              "startRowIndex": 11,
+              "endRowIndex": 12,
+              "startColumnIndex": 2,
+              "endColumnIndex": 3
+            }
+          },
+          {
+            "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"2133564404\"}",
+            "range": {
+              "startRowIndex": 13,
+              "endRowIndex": 14,
+              "startColumnIndex": 3,
+              "endColumnIndex": 4
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

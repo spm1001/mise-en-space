@@ -1,0 +1,90 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://sheets.googleapis.com/v4/spreadsheets/1HLogE6ENzSAHsFdGMI_HxpRFK__2AKZw1ngEYlPkIDg?commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED&fields=spreadsheetId,comments,sheets(properties(sheetId,title),commentAnchors)"
+  },
+  "status": 200,
+  "response": {
+    "spreadsheetId": "1HLogE6ENzSAHsFdGMI_HxpRFK__2AKZw1ngEYlPkIDg",
+    "sheets": [
+      {
+        "properties": {
+          "sheetId": 0,
+          "title": "Sheet1"
+        },
+        "commentAnchors": [
+          {
+            "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"1708485136\"}",
+            "range": {
+              "startRowIndex": 1,
+              "endRowIndex": 2,
+              "startColumnIndex": 1,
+              "endColumnIndex": 2
+            }
+          }
+        ]
+      }
+    ],
+    "comments": [
+      {
+        "commentId": "AAACGWrtgyk",
+        "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"1708485136\"}",
+        "headPost": {
+          "postId": "AAACGWrtgyk",
+          "content": "Anchored probe comment on B2 via Sheets API (mise-picihi).",
+          "contentHtml": "Anchored probe comment on B2 via Sheets API (mise-picihi).",
+          "author": {
+            "displayName": "Sameer Modha",
+            "me": true,
+            "user": "users/104748752125935505194"
+          },
+          "createTime": "2026-08-31T20:18:11.527Z",
+          "updateTime": "2026-08-31T20:55:35.106Z",
+          "commentAction": "NO_COMMENT_ACTION_CHANGE"
+        },
+        "replies": [
+          {
+            "postId": "AAACGWrtgys",
+            "content": "Reply via Sheets API, resolving.",
+            "contentHtml": "Reply via Sheets API, resolving.",
+            "author": {
+              "displayName": "Sameer Modha",
+              "me": true,
+              "user": "users/104748752125935505194"
+            },
+            "createTime": "2026-08-31T20:20:53.001Z",
+            "updateTime": "2026-08-31T20:20:53.001Z",
+            "commentAction": "RESOLVE"
+          },
+          {
+            "postId": "AAACGWrtgy0",
+            "content": "Reopening so it stays visible for the UI eyeball.",
+            "contentHtml": "Reopening so it stays visible for the UI eyeball.",
+            "author": {
+              "displayName": "Sameer Modha",
+              "me": true,
+              "user": "users/104748752125935505194"
+            },
+            "createTime": "2026-08-31T20:20:53.195Z",
+            "updateTime": "2026-08-31T20:20:53.195Z",
+            "commentAction": "REOPEN"
+          },
+          {
+            "postId": "AAACGWn4Pio",
+            "content": "this is lovely - all we need now is to get you set up as @mit.kg@itv.com",
+            "contentHtml": "this is lovely - all we need now is to get you set up as @<a href=\"mailto:mit.kg@itv.com\" target=\"_blank\">mit.kg@itv.com</a>",
+            "author": {
+              "displayName": "Sameer Modha",
+              "me": true,
+              "user": "users/104748752125935505194"
+            },
+            "createTime": "2026-08-31T20:55:35.106Z",
+            "updateTime": "2026-08-31T20:55:35.106Z",
+            "commentAction": "NO_COMMENT_ACTION_CHANGE"
+          }
+        ],
+        "status": "OPEN"
+      }
+    ]
+  }
+}

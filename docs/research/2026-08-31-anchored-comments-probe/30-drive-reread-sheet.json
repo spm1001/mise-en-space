@@ -1,0 +1,28 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://www.googleapis.com/drive/v3/files/1HLogE6ENzSAHsFdGMI_HxpRFK__2AKZw1ngEYlPkIDg/comments?fields=comments(id,content,anchor,resolved,replies(content))&pageSize=50"
+  },
+  "status": 200,
+  "response": {
+    "comments": [
+      {
+        "replies": [
+          {
+            "content": "Reply via Sheets API, resolving."
+          },
+          {
+            "content": "Reopening so it stays visible for the UI eyeball."
+          },
+          {
+            "content": "this is lovely - all we need now is to get you set up as @mit.kg@itv.com"
+          }
+        ],
+        "id": "AAACGWrtgyk",
+        "content": "Anchored probe comment on B2 via Sheets API (mise-picihi).",
+        "resolved": false,
+        "anchor": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"1708485136\"}"
+      }
+    ]
+  }
+}
