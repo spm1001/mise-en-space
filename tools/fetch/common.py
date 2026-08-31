@@ -6,19 +6,52 @@ _enrich_with_comments, and text file detection.
 """
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
+from adapters.comment_anchors import (
+    fetch_sheets_comment_anchors,
+    fetch_slides_comment_anchors,
+)
 from adapters.drive import fetch_file_comments
 from adapters.pdf import PdfConversionResult
+from extractors.comment_anchors import AnchorLocator, sheets_locators, slides_locators
 from extractors.comments import extract_comments_content
 from extractors.pdf_anchors import insert_crop_anchors
 from extractors.sheets import extract_sheets_per_tab
-from models import MiseError, EmailContext
+from models import MiseError, EmailContext, SlideData
 from workspace import write_content, write_page_thumbnail, slugify
 
 
+def _anchor_locators(
+    file_id: str, surface: str, slides: Sequence[SlideData] | None
+) -> tuple[dict[str, AnchorLocator] | None, str | None]:
+    """Read the anchored-comments preview map for one file.
+
+    Returns (locators, unavailable_reason) — exactly one is set. Called ONLY
+    when the file has open comments (the checkbox-oracle cost pattern: an extra
+    API call per fetch is worth it on the files that have something to locate,
+    and free on the ones that don't).
+    """
+    if surface == "slides":
+        read = fetch_slides_comment_anchors(file_id)
+        if read.payload is None:
+            return (None, read.reason)
+        deck = [(s.slide_id, s.title) for s in (slides or [])]
+        return (slides_locators(read.payload, deck), None)
+    read = fetch_sheets_comment_anchors(file_id)
+    if read.payload is None:
+        return (None, read.reason)
+    return (sheets_locators(read.payload), None)
+
+
 def _enrich_with_comments(
-    file_id: str, folder: Path, document_markdown: str | None = None
+    file_id: str,
+    folder: Path,
+    document_markdown: str | None = None,
+    *,
+    surface: str | None = None,
+    slides: Sequence[SlideData] | None = None,
+    warnings: list[str] | None = None,
 ) -> tuple[int, str | None]:
     """
     Fetch open comments and write to deposit folder.
@@ -30,27 +63,62 @@ def _enrich_with_comments(
         folder: Deposit folder path
         document_markdown: The fetched doc's content (Docs only). When supplied,
             comments are located in the document tree and ordered by document
-            position; sheets/slides omit it and keep the flat API-order render.
+            position.
+        surface: "slides" or "sheet" to add per-slide / per-cell locators from
+            the anchored-comments preview read (mise-dukacu). None keeps the
+            flat API-order render.
+        slides: the deck's SlideData in order — gives locators the deposit's own
+            slide numbering and titles.
+        warnings: the caller's warnings list, appended to (not returned) when
+            enrichment degrades. This is what carries the reason into cues.
 
     Returns:
         Tuple of (open_comment_count, comments_md or None)
-        Fails silently — comments are optional enrichment.
+
+    Degradation is deliberate and disclosed: a file type that has no comments
+    API, or a preview read an unenrolled caller cannot make, must never fail a
+    fetch — but every fallback says why it fired.
     """
     try:
         data = fetch_file_comments(file_id, include_resolved=False, max_results=100)
         if not data.comments:
             return (0, None)
 
+        locators: dict[str, AnchorLocator] | None = None
+        if surface:
+            locators, reason = _anchor_locators(file_id, surface, slides)
+            if reason and warnings is not None:
+                warnings.append(
+                    f"Comment locators unavailable ({reason}) — comments.md lists "
+                    "comments in API order with no slide/cell locators."
+                )
+
         # Extract to markdown
-        comments_md = extract_comments_content(data, document_markdown=document_markdown)
+        comments_md = extract_comments_content(
+            data, document_markdown=document_markdown, locators=locators
+        )
+        if data.warnings and warnings is not None:
+            warnings.extend(data.warnings)
 
         # Write to deposit folder
         write_content(folder, comments_md, filename="comments.md")
 
         return (data.comment_count, comments_md)
-    except MiseError:
+    except MiseError as e:
+        # Designed failure: file types with no comments API (Forms, Sites,
+        # Shortcuts…), or no permission to read them. Named, not silent.
+        if warnings is not None:
+            warnings.append(f"Comments not read for this file: {e}")
         return (0, None)
-    except Exception:
+    except Exception as e:  # noqa: BLE001 — enrichment must never kill a fetch
+        # NOT a designed failure. Fail open, but say so — a bare swallow here
+        # renders "no comments" and "the comments read broke" identically, which
+        # is precisely how a comment goes to the void unnoticed.
+        if warnings is not None:
+            warnings.append(
+                f"Comments could not be read: {type(e).__name__}: {e} — "
+                "comments.md is absent from this deposit, not empty."
+            )
         return (0, None)
 
 

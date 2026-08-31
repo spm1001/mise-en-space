@@ -1,0 +1,42 @@
+{
+  "spreadsheetId": "1HLogE6ENzSAHsFdGMI_HxpRFK__2AKZw1ngEYlPkIDg",
+  "sheets": [
+    {
+      "properties": {
+        "sheetId": 0,
+        "title": "Sheet1"
+      },
+      "commentAnchors": [
+        {
+          "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"1708485136\"}",
+          "range": {
+            "startRowIndex": 1,
+            "endRowIndex": 2,
+            "startColumnIndex": 1,
+            "endColumnIndex": 2
+          }
+        }
+      ]
+    }
+  ],
+  "comments": [
+    {
+      "commentId": "AAACGWrtgyk",
+      "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"1708485136\"}",
+      "headPost": {
+        "postId": "AAACGWrtgyk",
+        "content": "Anchored probe comment on B2 via Sheets API (mise-picihi).",
+        "contentHtml": "Anchored probe comment on B2 via Sheets API (mise-picihi).",
+        "author": {
+          "displayName": "Sameer Modha",
+          "me": true,
+          "user": "users/104748752125935505194"
+        },
+        "createTime": "2026-08-31T20:18:11.527Z",
+        "updateTime": "2026-08-31T20:18:11.527Z",
+        "commentAction": "NO_COMMENT_ACTION_CHANGE"
+      },
+      "status": "OPEN"
+    }
+  ]
+}

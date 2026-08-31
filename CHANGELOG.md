@@ -6,6 +6,50 @@
 > intentionally absent — the shipped version number can therefore be ahead of
 > the newest entry here.
 
+## [Unreleased] (mise-dukacu)
+
+### Added
+- **`comments.md` locates Slides and Sheets comments.** A deck's comments now
+  render in deck order under `↳ slide 3 (Roadmap)`, a workbook's in tab/cell
+  order under `↳ Sheet1!B12` — the treatment Docs have had since mise-jimive,
+  reaching the two surfaces whose anchors were opaque until Google's 2026-08-31
+  Developer Preview made them legible. Locators come from one extra GET
+  (`commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED`), paid only on files that have
+  open comments. Verified live against UI-authored comments on both surfaces.
+- Slides/Sheets comments gain anchor text where the Drive plane has none, from
+  the preview's `plainTextQuote`.
+- A comment whose anchor no longer resolves — a deleted slide, a cleared range —
+  is marked `⚠ the anchored content no longer exists` instead of quietly losing
+  its locator, and unanchored document-level threads are counted in a warning.
+
+### Changed
+- **Degrades to today's flat render whenever the preview read fails, with a cue
+  naming why** (`Comment locators unavailable (… HTTP 403 …)`). This is a
+  compliance requirement, not just resilience: pre-GA features must not ship to
+  customers (DPP program term iv) and mise is publicly distributed, so an
+  unenrolled caller must see exactly the old behaviour plus an explanation.
+- `_enrich_with_comments` no longer swallows failures silently — a broken
+  comments read now says so in `cues.warnings` instead of rendering
+  indistinguishably from a file with no comments. Docs fetches disclose the
+  same way; previously only their content warnings reached cues.
+
+### Fixed
+- **A busy file could lose every open comment.** `comments.list` capped at 100
+  threads and filtered resolved ones *after* the cap, so 100 resolved threads
+  ahead of the open ones returned zero — no `comments.md`, `open_comment_count`
+  0, no warning, indistinguishable from a file nobody has commented on. The
+  filter now runs inside the pagination loop, so the cap counts what is kept.
+- **A capped read no longer states a total it cannot know.** A surviving
+  `nextPageToken` sets `FileCommentsData.truncated`; the header then reads
+  `(100+ — capped, this file has more)` and a warning says so, instead of a
+  confident `(100 total)`. Same contract as `SearchResults.truncated`.
+- A slide inserted between mise reading the deck and reading its anchors used to
+  be labelled by its position in the *anchor* read — naming a different slide
+  from the one the deposit numbers that way. It now says so instead of guessing.
+- `extract_comments_content(max_length=…)` breaking at a comment boundary left
+  no truncation marker and no warning, so a partial render read as complete.
+  (Dormant: no fetch path passes `max_length`.)
+
 ## [1.75.3] - 2026-08-24 (mise-vubeku)
 
 ### Added

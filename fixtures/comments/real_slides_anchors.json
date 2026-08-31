@@ -1,0 +1,102 @@
+{
+  "presentationId": "1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM",
+  "slides": [
+    {
+      "objectId": "p",
+      "commentAnchors": [
+        {
+          "anchorId": "{\"type\":\"shape\",\"subtype\":\"text\",\"uid\":1788210253577,\"page\":\"p\",\"targets\":[\"i1\"]}",
+          "objectAnchors": [
+            {
+              "objectId": "i1",
+              "shapeTextAnchors": {
+                "ranges": [
+                  {
+                    "startIndex": 0,
+                    "endIndex": 13
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "anchorId": "{\"uid\":1413975053,\"pages\":[\"p\"],\"type\":\"page\"}",
+          "objectAnchors": [
+            {
+              "objectId": "p"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "comments": [
+    {
+      "commentId": "AAACGW2WCac",
+      "anchorId": "{\"type\":\"shape\",\"subtype\":\"text\",\"uid\":1788210253577,\"page\":\"p\",\"targets\":[\"i1\"]}",
+      "headPost": {
+        "postId": "AAACGW2WCac",
+        "content": "hello - just a test",
+        "contentHtml": "hello - just a test",
+        "author": {
+          "displayName": "Sameer Modha",
+          "me": true,
+          "user": "users/104748752125935505194"
+        },
+        "createTime": "2026-08-31T21:04:18.520Z",
+        "updateTime": "2026-08-31T21:04:18.520Z",
+        "commentAction": "NO_COMMENT_ACTION_CHANGE"
+      },
+      "status": "OPEN",
+      "plainTextQuote": "Hello Claude!"
+    },
+    {
+      "commentId": "AAACGW2am2w",
+      "anchorId": "{\"uid\":1413975053,\"pages\":[\"p\"],\"type\":\"page\"}",
+      "headPost": {
+        "postId": "AAACGW2am2w",
+        "content": "Anchored probe comment on slide 1 via Slides API (mise-picihi).",
+        "contentHtml": "Anchored probe comment on slide 1 via Slides API (mise-picihi).",
+        "author": {
+          "displayName": "Sameer Modha",
+          "me": true,
+          "user": "users/104748752125935505194"
+        },
+        "createTime": "2026-08-31T20:18:10.759Z",
+        "updateTime": "2026-08-31T20:55:45.596Z",
+        "commentAction": "NO_COMMENT_ACTION_CHANGE"
+      },
+      "replies": [
+        {
+          "postId": "AAACGW2am24",
+          "content": "Reply via Slides API \u2014 left open for UI eyeball.",
+          "contentHtml": "Reply via Slides API \u2014 left open for UI eyeball.",
+          "author": {
+            "displayName": "Sameer Modha",
+            "me": true,
+            "user": "users/104748752125935505194"
+          },
+          "createTime": "2026-08-31T20:19:15.288Z",
+          "updateTime": "2026-08-31T20:19:15.288Z",
+          "commentAction": "NO_COMMENT_ACTION_CHANGE"
+        },
+        {
+          "postId": "AAACGW2WCaY",
+          "content": "Nice - thank you",
+          "contentHtml": "Nice - thank you",
+          "author": {
+            "displayName": "Sameer Modha",
+            "me": true,
+            "user": "users/104748752125935505194"
+          },
+          "createTime": "2026-08-31T20:55:45.596Z",
+          "updateTime": "2026-08-31T20:55:45.596Z",
+          "commentAction": "NO_COMMENT_ACTION_CHANGE"
+        }
+      ],
+      "status": "OPEN",
+      "plainTextQuote": ""
+    }
+  ]
+}

@@ -845,6 +845,13 @@ class FileCommentsData:
     comments: list[CommentData]
     comment_count: int = 0
 
+    # A live nextPageToken was abandoned at the result cap — this file has MORE
+    # open comment threads than `comments` holds. Same contract as
+    # SearchResults.truncated (mise-werevi): len(comments) == max_results can
+    # never distinguish an exactly-full read from a capped one, so the token is
+    # the evidence. Without this the deposit prints a confident wrong total.
+    truncated: bool = False
+
     # Warnings during extraction (missing authors, truncation, etc.)
     warnings: list[str] = field(default_factory=list)
 

@@ -17,5 +17,7 @@
   "test_thread_with_pdf_filename": "DTG_ISWG105_Meeting_Register_20260129.pdf",
   "test_thread_with_office_id": "19c0a50c45fb282c",
   "test_thread_with_office_filename": "[iTV] Sample Outputs for MMM Data Feed.xlsx",
-  "test_sheet_merged_cells_id": "16WZmekuVlUVl1gHUHHexBhtjKdLTu6f4mynsHW3jvgs"
+  "test_sheet_merged_cells_id": "16WZmekuVlUVl1gHUHHexBhtjKdLTu6f4mynsHW3jvgs",
+  "test_deck_with_ui_comment_id": "1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM",
+  "test_sheet_with_anchored_comment_id": "1HLogE6ENzSAHsFdGMI_HxpRFK__2AKZw1ngEYlPkIDg"
 }

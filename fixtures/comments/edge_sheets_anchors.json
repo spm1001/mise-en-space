@@ -1,0 +1,115 @@
+{
+  "_provenance": "Hand-built from the real shape in fixtures/comments/real_sheets_anchors.json (probe evidence 14) and the redacted structure of two live colleague threads (evidence 32: workbook-range anchors resolving to C12 and D14). GridRange fields are all optional in Google's schema, so the partial ranges here are schema-legal shapes a real workbook produces for whole-row, whole-column and whole-sheet anchors.",
+  "spreadsheetId": "EDGE_WORKBOOK",
+  "sheets": [
+    {
+      "properties": { "sheetId": 0, "title": "Sheet1" },
+      "commentAnchors": [
+        {
+          "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"cell\"}",
+          "range": {
+            "startRowIndex": 1,
+            "endRowIndex": 2,
+            "startColumnIndex": 1,
+            "endColumnIndex": 2
+          }
+        },
+        {
+          "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"block\"}",
+          "range": {
+            "startRowIndex": 11,
+            "endRowIndex": 14,
+            "startColumnIndex": 2,
+            "endColumnIndex": 4
+          }
+        },
+        {
+          "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"farcol\"}",
+          "range": {
+            "startRowIndex": 0,
+            "endRowIndex": 1,
+            "startColumnIndex": 27,
+            "endColumnIndex": 28
+          }
+        }
+      ]
+    },
+    {
+      "properties": { "sheetId": 1587, "title": "Q3 Plan" },
+      "commentAnchors": [
+        {
+          "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"wholecol\"}",
+          "range": { "startColumnIndex": 2, "endColumnIndex": 3 }
+        },
+        {
+          "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"wholerow\"}",
+          "range": { "startRowIndex": 4, "endRowIndex": 5 }
+        },
+        {
+          "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"wholesheet\"}",
+          "range": {}
+        }
+      ]
+    },
+    {
+      "properties": { "sheetId": 9001 },
+      "commentAnchors": [
+        {
+          "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"untitled\"}",
+          "range": {
+            "startRowIndex": 0,
+            "endRowIndex": 1,
+            "startColumnIndex": 0,
+            "endColumnIndex": 1
+          }
+        }
+      ]
+    }
+  ],
+  "comments": [
+    {
+      "commentId": "c-untitled-tab",
+      "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"untitled\"}",
+      "plainTextQuote": "A1 of a tab whose title the read did not return"
+    },
+    {
+      "commentId": "c-wholesheet",
+      "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"wholesheet\"}",
+      "plainTextQuote": ""
+    },
+    {
+      "commentId": "c-wholerow",
+      "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"wholerow\"}",
+      "plainTextQuote": "row five"
+    },
+    {
+      "commentId": "c-wholecol",
+      "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"wholecol\"}",
+      "plainTextQuote": "column C"
+    },
+    {
+      "commentId": "c-farcol",
+      "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"farcol\"}",
+      "plainTextQuote": "column twenty-eight"
+    },
+    {
+      "commentId": "c-block",
+      "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"block\"}",
+      "plainTextQuote": "a multi-cell block"
+    },
+    {
+      "commentId": "c-cell",
+      "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"cell\"}",
+      "plainTextQuote": "B2 contents"
+    },
+    {
+      "commentId": "c-orphan",
+      "anchorId": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"deleted\"}",
+      "plainTextQuote": "text from a range that was cleared"
+    },
+    {
+      "commentId": "c-unanchored",
+      "plainTextQuote": ""
+    }
+  ]
+}

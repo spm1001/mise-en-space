@@ -1,0 +1,79 @@
+{
+  "_provenance": "Hand-built from the real shapes in fixtures/comments/real_slides_anchors.json (probe evidence 18/41, docs/research/2026-08-31-anchored-comments-probe/). Every anchor spelling here was observed live; the combinations are synthetic so one fixture can carry the edges a real deck rarely holds at once.",
+  "presentationId": "EDGE_DECK",
+  "slides": [
+    {
+      "objectId": "p",
+      "commentAnchors": [
+        {
+          "anchorId": "{\"uid\":1,\"pages\":[\"p\"],\"type\":\"page\"}",
+          "objectAnchors": [{ "objectId": "p" }]
+        },
+        {
+          "anchorId": "{\"type\":\"shape\",\"subtype\":\"text\",\"uid\":2,\"page\":\"p\",\"targets\":[\"i1\"]}",
+          "objectAnchors": [
+            {
+              "objectId": "i1",
+              "shapeTextAnchors": { "ranges": [{ "startIndex": 0, "endIndex": 13 }] }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "objectId": "p2",
+      "commentAnchors": [
+        {
+          "anchorId": "{\"uid\":3,\"pages\":[\"p2\"],\"type\":\"page\"}",
+          "objectAnchors": [{ "objectId": "p2" }]
+        },
+        {
+          "anchorId": "{\"type\":\"table-cell\",\"uid\":4,\"page\":\"p2\",\"targets\":[\"tbl\"]}",
+          "objectAnchors": [
+            {
+              "objectId": "tbl",
+              "tableCellTextAnchors": {
+                "cells": [{ "rowIndex": 1, "columnIndex": 2 }]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "comments": [
+    {
+      "commentId": "c-slide2-page",
+      "anchorId": "{\"uid\":3,\"pages\":[\"p2\"],\"type\":\"page\"}",
+      "plainTextQuote": ""
+    },
+    {
+      "commentId": "c-slide1-shape",
+      "anchorId": "{\"type\":\"shape\",\"subtype\":\"text\",\"uid\":2,\"page\":\"p\",\"targets\":[\"i1\"]}",
+      "plainTextQuote": "Hello Claude!"
+    },
+    {
+      "commentId": "c-slide1-page",
+      "anchorId": "{\"uid\":1,\"pages\":[\"p\"],\"type\":\"page\"}",
+      "plainTextQuote": ""
+    },
+    {
+      "commentId": "c-slide2-tablecell",
+      "anchorId": "{\"type\":\"table-cell\",\"uid\":4,\"page\":\"p2\",\"targets\":[\"tbl\"]}",
+      "plainTextQuote": "Q3 actuals"
+    },
+    {
+      "commentId": "c-orphan",
+      "anchorId": "{\"uid\":99,\"pages\":[\"pGONE\"],\"type\":\"page\"}",
+      "plainTextQuote": "text from a slide that was deleted"
+    },
+    {
+      "commentId": "c-unanchored",
+      "plainTextQuote": ""
+    },
+    {
+      "anchorId": "{\"uid\":1,\"pages\":[\"p\"],\"type\":\"page\"}",
+      "plainTextQuote": "a thread with no commentId — unjoinable"
+    }
+  ]
+}

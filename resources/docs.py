@@ -390,14 +390,9 @@ fires when suggestions are present.
 
 ## Automatic Comment Enrichment
 
-For Google Docs, Sheets, and Slides, open (unresolved) comments are automatically
-fetched and deposited as `comments.md` alongside the content. This follows the
-sous-chef philosophy: bring everything the chef needs without being asked.
+For Google Docs, Sheets, and Slides, open (unresolved) comments are automatically fetched and deposited as `comments.md` alongside `content.md` (or `content.csv`) and `manifest.json` — the sous-chef philosophy: bring everything the chef needs without being asked. `manifest.json` and `cues` both carry `open_comment_count`.
 
-The deposit folder will contain:
-- `content.md` (or `content.csv` for Sheets)
-- `comments.md` (if there are open comments)
-- `manifest.json` (includes `open_comment_count`)
+Comments render **in document order, each with a `↳` locator**: a heading breadcrumb for Docs, `slide N (title)` for decks, `Tab!B12` for sheets. Two locator states are called out rather than left blank — `⚠` when the anchored content has been deleted, and no locator at all for a document-level thread (those are visible only in the comments panel, never on the page). Slide and cell locators ride a Google Developer Preview read: where it is unavailable the deposit falls back to today's flat API-order render and `cues.warnings` names the reason.
 
 ## Large File Handling
 

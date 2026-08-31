@@ -46,7 +46,7 @@ Then run with `-m integration` to include them.
 ## Test Data
 
 Integration tests use real files in the test account. Document IDs are stored in:
-- `fixtures/integration_ids.json` (gitignored)
+- `fixtures/integration_ids.json` — **tracked, not gitignored** (this line said gitignored until 2026-09-01; the file has been committed all along). It holds Drive file ids only, no credentials. Anyone with a token for the same account can run the suite as-is; anyone else overrides the ids locally.
 
 Example:
 ```json

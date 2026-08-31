@@ -9,14 +9,21 @@ each comment is *located* in the document tree — nearest heading + sub-group,
 and the comments are rendered in document order rather than API order. This is
 the read-side of the triage channel (mise-newosi / zifoka): a margin comment
 anchored on a heading is a decision about the whole section below it, and that
-structure is invisible from the flat anchor alone. Without ``document_markdown``
-(sheets, slides, or any caller that doesn't supply it) the output is unchanged.
+structure is invisible from the flat anchor alone.
+
+Slides and Sheets get the same treatment from a different source: the caller
+passes ``locators`` (see ``extractors/comment_anchors``), which map a comment id
+to *slide 3 (Roadmap)* or *Sheet1!B12* resolved from the anchored-comments
+preview read (mise-dukacu). With neither ``document_markdown`` nor ``locators``
+the output is the flat, API-order render, unchanged — that is the path an
+unenrolled caller takes, and the caller cues why.
 """
 
 import html
 import re
 from dataclasses import dataclass
 
+from extractors.comment_anchors import AnchorLocator
 from models import FileCommentsData, CommentData
 
 
@@ -166,6 +173,7 @@ def extract_comments_content(
     data: FileCommentsData,
     max_length: int | None = None,
     document_markdown: str | None = None,
+    locators: dict[str, AnchorLocator] | None = None,
 ) -> str:
     """
     Convert file comments data to markdown text.
@@ -179,6 +187,10 @@ def extract_comments_content(
             provided, comments are located in the document tree (nearest heading
             + sub-group) and rendered in document order. When None, output is the
             flat, API-order rendering unchanged.
+        locators: Optional comment_id → AnchorLocator map (Slides/Sheets). When
+            provided, comments render in deck/workbook order with a slide or
+            cell locator. A comment absent from the map keeps its API-order
+            place and simply carries no locator — the map can only ever add.
 
     Returns:
         Formatted comments content. Format:
@@ -202,8 +214,14 @@ def extract_comments_content(
     content_parts: list[str] = []
     total_length = 0
 
-    # Header
-    header = f'## Comments on "{data.file_name}" ({data.comment_count} total)\n\n'
+    # Header. "N total" is a claim about the FILE, so a capped read has to say
+    # so in the same breath — otherwise the deposit states a confident wrong
+    # total and the threads past the cap are simply gone (essayeur, dukacu).
+    counted = (
+        f"{data.comment_count}+ — capped, this file has more"
+        if data.truncated else f"{data.comment_count} total"
+    )
+    header = f'## Comments on "{data.file_name}" ({counted})\n\n'
     content_parts.append(header)
     total_length += len(header)
 
@@ -212,10 +230,25 @@ def extract_comments_content(
         content_parts.append("*No comments found.*\n")
         return "".join(content_parts)
 
-    # Check if any comments have quoted text (anchor context)
-    has_any_anchor = any(c.quoted_text for c in data.comments)
+    # Anchor context: the preview locators carry plainTextQuote, which IS anchor
+    # context on surfaces whose Drive-plane comments never had any. Judged over
+    # the comments actually being rendered — a quote belonging to some other
+    # thread is not anchor context for this deposit.
+    def _anchor_text(comment: CommentData) -> str:
+        if comment.quoted_text:
+            return comment.quoted_text
+        found = (locators or {}).get(comment.id)
+        return found.quote if found else ""
+
+    has_any_anchor = any(_anchor_text(c) for c in data.comments)
     if not has_any_anchor and data.comments:
+        # Scope matters: with a locator map in hand we KNOW this file's threads
+        # carry no anchored text, which is a fact about these comments. Without
+        # one, the honest claim is the weaker, older one about the file type.
         data.warnings.append(
+            "None of these comments quote anchored text "
+            "(they show what was said, not what was highlighted)"
+            if locators is not None else
             "Anchor context not available for this file type "
             "(comments show what was said, not what text was highlighted)"
         )
@@ -245,21 +278,56 @@ def extract_comments_content(
                 "(anchor text not found) — listed last in API order"
             )
 
+    # Anchor locators (Slides/Sheets). Outer join on the Drive-plane comment
+    # list: every comment renders whether or not the map knows it, and the
+    # unknown ones keep their API-order place at the end.
+    anchors: list[AnchorLocator | None] = [None] * len(located)
+    if locators and not doc_lines:
+        unplaced = (2**31 + 1,)
+        by_anchor: list[
+            tuple[tuple[int, ...], int, tuple[CommentData, _Location | None], AnchorLocator | None]
+        ] = []
+        for idx, pair in enumerate(located):
+            anchor_loc = locators.get(pair[0].id) if pair[0].id else None
+            order = anchor_loc.order if anchor_loc is not None else unplaced
+            by_anchor.append((order, idx, pair, anchor_loc))
+        by_anchor.sort(key=lambda d: (d[0], d[1]))
+        located = [pair for _, _, pair, _ in by_anchor]
+        anchors = [a for _, _, _, a in by_anchor]
+        orphans = sum(1 for a in anchors if a is not None and a.orphaned)
+        if orphans:
+            data.warnings.append(
+                f"{orphans} comment(s) anchor to content that no longer exists "
+                "in this file — shown last, marked ⚠"
+            )
+        unanchored = sum(1 for a in anchors if a is None)
+        if unanchored and unanchored < len(anchors):
+            data.warnings.append(
+                f"{unanchored} comment(s) are not anchored to a location in this "
+                "file (document-level threads) — listed last in API order"
+            )
+
     # Process each comment
     truncated = False
     i = 0
-    for i, (comment, location) in enumerate(located):
+    for i, ((comment, location), anchor) in enumerate(zip(located, anchors)):
         # Separator (except for first)
         if i > 0:
             sep = "\n---\n\n"
             if max_length and (total_length + len(sep)) > max_length:
+                # Mark it. This branch used to break silently — no marker, no
+                # warning — so a length-truncated render read as a complete one.
+                content_parts.append(
+                    f"\n\n[... TRUNCATED: showing {i} of {data.comment_count} comments ...]"
+                )
+                data.warnings.append(f"Content truncated at {max_length:,} characters")
                 truncated = True
                 break
             content_parts.append(sep)
             total_length += len(sep)
 
         # Build comment block
-        comment_block = _format_comment(comment, location)
+        comment_block = _format_comment(comment, location, anchor)
 
         if max_length:
             remaining = max_length - total_length
@@ -324,7 +392,26 @@ def _format_anchor(quoted_text: str) -> str:
     return "\n" + "\n".join(rendered) + "\n"
 
 
-def _format_comment(comment: CommentData, location: "_Location | None" = None) -> str:
+def _format_anchor_locator(anchor: AnchorLocator) -> str:
+    """Render the ↳ line for a Slides/Sheets anchor locator.
+
+    An orphaned anchor gets ⚠ and says what happened, because "no locator" and
+    "the thing this was attached to is gone" are different facts and a reader
+    triaging comments needs to tell them apart.
+    """
+    if anchor.orphaned:
+        return (
+            "*↳ ⚠ the anchored content no longer exists in this file — the "
+            "thread survives, its location does not*"
+        )
+    return f"*↳ {anchor.label}*"
+
+
+def _format_comment(
+    comment: CommentData,
+    location: "_Location | None" = None,
+    anchor: "AnchorLocator | None" = None,
+) -> str:
     """Format a single comment with optional replies and document location."""
     parts: list[str] = []
 
@@ -344,6 +431,10 @@ def _format_comment(comment: CommentData, location: "_Location | None" = None) -
         if loc_line:
             parts.append(f"{loc_line}\n")
 
+    # Slide/cell locator (only when the preview anchor read succeeded)
+    if anchor is not None:
+        parts.append(f"{_format_anchor_locator(anchor)}\n")
+
     # Resolved indicator
     if comment.resolved:
         parts.append("*[RESOLVED]*\n")
@@ -352,9 +443,12 @@ def _format_comment(comment: CommentData, location: "_Location | None" = None) -
     if comment.mentioned_emails:
         parts.append(_format_mentions(comment.mentioned_emails))
 
-    # Quoted text (anchor)
-    if comment.quoted_text:
-        parts.append(_format_anchor(comment.quoted_text))
+    # Quoted text (anchor). Slides/Sheets have no quotedFileContent on the Drive
+    # plane at all, so the locator's plainTextQuote is the only anchor text
+    # those surfaces have ever had — use it when the Drive plane came up empty.
+    quoted = comment.quoted_text or (anchor.quote if anchor else "")
+    if quoted:
+        parts.append(_format_anchor(quoted))
 
     # Comment content
     if comment.content:

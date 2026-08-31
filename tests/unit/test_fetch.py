@@ -1519,7 +1519,11 @@ class TestFetchDoc:
         assert result.type == "doc"
         assert result.format == "markdown"
         assert result.metadata["title"] == "My Doc"
-        mock_comments.assert_called_once_with("doc1", Path("/tmp/doc"), document_markdown="# Doc Content")
+        # warnings= is the doc's own list, so a failed or capped comments read
+        # reaches cues instead of vanishing (mise-dukacu).
+        mock_comments.assert_called_once_with(
+            "doc1", Path("/tmp/doc"), document_markdown="# Doc Content", warnings=[]
+        )
 
     @patch("tools.fetch.drive.fetch_document")
     @patch("tools.fetch.drive.extract_doc_content", return_value="# Doc")

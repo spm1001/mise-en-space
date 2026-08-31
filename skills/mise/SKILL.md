@@ -73,7 +73,7 @@ The fetch response includes a `cues` block with decision-tree signals — check 
 ```
 
 1. **Read `cues` first** — it tells you what's in the deposit and what to act on
-2. If `open_comment_count > 0` → read `comments.md` (the real discussion lives here)
+2. If `open_comment_count > 0` → read `comments.md` (the real discussion lives here). Comments come in document order with a `↳` locator — a heading breadcrumb on a Doc, `slide 3 (Roadmap)` on a deck, `Sheet1!B12` on a workbook — so you can quote a comment *and* say where it sits. Two states to read carefully: `⚠` means the anchored content has been deleted, so the thread survives while its location is gone; and a comment whose header carries a bare `↳`-less block is a document-level thread, visible only in the comments panel. Where the locators are absent wholesale, `cues.warnings` says why — they ride a Google preview surface, and mise falls back to the flat API-order render.
 3. If `email_context` is populated → the file was shared via email; consider fetching that thread
 4. If `warnings` is non-empty → note extraction issues
 5. Read `content.md`

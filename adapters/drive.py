@@ -843,6 +843,7 @@ def fetch_file_comments(
     comments: list[CommentData] = []
     warnings: list[str] = []
     page_token: str | None = None
+    truncated = False
 
     try:
         while True:
@@ -892,24 +893,35 @@ def fetch_file_comments(
                 # Parse quoted text (anchor)
                 quoted_text = comment.get("quotedFileContent", {}).get("value", "")
 
-                comments.append(
-                    CommentData(
-                        id=comment.get("id", ""),
-                        content=comment.get("content", ""),
-                        author_name=author_name,
-                        author_email=author_email,
-                        created_time=comment.get("createdTime"),
-                        modified_time=comment.get("modifiedTime"),
-                        resolved=comment.get("resolved", False),
-                        quoted_text=quoted_text,
-                        mentioned_emails=comment.get("mentionedEmailAddresses", []),
-                        replies=replies,
+                # Filter HERE, not after the loop: max_results caps what we
+                # KEEP. Filtering afterwards let 100 resolved threads exhaust
+                # the cap and return zero open ones — a file with live comments
+                # then deposits no comments.md at all, indistinguishable from a
+                # file with none (essayeur, mise-dukacu).
+                if include_resolved or not comment.get("resolved", False):
+                    comments.append(
+                        CommentData(
+                            id=comment.get("id", ""),
+                            content=comment.get("content", ""),
+                            author_name=author_name,
+                            author_email=author_email,
+                            created_time=comment.get("createdTime"),
+                            modified_time=comment.get("modifiedTime"),
+                            resolved=comment.get("resolved", False),
+                            quoted_text=quoted_text,
+                            mentioned_emails=comment.get("mentionedEmailAddresses", []),
+                            replies=replies,
+                        )
                     )
-                )
 
             # Check for more pages
             page_token = response.get("nextPageToken")
-            if not page_token or len(comments) >= max_results:
+            if len(comments) >= max_results:
+                # A surviving token at the cap is exact evidence more matched.
+                truncated = bool(page_token) or len(comments) > max_results
+                comments = comments[:max_results]
+                break
+            if not page_token:
                 break
 
     except httpx.HTTPStatusError as e:
@@ -950,14 +962,17 @@ def fetch_file_comments(
             details={"file_id": file_id, "http_status": status},
         )
 
-    # Filter out resolved comments if requested
-    if not include_resolved:
-        comments = [c for c in comments if not c.resolved]
+    if truncated:
+        warnings.append(
+            f"Only the first {len(comments)} comment threads were read (result "
+            "cap) — this file has more; comments.md is a partial view."
+        )
 
     return FileCommentsData(
         file_id=file_id,
         file_name=file_name,
         comments=comments,
+        truncated=truncated,
         warnings=warnings,
     )
 

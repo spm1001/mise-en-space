@@ -209,7 +209,7 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: 
 
     # Enrich with open comments (sous-chef philosophy). Pass the doc content so
     # each comment is located in the document tree and ordered by position.
-    open_comment_count, _ = _enrich_with_comments(doc_id, folder, document_markdown=content)
+    open_comment_count, _ = _enrich_with_comments(doc_id, folder, document_markdown=content, warnings=doc_data.warnings)
 
     extra: dict[str, Any] = {"tab_count": len(doc_data.tabs) if doc_data.tabs else 1}
     extra["structure"] = build_doc_structure(doc_data, content)
@@ -281,7 +281,7 @@ def fetch_sheet(sheet_id: str, title: str, metadata: dict[str, Any], email_conte
         write_charts_metadata(folder, charts_meta)
 
     # Enrich with open comments (sous-chef philosophy)
-    open_comment_count, _ = _enrich_with_comments(sheet_id, folder)
+    open_comment_count, _ = _enrich_with_comments(sheet_id, folder, surface="sheet", warnings=sheet_data.warnings)
 
     # Build manifest extras
     extra: dict[str, Any] = {"sheet_count": len(sheet_data.sheets)}
@@ -359,7 +359,7 @@ def fetch_slides(presentation_id: str, title: str, metadata: dict[str, Any], ema
             thumbnail_failures.append(slide.index + 1)  # 1-indexed for humans
 
     # Enrich with open comments (sous-chef philosophy)
-    open_comment_count, _ = _enrich_with_comments(presentation_id, folder)
+    open_comment_count, _ = _enrich_with_comments(presentation_id, folder, surface="slides", slides=presentation_data.slides, warnings=presentation_data.warnings)
 
     extra: dict[str, Any] = {
         "slide_count": len(presentation_data.slides),
