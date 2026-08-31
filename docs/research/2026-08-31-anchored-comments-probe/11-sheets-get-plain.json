@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://sheets.googleapis.com/v4/spreadsheets/1HLogE6ENzSAHsFdGMI_HxpRFK__2AKZw1ngEYlPkIDg?fields=spreadsheetId,sheets(properties(sheetId,title))",
+    "body": null
+  },
+  "status": 200,
+  "response": {
+    "spreadsheetId": "1HLogE6ENzSAHsFdGMI_HxpRFK__2AKZw1ngEYlPkIDg",
+    "sheets": [
+      {
+        "properties": {
+          "sheetId": 0,
+          "title": "Sheet1"
+        }
+      }
+    ]
+  }
+}

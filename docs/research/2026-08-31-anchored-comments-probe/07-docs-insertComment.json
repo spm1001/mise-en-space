@@ -1,0 +1,55 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://docs.googleapis.com/v1/documents/1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo:batchUpdate",
+    "body": {
+      "requests": [
+        {
+          "insertComment": {
+            "content": "Anchored probe comment via Docs API (mise-picihi).",
+            "range": {
+              "startIndex": 6,
+              "endIndex": 15
+            }
+          }
+        }
+      ]
+    }
+  },
+  "status": 200,
+  "response": {
+    "replies": [
+      {
+        "insertComment": {
+          "commentThread": {
+            "commentId": "AAACGWxxk2k",
+            "anchorId": "kix.ohujppveoegw",
+            "headPost": {
+              "postId": "AAACGWxxk2k",
+              "content": "Anchored probe comment via Docs API (mise-picihi).",
+              "contentHtml": "Anchored probe comment via Docs API (mise-picihi).",
+              "author": {
+                "displayName": "Sameer Modha",
+                "me": true,
+                "user": "users/104748752125935505194"
+              },
+              "createTime": "2026-08-31T20:18:09.873Z",
+              "updateTime": "2026-08-31T20:18:09.873Z",
+              "commentAction": "NO_COMMENT_ACTION_CHANGE"
+            },
+            "status": "OPEN",
+            "plainTextQuote": "paragraph"
+          }
+        }
+      }
+    ],
+    "writeControl": {
+      "requiredRevisionId": "AIroW35WGYIHB0UTOq4DFP7O_TK-enzt9uYHF0-SvSUrMIVIAsCpNa-GgZNftdKhMTf9IpimwmoN2TvOH2b07v0iveepeqEqiZ6am8SSRmc"
+    },
+    "documentId": "1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo",
+    "suggestionResponses": [
+      {}
+    ],
+    "commentUpdateState": "ALL_SAVED"
+  }
+}

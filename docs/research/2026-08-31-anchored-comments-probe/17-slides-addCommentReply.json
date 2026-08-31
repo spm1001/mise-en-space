@@ -1,0 +1,45 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://slides.googleapis.com/v1/presentations/1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM:batchUpdate",
+    "body": {
+      "requests": [
+        {
+          "addCommentReply": {
+            "commentId": "AAACGW2am2w",
+            "post": {
+              "content": "Reply via Slides API \u2014 left open for UI eyeball."
+            }
+          }
+        }
+      ]
+    }
+  },
+  "status": 200,
+  "response": {
+    "presentationId": "1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM",
+    "replies": [
+      {
+        "addCommentReply": {
+          "post": {
+            "postId": "AAACGW2am24",
+            "content": "Reply via Slides API \u2014 left open for UI eyeball.",
+            "contentHtml": "Reply via Slides API \u2014 left open for UI eyeball.",
+            "author": {
+              "displayName": "Sameer Modha",
+              "me": true,
+              "user": "users/104748752125935505194"
+            },
+            "createTime": "2026-08-31T20:19:15.288Z",
+            "updateTime": "2026-08-31T20:19:15.288Z",
+            "commentAction": "NO_COMMENT_ACTION_CHANGE"
+          }
+        }
+      }
+    ],
+    "writeControl": {
+      "requiredRevisionId": "9KBUdX0Ov9o03w"
+    },
+    "commentUpdateState": "ALL_SAVED"
+  }
+}

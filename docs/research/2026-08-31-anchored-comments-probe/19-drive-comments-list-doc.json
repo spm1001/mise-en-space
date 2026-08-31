@@ -1,0 +1,25 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://www.googleapis.com/drive/v3/files/1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo/comments?fields=comments(id,content,anchor,resolved,author/displayName,replies(content))&pageSize=20",
+    "body": null
+  },
+  "status": 200,
+  "response": {
+    "comments": [
+      {
+        "replies": [
+          {
+            "content": "Reply via Docs API \u2014 left open for UI eyeball."
+          }
+        ],
+        "author": {
+          "displayName": "Sameer Modha"
+        },
+        "id": "AAACGWxxk2k",
+        "content": "Anchored probe comment via Docs API (mise-picihi).",
+        "anchor": "kix.ohujppveoegw"
+      }
+    ]
+  }
+}

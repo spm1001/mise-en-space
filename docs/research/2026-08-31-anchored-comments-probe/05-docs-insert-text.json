@@ -1,0 +1,32 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://docs.googleapis.com/v1/documents/1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo:batchUpdate",
+    "body": {
+      "requests": [
+        {
+          "insertText": {
+            "location": {
+              "index": 1
+            },
+            "text": "This paragraph exists to carry an anchored probe comment. Delete freely.\n"
+          }
+        }
+      ]
+    }
+  },
+  "status": 200,
+  "response": {
+    "replies": [
+      {}
+    ],
+    "writeControl": {
+      "requiredRevisionId": "AIroW35P-t5B7ulzZcQOPQPkG4OeNjJhZD9hl8gAl9C-c1CSIqOJanYmcdoVycEheXtKbPPkYWG3qwPMbU2kPMHMgmbx0CuGgTPTsWH8eEQ"
+    },
+    "documentId": "1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo",
+    "suggestionResponses": [
+      {}
+    ],
+    "commentUpdateState": "NO_UPDATES_REQUESTED"
+  }
+}

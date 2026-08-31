@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://sheets.googleapis.com/v4/spreadsheets/1HLogE6ENzSAHsFdGMI_HxpRFK__2AKZw1ngEYlPkIDg?commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED&fields=spreadsheetId,comments,sheets(properties(sheetId,title),commentAnchors)",
+    "body": null
+  },
+  "status": 200,
+  "response": {
+    "spreadsheetId": "1HLogE6ENzSAHsFdGMI_HxpRFK__2AKZw1ngEYlPkIDg",
+    "sheets": [
+      {
+        "properties": {
+          "sheetId": 0,
+          "title": "Sheet1"
+        }
+      }
+    ]
+  }
+}

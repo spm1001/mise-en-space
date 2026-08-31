@@ -1,0 +1,49 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://slides.googleapis.com/v1/presentations/1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM:batchUpdate",
+    "body": {
+      "requests": [
+        {
+          "insertComment": {
+            "content": "Anchored probe comment on slide 1 via Slides API (mise-picihi).",
+            "objectId": "p"
+          }
+        }
+      ]
+    }
+  },
+  "status": 200,
+  "response": {
+    "presentationId": "1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM",
+    "replies": [
+      {
+        "insertComment": {
+          "commentThread": {
+            "commentId": "AAACGW2am2w",
+            "anchorId": "{\"uid\":1413975053,\"pages\":[\"p\"],\"type\":\"page\"}",
+            "headPost": {
+              "postId": "AAACGW2am2w",
+              "content": "Anchored probe comment on slide 1 via Slides API (mise-picihi).",
+              "contentHtml": "Anchored probe comment on slide 1 via Slides API (mise-picihi).",
+              "author": {
+                "displayName": "Sameer Modha",
+                "me": true,
+                "user": "users/104748752125935505194"
+              },
+              "createTime": "2026-08-31T20:18:10.759Z",
+              "updateTime": "2026-08-31T20:18:10.759Z",
+              "commentAction": "NO_COMMENT_ACTION_CHANGE"
+            },
+            "status": "OPEN",
+            "plainTextQuote": ""
+          }
+        }
+      }
+    ],
+    "writeControl": {
+      "requiredRevisionId": "cpidhWDQD9vHRg"
+    },
+    "commentUpdateState": "ALL_SAVED"
+  }
+}

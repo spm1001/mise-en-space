@@ -1,0 +1,21 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://www.googleapis.com/drive/v3/files/1HLogE6ENzSAHsFdGMI_HxpRFK__2AKZw1ngEYlPkIDg/comments?fields=comments(id,content,anchor,resolved,author/displayName,replies(content))&pageSize=20",
+    "body": null
+  },
+  "status": 200,
+  "response": {
+    "comments": [
+      {
+        "replies": [],
+        "author": {
+          "displayName": "Sameer Modha"
+        },
+        "id": "AAACGWrtgyk",
+        "content": "Anchored probe comment on B2 via Sheets API (mise-picihi).",
+        "anchor": "{\"type\":\"workbook-range\",\"uid\":0,\"range\":\"1708485136\"}"
+      }
+    ]
+  }
+}

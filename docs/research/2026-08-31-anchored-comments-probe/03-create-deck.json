@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://www.googleapis.com/drive/v3/files?fields=id,name,webViewLink",
+    "body": {
+      "name": "probe deck \u2014 anchored comments",
+      "mimeType": "application/vnd.google-apps.presentation",
+      "parents": [
+        "1Of4FO88kXpMhTrKFn3Q2BYboaIVvMSzb"
+      ]
+    }
+  },
+  "status": 200,
+  "response": {
+    "id": "1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM",
+    "name": "probe deck \u2014 anchored comments",
+    "webViewLink": "https://docs.google.com/presentation/d/1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM/edit?usp=drivesdk"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "request": {
+    "requests": [
+      {
+        "addCommentReply": {
+          "commentId": "AAACGWrtgyk",
+          "post": {
+            "content": "Reopening so it stays visible for the UI eyeball.",
+            "commentAction": "REOPEN"
+          }
+        }
+      }
+    ]
+  },
+  "status": 200,
+  "response": {
+    "spreadsheetId": "1HLogE6ENzSAHsFdGMI_HxpRFK__2AKZw1ngEYlPkIDg",
+    "replies": [
+      {
+        "addCommentReply": {
+          "post": {
+            "postId": "AAACGWrtgy0",
+            "content": "Reopening so it stays visible for the UI eyeball.",
+            "contentHtml": "Reopening so it stays visible for the UI eyeball.",
+            "author": {
+              "displayName": "Sameer Modha",
+              "me": true,
+              "user": "users/104748752125935505194"
+            },
+            "createTime": "2026-08-31T20:20:53.195Z",
+            "updateTime": "2026-08-31T20:20:53.195Z",
+            "commentAction": "REOPEN"
+          }
+        }
+      }
+    ],
+    "commentUpdateState": "ALL_SAVED"
+  }
+}

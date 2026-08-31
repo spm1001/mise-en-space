@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://slides.googleapis.com/v1/presentations/1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM?commentsViewMode=COMMENTS_VIEW_MODE_INCLUDED&fields=presentationId,comments,slides(objectId,commentAnchors)",
+    "body": null
+  },
+  "status": 200,
+  "response": {
+    "presentationId": "1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM",
+    "slides": [
+      {
+        "objectId": "p"
+      }
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "request": {
+    "requests": [
+      {
+        "addCommentReply": {
+          "commentId": "AAACGWrtgyk",
+          "post": {
+            "content": "Reply via Sheets API, resolving.",
+            "commentAction": "RESOLVE"
+          }
+        }
+      }
+    ]
+  },
+  "status": 200,
+  "response": {
+    "spreadsheetId": "1HLogE6ENzSAHsFdGMI_HxpRFK__2AKZw1ngEYlPkIDg",
+    "replies": [
+      {
+        "addCommentReply": {
+          "post": {
+            "postId": "AAACGWrtgys",
+            "content": "Reply via Sheets API, resolving.",
+            "contentHtml": "Reply via Sheets API, resolving.",
+            "author": {
+              "displayName": "Sameer Modha",
+              "me": true,
+              "user": "users/104748752125935505194"
+            },
+            "createTime": "2026-08-31T20:20:53.001Z",
+            "updateTime": "2026-08-31T20:20:53.001Z",
+            "commentAction": "RESOLVE"
+          }
+        }
+      }
+    ],
+    "commentUpdateState": "ALL_SAVED"
+  }
+}
