@@ -1,0 +1,39 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://docs.googleapis.com/v1/documents/1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo:batchUpdate",
+    "body": {
+      "requests": [
+        {
+          "insertText": {
+            "location": {
+              "index": 1
+            },
+            "text": "SUGGESTED-C: left OPEN \u2014 this is what a mise-proposed edit would look like awaiting your accept.\n"
+          }
+        }
+      ],
+      "writeControl": {
+        "writeMode": "SUGGEST"
+      }
+    }
+  },
+  "status": 200,
+  "response": {
+    "replies": [
+      {}
+    ],
+    "writeControl": {
+      "requiredRevisionId": "ANLCKQl6Mg_JrZFlhlgiyVOeMji8jp_b_3B9BbJmi5AUihU0nuZlqEqTa0UXz8o1IrpKq7i8XNbl6JFQ_djdU8tgrkFyvybMCaTpDPkIg3g"
+    },
+    "documentId": "1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo",
+    "suggestionResponses": [
+      {
+        "createdSuggestionIds": [
+          "suggest.kkhlduljr4eu"
+        ]
+      }
+    ],
+    "commentUpdateState": "ALL_SAVED"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://docs.googleapis.com/v1/documents/1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo:batchUpdate",
+    "body": {
+      "requests": [
+        {
+          "replaceAllText": {
+            "containsText": {
+              "text": "Delete freely",
+              "matchCase": true
+            },
+            "replaceText": "Delete happily"
+          }
+        }
+      ],
+      "writeControl": {
+        "writeMode": "SUGGEST"
+      }
+    }
+  },
+  "status": 200,
+  "response": {
+    "replies": [
+      {
+        "replaceAllText": {
+          "occurrencesChanged": 1
+        }
+      }
+    ],
+    "writeControl": {
+      "requiredRevisionId": "ANLCKQnLuuQOSoWzLEoZFhW6YnMWEMkN3WWjqR3GkkUDBgeTuTQFFZJLR-XRW41ezPeFS0J62_e9nn5rWK7MqMqcOu64ePfOxjioJa1KboY"
+    },
+    "documentId": "1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo",
+    "suggestionResponses": [
+      {
+        "createdSuggestionIds": [
+          "suggest.6ktsl5xwryuv"
+        ]
+      }
+    ],
+    "commentUpdateState": "ALL_SAVED"
+  }
+}

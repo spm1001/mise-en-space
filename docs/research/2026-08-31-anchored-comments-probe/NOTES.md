@@ -52,8 +52,26 @@ Also from the thread replies: Sameer's mechanism detail for mise-mikawi — last
 - mise-mikawi annotated with the mechanism detail and the Docs-API fix route.
 - Resolve/reopen stays on `do(comment_reply)`'s existing Drive plane — the batchUpdate plane is shape-identical there and buys nothing (probed 23/24); deliberate non-adoption.
 
-## Still open on mise-picihi
+## Suggest-mode extension (evidence 33–40, same evening)
 
-1. UI eyeball on the probe doc: anchored Docs-API comment visible? `CONTROL:` Drive-plane comment visible or hidden?
-2. One new UI comment thread on the probe deck, then a re-read for its anchor.
-3. Assignee lever unprobed (needs a consenting second account — or the future agent identity).
+Sameer's "anything else we should be using?" surfaced the guide's other half: **`writeControl.writeMode: SUGGEST`** turns any Docs batchUpdate into tracked-changes suggestions, with `acceptSuggestion`/`rejectSuggestion`/`deleteSuggestion` to manage threads. Probed live:
+
+- Suggested `insertText` works (33–34); read-back shows `suggestedInsertionIds` on the runs (35).
+- **Coalescing:** two suggestions from two separate batches merged into ONE thread (`suggest.rger5nwzxmzs`) — same-author adjacent suggestions coalesce exactly as in the UI, and `acceptSuggestion` on it accepted both sentences (36–37). Granularity is Google's; never promise per-edit accept.
+- Suggested `replaceAllText` yields a paired suggested-deletion + suggested-insertion sharing one suggestion id (38, 40) — precisely the `{--del--}[sN]/{++ins++}[sN]` pair the `suggestions='markup'` fetch already renders. The propose→review loop closes both ways with existing vocabulary.
+- Partial-failure surface: read `commentUpdateState` on every comment/suggestion batch (`ALL_FAILED_UNKNOWN_REASON` can coexist with committed model changes).
+
+Build item: **mise-hupago** (`suggest=` on the Docs surgical ops + accept/reject lane).
+
+## Eyeball answers (landed same evening — item closed)
+
+1. **Mikawi twin: confirmed with mechanism** (screenshot, evidence 42). The Drive-plane `CONTROL:` comment renders NOWHERE in the document — panel-only, labelled "Original content deleted" (anchorless is treated as anchor-rotted). The Docs-API anchored comment renders inline with a text highlight, panel-labelled "Tab 1 · paragraph". mise-mikawi annotated; fix route is mise-jupuja.
+2. **Slides UI-authored: confirmed, better than hoped** (evidence 41). Sameer's hand-made deck comment came back anchored to the *shape* with a character range — `objectId i1`, `shapeTextAnchors 0–13`, `plainTextQuote "Hello Claude!"`. All three surfaces now confirmed for UI-authored comments.
+
+## The wider DPP catalogue (read 2026-08-31, program page)
+
+Beyond the comments/suggestions family, the programme currently ships: **official Google MCP servers** — Gmail, Calendar, Drive, People, Chat, Docs, Sheets, Slides, and a "Universal Search MCP server" for AI agents (first first-party rival to mise's category — measurement action **mise-natila** under mise-zidipo); Docs Tabs UI; Meet member-management + Meet Media API; Chat API additions; add-on UI widgets. Two governing constraints from the FAQ/terms: **service accounts cannot enroll** (domain-wide delegation is the stated route — shapes the mise-lobuha agent-identity lane), and **pre-GA features must not ship to customers** (term iv — preview lanes in mise must degrade gracefully for non-enrolled users; the fail-open designs in mise-dukacu/hupago are compliance, not just resilience). Enrollment is per registered email + Cloud project.
+
+## Closed
+
+All four tactical steps done, both eyeball checks landed, build items filed (mise-dukacu, mise-jupuja, mise-hupago, mise-natila), mise-mikawi enriched twice (mechanism + verdict). The probe folder in Drive can be trashed at will — every finding is evidenced here. Assignee lever remains unprobed (needs a second account or the future DWD agent identity; noted on mise-jupuja).
