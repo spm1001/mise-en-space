@@ -493,7 +493,7 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 
 **Archive/star/label** modify Gmail thread labels. Label names are resolved to IDs automatically (case-insensitive). Use `remove=True` with label to remove instead of add. All three accept `file_id` as a list for batch operations — returns per-thread results (like `move`).
 
-**Comment** opens a NEW (unanchored) comment thread on a Drive file (Doc/Sheet/Slides) — the write-side twin of the `comments.md` you get on fetch. Use it to proactively flag something to a human in the doc's comment pane, when there's no existing thread to reply to. Content is auto-prefixed `[agent] ` and posts as *your* authenticated identity. Anchored comments (tied to specific text) aren't supported yet — the comment lands at the document level.
+**Comment** opens a NEW comment thread on a Doc, Sheet or Slides — the write-side twin of the `comments.md` you get on fetch. Content is auto-prefixed `[agent] ` and posts as *your* authenticated identity. **`anchor=` decides whether a human will ever see it.** With an anchor the thread attaches to the content and renders in the margin; without one it is filed in the comments panel under "Original content deleted" — Google treats anchorless as anchor-rotted, so an unanchored comment appears NOWHERE on the page (measured; five real comments were reported missing this way). The `anchor` grammar is per surface and is exactly what `comments.md` prints back to you, so a read locator pastes straight in: `'slide 3'` (or a slide objectId) on a deck, `'Sheet1!B12'` (or `'B12'` for the first tab) on a workbook, and on a Doc the text to quote. Anchoring is strict by design — an unknown slide, an off-grid cell, a quote that is missing OR appears more than once all REFUSE and name the unanchored fallback, because a comment landing somewhere other than where you aimed reads as authored intent. `to=` assigns the thread to one person; Google does not check that they can open the file, so mise warns every time. On a Doc the result is CHECKED: `cues.anchor_text` is the API's own report of the text it hit, compared against what you asked for, so a mislanding arrives as `cues.landing_mismatch` naming the comment to delete rather than as a silent wrong comment. Watch for `cues.anchor_is_provisional` — anchoring to an unaccepted suggestion works, but rejecting the suggestion orphans the thread. Three limits: multi-tab Docs refuse anchoring (the per-tab index space is unmeasured); text in headers, footers, footnotes and speaker notes is not searched and says so; and on Sheets there is no revision guard, so a row inserted mid-write could shift the target. Anchored writes ride a Google Developer Preview: an unenrolled caller gets a loud refusal, never a silent unanchored fallback.
 
 **Comment_reply** posts an in-thread reply to a Drive file comment (Doc/Sheet/Slides). Get `comment_id` from a fetched `comments.md` — each comment's header ends with `` · `comment_id` ``. Pass `content` to reply, `action='resolve'` (or `'reopen'`) to close/reopen the thread, or both (a bare resolve needs only `action`). Replies are auto-prefixed `[agent] ` so humans can tell agent replies from their own, and post as *your* authenticated identity — don't reply on a thread that's @-mentioned to a specific person as if you were them.
 
@@ -529,13 +529,14 @@ Act on Google Workspace — create, move, edit documents, and draft emails.
 | `role` | str | 'reader' | share ('reader', 'writer', 'commenter') |
 | `confirm` | bool | False | share (must be True to execute — first call previews) |
 | `comment_id` | str | None | comment_reply (the comment thread to reply to — from `comments.md`) |
+| `anchor` | str | None | comment (where to attach it: `'slide 3'` on a deck, `'Sheet1!B12'` on a workbook, quoted text in a Doc — the spellings `comments.md` prints; omit for a panel-only thread) |
 | `action` | str | None | comment_reply ('resolve' or 'reopen'; omit for a plain reply), respond ('accept', 'decline', 'tentative') |
 
 ### Email operations
 
 | Param | Type | Default | Used by |
 |-------|------|---------|---------|
-| `to` | str | None | draft (recipient email), share (email to share with; comma-separated for multiple) |
+| `to` | str | None | draft (recipient email), share (email to share with; comma-separated for multiple), comment (ONE address to assign the anchored thread to) |
 | `subject` | str | None | draft (email subject line) |
 | `cc` | str | None | draft, reply_draft (CC addresses, comma-separated; overrides inferred Cc for reply_draft) |
 | `include` | list[str] | None | draft, reply_draft (Drive file IDs — resolved to formatted links in body) |

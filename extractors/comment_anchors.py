@@ -73,6 +73,236 @@ def column_label(index0: int) -> str:
             return letters
 
 
+def _norm(text: str) -> str:
+    """Collapse runs of whitespace — Docs splits a sentence across textRuns and
+    ends paragraphs with a newline, so a caller's quote never matches raw."""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def column_index(letters: str) -> int:
+    """Spreadsheet letters → 0-based column index. Inverse of column_label."""
+    n = 0
+    for ch in letters.upper():
+        if not ("A" <= ch <= "Z"):
+            raise ValueError(f"{letters!r} is not a column reference")
+        n = n * 26 + (ord(ch) - ord("A") + 1)
+    if n == 0:
+        raise ValueError("empty column reference")
+    return n - 1
+
+
+def parse_a1_cell(spec: str) -> tuple[str | None, int, int]:
+    """`'Sheet1!B12'` / `'B12'` → (tab name or None, row0, col0).
+
+    A comment anchors to ONE cell (the API takes a GridCoordinate, not a range),
+    so a range spelling is refused rather than quietly reduced to its corner —
+    a caller who wrote `B2:D5` meant something this surface cannot do, and
+    silently commenting on B2 would be a different act from the one they asked
+    for. Tab names may be single-quoted, with `''` for a literal quote.
+    """
+    text = spec.strip()
+    if not text:
+        raise ValueError("empty cell reference")
+
+    tab: str | None = None
+    if text.startswith("'"):
+        end = 1
+        while end < len(text):
+            if text[end] == "'":
+                if end + 1 < len(text) and text[end + 1] == "'":
+                    end += 2
+                    continue
+                break
+            end += 1
+        else:
+            raise ValueError(f"unterminated quoted tab name in {spec!r}")
+        tab = text[1:end].replace("''", "'")
+        rest = text[end + 1:]
+        if not rest.startswith("!"):
+            raise ValueError(f"expected `!` after the tab name in {spec!r}")
+        text = rest[1:]
+    elif "!" in text:
+        tab, text = text.split("!", 1)
+        if not tab.strip():
+            raise ValueError(f"{spec!r} has a `!` with no tab name before it")
+
+    if ":" in text:
+        raise ValueError(
+            f"{spec!r} is a range; a comment anchors to a single cell (e.g. B12)"
+        )
+    m = re.fullmatch(r"\$?([A-Za-z]+)\$?([0-9]+)", text.strip())
+    if not m:
+        raise ValueError(f"{text.strip()!r} is not a cell reference like B12")
+    row = int(m.group(2))
+    if row < 1:
+        raise ValueError("row numbers start at 1")
+    return (tab, row - 1, column_index(m.group(1)))
+
+
+def parse_slide_spec(spec: str) -> tuple[str, str | int]:
+    """`'slide 3'` / `'3'` → ('index', 2); anything else → ('object_id', spec).
+
+    The `slide N` spelling is deliberately the one `comments.md` PRINTS, so the
+    read side and the write side share one vocabulary: a Claude that has just
+    read `↳ slide 3 (Roadmap)` can write `anchor='slide 3'` without translating.
+    """
+    text = spec.strip()
+    m = re.fullmatch(r"(?:slide\s+)?(\d+)", text, re.IGNORECASE)
+    if m:
+        n = int(m.group(1))
+        if n < 1:
+            raise ValueError("slide numbers start at 1")
+        return ("index", n - 1)
+    if not text:
+        raise ValueError("empty slide reference")
+    return ("object_id", text)
+
+
+def utf16_len(text: str) -> int:
+    """Length in UTF-16 code units — the unit Docs API indices count in.
+
+    Python offsets count code points, so one emoji before a match slides every
+    later index by one and the comment anchors a character or two off target,
+    under a 200. `tools/doc_chips.py` learned this on 2026-08-24 (mise-rubucu,
+    also from an essayeur probe); this module met the identical bug on
+    2026-09-01 by not borrowing the lesson from its sibling.
+    """
+    return sum(2 if ord(ch) > 0xFFFF else 1 for ch in text)
+
+
+def _tab_bodies(payload: dict[str, Any]) -> list[tuple[str | None, dict[str, Any]]]:
+    """[(tabId, body)] for a documents.get payload — every tab, at every depth.
+
+    Tabs NEST (`Tab.childTabs`), so a document showing one root tab can hold
+    several. Counting only the top level made a nested-tab document look
+    single-tab to the multi-tab guard and let it through.
+    """
+    tabs = payload.get("tabs")
+    if isinstance(tabs, list) and tabs:
+        out: list[tuple[str | None, dict[str, Any]]] = []
+
+        def walk(entries: Any) -> None:
+            for t in entries or []:
+                if not isinstance(t, dict):
+                    continue
+                body = (t.get("documentTab") or {}).get("body") or {}
+                out.append(((t.get("tabProperties") or {}).get("tabId"), body))
+                walk(t.get("childTabs"))
+
+        walk(tabs)
+        return out
+    return [(None, payload.get("body") or {})]
+
+
+def _text_runs(elements: Any) -> list[tuple[int, dict[str, Any]]]:
+    """(startIndex, textRun) for every run under a list of StructuralElements.
+
+    Recurses into tables, because a `StructuralElement` is a paragraph OR a
+    table OR a table of contents, and text inside a table is text a caller can
+    quote. Missing it produced a false uniqueness count — a phrase appearing
+    once in prose and once in a table read as unique and anchored to the prose
+    copy, with `plainTextQuote` echoing identical text so nothing downstream
+    could notice. Headers, footers and footnotes are separate collections that
+    `body.content` cannot reach at all; callers are told so rather than told
+    the text does not exist.
+    """
+    runs: list[tuple[int, dict[str, Any]]] = []
+    for element in elements or []:
+        if not isinstance(element, dict):
+            continue
+        for run in ((element.get("paragraph") or {}).get("elements") or []):
+            text_run = run.get("textRun")
+            start = run.get("startIndex")
+            if text_run and start is not None:
+                runs.append((start, text_run))
+        table = element.get("table")
+        if isinstance(table, dict):
+            for row in table.get("tableRows") or []:
+                for cell in (row or {}).get("tableCells") or []:
+                    runs.extend(_text_runs((cell or {}).get("content")))
+        toc = element.get("tableOfContents")
+        if isinstance(toc, dict):
+            runs.extend(_text_runs(toc.get("content")))
+    return runs
+
+
+def locate_quote(payload: dict[str, Any], quote: str) -> list[tuple[int, int]]:
+    """Every (startIndex, endIndex) in the document matching `quote`.
+
+    Returns ALL occurrences, because the count is the caller's business: one is
+    an anchor, several are an ambiguity that must be refused rather than guessed
+    at, and none is a miss. Whitespace in the document is normalised for
+    matching (Docs splits a sentence across runs and inserts newlines at
+    paragraph ends) while the returned indices address the raw text.
+
+    **The payload must come from a `suggestionsViewMode=SUGGESTIONS_INLINE`
+    read.** Measured 2026-09-01: `insertComment.range` is interpreted in that
+    index space, so a range resolved against `PREVIEW_WITHOUT_SUGGESTIONS`
+    anchors the comment to whatever sits at those indices once suggested
+    insertions are counted back in — a different sentence, with a 200 and no
+    sign of trouble (`docs/research/2026-09-01-jupuja-anchored-write/`, 21–24).
+    """
+    needle = _norm(quote)
+    if not needle:
+        return []
+
+    hits: list[tuple[int, int]] = []
+    for _tab_id, body in _tab_bodies(payload):
+        # (index, character, width) — the index advances in UTF-16 code units,
+        # which is what the API's startIndex/endIndex count.
+        chars: list[tuple[int, str, int]] = []
+        for start, text_run in _text_runs(body.get("content")):
+            offset = 0
+            for ch in text_run.get("content") or "":
+                width = 2 if ord(ch) > 0xFFFF else 1
+                chars.append((start + offset, ch, width))
+                offset += width
+
+        # Normalised haystack, keeping each kept character's real index and width.
+        flat: list[str] = []
+        index_of: list[int] = []
+        width_of: list[int] = []
+        previous_space = False
+        for idx, ch, width in chars:
+            if ch.isspace():
+                if previous_space or not flat:
+                    continue
+                flat.append(" ")
+                index_of.append(idx)
+                width_of.append(width)
+                previous_space = True
+            else:
+                flat.append(ch)
+                index_of.append(idx)
+                width_of.append(width)
+                previous_space = False
+        haystack = "".join(flat)
+
+        at = haystack.find(needle)
+        while at != -1:
+            last = at + len(needle) - 1
+            hits.append((index_of[at], index_of[last] + width_of[last]))
+            at = haystack.find(needle, at + 1)
+    return hits
+
+
+def suggested_spans(payload: dict[str, Any]) -> list[tuple[int, int]]:
+    """(start, end) of every run that exists only as a pending suggestion.
+
+    Anchoring to suggested text is legal and lands, but the anchor is
+    provisional: reject the suggestion and the thread orphans to "Original
+    content deleted" — the very failure anchoring exists to avoid. The caller
+    is cued rather than refused, because commenting ON a proposal is a
+    reasonable thing to want to do.
+    """
+    spans: list[tuple[int, int]] = []
+    for _tab_id, body in _tab_bodies(payload):
+        for start, text_run in _text_runs(body.get("content")):
+            if text_run.get("suggestedInsertionIds"):
+                spans.append((start, start + utf16_len(text_run.get("content") or "")))
+    return spans
+
+
 def quote_tab(title: str) -> str:
     """Quote a tab name for A1 notation the way Sheets does."""
     if title and _PLAIN_TAB.match(title):

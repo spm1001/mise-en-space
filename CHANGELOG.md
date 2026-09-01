@@ -6,6 +6,54 @@
 > intentionally absent — the shipped version number can therefore be ahead of
 > the newest entry here.
 
+## [Unreleased] (mise-jupuja)
+
+### Added
+- **`do(comment, anchor=…)` attaches a comment to a place.** `'slide 3'` on a
+  deck, `'Sheet1!B12'` on a workbook, quoted text in a Doc — the spellings
+  `comments.md` prints, so a read locator pastes straight back into a write.
+  Routed to each surface's batchUpdate `insertComment`, the only API that can
+  write an anchor. Verified live on all three surfaces.
+- **`to=` assigns the thread** (anchored comments only — the Drive plane that
+  serves unanchored comments has no assignee field). Every assignment carries a
+  warning: Google stores an assignee who cannot open the file, silently.
+- **Unanchored comments now admit what they are.** `cues.visibility` says the
+  comment renders nowhere on the content and is filed under "Original content
+  deleted" — the mise-mikawi report, where five comments posted during real work
+  were reported missing and were in fact panel-only.
+- On a Doc the landing is **checked, not assumed**: `cues.anchor_text` is the
+  API's own report of the text it hit, compared against what was asked for, so a
+  mislanding surfaces as `cues.landing_mismatch` naming the comment to delete.
+  `cues.anchor_is_provisional` warns when the anchor target is an unaccepted
+  suggestion (rejecting it would orphan the thread).
+
+### Changed
+- A refused anchor is **never** downgraded to an unanchored comment — the
+  opposite of the read side's degrade-with-a-cue, and deliberately: a comment
+  that lands somewhere other than where it was aimed reads as authored intent.
+  Unknown slide, off-grid cell, missing quote, quote appearing more than once,
+  multi-tab Doc, preview refused: all refuse loudly and name the fallback.
+- `do()`'s description gained the anchor grammar and still has **more** headroom
+  than before (102 → 114 chars), paid for by compressing calendar detail that
+  `mise://docs/do` already carries in full.
+
+### Fixed
+- Docs anchor indices count **UTF-16 code units**, not Python code points — one
+  emoji earlier in the run slid every later anchor. `tools/doc_chips.py` fixed
+  the identical bug in mise-rubucu; this module met it again by not borrowing
+  the lesson from its sibling.
+- The document field mask hid content the resolver needed: text inside **tables**
+  was invisible (so a phrase appearing twice counted as unique and anchored to
+  the wrong copy), and **nested tabs** (`Tab.childTabs`) slipped past the
+  multi-tab guard. The mask is now `tabs` whole.
+- "Not found in this document" now scopes its own claim — headers, footers,
+  footnotes and speaker notes are not searched, and say so.
+- A Slides retry after a stale revision re-aimed **positionally**, so a slide
+  inserted in the race window could take the comment. The objectId is pinned on
+  the first pass; a deleted target refuses instead of re-aiming.
+- A transport failure on the write now says the outcome is unknown rather than
+  "failed" — a blind retry would post the comment twice.
+
 ## [Unreleased] (mise-dukacu)
 
 ### Added

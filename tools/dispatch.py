@@ -64,7 +64,7 @@ REQUIRED_PARAMS: dict[str, set[str]] = {
     "archive": {"file_id"},
     "star": {"file_id"},
     "label": {"file_id", "label"},
-    "comment": {"file_id", "content"},  # opens a new (unanchored) thread
+    "comment": {"file_id", "content"},  # anchor= optional; without it the thread is panel-only
     "comment_reply": {"file_id", "comment_id"},  # content OR action — handler validates
     "setup_oauth": set(),  # no required params — force=true is optional
     "trash": {"file_id"},
@@ -94,6 +94,7 @@ DO_PARAM_DEFAULTS: dict[str, Any] = {
     "reply_all": False, "role": None, "confirm": False, "label": None,
     "remove": False, "comment_id": None, "action": None, "force": False,
     "restore_comment": True, "supersede": False, "range": None, "tab": None,
+    "anchor": None,
     "attendees": None, "time_min": None, "time_max": None, "location": None,
     "meet": False, "recurrence": None, "send_updates": None, "duration": None,
     "properties": None, "color": None, "visibility": None, "transparency": None,
@@ -134,7 +135,7 @@ OP_PARAMS: dict[str, frozenset[str]] = {
     "archive": frozenset({"file_id"}),
     "star": frozenset({"file_id"}),
     "label": frozenset({"file_id", "label", "remove"}),
-    "comment": frozenset({"file_id", "content"}),
+    "comment": frozenset({"file_id", "content", "anchor", "to"}),
     "comment_reply": frozenset({"file_id", "comment_id", "content", "action"}),
     "setup_oauth": frozenset({"force"}),
     "trash": frozenset({"file_id"}),
@@ -241,6 +242,7 @@ DISPATCH: dict[str, Any] = {
     ),
     "comment": lambda p: do_comment(
         file_id=p["file_id"], content=p.get("content"),
+        anchor=p.get("anchor"), to=p.get("to"),
     ),
     "comment_reply": lambda p: do_comment_reply(
         file_id=p["file_id"], comment_id=p.get("comment_id"),
@@ -277,15 +279,15 @@ DISPATCH: dict[str, Any] = {
 
 # Tool descriptions — server.py picks one at decoration time based on _REMOTE_MODE.
 DO_DESCRIPTION_FULL = """\
-Act on Google Workspace — create, move, edit, draft/reply emails, organise Gmail, book calendar events.
+Act on Google Workspace — create, move, edit, draft/reply email, organise Gmail, book calendar.
 
 Operations: create, copy, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, trash, respond, create_event, update_event, freebusy, setup_oauth.
-Create: content + title + doc_type (doc/sheet/file/folder/form). page_setup='pageless'. file_path= reads from disk. form: content is YAML/JSON spec.
-Edit: overwrite (full replace), prepend/append, replace_text (find + content); append tab='T' adds a new doc tab (plain text). Sheets: overwrite=CSV, range='Tab'/'Tab!F9:F15'; cells: [label](url)→link; @url alone→chip (doc lines too). Doc edits return cues.restore_point.
-Calendar: create_event (title + time_min/time_max as start/end + attendees/content/location/meet=True/recurrence='RRULE:…'/include=[Drive ids→attachments]; attendees ⇒ preview, then confirm=True books+invites). update_event (file_id=event/invite-thread id; time/attendees/recurrence gated, description edits direct). freebusy (attendees + window, duration mins → slots + office days). respond (file_id + action=accept|decline|tentative). properties={k:v} stamps queryable keys; color=, visibility=, transparency=(busy|free) on both event ops. Details: mise://docs/do.
+Create: content + title + doc_type (doc/sheet/file/folder/form). page_setup='pageless'; file_path= reads disk; form: content is YAML/JSON spec.
+Edit: overwrite (full replace), prepend/append, replace_text (find + content); append tab='T' adds a new doc tab (plain text). Sheets: overwrite=CSV, range='Tab'/'Tab!F9:F15'; cells/doc lines: [label](url)→link, @url→chip. Doc edits return cues.restore_point.
+Calendar: create_event (title + time_min/time_max as start/end + attendees/content/location/meet=True/recurrence='RRULE:…'/include=[Drive ids→attachments]; attendees ⇒ preview, then confirm=True books+invites). update_event (file_id=event/invite-thread id; time/attendees/recurrence gated). freebusy (attendees + window, duration mins → slots). respond (file_id + action=accept|decline|tentative). properties/color/visibility/transparency on both event ops. Details: mise://docs/do.
 Email: draft (to + subject + content; file_id=draft_id updates it), reply_draft (file_id + content — refuses if thread has a draft; supersede=True discards), archive/star/label. Signature auto-appends — no sign-off in content.
 Trash: file_id(s) — Drive→trash (recoverable); Gmail drafts (r+digits) discarded permanently.
-Comments: comment (file_id + content, NEW thread), comment_reply (file_id + comment_id + content/action=resolve|reopen). '[agent] ' prefix.
+Comments: comment (file_id + content = NEW thread; anchor='slide 3'/'Tab!B12'/quoted doc text puts it ON the content, else panel-only; to= assigns), comment_reply (file_id + comment_id + content/action=resolve|reopen). '[agent] ' prefix.
 Share: file_id + to + role (reader/writer/commenter), confirm=True executes.
 Copy/Move: file_id(s) + folder_id.
 setup_oauth: bootstrap credentials (force=true re-auths)."""

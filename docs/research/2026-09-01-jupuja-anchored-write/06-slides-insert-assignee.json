@@ -1,0 +1,51 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://slides.googleapis.com/v1/presentations/1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM:batchUpdate",
+    "body": {
+      "requests": [
+        {
+          "insertComment": {
+            "content": "[agent] jupuja probe: slide anchor + assignee",
+            "objectId": "p",
+            "assigneeEmailAddress": "sameer.modha@itv.com"
+          }
+        }
+      ]
+    }
+  },
+  "status": 200,
+  "response": {
+    "presentationId": "1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM",
+    "replies": [
+      {
+        "insertComment": {
+          "commentThread": {
+            "commentId": "AAACGW3egSA",
+            "anchorId": "{\"uid\":1672902689,\"pages\":[\"p\"],\"type\":\"page\"}",
+            "headPost": {
+              "postId": "AAACGW3egSA",
+              "content": "[agent] jupuja probe: slide anchor + assignee",
+              "contentHtml": "[agent] jupuja probe: slide anchor + assignee",
+              "author": {
+                "displayName": "Sameer Modha",
+                "me": true,
+                "user": "users/104748752125935505194"
+              },
+              "createTime": "2026-08-31T23:33:07.600Z",
+              "updateTime": "2026-08-31T23:33:07.600Z",
+              "assigneeEmail": "sameer.modha@itv.com",
+              "commentAction": "NO_COMMENT_ACTION_CHANGE"
+            },
+            "status": "OPEN",
+            "plainTextQuote": ""
+          }
+        }
+      }
+    ],
+    "writeControl": {
+      "requiredRevisionId": "Meyj6m3Y6Jk1TQ"
+    },
+    "commentUpdateState": "ALL_SAVED"
+  }
+}

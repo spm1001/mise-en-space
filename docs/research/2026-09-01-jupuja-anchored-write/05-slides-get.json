@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://slides.googleapis.com/v1/presentations/1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM?fields=presentationId%2CrevisionId%2Cslides%28objectId%29",
+    "body": null
+  },
+  "status": 200,
+  "response": {
+    "presentationId": "1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM",
+    "slides": [
+      {
+        "objectId": "p"
+      }
+    ],
+    "revisionId": "j3xsS6HYShl3WQ"
+  }
+}

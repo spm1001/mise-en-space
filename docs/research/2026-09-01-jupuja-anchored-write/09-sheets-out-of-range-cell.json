@@ -1,0 +1,28 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://sheets.googleapis.com/v4/spreadsheets/1HLogE6ENzSAHsFdGMI_HxpRFK__2AKZw1ngEYlPkIDg:batchUpdate",
+    "body": {
+      "requests": [
+        {
+          "insertComment": {
+            "content": "[agent] jupuja probe: row 99999, should refuse or clamp",
+            "coordinate": {
+              "sheetId": 0,
+              "rowIndex": 99998,
+              "columnIndex": 1
+            }
+          }
+        }
+      ]
+    }
+  },
+  "status": 400,
+  "response": {
+    "error": {
+      "code": 400,
+      "message": "Invalid requests[0].insertComment: GridCoordinate.rowIndex[99998] is after last row in grid[999]",
+      "status": "INVALID_ARGUMENT"
+    }
+  }
+}

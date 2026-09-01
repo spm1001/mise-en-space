@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://docs.googleapis.com/v1/documents/1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo",
+    "body": null
+  },
+  "status": 400,
+  "response": {
+    "error": {
+      "code": 400,
+      "message": "Comments may not be requested when previewing suggestions.",
+      "status": "INVALID_ARGUMENT"
+    }
+  }
+}

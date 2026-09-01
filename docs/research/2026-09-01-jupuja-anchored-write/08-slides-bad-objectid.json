@@ -1,0 +1,24 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://slides.googleapis.com/v1/presentations/1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM:batchUpdate",
+    "body": {
+      "requests": [
+        {
+          "insertComment": {
+            "content": "[agent] jupuja probe: bogus objectId, should refuse",
+            "objectId": "NO_SUCH_OBJECT"
+          }
+        }
+      ]
+    }
+  },
+  "status": 400,
+  "response": {
+    "error": {
+      "code": 400,
+      "message": "Invalid requests[0].insertComment: The object (NO_SUCH_OBJECT) could not be found.",
+      "status": "INVALID_ARGUMENT"
+    }
+  }
+}

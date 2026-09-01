@@ -1,0 +1,11 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://docs.googleapis.com/v1/documents/1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo?fields=revisionId",
+    "body": null
+  },
+  "status": 200,
+  "response": {
+    "revisionId": "ANLCKQmt0C8IqtYCECb6YiimmfN3Oh7RYeu1N02SQtnDnOVTjdZzauNlzU68hzcdeEENzfxI3ZlCKGVV6M7QnZK3UCo5JFs5WRreEMAHBRA"
+  }
+}

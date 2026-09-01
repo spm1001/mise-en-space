@@ -1,0 +1,52 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://slides.googleapis.com/v1/presentations/1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM:batchUpdate",
+    "body": {
+      "requests": [
+        {
+          "insertComment": {
+            "content": "[agent] jupuja probe: slides writeControl",
+            "objectId": "p"
+          }
+        }
+      ],
+      "writeControl": {
+        "requiredRevisionId": "Meyj6m3Y6Jk1TQ"
+      }
+    }
+  },
+  "status": 200,
+  "response": {
+    "presentationId": "1wkQSlFk0ey8Asa6-Z4fptwBXpDNjRWaQPCR4Jw_A5NM",
+    "replies": [
+      {
+        "insertComment": {
+          "commentThread": {
+            "commentId": "AAACGW3egSI",
+            "anchorId": "{\"uid\":1986381688,\"pages\":[\"p\"],\"type\":\"page\"}",
+            "headPost": {
+              "postId": "AAACGW3egSI",
+              "content": "[agent] jupuja probe: slides writeControl",
+              "contentHtml": "[agent] jupuja probe: slides writeControl",
+              "author": {
+                "displayName": "Sameer Modha",
+                "me": true,
+                "user": "users/104748752125935505194"
+              },
+              "createTime": "2026-08-31T23:34:14.132Z",
+              "updateTime": "2026-08-31T23:34:14.132Z",
+              "commentAction": "NO_COMMENT_ACTION_CHANGE"
+            },
+            "status": "OPEN",
+            "plainTextQuote": ""
+          }
+        }
+      }
+    ],
+    "writeControl": {
+      "requiredRevisionId": "J1hJ94QJmU9N9A"
+    },
+    "commentUpdateState": "ALL_SAVED"
+  }
+}

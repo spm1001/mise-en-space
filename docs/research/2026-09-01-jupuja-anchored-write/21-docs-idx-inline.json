@@ -1,0 +1,121 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://docs.googleapis.com/v1/documents/1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo?suggestionsViewMode=SUGGESTIONS_INLINE&fields=documentId%2CrevisionId%2Cbody%28content%28startIndex%2CendIndex%2Cparagraph%28elements%28startIndex%2CendIndex%2CtextRun%28content%2CsuggestedInsertionIds%29%29%29%29%29",
+    "body": null
+  },
+  "status": 200,
+  "response": {
+    "body": {
+      "content": [
+        {
+          "endIndex": 1
+        },
+        {
+          "startIndex": 1,
+          "endIndex": 98,
+          "paragraph": {
+            "elements": [
+              {
+                "startIndex": 1,
+                "endIndex": 98,
+                "textRun": {
+                  "content": "SUGGESTED-C: left OPEN \u2014 this is what a mise-proposed edit would look like awaiting your accept.\n",
+                  "suggestedInsertionIds": [
+                    "suggest.kkhlduljr4eu"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "startIndex": 98,
+          "endIndex": 183,
+          "paragraph": {
+            "elements": [
+              {
+                "startIndex": 98,
+                "endIndex": 183,
+                "textRun": {
+                  "content": "SUGGESTED-B: this sentence arrived as a suggestion and is LEFT OPEN for the eyeball.\n"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "startIndex": 183,
+          "endIndex": 264,
+          "paragraph": {
+            "elements": [
+              {
+                "startIndex": 183,
+                "endIndex": 264,
+                "textRun": {
+                  "content": "SUGGESTED-A: this sentence arrived as a suggestion and was ACCEPTED via the API.\n"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "startIndex": 264,
+          "endIndex": 351,
+          "paragraph": {
+            "elements": [
+              {
+                "startIndex": 264,
+                "endIndex": 322,
+                "textRun": {
+                  "content": "This paragraph exists to carry an anchored probe comment. "
+                }
+              },
+              {
+                "startIndex": 322,
+                "endIndex": 336,
+                "textRun": {
+                  "content": "Delete happily",
+                  "suggestedInsertionIds": [
+                    "suggest.6ktsl5xwryuv"
+                  ]
+                }
+              },
+              {
+                "startIndex": 336,
+                "endIndex": 349,
+                "textRun": {
+                  "content": "Delete freely"
+                }
+              },
+              {
+                "startIndex": 349,
+                "endIndex": 351,
+                "textRun": {
+                  "content": ".\n"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "startIndex": 351,
+          "endIndex": 352,
+          "paragraph": {
+            "elements": [
+              {
+                "startIndex": 351,
+                "endIndex": 352,
+                "textRun": {
+                  "content": "\n"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "revisionId": "ANLCKQkSlE6eVPyZ40DZrh4SO95uZ3Ve8ygcRRot0cwhDT8wdSRYxg3OcL_t3C-nSqlzVqeaxPnyVuMGQVGb_EauFC_sL54KVWfVTNAG-JE",
+    "documentId": "1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo"
+  }
+}

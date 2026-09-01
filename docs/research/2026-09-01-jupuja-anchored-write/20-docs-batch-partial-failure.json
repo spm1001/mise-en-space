@@ -1,0 +1,36 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://docs.googleapis.com/v1/documents/1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo:batchUpdate",
+    "body": {
+      "requests": [
+        {
+          "insertComment": {
+            "content": "[agent] jupuja probe: batch item 1 (valid)",
+            "range": {
+              "startIndex": 1,
+              "endIndex": 5
+            }
+          }
+        },
+        {
+          "insertComment": {
+            "content": "[agent] jupuja probe: batch item 2 (invalid range)",
+            "range": {
+              "startIndex": 90000,
+              "endIndex": 90010
+            }
+          }
+        }
+      ]
+    }
+  },
+  "status": 400,
+  "response": {
+    "error": {
+      "code": 400,
+      "message": "Invalid requests[1].insertComment: Index 90000 must be less than the end index of the referenced segment, 352.",
+      "status": "INVALID_ARGUMENT"
+    }
+  }
+}

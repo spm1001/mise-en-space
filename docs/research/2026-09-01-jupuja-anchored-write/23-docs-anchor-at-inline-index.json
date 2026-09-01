@@ -1,0 +1,55 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://docs.googleapis.com/v1/documents/1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo:batchUpdate",
+    "body": {
+      "requests": [
+        {
+          "insertComment": {
+            "content": "[agent] jupuja probe: aimed with SUGGESTIONS_INLINE indices",
+            "range": {
+              "startIndex": 98,
+              "endIndex": 118
+            }
+          }
+        }
+      ]
+    }
+  },
+  "status": 200,
+  "response": {
+    "replies": [
+      {
+        "insertComment": {
+          "commentThread": {
+            "commentId": "AAACGWvxVeA",
+            "anchorId": "kix.ej6on73aevy8",
+            "headPost": {
+              "postId": "AAACGWvxVeA",
+              "content": "[agent] jupuja probe: aimed with SUGGESTIONS_INLINE indices",
+              "contentHtml": "[agent] jupuja probe: aimed with SUGGESTIONS_INLINE indices",
+              "author": {
+                "displayName": "Sameer Modha",
+                "me": true,
+                "user": "users/104748752125935505194"
+              },
+              "createTime": "2026-08-31T23:35:07.125Z",
+              "updateTime": "2026-08-31T23:35:07.125Z",
+              "commentAction": "NO_COMMENT_ACTION_CHANGE"
+            },
+            "status": "OPEN",
+            "plainTextQuote": "SUGGESTED-B: this se"
+          }
+        }
+      }
+    ],
+    "writeControl": {
+      "requiredRevisionId": "ANLCKQnL7WcavyWtCnuUmYTmpGsdy-aBaUjhsp-Rsn1t-VOds2YNSRn5M39nr7QWN93GTgWYM3fklHQKWI-nzewXLh_uOq0QBu3FBeTSu-M"
+    },
+    "documentId": "1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo",
+    "suggestionResponses": [
+      {}
+    ],
+    "commentUpdateState": "ALL_SAVED"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://www.googleapis.com/drive/v3/files/1eS6SMV2kKwNW_uIm5Kez6V_6UVwmt0y9U_lZqCuioAo/comments",
+    "body": null
+  },
+  "status": 400,
+  "response": {
+    "error": {
+      "code": 400,
+      "message": "Invalid field selection action",
+      "errors": [
+        {
+          "message": "Invalid field selection action",
+          "domain": "global",
+          "reason": "invalidParameter",
+          "location": "fields",
+          "locationType": "parameter"
+        }
+      ]
+    }
+  }
+}
