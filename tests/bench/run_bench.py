@@ -300,11 +300,14 @@ def main():
 
     plan = json.loads(Path(a.plan).expanduser().read_text())
     log = (out / "harness.log").open("a")
-    print(f"{len(plan)} runs, {a.jobs} parallel; transcripts -> {out}/transcripts/")
+    # flush=True: detached runs redirect stdout to a file, and Python block-buffers
+    # a non-tty, so without it the log stays EMPTY until exit and progress has to be
+    # read from the transcripts dir (2026-09-01, T2 run — notes-bedapo).
+    print(f"{len(plan)} runs, {a.jobs} parallel; transcripts -> {out}/transcripts/", flush=True)
     with cf.ThreadPoolExecutor(max_workers=a.jobs) as ex:
         for line in ex.map(lambda r: one_run(r, out, answers), plan):
             stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            print(line)
+            print(line, flush=True)
             log.write(f"{stamp} {line}\n")
             log.flush()
 
