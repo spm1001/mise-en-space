@@ -2,6 +2,7 @@
 
 One line per handoff, newest first. `- [ ]` = not yet processed by an /open sweep; every close appends its line in the same change that writes the handoff.
 
+- [ ] 2026-09-01 [2026-09-01-0212-queue-jupuja.md](2026-09-01-0212-queue-jupuja.md) — do(comment) learns to anchor (`anchor='slide 3'` / `'Sheet1!B12'` / quoted doc text) and assign; unanchored default admits it renders nowhere (closes the mise-mikawi mystery); essayeur REFUTED the first pass over seven interactions the enumeration missed, including a UTF-16 index bug this repo had already fixed in a sibling module
 - [ ] 2026-09-01 [2026-09-01-0024-queue-dukacu.md](2026-09-01-0024-queue-dukacu.md) — comments.md locates Slides and Sheets comments (`↳ slide 3 (Roadmap)`, `↳ Sheet1!B12`), outer-join so no comment can be lost, DPP-compliant degradation with a cue; the essayeur found a pre-existing bug where 100 resolved threads starved every open one and the deposit said "no comments"
 - [x] 2026-08-31 [2026-08-31-2222-cd521620.md](2026-08-31-2222-cd521620.md) — The DPP anchored-comments day: same-day probe of Google's preview announcement, five build/measure items filed, preview-tracking designed out of inbox luck (watcher filed, not yet built) — processed 2026-09-01 by the mise-dukacu worker
 - [x] ec328230.m [ec328230.md](ec328230.md) — pre-ledger history (processed at adoption 2026-08-31)
