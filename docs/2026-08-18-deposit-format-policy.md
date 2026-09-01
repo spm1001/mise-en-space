@@ -2,6 +2,8 @@
 
 *Depends on: `TOK-JSON-TAX`, `TOK-MD`, `COMP-RIDER`, `DISC-RIDER`, `REACH-ENGINES`, `REACH-FORMAT`, `HINT-PLACEMENT`, `CAP-INLINE`, `COST-ARM` — per-rig values in `~/notes/practices/model-profiles/`. When a rig requalifies and any of these move, this policy is stale by exactly that list (the runbook's diff step).*
 
+*Requalification log — 2026-09-01, rig `fable-5-1--claude-code`, T1 only (22 inline cells, same fixtures): none of the cited facts moved — TOK-JSON-TAX +63% (was +64%, same deposits), CAP-INLINE unchanged by construction (deposit tokens identical; the 5.1 briefing is 3,904 tokens longer). DISC-INLINE rose to 4/4 but this policy cites DISC-RIDER. COST-ARM, REACH-*, HINT-PLACEMENT await T2 on that rig. Policy not stale. Datasheet: `rig--fable-5-1--claude-code.md`; evidence `~/notes/practices/mise/format-bench-fable-5-1-2026-09-01/`.*
+
 *The numbers behind every verdict: `~/notes/practices/mise/format-league-findings.md` (918 scored runs, three readers, ~$200) plus `census-findings.md` (70 real PDFs) and `routing-findings.md` (spec 2) in the same notes room. Harness: `tests/bench/` in this repo — committed, re-runnable, takes new model strings (the reprofiling battery for the next model generation). Bench data: `~/bench-work/`. Board: mise-rolira.*
 
 ## Format verdicts
