@@ -6,6 +6,51 @@
 > intentionally absent — the shipped version number can therefore be ahead of
 > the newest entry here.
 
+## [Unreleased] (mise-hupago)
+
+### Added
+- **`suggest=True` proposes instead of editing.** On `prepend`, `append` and
+  `replace_text` against a Google Doc, the batchUpdate carries
+  `writeControl.writeMode=SUGGEST`, so the edit arrives as a tracked change
+  awaiting a human's accept — propose-don't-impose, instead of editing and
+  relying on the restore point.
+- **`do(suggest, action='accept'|'reject', find='s2')` folds one back**, keyed on
+  the `[sN]` tags a `suggestions='markup'` fetch already prints. Those tags are
+  ORDINALS: they renumber after every fold, so they are resolved fresh per call
+  and folding a list is refused. Raw `suggest.…` ids work too — and so do the
+  `suggestIdImport…` ids a converted `.docx` mints, which is a different
+  spelling entirely.
+- `cues.formatting_suggestions` on a Doc fetch: pending suggestions mise cannot
+  render or fold (a Word `w:rPrChange` becomes `suggestedTextStyleChanges`).
+  Without it, a style-only Word import read as a settled document.
+
+### Changed
+- The mise skill's fold-back-loop paragraph and CLAUDE.md's suggestions row are
+  updated in the same change — until now they said "the API can't create
+  suggestions", which was true for everyone and stops being true here. The
+  guidance-freshness ratchet caught the stale enrolment on its own.
+- `do()`'s description gained a whole operation and a param and still keeps its
+  working headroom, paid for by compressing calendar detail `mise://docs/do`
+  carries in full.
+
+### Fixed
+- **`do(append, tab='T', suggest=True)` committed a real, unreviewed edit and
+  reported success.** The tab branch returned before the suggest guard ran. A
+  guard placed after a return is not a guard.
+- A suggested `replace_text` that matches nothing now RAISES. It returned HTTP
+  200 with `occurrencesChanged: 0`, so the caller was told a change awaited
+  review when nothing existed — and on a Word-imported document that is the
+  common case, because the `.docx` converter joins words with NBSP (U+00A0).
+  mise checks the NBSP spelling before reporting the miss, and the check reads
+  table text too.
+- An edit absorbed into an existing suggestion reports `cues.coalesced` rather
+  than failing. Raising there was the inverse error: a tracked change really was
+  pending, and a retry would have double-applied.
+- `commentUpdateState` is read on every suggest batch — it can report failure
+  while model changes commit.
+- `suggest=True` off the Docs plane refuses instead of silently making a real
+  edit.
+
 ## [Unreleased] (mise-jupuja)
 
 ### Added

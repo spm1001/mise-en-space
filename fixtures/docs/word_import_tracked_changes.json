@@ -1,0 +1,130 @@
+{
+  "_provenance": "A REAL Google Doc converted from a .docx carrying Word tracked changes (w:ins/w:del) and a Word comment, imported live 2026-09-01. Trimmed to structure and text; suggestion ids kept verbatim. See docs/research/2026-09-01-hupago-suggest/NOTES.md.",
+  "documentId": "1yHr3MpzUhFzysrkxRl5TjEJB0mmTA97iwT5vZ2Bu108",
+  "revisionId": "ANLCKQkO-PsMjJ7BZjj7laUkDjPueYGfvCUk1n3qYIXthVpL5iqS-0Q_1SqS-qlE3kIX7qxpatrDuVoHY83thanNEsjA10P-cUdw1vLslnQ",
+  "tabs": [
+    {
+      "tabProperties": {
+        "tabId": "t.0"
+      },
+      "documentTab": {
+        "body": {
+          "content": [
+            {
+              "startIndex": 1,
+              "endIndex": 52,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 1,
+                    "endIndex": 52,
+                    "textRun": {
+                      "content": "The headline claim is that lift measurement works.\n"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "startIndex": 52,
+              "endIndex": 106,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 52,
+                    "endIndex": 68,
+                    "textRun": {
+                      "content": "Revenue rose by "
+                    }
+                  },
+                  {
+                    "startIndex": 68,
+                    "endIndex": 74,
+                    "textRun": {
+                      "content": "twelve",
+                      "suggestedDeletionIds": [
+                        "suggestIdImport78f69904-2ac2-4f75-978a-fae4989ea336_1"
+                      ]
+                    }
+                  },
+                  {
+                    "startIndex": 74,
+                    "endIndex": 82,
+                    "textRun": {
+                      "content": "fourteen",
+                      "suggestedInsertionIds": [
+                        "suggestIdImport78f69904-2ac2-4f75-978a-fae4989ea336_1"
+                      ]
+                    }
+                  },
+                  {
+                    "startIndex": 82,
+                    "endIndex": 106,
+                    "textRun": {
+                      "content": " per cent this quarter.\n"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "startIndex": 106,
+              "endIndex": 145,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 106,
+                    "endIndex": 145,
+                    "textRun": {
+                      "content": "This paragraph carries a Word comment.\n"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "startIndex": 145,
+              "endIndex": 192,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 145,
+                    "endIndex": 191,
+                    "textRun": {
+                      "content": "A whole sentence inserted as a tracked change.",
+                      "suggestedInsertionIds": [
+                        "suggestIdImport78f69904-2ac2-4f75-978a-fae4989ea336_3"
+                      ]
+                    }
+                  },
+                  {
+                    "startIndex": 191,
+                    "endIndex": 192,
+                    "textRun": {
+                      "content": "\n"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "startIndex": 192,
+              "endIndex": 217,
+              "paragraph": {
+                "elements": [
+                  {
+                    "startIndex": 192,
+                    "endIndex": 217,
+                    "textRun": {
+                      "content": "Delete freely from here.\n"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -214,11 +214,18 @@ fetch("1doc...", suggestions="original", base_path="...")  # pre-suggestion text
   apply edits. (The Docs API doesn't say who made each suggestion.)
 - **`original`** — the text as it was before any suggestions.
 
-**The fold-back loop:** human suggests + comments in the Doc → fetch with the
-default (their intended text) → fold changes into your working copy → reply via
-`comment_reply` / apply edits with `do()`. The API can't *create* suggestions, so
-your edits land as real edits — propose contentious wording in a comment instead,
-and let the human apply or approve it.
+**The fold-back loop, and it now runs both ways.** Human suggests + comments in
+the Doc → fetch with the default (their intended text) → fold changes into your
+working copy → reply via `comment_reply` / apply edits with `do()`. Going the
+other way, `do(prepend|append|replace_text, suggest=True)` proposes your edit as
+a **tracked change** rather than making it, so a contentious rewording waits for
+the human's accept instead of landing and relying on the restore point. Fold one
+back with `do(suggest, action='accept'|'reject', find='s2')`, where `s2` is the
+`[sN]` tag from a `suggestions='markup'` fetch — those tags RENUMBER after each
+fold, so re-fetch between calls, and fold one at a time. Two honest limits:
+adjacent suggestions by the same author coalesce into one thread, so accepting
+one can accept its neighbour; and `suggest=True` is Google Docs only — on a
+Sheet, a deck or a plain file it refuses rather than quietly making a real edit.
 
 Then follow the **After Every Fetch** checklist above.
 

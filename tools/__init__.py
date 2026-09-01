@@ -11,6 +11,7 @@ Verb model (3 tools):
 """
 
 from .search import do_search
+from .suggestions import do_suggest
 from .fetch import do_fetch
 from .create import do_create
 from .move import do_move
@@ -36,7 +37,7 @@ OPERATIONS = frozenset({
     "create", "copy", "move", "rename", "share", "overwrite", "prepend", "append",
     "replace_text", "draft", "reply_draft", "archive", "star", "label", "comment",
     "comment_reply", "setup_oauth", "trash", "respond",
-    "create_event", "update_event", "freebusy",
+    "create_event", "update_event", "freebusy", "suggest",
 })
 
 __all__ = [
@@ -46,4 +47,5 @@ __all__ = [
     "do_trash", "do_respond",
     "do_create_event", "do_update_event", "do_freebusy",
     "OPERATIONS",
+    "do_suggest",
 ]

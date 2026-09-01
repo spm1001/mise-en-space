@@ -16,6 +16,7 @@ from adapters.drive import fetch_file_comments
 from adapters.pdf import PdfConversionResult
 from extractors.comment_anchors import AnchorLocator, sheets_locators, slides_locators
 from extractors.comments import extract_comments_content
+from tools.suggestions import count_untaggable_suggestions
 from extractors.pdf_anchors import insert_crop_anchors
 from extractors.sheets import extract_sheets_per_tab
 from models import MiseError, EmailContext, SlideData
@@ -406,3 +407,32 @@ def _build_email_context_metadata(email_context: EmailContext | None) -> dict[st
     if not email_context:
         return None
     return email_context.to_cue()
+
+
+def suggestion_cues(doc_data: Any) -> dict[str, Any]:
+    """Suggestion cues for a Doc fetch — including the ones mise cannot render.
+
+    `suggestion_count` counts TEXT suggestions, because those are the only kind
+    that can be shown as CriticMarkup and folded by an [sN] tag. A document
+    whose only pending suggestions are formatting (a Word `w:rPrChange` becomes
+    `suggestedTextStyleChanges`) therefore produced no cue at all, and read as
+    settled when it was not — measured on a real .docx import (essayeur,
+    mise-hupago). Disclose them separately rather than counting them into a
+    total mise cannot act on.
+    """
+    cues: dict[str, Any] = {}
+    if doc_data.suggestion_count > 0:
+        cues["has_suggestions"] = True
+        cues["suggestion_count"] = doc_data.suggestion_count
+        cues["suggestions_mode"] = doc_data.suggestions_mode
+    untaggable = count_untaggable_suggestions(doc_data.tabs)
+    if untaggable:
+        cues["has_suggestions"] = True
+        cues["formatting_suggestions"] = untaggable
+        cues["formatting_suggestions_note"] = (
+            f"{untaggable} pending FORMATTING suggestion(s) (bold, style, "
+            "bullets) exist that mise cannot render as markup or fold by [sN] "
+            "tag — this document is NOT settled. Accept or reject them in the "
+            "Docs UI."
+        )
+    return cues

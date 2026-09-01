@@ -17,6 +17,13 @@ from typing import Any
 
 from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME
 from adapters.http_client import get_sync_client
+from tools.suggestions import (
+    _DIRECT,
+    _no_suggest_here,
+    _suggest_cues,
+    nbsp_hint,
+    suggest_write_control,
+)
 from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
 from tools.common import NO_MATCH_WARNING, markdown_marker_hint
@@ -100,6 +107,7 @@ def do_prepend(
     file_id: str | None = None,
     content: str | None = None,
     metadata: dict[str, Any] | None = None,
+    suggest: bool = False,
 ) -> DoResult | dict[str, Any]:
     """Insert text at the beginning of a document or plain file."""
     if not file_id:
@@ -112,6 +120,8 @@ def do_prepend(
         validate_drive_id(file_id, "file_id")
     except ValueError as e:
         return {"error": True, "kind": "invalid_input", "message": str(e)}
+    if suggest and metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
+        return _no_suggest_here(metadata.get("mimeType", ""), "prepend")
     if metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
         return plain_prepend(file_id, content, metadata)
     # Google Doc path only: insertText deletes \f and \x00 silently
@@ -120,7 +130,7 @@ def do_prepend(
     content, cc_state = sanitise_for_insert(content)
     restore_cues = capture_restore_point(file_id)
     try:
-        result = _prepend(file_id, content)
+        result = _prepend(file_id, content, suggest)
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
     apply_sanitise_cues(result.cues, cc_state)
@@ -131,6 +141,7 @@ def do_append(
     file_id: str | None = None,
     content: str | None = None,
     metadata: dict[str, Any] | None = None,
+    suggest: bool = False,
     tab: str | None = None,
 ) -> DoResult | dict[str, Any]:
     """Insert text at the end of a document or plain file.
@@ -149,6 +160,24 @@ def do_append(
         validate_drive_id(file_id, "file_id")
     except ValueError as e:
         return {"error": True, "kind": "invalid_input", "message": str(e)}
+    # suggest= is judged BEFORE any routing branch. It used to sit after the
+    # tab branch, so do(append, tab='T', suggest=True) skipped the guard
+    # entirely and committed a REAL edit while reporting success — the exact
+    # inversion this feature exists to prevent (essayeur, mise-hupago). A guard
+    # placed after a return is not a guard.
+    if suggest and tab is not None:
+        return {
+            "error": True, "kind": "invalid_input",
+            "message": (
+                "suggest=True cannot apply to append tab= — creating a new "
+                "document tab has no tracked-changes mode, so the tab and its "
+                "content would land as a real edit. Nothing was written. "
+                "Append into the body with suggest=True, or drop suggest= to "
+                "create the tab directly."
+            ),
+        }
+    if suggest and metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
+        return _no_suggest_here(metadata.get("mimeType", ""), "append")
     if tab is not None:
         return _append_as_tab(file_id, content, tab, metadata)
     if metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
@@ -158,7 +187,7 @@ def do_append(
     content, cc_state = sanitise_for_insert(content)
     restore_cues = capture_restore_point(file_id)
     try:
-        result = _append(file_id, content)
+        result = _append(file_id, content, suggest)
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
     apply_sanitise_cues(result.cues, cc_state)
@@ -257,6 +286,7 @@ def do_replace_text(
     find: str | None = None,
     content: str | None = None,
     metadata: dict[str, Any] | None = None,
+    suggest: bool = False,
 ) -> DoResult | dict[str, Any]:
     """Find and replace all occurrences of text in a document or plain file."""
     if not file_id:
@@ -272,6 +302,8 @@ def do_replace_text(
         validate_drive_id(file_id, "file_id")
     except ValueError as e:
         return {"error": True, "kind": "invalid_input", "message": str(e)}
+    if suggest and metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
+        return _no_suggest_here(metadata.get("mimeType", ""), "replace_text")
     if metadata and metadata.get("mimeType") == GOOGLE_SHEET_MIME:
         return sheet_replace_text(file_id, find, content, metadata)
     if metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
@@ -285,7 +317,7 @@ def do_replace_text(
     content, cc_state = sanitise_for_insert(content)
     restore_cues = capture_restore_point(file_id)
     try:
-        result = _replace_text(file_id, find, content)
+        result = _replace_text(file_id, find, content, suggest)
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
     if isinstance(result, DoResult):
@@ -302,17 +334,20 @@ def do_replace_text(
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
-def _prepend(file_id: str, text: str) -> DoResult:
+def _prepend(file_id: str, text: str, suggest: bool = False) -> DoResult:
     """Insert at index 1 (start of body)."""
     client = get_sync_client()
     meta = _get_doc_meta(client, file_id)
 
-    client.post_json(
-        f"{_DOCS_API}/{file_id}:batchUpdate",
-        json_body={"requests": [{"insertText": {"location": _first_tab_location(meta, 1), "text": text}}]},
-    )
+    body: dict[str, Any] = {"requests": [
+        {"insertText": {"location": _first_tab_location(meta, 1), "text": text}}]}
+    if suggest:
+        body["writeControl"] = suggest_write_control()
+    response = client.post_json(f"{_DOCS_API}/{file_id}:batchUpdate", json_body=body)
 
     cues: dict[str, Any] = {"inserted_chars": len(text)}
+    if suggest:
+        cues.update(_suggest_cues(response, "prepend"))
     if warning := _multi_tab_insert_warning(meta, "prepend"):
         cues["warnings"] = [warning]
     return DoResult(
@@ -325,7 +360,7 @@ def _prepend(file_id: str, text: str) -> DoResult:
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
-def _append(file_id: str, text: str) -> DoResult:
+def _append(file_id: str, text: str, suggest: bool = False) -> DoResult:
     """Insert at end of document body."""
     client = get_sync_client()
     meta = _get_doc_meta(client, file_id)
@@ -333,12 +368,15 @@ def _append(file_id: str, text: str) -> DoResult:
     # Insert before the final newline (endIndex - 1)
     insert_index = max(meta["end_index"] - 1, 1)
 
-    client.post_json(
-        f"{_DOCS_API}/{file_id}:batchUpdate",
-        json_body={"requests": [{"insertText": {"location": _first_tab_location(meta, insert_index), "text": text}}]},
-    )
+    body: dict[str, Any] = {"requests": [
+        {"insertText": {"location": _first_tab_location(meta, insert_index), "text": text}}]}
+    if suggest:
+        body["writeControl"] = suggest_write_control()
+    response = client.post_json(f"{_DOCS_API}/{file_id}:batchUpdate", json_body=body)
 
     cues: dict[str, Any] = {"inserted_chars": len(text)}
+    if suggest:
+        cues.update(_suggest_cues(response, "append"))
     if warning := _multi_tab_insert_warning(meta, "append"):
         cues["warnings"] = [warning]
     return DoResult(
@@ -351,20 +389,20 @@ def _append(file_id: str, text: str) -> DoResult:
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
-def _replace_text(file_id: str, find: str, replace: str) -> DoResult:
+def _replace_text(file_id: str, find: str, replace: str, suggest: bool = False) -> DoResult:
     """Replace all occurrences via replaceAllText."""
     client = get_sync_client()
     meta = _get_doc_meta(client, file_id)
 
-    result = client.post_json(
-        f"{_DOCS_API}/{file_id}:batchUpdate",
-        json_body={"requests": [{
-            "replaceAllText": {
-                "containsText": {"text": find, "matchCase": True},
-                "replaceText": replace,
-            },
-        }]},
-    )
+    body: dict[str, Any] = {"requests": [{
+        "replaceAllText": {
+            "containsText": {"text": find, "matchCase": True},
+            "replaceText": replace,
+        },
+    }]}
+    if suggest:
+        body["writeControl"] = suggest_write_control()
+    result = client.post_json(f"{_DOCS_API}/{file_id}:batchUpdate", json_body=body)
 
     # Extract replacement count from response
     replies = result.get("replies", [{}])
@@ -376,10 +414,26 @@ def _replace_text(file_id: str, find: str, replace: str) -> DoResult:
         "occurrences_changed": occurrences,
     }
     if occurrences == 0:
+        if suggest:
+            # Under suggest= a no-match is not a cue, it is a LIE waiting to be
+            # believed: the caller has been told an edit is sitting in the
+            # document awaiting review, and nothing exists at all. Raise, and
+            # name the commonest cause on a Word-imported doc (mise-hupago).
+            raise MiseError(
+                ErrorKind.INVALID_INPUT,
+                f"suggest=True found no occurrences of {find!r}, so NO suggestion "
+                f"was created — the document is unchanged and there is nothing "
+                f"for anyone to accept."
+                + nbsp_hint(file_id, find)
+                + f" {_DIRECT}",
+                details={"occurrences_changed": 0, "suggested": False},
+            )
         # Docs only: content.md is a *rendering*, so its markers aren't document
         # text. A plain .md file or a sheet cell holds them literally, which is
         # why the sibling paths take the bare warning.
         cues["warning"] = NO_MATCH_WARNING + markdown_marker_hint(find)
+    if suggest:
+        cues.update(_suggest_cues(result, "replace_text"))
     # replaceAllText with no tabsCriteria applies to ALL tabs (discovery rev
     # 20260817; verified live on a 2-tab doc, essayeur 2026-08-24). On a
     # multi-tab doc that must be disclosed, not silent — a redraft tab

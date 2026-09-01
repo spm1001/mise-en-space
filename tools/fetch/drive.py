@@ -30,7 +30,7 @@ from workspace import get_deposit_folder, write_content, write_figures, write_ma
 
 from .common import (
     _build_cues, _build_email_context_metadata, _deposit_pdf_thumbnails,
-    _enrich_with_comments, _write_per_tab_csvs, add_file_provenance,
+    _enrich_with_comments, _write_per_tab_csvs, add_file_provenance, suggestion_cues,
     deposit_pdf_crops, is_text_file, pdf_page_fidelity,
 )
 from .decorations import build_doc_structure, build_slides_index
@@ -233,10 +233,7 @@ def fetch_doc(doc_id: str, title: str, metadata: dict[str, Any], email_context: 
         warnings=doc_data.warnings,
         email_context=email_context,
     )
-    if doc_data.suggestion_count > 0:
-        cues["has_suggestions"] = True
-        cues["suggestion_count"] = doc_data.suggestion_count
-        cues["suggestions_mode"] = doc_data.suggestions_mode
+    cues.update(suggestion_cues(doc_data))
 
     return FetchResult(
         path=str(folder),

@@ -270,7 +270,7 @@ class TestAppendTabRouting:
         )
         result = do_append("doc123", "body", metadata={"mimeType": GOOGLE_DOC_MIME})
         assert isinstance(result, DoResult)
-        mock_append.assert_called_once_with("doc123", "body")
+        mock_append.assert_called_once_with("doc123", "body", False)
 
 
 # =============================================================================

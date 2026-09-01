@@ -108,8 +108,6 @@ ADJUDICATED: tuple[tuple[str, str, str], ...] = (
      "advice: don't treat suggested text as settled — not a capability claim"),
     ("skills/mise/SKILL.md", "extraction and never the document itself.",
      "describes the problem raw=True solves; the capability is the next clause"),
-    ("skills/mise/SKILL.md", "`comment_reply` / apply edits with `do()`. The API can't *create*",
-     "true platform limit: Docs API has no suggestion-creation surface"),
     ("skills/mise/SKILL.md", "other sources don't speak it); `trashed = false`",
      "true design: raw_query is Drive-only by contract"),
     ("skills/mise/SKILL.md", "**Every Doc edit leaves a restore point.**",

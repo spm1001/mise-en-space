@@ -1,0 +1,21 @@
+{
+  "replies": [
+    {
+      "replaceAllText": {
+        "occurrencesChanged": 1
+      }
+    }
+  ],
+  "writeControl": {
+    "requiredRevisionId": "ANLCKQn8E4VjsqxptYf13QIZCsXae2gPy2CAeHvPg4qQQ40ANqtm7Erkm9PqxOhNkleXn-gN6LOqouVW2C0P8Np5prqCx_MmdEXqlFtVdXU"
+  },
+  "documentId": "1py-Yj5sRX5aMJdZYrY-g_l1rn-FOZ9KU-dx3KGisiug",
+  "suggestionResponses": [
+    {
+      "createdSuggestionIds": [
+        "suggest.2q4jb48am2xh"
+      ]
+    }
+  ],
+  "commentUpdateState": "ALL_SAVED"
+}
