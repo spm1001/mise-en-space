@@ -10,6 +10,7 @@ This prevents accidental coupling that would make extractors hard to test.
 """
 
 import ast
+import subprocess
 import sys
 from pathlib import Path
 
@@ -475,4 +476,155 @@ class TestProbeScriptsSeeTheWorkingTree:
             + "\n".join(f"  - {v}" for v in violations)
             + "\n\n"
             + self.REMEDY
+        )
+
+
+class TestVendoredTreesAreFullyTracked:
+    """
+    Every file on disk under a vendored tree must be tracked by git — a file
+    git cannot see ships nowhere, and nothing goes red on the way.
+
+    Why (mise-wevomu). The published plugin is assembled from a fresh git
+    CLONE of this repo (batterie assemble.sh, full-source branch), while the
+    skill loads locally from the WORKING TREE. So a new file that git will not
+    see — hidden by some ignore source, or simply never added — works in every
+    local probe, is absent from the marketplace artefact, and no step reports
+    it. Live instance 2026-08-02: ~/.gitignore_global carried an unanchored
+    `mise/` (a stale deposit-pile pattern) that matched skills/mise/ at any
+    depth; `git add skills/mise/SKILL.md` was refused and needed -f. That
+    global cause is fixed (dotfiles db17171) — this guard exists because any
+    ignore source can reproduce the class: the repo .gitignore,
+    .git/info/exclude, another machine's global file.
+
+    Design calls, made deliberately:
+
+    1. It SHELLS OUT to git. Most of this suite does not, but the alternative
+       is re-implementing git's ignore matching (four ignore sources, negation,
+       anchoring, directory-vs-file patterns) and then trusting the copy to
+       agree with the original — the instrument's limits would become the
+       finding. `git ls-files` is the one honest answer to "what will a clone
+       contain", and `git check-ignore -v --no-index` names WHICH ignore
+       source hides a file. --no-index is load-bearing: the index-aware form
+       answers nothing for tracked paths, which is why the live instance hid
+       behind two clean-looking probes.
+
+    2. In a checkout with no repo it SKIPS, with a reason, rather than fails.
+       A vendored copy under ~/.claude/plugins/cache/ has no .git; a copy
+       vendored inside batterie's tree would find batterie's toplevel, whose
+       index says nothing about this repo. So the test runs only when git's
+       toplevel IS this repo root, and skips when git is absent, when no
+       repository encloses the file, or when the enclosing one is someone
+       else's. In every such place the guard would otherwise be noise
+       precisely where it does not apply.
+
+    3. It is WIDENED beyond skills/ to every tree the assembler ships as
+       content and that grows by adding files: skills/, hooks/, apps-script/,
+       scripts/. All four sit inside the full-source rsync and none is in its
+       exclude list, so a missing file is equally silent in each. Not widened
+       to the whole repo: the assembler ships nearly everything, but mirroring
+       its exclude list here would couple this test to another repo's script
+       and rot the day that list changes. Root-level Python is separately
+       policed by the layer tests above.
+
+    4. Deliberately-untracked files are EXEMPT by name (DELIBERATELY_UNTRACKED_*)
+       so the assertion is "everything else". The set is the assembler's own
+       genuinely-anywhere excludes (__pycache__, *.pyc, token.json, .env —
+       never shipped, so never a missing-file hazard), .DS_Store, and
+       apps-script/deploy.json, which .gitignore hides on purpose because it
+       carries personal script ids. Growing this set is a deliberate act to
+       argue for in the commit message.
+
+    5. A positive control rides every run: each vendored tree must exist and
+       hold at least one TRACKED file. An empty `git ls-files` answer means the
+       instrument is broken (wrong cwd, damaged index), and the test says so
+       rather than passing vacuously or blaming the tree.
+
+    Seen to go red before it was trusted green — see the commit that added it:
+    an untracked skills/mise/references/ file reddens it by path with "never
+    `git add`ed"; the same file under a `mise/` line in .git/info/exclude
+    reddens it naming that source and line number.
+    """
+
+    VENDORED_TREES = ("skills", "hooks", "apps-script", "scripts")
+
+    # Names the assembler never ships (its genuinely-anywhere excludes), plus
+    # the one repo-specific file .gitignore hides on purpose.
+    DELIBERATELY_UNTRACKED_NAMES = {"__pycache__", "token.json", ".env", ".DS_Store"}
+    DELIBERATELY_UNTRACKED_SUFFIXES = {".pyc"}
+    DELIBERATELY_UNTRACKED_PATHS = {"apps-script/deploy.json"}
+
+    @staticmethod
+    def _git(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args], cwd=PROJECT_ROOT, capture_output=True, text=True, check=False
+        )
+
+    def _skip_unless_this_repo_is_the_toplevel(self) -> None:
+        try:
+            top = self._git("rev-parse", "--show-toplevel")
+        except FileNotFoundError:
+            pytest.skip("git is not installed here — cannot ask what a clone would contain")
+        if top.returncode != 0:
+            pytest.skip(
+                "not inside a git repository (a vendored copy?) — "
+                f"git said: {top.stderr.strip()}"
+            )
+        toplevel = Path(top.stdout.strip()).resolve()
+        if toplevel != PROJECT_ROOT.resolve():
+            pytest.skip(
+                f"enclosing repository is {toplevel}, not this repo root — "
+                "its index says nothing about these files"
+            )
+
+    def _is_deliberately_untracked(self, rel: str) -> bool:
+        parts = rel.split("/")
+        return (
+            rel in self.DELIBERATELY_UNTRACKED_PATHS
+            or any(part in self.DELIBERATELY_UNTRACKED_NAMES for part in parts)
+            or Path(rel).suffix in self.DELIBERATELY_UNTRACKED_SUFFIXES
+        )
+
+    def _why_git_cannot_see(self, rel: str) -> str:
+        # --no-index: the index-aware form is silent for tracked paths and, for
+        # an untracked one, cannot tell "never added" from "hidden by a rule".
+        probe = self._git("check-ignore", "-v", "--no-index", "--", rel)
+        if probe.returncode == 0:
+            source, _, _ = probe.stdout.strip().partition("\t")
+            return f"ignored by {source}"
+        if probe.returncode == 1:
+            return "not ignored — never `git add`ed"
+        return f"git check-ignore failed: {probe.stderr.strip()}"
+
+    def test_every_file_under_a_vendored_tree_is_tracked(self) -> None:
+        self._skip_unless_this_repo_is_the_toplevel()
+
+        listing = self._git("ls-files", "-z", "--", *self.VENDORED_TREES)
+        assert listing.returncode == 0, f"git ls-files failed: {listing.stderr.strip()}"
+        tracked = set(filter(None, listing.stdout.split("\0")))
+
+        invisible = []
+        for tree in self.VENDORED_TREES:
+            root = PROJECT_ROOT / tree
+            assert root.is_dir(), f"{tree}/ is missing on disk — VENDORED_TREES is stale"
+            assert any(path.startswith(f"{tree}/") for path in tracked), (
+                f"git ls-files saw NOTHING under {tree}/ — the instrument is broken "
+                "(wrong cwd or damaged index), not the tree"
+            )
+            for path in sorted(root.rglob("*")):
+                if path.is_dir() and not path.is_symlink():
+                    continue
+                rel = path.relative_to(PROJECT_ROOT).as_posix()
+                if rel in tracked or self._is_deliberately_untracked(rel):
+                    continue
+                invisible.append(f"{rel}  ({self._why_git_cannot_see(rel)})")
+
+        assert not invisible, (
+            "These files exist under a vendored tree but git cannot see them, so "
+            "they will NOT be in the published plugin (assembled from a clone) "
+            "while everything local keeps working:\n"
+            + "\n".join(f"  - {line}" for line in invisible)
+            + "\n\nIf it should ship: `git add` it — with -f if a rule hides it, then "
+            "fix the rule (`git check-ignore -v --no-index <path>` names it). If it "
+            "must NOT ship: add it to DELIBERATELY_UNTRACKED_* above, by name, and "
+            "say why. See mise-wevomu."
         )
