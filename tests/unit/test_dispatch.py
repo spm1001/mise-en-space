@@ -91,7 +91,9 @@ class TestSignatureCarriesEveryDispatchParam:
         handler_keys = set(re.findall(r'p\.get\("([a-z_]+)"', dispatch_src))
         handler_keys |= set(re.findall(r'p\["([a-z_]+)"\]', dispatch_src))
 
-        injected_by_run_operation = {"_metadata"}
+        # _elicit is injected by server.py's do() from the mcp Context (tools/elicit.py);
+        # the facade never sends it, so that path falls back to confirm=.
+        injected_by_run_operation = {"_metadata", "_elicit"}
         sig_params = set(inspect.signature(do).parameters)
 
         missing = handler_keys - sig_params - injected_by_run_operation
@@ -169,7 +171,9 @@ class TestOpParamsMatchDispatch:
     def test_op_params_matches_the_lambdas(self) -> None:
         from tools.dispatch import OP_PARAMS
 
-        injected_by_run_operation = {"_metadata"}
+        # _elicit is injected by server.py's do() from the mcp Context (tools/elicit.py);
+        # the facade never sends it, so that path falls back to confirm=.
+        injected_by_run_operation = {"_metadata", "_elicit"}
         actual = {op: keys - injected_by_run_operation for op, keys in _lambda_reads().items()}
         declared = {op: set(params) for op, params in OP_PARAMS.items()}
 
@@ -192,7 +196,8 @@ class TestOpParamsMatchDispatch:
 
         from tools.dispatch import PARAM_OWNERS
 
-        signature = {n for n in inspect.signature(do).parameters if n != "operation"}
+        # share_answer is filled by an mcp resolver — the SDK keeps it out of the wire schema.
+        signature = {n for n in inspect.signature(do).parameters if n not in ("operation", "share_answer")}
         assert set(PARAM_OWNERS) == signature
 
 

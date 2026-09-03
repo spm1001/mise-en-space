@@ -9,6 +9,17 @@
 ## [Unreleased] (mise-hupago)
 
 ### Added
+- **`do(share)` asks the client, not the model, for the yes** (mise-jonoha,
+  pilot for mise-wagina). Where the connected client declared MCP form
+  elicitation, the share confirmation rides mcp's resolver injection
+  (`share_confirm` → `share_answer` on `do()`): the client renders a dialog
+  carrying exactly the preview text, and the share executes only on an
+  accepted proceed=true. A cancelled dialog (headless clients auto-cancel)
+  returns the preview with confirm= still open; a decline withdraws it. A
+  client without the capability gets the preview-then-confirm=True round-trip
+  unchanged. Result cues name the mechanism and the client's answer, never
+  "the human approved" — the model cannot tell those apart. Seam:
+  `tools/elicit.py`.
 - **`suggest=True` proposes instead of editing.** On `prepend`, `append` and
   `replace_text` against a Google Doc, the batchUpdate carries
   `writeControl.writeMode=SUGGEST`, so the edit arrives as a tracked change

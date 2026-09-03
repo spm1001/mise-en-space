@@ -43,6 +43,7 @@ from adapters.conversion import cleanup_orphaned_temp_files
 from logging_config import configure_call_logging, log_mcp_call
 from tools import do_search, do_fetch
 from tools.dispatch import DO_DESCRIPTION_FULL, DO_DESCRIPTION_REMOTE, run_operation
+from tools.share import ShareAnswer
 from tools.remote import REMOTE_ALLOWED_OPS, fetch_remote, search_remote
 from tools.search import VALID_TYPE_FILTERS, CANONICAL_TYPE_NAMES
 from validation import looks_like_drive_query
@@ -328,17 +329,15 @@ def do(
     tab: str | None = None,
     anchor: str | None = None, suggest: bool = False,  # two on one line: server.py sits at its 500-line cap
     attendees: list[str] | str | None = None,
-    time_min: str | None = None,
-    time_max: str | None = None,
-    location: str | None = None,
-    meet: bool = False,
+    time_min: str | None = None, time_max: str | None = None,
+    location: str | None = None, meet: bool = False,
     recurrence: str | list[str] | None = None,
     send_updates: str | None = None,
     duration: int | None = None,
     properties: dict[str, str] | None = None,
     color: str | None = None,
     visibility: str | None = None,
-    transparency: str | None = None,
+    transparency: str | None = None, share_answer: ShareAnswer = None,  # resolved by mcp, never a wire param
 ) -> dict[str, Any]:
     """Act on Google Workspace."""
     # Build log params — include operation and non-None values that matter,
@@ -413,6 +412,7 @@ def do(
         "send_updates": send_updates, "duration": duration,
         "properties": properties, "color": color,
         "visibility": visibility, "transparency": transparency,
+        "_elicit": share_answer,  # the share dialog's outcome, if a client rendered one (tools/elicit.py)
     }
 
     # Validation, metadata prefetch, and execution live in tools/dispatch.py.

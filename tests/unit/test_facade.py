@@ -131,7 +131,7 @@ class TestFacadeContract:
         server_params = {
             name: p.default
             for name, p in inspect.signature(server.do).parameters.items()
-            if name != "operation"
+            if name not in ("operation", "share_answer")  # resolver-filled by mcp, not a wire param
         }
         assert _DO_DEFAULTS == server_params
 

@@ -209,7 +209,7 @@ DISPATCH: dict[str, Any] = {
     ),
     "share": lambda p: do_share(
         file_id=p["file_id"], to=p["to"], role=p.get("role"),
-        confirm=p.get("confirm", False),
+        confirm=p.get("confirm", False), answer=p.get("_elicit"),
     ),
     "overwrite": lambda p: do_overwrite(
         file_id=p["file_id"], content=p["content"],
