@@ -549,9 +549,9 @@ class TestVendoredTreesAreFullyTracked:
 
     # Names the assembler never ships (its genuinely-anywhere excludes), plus
     # the one repo-specific file .gitignore hides on purpose.
-    DELIBERATELY_UNTRACKED_NAMES = {"__pycache__", "token.json", ".env", ".DS_Store"}
-    DELIBERATELY_UNTRACKED_SUFFIXES = {".pyc"}
-    DELIBERATELY_UNTRACKED_PATHS = {"apps-script/deploy.json"}
+    DELIBERATELY_UNTRACKED_NAMES = frozenset({"__pycache__", "token.json", ".env", ".DS_Store"})
+    DELIBERATELY_UNTRACKED_SUFFIXES = frozenset({".pyc"})
+    DELIBERATELY_UNTRACKED_PATHS = frozenset({"apps-script/deploy.json"})
 
     @staticmethod
     def _git(*args: str) -> subprocess.CompletedProcess[str]:
@@ -625,6 +625,8 @@ class TestVendoredTreesAreFullyTracked:
             + "\n".join(f"  - {line}" for line in invisible)
             + "\n\nIf it should ship: `git add` it — with -f if a rule hides it, then "
             "fix the rule (`git check-ignore -v --no-index <path>` names it). If it "
-            "must NOT ship: add it to DELIBERATELY_UNTRACKED_* above, by name, and "
-            "say why. See mise-wevomu."
+            "must NOT ship: move it out of the vendored tree (a local preview "
+            "vendors the working tree, so a secret here can still travel); only "
+            "a file that has to live here goes into DELIBERATELY_UNTRACKED_* "
+            "above, by name, with the reason. See mise-wevomu."
         )
