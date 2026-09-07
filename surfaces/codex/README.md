@@ -1,0 +1,9 @@
+# Codex launch surface
+
+`launch.py mise` starts the installed ITV flavour; `launch.py mise-home` starts the installed personal flavour. The launcher resolves the unique user installation from Claude's installed-plugin registry on every start, validates the package name and required files, and uses the package's frozen dependency lock. Codex configuration therefore points to this stable source entry point, not a versioned cache directory.
+
+This reuses the installed service code and each flavour's existing authentication. It does not run Claude's setup hooks, install its instruction corpus, copy credentials, or create an alternative sign-in store. An inherited MISE_TOKEN_PATH or MISE_CREDENTIALS override is removed before launch so the named flavour remains the selected identity. If the installation is missing, ambiguous or mismatched, the launcher fails visibly instead of falling back to the other flavour. `--describe` reports only code/identity metadata without starting the server.
+
+On Tube, the Codex server names are `mise_itv` and `mise_home`, with the normal `search`, `fetch` and `do` tools. The setup qualification used read-only account checks, bounded search, the existing ITV integration-test Doc, and the personal Drive root listing. It also fault-injected an absent credential path against the underlying server: the response contained an explicit missing-token error and no identity cue. A transport-level `isError: false` is not sufficient to infer operation success; inspect the returned payload and its cues.
+
+Run `uv run --script surfaces/codex/test_launch.py` from this repository for version-selection and identity-isolation checks. Account-routing evidence and current deployment state belong to the existing infra setup action `iw-rucega`, not this source document.
