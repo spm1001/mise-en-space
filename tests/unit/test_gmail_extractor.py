@@ -10,8 +10,11 @@ from pathlib import Path
 
 from models import GmailThreadData, EmailMessage, EmailAttachment, ForwardedMessage
 from extractors.gmail import (
+    _format_message_header,
     extract_thread_content,
     extract_message_content,
+    format_message_date,
+    format_message_day,
     parse_message_payload,
     parse_attachments_from_payload,
     parse_forwarded_messages,
@@ -1036,3 +1039,64 @@ class TestParseIcsUid:
     def test_first_uid_wins(self):
         ics = "UID:first@x.com\nBEGIN:VEVENT\nUID:second@x.com\n"
         assert parse_ics_uid(ics) == "first@x.com"
+
+
+class TestDateRendering:
+    """Date lines are UTC with a Z suffix, never the sender's offset rendered bare.
+
+    Pinned against a real message (mise-hopife, 2026-09-14): Google Cloud
+    Alerting thread 1a09f0a1562801eb on sameer.modha@itv.com, whose Date
+    header reads 'Mon, 14 Sep 2026 01:30:32 -0700', whose internalDate is
+    1789374632000, and whose body says 'Start time … 8:30AM UTC'. The old
+    render printed 'Date: 2026-09-14 01:30' — 7 hours early to any reader
+    taking a zoneless stamp as local.
+    """
+
+    HEADER = "Mon, 14 Sep 2026 01:30:32 -0700"
+    INTERNAL_DATE_MS = "1789374632000"
+
+    def test_known_message_renders_in_utc_with_zone(self):
+        from adapters.gmail import _parse_date
+
+        dt = _parse_date(self.HEADER, self.INTERNAL_DATE_MS)
+        assert format_message_date(dt) == "2026-09-14 08:30Z"
+
+    def test_header_and_internal_date_agree(self):
+        """The header's instant and Gmail's internalDate are the same instant,
+        so the fix is a rendering fix — neither field was wrong."""
+        from adapters.gmail import _parse_date
+
+        from_header = _parse_date(self.HEADER, None)
+        from_internal = _parse_date(None, self.INTERNAL_DATE_MS)
+        assert from_header == from_internal
+        assert format_message_date(from_header) == format_message_date(from_internal)
+
+    def test_thread_header_line_carries_zone_not_sender_local(self):
+        from adapters.gmail import _parse_date
+
+        msg = EmailMessage(
+            message_id="alert-1",
+            from_address="Google Cloud Alerting <alerting-noreply@google.com>",
+            to_addresses=["sameer.modha@itv.com"],
+            subject="[ALERT] garni",
+            date=_parse_date(self.HEADER, self.INTERNAL_DATE_MS),
+            body_text="Start time Sep 14, 2026 at 8:30AM UTC",
+        )
+        line = _format_message_header(msg, 1, 1)
+        assert "Date: 2026-09-14 08:30Z" in line
+        assert "01:30" not in line
+
+    def test_naive_datetime_is_read_as_utc(self):
+        assert format_message_date(datetime(2026, 9, 14, 8, 30)) == "2026-09-14 08:30Z"
+
+    def test_positive_offset_converts_the_other_way(self):
+        from adapters.gmail import _parse_date
+
+        dt = _parse_date("Mon, 14 Sep 2026 17:30:00 +0900", None)
+        assert format_message_date(dt) == "2026-09-14 08:30Z"
+
+    def test_day_string_uses_utc_day_across_midnight(self):
+        from adapters.gmail import _parse_date
+
+        late_pacific = _parse_date("Mon, 14 Sep 2026 23:30:00 -0700", None)
+        assert format_message_day(late_pacific) == "2026-09-15"

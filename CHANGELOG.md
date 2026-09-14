@@ -6,6 +6,20 @@
 > intentionally absent — the shipped version number can therefore be ahead of
 > the newest entry here.
 
+## [Unreleased] (mise-hopife)
+
+### Fixed
+- **Gmail thread `Date:` lines are UTC with a `Z` suffix** (`2026-09-14 08:30Z`),
+  and the deposit's `date_range` and fetch-candidate day strings use the UTC
+  day. Before, the sender's own offset was rendered bare: a Google Cloud
+  Alerting mail whose header reads `01:30:32 -0700` (08:30 UTC, as its body
+  said) printed `Date: 2026-09-14 01:30` — seven hours early to any reader
+  taking a zoneless stamp as local, with no cue. Neither `internalDate` nor
+  the header was wrong; `parsedate_to_datetime` keeps the sender's zone and
+  the render dropped it. Seam: `extractors/gmail.py::format_message_date`;
+  `tests/unit/test_gmail_extractor.py::TestDateRendering` pins the real
+  message's header and `internalDate` against the rendered stamp.
+
 ## [Unreleased] (mise-hupago)
 
 ### Added

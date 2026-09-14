@@ -7,7 +7,7 @@ No API calls, no MCP awareness.
 
 import base64
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from models import GmailThreadData, EmailMessage, ForwardedMessage
@@ -108,6 +108,32 @@ def extract_message_content(
     return body.strip(), warnings
 
 
+def format_message_date(dt: datetime) -> str:
+    """Render a message timestamp in UTC with an explicit Z suffix.
+
+    A Gmail Date header carries the SENDER's offset (Google Cloud Alerting
+    stamps -0700), and parsedate_to_datetime keeps it — so a bare
+    strftime rendered 08:30 UTC as "01:30" with no zone, 7 hours early to
+    any reader taking it as local (mise-hopife, 2026-09-14). Converting to
+    UTC and naming the zone makes every Date line in a thread comparable
+    and agree with the message's own header to the minute. A naive
+    datetime is treated as UTC, matching adapters.gmail._parse_date.
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%MZ")
+
+
+def format_message_day(dt: datetime) -> str:
+    """The UTC calendar day of a message timestamp (YYYY-MM-DD).
+
+    Same conversion as format_message_date; a sender-zone day can differ
+    from the UTC day near midnight, so day strings must not read the
+    sender's offset either.
+    """
+    return format_message_date(dt)[:10]
+
+
 def _format_message_header(message: EmailMessage, position: int, total: int) -> str:
     """Format message header for thread assembly."""
     parts = []
@@ -121,7 +147,7 @@ def _format_message_header(message: EmailMessage, position: int, total: int) -> 
     # Date
     if message.date:
         if isinstance(message.date, datetime):
-            parts.append(f"Date: {message.date.strftime('%Y-%m-%d %H:%M')}")
+            parts.append(f"Date: {format_message_date(message.date)}")
         else:
             parts.append(f"Date: {message.date}")
 
@@ -157,13 +183,16 @@ def extract_thread_content(
         Format:
             # Subject Line
 
-            [1/3] From: alice@example.com | Date: 2024-01-15 10:30 | Subject: Re: Meeting
+            [1/3] From: alice@example.com | Date: 2024-01-15 10:30Z | Subject: Re: Meeting
 
             Message body here...
 
             ---
 
-            [2/3] From: bob@example.com | Date: 2024-01-15 11:45
+            [2/3] From: bob@example.com | Date: 2024-01-15 11:45Z
+
+        Date lines are UTC with a Z suffix (format_message_date) — never the
+        sender's offset rendered bare.
 
             Reply body here...
     """

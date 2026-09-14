@@ -11,7 +11,7 @@ from adapters.gmail import fetch_thread
 from adapters.gmail_ids import get_thread_id_for_message, thread_web_link_or_warn
 from adapters.office import convert_office_content, get_office_type_from_mime
 from adapters.pdf import convert_pdf_content, render_pdf_pages
-from extractors.gmail import extract_thread_content, parse_ics_uid
+from extractors.gmail import extract_thread_content, format_message_day, parse_ics_uid
 from extractors.image import resize_image_bytes
 from models import FetchResult, FetchError, InviteState, MiseError, ErrorKind
 from validation import is_gmail_api_id, diagnose_fetch_404
@@ -347,9 +347,9 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
             first = min(dates)
             last = max(dates)
             if first == last:
-                date_range = first.strftime("%Y-%m-%d") if hasattr(first, "strftime") else str(first)[:10]
+                date_range = format_message_day(first) if hasattr(first, "strftime") else str(first)[:10]
             else:
-                date_range = f"{first.strftime('%Y-%m-%d') if hasattr(first, 'strftime') else str(first)[:10]} to {last.strftime('%Y-%m-%d') if hasattr(last, 'strftime') else str(last)[:10]}"
+                date_range = f"{format_message_day(first) if hasattr(first, 'strftime') else str(first)[:10]} to {format_message_day(last) if hasattr(last, 'strftime') else str(last)[:10]}"
 
         cues = _build_cues(
             folder,

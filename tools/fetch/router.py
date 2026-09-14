@@ -8,6 +8,7 @@ from adapters.gmail import search_threads
 from workspace.manager import deposit_lock as _deposit_lock
 from adapters.gmail_browser import resolve_gmail_url_via_browser
 from adapters.gmail_ids import get_thread_id_for_draft, get_thread_id_for_rfc822_message_id
+from extractors.gmail import format_message_day
 from models import MiseError, ErrorKind, FetchResult, FetchError
 from validation import extract_drive_file_id, extract_gmail_draft_id, extract_gmail_id, extract_gmail_permmsgid, extract_gmail_url_context, extract_rfc822_message_id, is_gmail_api_id, is_self_sent_gmail_url, GMAIL_WEB_ID_PREFIXES, detect_fetch_input_problem, diagnose_fetch_404
 
@@ -88,7 +89,7 @@ def _self_sent_candidates() -> list[dict[str, str]] | None:
             "thread_id": r.thread_id,
             "subject": r.subject,
             "from": r.from_address or "",
-            "date": r.date.strftime("%Y-%m-%d") if r.date else "",
+            "date": format_message_day(r.date) if r.date else "",
         }
         for r in results.results
     ]
