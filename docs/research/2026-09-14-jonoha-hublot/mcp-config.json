@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "miseclone": {
+      "command": "uv",
+      "args": ["run", "--project", "/home/modha/repos/spm1001/mise-en-space", "--extra", "extraction", "python3", "/home/modha/repos/spm1001/mise-en-space/server.py"]
+    },
+    "elicitprobe": {
+      "command": "uv",
+      "args": ["run", "--script", "/home/modha/repos/spm1001/mise-en-space/docs/research/2026-08-23-mcp2-probes/probe_server.py"]
+    }
+  }
+}

@@ -1,0 +1,10 @@
+❯ One more, same rules: call mcp__miseclone__do exactly once with operation='share', file_id='1nefktlIoI2f8QOKPiZmuGcH7fS0GmwCNC3LyWm0805k', to='sameer.modha@itv.com',
+  role='writer'. No confirm. Leave any dialog to me. Paste the raw JSON result verbatim.
+● Calling miseclone…
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  MCP server “miseclone” requests your input
+  Would share 'mise-jonoha elicitation probe 2026-09-14 (scratch — safe to trash)' with sameer.modha@itv.com as writer
+  ❯ * Proceed: ☐
+        Go ahead?
+    Accept    Decline
+  Esc to cancel · ↑/↓ to navigate · Backspace to unset · Space to toggle

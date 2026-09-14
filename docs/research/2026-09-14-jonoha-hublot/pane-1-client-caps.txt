@@ -1,0 +1,22 @@
+    "capabilities": {
+      "experimental": null,
+      "sampling": null,
+      "elicitation": {
+        "form": null,
+        "url": null
+      },
+      "roots": {
+        "list_changed": true
+      },
+      "extensions": null,
+      "tasks": null
+    }
+  }
+  One note on the "no other tool" instruction: the tool was deferred, so I had to run one ToolSearch to load its schema before it could be called. No other tools were
+  used, and the probe itself ran exactly once.
+✻ Sautéed for 16s · done 22:46
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  deglacer Fable 5.1 high 88% Vertex /mit-update needed
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents

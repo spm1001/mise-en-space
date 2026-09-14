@@ -461,7 +461,7 @@ search("orgTitle='Head of Strategy'", sources=["people"], base_path="...")
 | `copy` | Duplicate file(s) into a folder, originals untouched — single or batch | `file_id` (str or list), `folder_id`, `title` |
 | `move` | Move file(s) between folders — single or batch | `file_id` (str or list), `folder_id` |
 | `rename` | Rename a file in-place | `file_id`, `title` |
-| `share` | Share file with people (confirm gate) | `file_id`, `to`, `confirm=True` |
+| `share` | Share file with people (confirm gate — two paths, see Share below) | `file_id`, `to`, `role`; then the client's dialog OR `confirm=True` |
 | `overwrite` | Replace full file content (Google Doc or plain file; Sheets: CSV content, `range=` aims a tab or cells; Forms: YAML/JSON spec replaces all questions) | `file_id`, `content` OR `source` |
 | `prepend` | Insert at start of file | `file_id`, `content` |
 | `append` | Insert at end of file — or, with `tab='Title'`, place content in a NEW Google Doc tab | `file_id`, `content`, optional `tab` |
@@ -637,7 +637,7 @@ do(operation="share", file_id="1abc...", to="alice@example.com", confirm=True)
 do(operation="share", file_id="1abc...", to="alice@example.com, bob@example.com", role="writer", confirm=True)
 ```
 
-**Share requires user approval.** The first call without `confirm=True` always returns a preview. Show it to the user and only call again with `confirm=True` after they approve. Roles: `reader` (default), `writer`, `commenter`.
+**Share requires user approval, and there are two honest paths to it.** Call once WITHOUT `confirm=True`. In a client that renders MCP elicitation (Claude Code's interactive TUI does — measured live 2026-09-14 on CC 2.1.270), the server parks the call and the client shows the human a dialog carrying the preview text; you never see it. Accepted with Proceed ticked → the share executes and `cues.confirm_gate` reads `elicitation: the client answered proceed=true; shared on that answer`. Declined → nothing shared, `cues.confirm_gate` says so and `confirm_required` is withdrawn: the user said no, so do not call again with `confirm=True`. Where no dialog can render — `claude -p`, a client without the capability — the same call returns the preview with `confirm_required` and a `confirm_gate` cue of `cancel`; show the preview, and call again with `confirm=True` on the user's yes. A pre-supplied `confirm=True` skips the dialog and executes (Sameer's policy A, 2026-09-06). Never write "the human approved" from the cue: the server cannot tell a person's accept from an auto-resolved one — the client's UI is the trust anchor. Roles: `reader` (default), `writer`, `commenter`.
 
 **Non-Google accounts** (iCloud, Outlook, etc.): Google requires a notification email. The tool handles this automatically — check `cues.notified` to see which recipients got an invite email.
 
@@ -974,7 +974,7 @@ Both draft ops auto-append the user's Gmail signature (from their sendAs setting
 | `replace_text` without checking cues | No longer silent, but still a no-op | Read `cues.warning` for `NO CHANGE`, or `cues.occurrences_changed > 0` |
 | A find string copied from `content.md` | `**`, `` ` ``, `~~`, `{++` are rendering, not document text — can never match | Search the plain words; the `NO CHANGE` warning names the marker |
 | A find string spanning a PDF page break | The form feed can never be in a Doc — Docs deletes it on every write | Search within one page; the warning names the character |
-| Share with `confirm=True` without preview | Bypasses user approval | Always call without confirm first, show preview, then confirm |
+| Share with `confirm=True` first time | Skips the client's dialog AND the preview — the yes came from you | Call without confirm first; the dialog or the preview carries the human's yes |
 | Archive/star one thread at a time | Slow — one tool call per thread | Pass `file_id` as a list for batch operations |
 | Looking for a `mark_read` operation | Doesn't exist | Use `label` with `label="UNREAD"`, `remove=True` |
 

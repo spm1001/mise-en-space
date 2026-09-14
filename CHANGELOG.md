@@ -34,6 +34,11 @@
   unchanged. Result cues name the mechanism and the client's answer, never
   "the human approved" — the model cannot tell those apart. Seam:
   `tools/elicit.py`.
+  Seen live 2026-09-14 (CC 2.1.270, hublot-driven TUI, `--mcp-config` on this
+  tree): the dialog renders with the preview text, Accept shares with the
+  mechanism-naming cue, Decline shares nothing, and `claude -p` auto-cancels
+  to the confirm= preview — captures in `docs/research/2026-09-14-jonoha-hublot/`.
+  The skill's Share section now describes both paths (mise-wagina step 4, share half).
 - **`suggest=True` proposes instead of editing.** On `prepend`, `append` and
   `replace_text` against a Google Doc, the batchUpdate carries
   `writeControl.writeMode=SUGGEST`, so the edit arrives as a tracked change

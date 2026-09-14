@@ -1,0 +1,40 @@
+● Loading the tool's schema first (the harness requires it), then calling it once.
+  Called elicitprobe
+● {
+    "client_info": {
+      "name": "claude-code",
+      "title": "Claude Code",
+      "version": "2.1.270",
+      "description": "Anthropic's agentic coding tool",
+      "website_url": "https://claude.com/claude-code",
+      "icons": null
+    },
+    "protocol_version": "2025-11-25",
+    "capabilities": {
+      "experimental": null,
+      "sampling": null,
+      "elicitation": {
+        "form": null,
+        "url": null
+      },
+      "roots": {
+        "list_changed": true
+      },
+      "extensions": null,
+      "tasks": null
+    }
+  }
+  One note on the "no other tool" instruction: the tool was deferred, so I had to run one ToolSearch to load its schema before it could be called. No other tools were
+  used, and the probe itself ran exactly once.
+✻ Sautéed for 16s · done 22:46
+❯ Now call the MCP tool mcp__miseclone__do exactly once with these arguments and NO others: operation='share', file_id='1nefktlIoI2f8QOKPiZmuGcH7fS0GmwCNC3LyWm0805k',
+  to='sameer.modha@itv.com'. Do NOT pass confirm. Whatever dialog appears, leave it to me. Afterwards paste the raw JSON result verbatim in a code block, no summary.
+● Loading the schema, then making the single call as specified.
+● Calling miseclone · 6s…
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  MCP server “miseclone” requests your input
+  Would share 'mise-jonoha elicitation probe 2026-09-14 (scratch — safe to trash)' with sameer.modha@itv.com as reader
+  ❯ * Proceed: ☐
+        Go ahead?
+    Accept    Decline
+  Esc to cancel · ↑/↓ to navigate · Backspace to unset · Space to toggle
