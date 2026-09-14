@@ -952,6 +952,13 @@ class CalendarSearchResult:
     events: list[CalendarEvent]
     truncated: bool = False  # events dropped by the max_results cap or scan bound
     warnings: list[str] = field(default_factory=list)
+    # Which calendars were read (mise-cegeva): [{id, summary, primary}] — the
+    # fan-out's coverage, so a null can be read as "none on THESE" rather than
+    # "none anywhere". A single-calendar read lists just that one.
+    calendars: list[dict[str, Any]] = field(default_factory=list)
+    # Why calendarList could not be read, when it could not — the fan-out then
+    # fell back to 'primary'. The tools layer turns this into the re-consent cue.
+    calendar_list_error: str | None = None
 
 
 @dataclass

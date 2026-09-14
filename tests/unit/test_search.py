@@ -38,6 +38,12 @@ def _not_guest_mode(monkeypatch):
     flips mise into guest mode, where omitted search sources default to
     ['drive'] — the very contract several tests here pin for NORMAL mode.
     The guest-mode test below sets the var itself, which overrides this.
+
+    The price: an UNPATCHED adapter call in this module reads the developer's
+    live token. Calendar paths patch `tools.search.list_all_events` (the
+    default fan-out) or `tools.search.list_events` (calendar_id= given) —
+    when the seam moved on 2026-09-14 (mise-cegeva), a test still patched at
+    the old name read 20 real events from a live diary before anyone noticed.
     """
     monkeypatch.delenv("MISE_TOKEN_PATH", raising=False)
 from tools.search import (
@@ -694,7 +700,7 @@ class TestPreviewPartialCue:
         assert result.sources == ["gmail"]
 
     @patch('tools.search.write_search_results')
-    @patch('tools.search.list_events')
+    @patch('tools.search.list_all_events')
     def test_calendar_gets_query_and_truncation_cue(self, mock_calendar, mock_write) -> None:
         """Calendar receives the user's query and a truncated result raises
         the calendar_truncated cue (mise-bidopi)."""
@@ -709,7 +715,7 @@ class TestPreviewPartialCue:
         assert "nearest to now" in result.cues["calendar_truncated"]
 
     @patch('tools.search.write_search_results')
-    @patch('tools.search.list_events')
+    @patch('tools.search.list_all_events')
     def test_calendar_no_cue_when_complete(self, mock_calendar, mock_write) -> None:
         """No truncation cue when the window fit within the cap."""
         from models import CalendarSearchResult
@@ -1379,7 +1385,7 @@ class TestCalendarSearch:
     """Test calendar source in do_search."""
 
     @patch('tools.search.write_search_results')
-    @patch('tools.search.list_events')
+    @patch('tools.search.list_all_events')
     def test_calendar_only(self, mock_calendar, mock_write) -> None:
         """Calendar-only search returns events."""
         mock_calendar.return_value = CalendarSearchResult(
@@ -1394,7 +1400,7 @@ class TestCalendarSearch:
         assert result.calendar_results[0]["summary"] == "Team Sync"
 
     @patch('tools.search.write_search_results')
-    @patch('tools.search.list_events')
+    @patch('tools.search.list_all_events')
     @patch('tools.search.search_files')
     def test_drive_enriched_with_calendar(self, mock_drive, mock_calendar, mock_write) -> None:
         """Drive results get meeting_context when calendar has matching attachments."""
@@ -1419,7 +1425,7 @@ class TestCalendarSearch:
         assert result.drive_results[0]["meeting_context"][0]["summary"] == "Team standup"
 
     @patch('tools.search.write_search_results')
-    @patch('tools.search.list_events')
+    @patch('tools.search.list_all_events')
     @patch('tools.search.search_files')
     def test_no_enrichment_when_no_matches(self, mock_drive, mock_calendar, mock_write) -> None:
         """No meeting_context added when calendar has no matching attachments."""
@@ -1436,7 +1442,7 @@ class TestCalendarSearch:
         assert "meeting_context" not in result.drive_results[0]
 
     @patch('tools.search.write_search_results')
-    @patch('tools.search.list_events')
+    @patch('tools.search.list_all_events')
     def test_calendar_error_captured(self, mock_calendar, mock_write) -> None:
         """Calendar failure captured in errors."""
         mock_calendar.side_effect = MiseError(ErrorKind.NETWORK_ERROR, "timeout")
@@ -1448,7 +1454,7 @@ class TestCalendarSearch:
         assert any("Calendar search failed" in e for e in result.errors)
 
     @patch('tools.search.write_search_results')
-    @patch('tools.search.list_events')
+    @patch('tools.search.list_all_events')
     @patch('tools.search.search_files')
     def test_calendar_excluded_by_folder_id(self, mock_drive, mock_calendar, mock_write) -> None:
         """Calendar source dropped when folder_id is set."""
@@ -1638,7 +1644,7 @@ class TestCalendarTimeWindow:
     """Explicit time_min/time_max on search (mise-riduka)."""
 
     @patch('tools.search.write_search_results')
-    @patch('tools.search.list_events')
+    @patch('tools.search.list_all_events')
     def test_window_threads_to_adapter_parsed(self, mock_calendar, mock_write) -> None:
         """ISO strings arrive at the adapter as aware datetimes — a bare date
         as time_max widened to the END of its day."""
@@ -1655,7 +1661,7 @@ class TestCalendarTimeWindow:
         assert "calendar window" in result.cues["calendar_window"]
 
     @patch('tools.search.write_search_results')
-    @patch('tools.search.list_events')
+    @patch('tools.search.list_all_events')
     def test_unfiltered_default_window_needs_no_query(self, mock_calendar, mock_write) -> None:
         """sources=['calendar'] with no query lists the default ±7d window."""
         mock_calendar.return_value = CalendarSearchResult(events=[_make_calendar_event()])
@@ -1669,7 +1675,7 @@ class TestCalendarTimeWindow:
         assert "calendar_window" not in result.cues
 
     @patch('tools.search.write_search_results')
-    @patch('tools.search.list_events')
+    @patch('tools.search.list_all_events')
     def test_explicit_window_truncation_teaches_the_cursor(self, mock_calendar, mock_write) -> None:
         mock_calendar.return_value = CalendarSearchResult(
             events=[_make_calendar_event()], truncated=True)

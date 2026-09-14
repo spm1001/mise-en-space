@@ -133,7 +133,7 @@ def search(
         query: Search terms. Optional when type or folder_id is set.
         sources: ['drive', 'gmail'] — default: both (drive only in guest mode). Also: 'activity' (recent comments), 'calendar' (events, ±7 days unless time_min/time_max), 'people' (staff directory: role, dept, reporting line — mise://docs/search)
         max_results: Maximum results per source
-        base_path: Directory for deposits (pass your cwd so files land next to your project, not the MCP server's directory)
+        base_path: Directory for deposits — pass your cwd so files land beside your project
         folder_id: Optional Drive folder ID to scope results to immediate children
             only. Non-recursive; forces sources=['drive'] (Gmail has no folders).
         type: Optional Drive file type filter. Applies to Drive only.
@@ -146,7 +146,7 @@ def search(
         time_min: Calendar window start — ISO date/datetime, any range (historical fine),
             no query term needed ('what is in the diary 3–5 Aug?').
         time_max: Window end; a bare date runs to the END of that day.
-        calendar_id: colleague's email — their visible diary, ACL-gated; forces sources=['calendar'].
+        calendar_id: colleague's email (ACL-gated; forces sources=['calendar']); omitted = all calendars in your list, 'primary' = yours only.
 
     Returns:
         path: Path to deposited search results JSON; query/sources echoed

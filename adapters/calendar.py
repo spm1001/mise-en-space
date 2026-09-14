@@ -213,20 +213,27 @@ def list_events(
     truncated = bool(page_token)
 
     events = [_parse_event(item) for item in items]
+    events, capped = _cap_events(events, max_results, explicit_window, now)
+    read = {"id": calendar_id, "summary": calendar_id, "primary": calendar_id == "primary"}
+    return CalendarSearchResult(events=events, truncated=truncated or capped, calendars=[read])
 
-    if len(events) > max_results:
-        truncated = True
-        if explicit_window:
-            # Caller stated the window: keep the chronological head, a
-            # deterministic cursor (advance time_min past the last event).
-            events.sort(key=_event_start_dt)
-            events = events[:max_results]
-        else:
-            # Keep the events nearest to now, then restore chronological order.
-            events = sorted(events, key=lambda e: abs(_event_start_dt(e) - now))[:max_results]
-            events.sort(key=_event_start_dt)
 
-    return CalendarSearchResult(events=events, truncated=truncated)
+def _cap_events(
+    events: list[CalendarEvent], max_results: int, explicit_window: bool, now: datetime,
+) -> tuple[list[CalendarEvent], bool]:
+    """The max_results cap; survivors depend on the window kind (see list_events).
+    Shared with adapters/calendar_list.py so the fan-out merge overflows the same way."""
+    if len(events) <= max_results:
+        return events, False
+    if explicit_window:
+        # Caller stated the window: keep the chronological head, a
+        # deterministic cursor (advance time_min past the last event).
+        events = sorted(events, key=_event_start_dt)[:max_results]
+    else:
+        # Keep the events nearest to now, then restore chronological order.
+        events = sorted(events, key=lambda e: abs(_event_start_dt(e) - now))[:max_results]
+        events.sort(key=_event_start_dt)
+    return events, True
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
@@ -414,9 +421,10 @@ _TZ_CACHE: list[str | None] = []
 def resolve_calendar_timezone() -> str | None:
     """The user's IANA timezone, read from their own diary.
 
-    calendars.get('primary') needs a scope mise doesn't hold (probed 403,
-    2026-08-19), but UI-created events carry start.timeZone — the diary
-    itself is the source. Recurring events REQUIRE an IANA zone to survive
+    calendars.get('primary') needed a scope mise didn't hold (probed 403,
+    2026-08-19; calendar.readonly covers it since 2026-09-14, but tokens
+    predating that still lack it), and UI-created events carry
+    start.timeZone — the diary itself is the source. Recurring events REQUIRE an IANA zone to survive
     DST (a fixed offset turns a 10:00 BST series into 09:00 after the clock
     change), which is why callers resolve this rather than passing offsets.
 

@@ -78,6 +78,20 @@ SCOPES = [
     # working for reads; the respond op teaches re-auth on 403.
     'https://www.googleapis.com/auth/calendar.events',
 
+    # Calendar list: WHICH calendars this account can see (mise-cegeva,
+    # 2026-09-14). calendar.events reads events on any calendar you can NAME
+    # but never users/me/calendarList — probed 2026-09-12: calendarList 403'd
+    # while events.list on a shared family calendar answered — so a search
+    # that assumed 'primary' silently missed every calendar shared into the
+    # account. With this scope the default calendar search fans out over the
+    # list and cues which calendars it read. Sameer chose the scope over a
+    # configured calendar_ids list (Option B) on 12 and 13 Sep. ONE-OFF
+    # RE-CONSENT for every mise user: a token minted before this date lacks
+    # the scope, calendarList 403s, and search falls back to 'primary' with a
+    # cues.calendar_scope line teaching setup_oauth(force=True) until the
+    # token carries it. Every other calendar call keeps working meanwhile.
+    'https://www.googleapis.com/auth/calendar.readonly',
+
     # Free/busy: colleagues' availability for scheduling (mise-rijeco).
     # freebusy.query does NOT accept calendar.events (probed live 2026-08-19:
     # 403 insufficient scopes on the working events token) — its accepted set

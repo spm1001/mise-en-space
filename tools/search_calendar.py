@@ -116,6 +116,41 @@ def _enrich_drive_results_with_meetings(
             dr["meeting_context"] = meeting_index[file_id]
 
 
+def calendars_read_cue(calendars: list[dict[str, Any]]) -> str:
+    """Name every calendar the fan-out read (mise-cegeva) — a null on the
+    calendar lane is a statement about THESE calendars, not about every diary
+    the account can name. A calendar's own summary first; the id in brackets
+    where it differs, so a reader can pass it as calendar_id."""
+    names = []
+    for cal in calendars:
+        summary, cal_id = cal.get("summary") or cal["id"], cal["id"]
+        label = "primary" if cal.get("primary") else cal_id
+        names.append(summary if summary == label else f"{summary} ({label})")
+    n = len(calendars)
+    return (
+        f"calendars read: {', '.join(names)} — {n} calendar{'s' if n != 1 else ''} "
+        "from your calendar list. An event absent here is absent from these; a "
+        "colleague's diary is a calendar_id= away."
+    )
+
+
+def calendar_list_refused_cue(reason: str) -> str:
+    """The re-consent cue (mise-cegeva): fires until the token carries
+    calendar.readonly. Says what WAS read, what was not, and the one move
+    that fixes it — the freebusy 403 teaching pattern, on a degraded path
+    rather than an error."""
+    # retry._format_http_error appends Google's own reason after " | API: ";
+    # the URL and MDN link ahead of it teach nothing here.
+    reason = reason.split(" | API: ", 1)[-1].strip()
+    return (
+        "only 'primary' was read — listing your calendars needs the "
+        "calendar.readonly scope, added 2026-09-14, and this token predates it "
+        f"(Google said: {reason}). Calendars shared into this account were NOT "
+        "searched, so a null here says nothing about them. Run "
+        "do(operation='setup_oauth', force=True) to re-consent once, then retry."
+    )
+
+
 def calendar_window_cue(
     window_min: datetime | None, window_max: datetime | None
 ) -> str:

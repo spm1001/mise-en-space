@@ -6,6 +6,35 @@
 > intentionally absent — the shipped version number can therefore be ahead of
 > the newest entry here.
 
+## [Unreleased] (mise-cegeva)
+
+### Added
+- **Calendar search reads every calendar in your list, not just primary, and
+  says which.** `oauth_config.py` now requests `calendar.readonly`:
+  `calendar.events` reads events on a calendar you can NAME but never
+  `users/me/calendarList`, so a search that assumed `primary` silently missed
+  every calendar shared into the account (a family calendar's "Go for a run"
+  was invisible on primary, 2026-09-12). Without `calendar_id`, `search`
+  fans `list_events` out over the account's calendar list in parallel,
+  merges (duplicate event ids collapse, primary's copy first), applies the
+  usual overflow selection, and `cues.calendars_read` names every calendar
+  covered — a null is "none on these", never "none anywhere".
+  `calendar_id="primary"` restricts to your own. Seams:
+  `adapters/calendar_list.py` (`list_calendars`, `list_all_events`),
+  `tools/search_calendar.py` (the two cues). Sameer chose the scope over a
+  configured `calendar_ids` list, 12 and 13 Sep.
+
+### Changed
+- **One-off re-consent for every mise user, both flavours.** A token minted
+  before this release lacks `calendar.readonly`: `calendarList` returns 403,
+  search falls back to `primary` and `cues.calendar_scope` fires on every
+  calendar search until the token carries the scope — naming what was read,
+  what was not, and `do(operation='setup_oauth', force=True)` as the one move
+  that fixes it. Every other calendar call keeps working meanwhile; nothing
+  errors. The Calendar API was already enabled on both OAuth projects (the
+  events scope has been live since 2026-08-09), so no console step precedes
+  the consent click.
+
 ## [Unreleased] (mise-hopife)
 
 ### Fixed

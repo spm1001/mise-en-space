@@ -13,6 +13,7 @@ from adapters.drive import search_files
 from adapters.gmail import search_threads
 from adapters.activity import search_comment_activities
 from adapters.calendar import list_events
+from adapters.calendar_list import list_all_events
 from adapters.people import attach_profiles, expand_profile, search_people
 from models import (
     CalendarEvent,
@@ -41,6 +42,8 @@ from tools.search_format import (
 )
 from tools.search_calendar import (
     calendar_acl_note,
+    calendar_list_refused_cue,
+    calendars_read_cue,
     validate_calendar_id,
     _build_meeting_context_index,
     _enrich_drive_results_with_meetings,
@@ -261,9 +264,15 @@ def do_search(
         # Query rides the API's q filter. The default window is ±7 days with
         # nearest-NOW kept on overflow (mise-bidopi — the cap must not eat
         # the future); an explicit window keeps the chronological head.
-        return list_events(max_results=max_results, query=query,
-                           time_min=window_min, time_max=window_max,
-                           calendar_id=calendar_id or "primary")
+        # No calendar_id: EVERY calendar in the account's list (mise-cegeva —
+        # a shared calendar's events are invisible from primary alone). A
+        # named one, 'primary' included, reads that calendar only.
+        if calendar_id:
+            return list_events(max_results=max_results, query=query,
+                               time_min=window_min, time_max=window_max,
+                               calendar_id=calendar_id)
+        return list_all_events(max_results=max_results, query=query,
+                               time_min=window_min, time_max=window_max)
 
     # Run searches in parallel
     futures: dict[str, Future[Any]] = {}
@@ -366,6 +375,14 @@ def do_search(
                     "their sharing; transparency/event_type/room_hold fields "
                     "carry the judgement facts, the judging is yours"
                 )
+            else:
+                result.cues["calendars_read"] = calendars_read_cue(calendar_search.calendars)
+                if calendar_search.calendar_list_error:
+                    result.cues["calendar_scope"] = calendar_list_refused_cue(
+                        calendar_search.calendar_list_error
+                    )
+                if calendar_search.warnings:
+                    result.cues["calendar_warnings"] = calendar_search.warnings
             explicit_window = window_min is not None or window_max is not None
             if explicit_window:
                 result.cues["calendar_window"] = calendar_window_cue(window_min, window_max)

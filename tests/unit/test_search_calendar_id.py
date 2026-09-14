@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from models import CalendarEvent, CalendarSearchResult
+from models import CalendarEvent, CalendarSearchResult, ErrorKind, MiseError
 from tools.search import do_search
 from tools.search_calendar import (
     calendar_acl_note,
@@ -100,3 +100,70 @@ class TestSearchWiring:
 def test_acl_note_names_freebusy():
     note = calendar_acl_note("stef@itv.com")
     assert "freebusy" in note and "stef@itv.com" in note
+
+
+class TestFanOutWiring:
+    """The default calendar search reads every calendar in the list
+    (mise-cegeva) and says which. Adapter seams: adapters.calendar_list's
+    own list_calendars/list_events, so do_search → list_all_events runs real."""
+
+    _TWO = [
+        {"id": "primary", "summary": "Sameer Modha", "primary": True},
+        {"id": "family@planetmodha.com", "summary": "Family", "primary": False},
+    ]
+
+    @patch("adapters.calendar_list.list_events")
+    @patch("adapters.calendar_list.list_calendars")
+    def test_event_only_on_a_shared_calendar_is_found(self, mock_cals, mock_events, tmp_path):
+        """The card's regression: 'Go for a run' lived on the family calendar
+        and a primary-only search read it as no events."""
+        mock_cals.return_value = list(self._TWO)
+        mock_events.side_effect = lambda **kw: CalendarSearchResult(
+            events=[_event(event_id="run1", summary="Go for a run Sameer")]
+            if kw["calendar_id"] == "family@planetmodha.com" else [])
+
+        result = do_search(query="run", sources=["calendar"], base_path=tmp_path)
+
+        assert [r["summary"] for r in result.calendar_results] == ["Go for a run Sameer"]
+        cue = result.cues["calendars_read"]
+        assert "Sameer Modha" in cue and "Family (family@planetmodha.com)" in cue
+        assert "2 calendars" in cue
+        assert "calendar_scope" not in result.cues
+
+    @patch("adapters.calendar_list.list_events")
+    @patch("adapters.calendar_list.list_calendars",
+           side_effect=MiseError(ErrorKind.PERMISSION_DENIED, "insufficient authentication scopes"))
+    def test_pre_scope_token_gets_primary_and_the_reconsent_cue(self, _cals, mock_events, tmp_path):
+        mock_events.return_value = CalendarSearchResult(events=[_event()])
+
+        result = do_search(query="", sources=["calendar"], base_path=tmp_path)
+
+        assert len(result.calendar_results) == 1  # primary still answered
+        assert result.errors == []                 # degraded, not failed
+        scope = result.cues["calendar_scope"]
+        assert "calendar.readonly" in scope and "setup_oauth" in scope and "force=True" in scope
+        assert "insufficient authentication scopes" in scope
+        assert "primary" in result.cues["calendars_read"]
+
+    @patch("tools.search.list_all_events")
+    @patch("tools.search.list_events")
+    def test_named_primary_reads_one_calendar_not_the_list(self, mock_one, mock_all, tmp_path):
+        mock_one.return_value = CalendarSearchResult(events=[_event()])
+        result = do_search(query="", sources=None, base_path=tmp_path, calendar_id="primary")
+        mock_all.assert_not_called()
+        assert mock_one.call_args.kwargs["calendar_id"] == "primary"
+        assert "calendars_read" not in result.cues and "calendar_id" in result.cues
+
+    @patch("adapters.calendar_list.list_events")
+    @patch("adapters.calendar_list.list_calendars")
+    def test_a_calendar_that_refuses_is_a_warning_not_a_failure(self, mock_cals, mock_events, tmp_path):
+        mock_cals.return_value = list(self._TWO)
+        def per_calendar(**kw):
+            if kw["calendar_id"] == "family@planetmodha.com":
+                raise MiseError(ErrorKind.NOT_FOUND, "Not Found")
+            return CalendarSearchResult(events=[_event()])
+        mock_events.side_effect = per_calendar
+        result = do_search(query="", sources=["calendar"], base_path=tmp_path)
+        assert len(result.calendar_results) == 1 and result.errors == []
+        assert any("family@planetmodha.com" in w for w in result.cues["calendar_warnings"])
+        assert "Family" not in result.cues["calendars_read"]
