@@ -693,3 +693,20 @@ class TestParseEventProperties:
     def test_defaults_empty(self) -> None:
         event = _parse_event({"id": "e1", "summary": "S", "start": {}, "end": {}})
         assert event.extended_properties == {}
+
+
+class TestCalendarIdEncoding:
+    """A calendar id with a '#' (Google's holiday calendars) must be percent-encoded
+    in the events path — raw, the '#' truncates the URL and the API answers 404
+    (found live 2026-09-15, the first calendar-list fan-out after the readonly scope landed)."""
+
+    @patch("retry.time.sleep")
+    @patch("adapters.calendar.get_sync_client")
+    def test_hash_in_calendar_id_is_encoded(self, mock_get_client, _sleep):
+        client = MagicMock()
+        client.get_json.return_value = {"items": []}
+        mock_get_client.return_value = client
+        list_events(calendar_id="en-gb.uk.official#holiday@group.v.calendar.google.com")
+        url = client.get_json.call_args.args[0]
+        assert "#" not in url
+        assert "en-gb.uk.official%23holiday%40group.v.calendar.google.com/events" in url

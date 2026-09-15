@@ -10,6 +10,7 @@ MiseHttpClient (async) when the tools/server layer goes async.
 """
 
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 from typing import Any
 
 from adapters.http_client import get_sync_client
@@ -201,7 +202,7 @@ def list_events(
         if page_token:
             params["pageToken"] = page_token
         response = client.get_json(
-            f"{_CALENDAR_API}/{calendar_id}/events",
+            f"{_CALENDAR_API}/{quote(calendar_id, safe='')}/events",
             params=params,
         )
         items.extend(response.get("items", []))
@@ -400,7 +401,7 @@ def list_status_events(
     """
     client = get_sync_client()
     response = client.get_json(
-        f"{_CALENDAR_API}/{calendar_id}/events",
+        f"{_CALENDAR_API}/{quote(calendar_id, safe='')}/events",
         params={
             "timeMin": time_min.isoformat(),
             "timeMax": time_max.isoformat(),
