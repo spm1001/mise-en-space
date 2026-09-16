@@ -6,7 +6,7 @@
 > intentionally absent — the shipped version number can therefore be ahead of
 > the newest entry here.
 
-## [Unreleased] (mise-gudeci)
+## [1.85.15] - 2026-09-16 (mise-gudeci)
 
 ### Fixed
 - **A calendar the fan-out could not read is now counted, named and
