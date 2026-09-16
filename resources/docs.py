@@ -191,9 +191,9 @@ On overflow the two window kinds keep different survivors, cued in
 NOW (tomorrow's meeting must survive a busy week); an explicit window keeps
 the chronological HEAD — advance `time_min` past the last event to page.
 
-No `calendar_id` = EVERY calendar in your list (shared too); `cues.calendars_read`
-names them — a null is "none on these", never "none anywhere". `cues.calendar_scope`
-= token predates calendar.readonly: only primary read, re-consent as it says.
+No `calendar_id` = EVERY calendar in your list (shared too); `cues.calendars_read` names
+them, and reads "N of M … K could not be read" + `cues.calendars_failed` when one refused —
+a null is "none on these", never "none anywhere". `cues.calendar_scope` = re-consent needed.
 
 ## Notes
 

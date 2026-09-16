@@ -85,8 +85,10 @@ def list_all_events(
     Two degraded paths, both disclosed rather than raised: calendarList
     refused (a token predating calendar.readonly) falls back to 'primary'
     and sets .calendar_list_error for the tools layer to turn into the
-    re-consent cue; one calendar failing to read is a .warnings line and the
-    rest still answer. Read what you can, say what you could not.
+    re-consent cue; one calendar failing to read becomes a .calendars_failed
+    record plus a .warnings line while the rest still answer — so coverage is
+    .calendars + .calendars_failed, never .calendars alone (mise-gudeci). Read
+    what you can, say what you could not.
     """
     now = datetime.now(timezone.utc)
     explicit_window = time_min is not None or time_max is not None
@@ -119,8 +121,17 @@ def list_all_events(
     seen: set[str] = set()
     truncated = False
     read: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
     for cal, outcome in zip(calendars, outcomes):
         if isinstance(outcome, MiseError):
+            # Both channels, deliberately: .warnings is the prose a library caller
+            # already reads; .calendars_failed is the record the tools layer needs
+            # to count coverage honestly (mise-gudeci). A 404 (the id) and a 403
+            # (their sharing) are both named, never swallowed.
+            failed.append({
+                "id": cal["id"], "summary": cal["summary"],
+                "kind": outcome.kind.value, "error": outcome.message,
+            })
             warnings.append(
                 f"{cal['summary']} ({cal['id']}) could not be read: {outcome.message}"
             )
@@ -139,5 +150,6 @@ def list_all_events(
         truncated=truncated or capped,
         warnings=warnings,
         calendars=read,
+        calendars_failed=failed,
         calendar_list_error=list_error,
     )

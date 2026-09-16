@@ -134,6 +134,11 @@ class TestListAllEvents:
         assert len(result.events) == 1
         assert [c["id"] for c in result.calendars] == ["primary"]  # read, not listed
         assert result.warnings and "gone@x.com" in result.warnings[0]
+        # mise-gudeci: the miss travels as a record, not only as prose — the tools
+        # layer counts coverage as calendars + calendars_failed
+        assert result.calendars_failed == [
+            {"id": "gone@x.com", "summary": "Gone", "kind": "not_found", "error": "Not Found"}
+        ]
 
     @patch("adapters.calendar_list.list_events")
     @patch("adapters.calendar_list.list_calendars")

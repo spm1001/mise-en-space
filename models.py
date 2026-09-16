@@ -956,6 +956,11 @@ class CalendarSearchResult:
     # fan-out's coverage, so a null can be read as "none on THESE" rather than
     # "none anywhere". A single-calendar read lists just that one.
     calendars: list[dict[str, Any]] = field(default_factory=list)
+    # Calendars in the list the fan-out could NOT read (mise-gudeci):
+    # [{id, summary, kind, error}]. Coverage is calendars + calendars_failed —
+    # a cue that counts only the readable ones claims a completeness it lacks
+    # (six named 'from your calendar list' when the list held eight, 15 Sep).
+    calendars_failed: list[dict[str, Any]] = field(default_factory=list)
     # Why calendarList could not be read, when it could not — the fan-out then
     # fell back to 'primary'. The tools layer turns this into the re-consent cue.
     calendar_list_error: str | None = None

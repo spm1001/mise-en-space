@@ -376,7 +376,11 @@ def do_search(
                     "carry the judgement facts, the judging is yours"
                 )
             else:
-                result.cues["calendars_read"] = calendars_read_cue(calendar_search.calendars)
+                result.cues["calendars_read"] = calendars_read_cue(
+                    calendar_search.calendars, calendar_search.calendars_failed
+                )
+                if calendar_search.calendars_failed:  # which, and why (mise-gudeci)
+                    result.cues["calendars_failed"] = calendar_search.calendars_failed
                 if calendar_search.calendar_list_error:
                     result.cues["calendar_scope"] = calendar_list_refused_cue(
                         calendar_search.calendar_list_error

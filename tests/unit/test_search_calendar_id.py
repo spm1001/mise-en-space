@@ -128,6 +128,7 @@ class TestFanOutWiring:
         cue = result.cues["calendars_read"]
         assert "Sameer Modha" in cue and "Family (family@planetmodha.com)" in cue
         assert "2 calendars" in cue
+        assert "could not be read" not in cue and "calendars_failed" not in result.cues
         assert "calendar_scope" not in result.cues
 
     @patch("adapters.calendar_list.list_events")
@@ -166,4 +167,49 @@ class TestFanOutWiring:
         result = do_search(query="", sources=["calendar"], base_path=tmp_path)
         assert len(result.calendar_results) == 1 and result.errors == []
         assert any("family@planetmodha.com" in w for w in result.cues["calendar_warnings"])
-        assert "Family" not in result.cues["calendars_read"]
+        # mise-gudeci: the coverage headline counts the whole list and names the
+        # miss itself, rather than counting survivors as if they were the list
+        cue = result.cues["calendars_read"]
+        assert "1 of 2" in cue and "1 could not be read" in cue
+        assert "Family (family@planetmodha.com)" in cue
+        assert result.cues["calendars_failed"] == [
+            {"id": "family@planetmodha.com", "summary": "Family",
+             "kind": "not_found", "error": "Not Found"}
+        ]
+
+    @patch("adapters.calendar_list.list_events")
+    @patch("adapters.calendar_list.list_calendars")
+    def test_coverage_says_six_of_eight_when_two_holiday_calendars_404(
+        self, mock_cals, mock_events, tmp_path
+    ):
+        """The 15 Sep incident (mise-gudeci): two '#'-bearing holiday calendars
+        404'd and the cue said six 'from your calendar list' as though six were
+        the list. Coverage counts the whole list; the misses are named with
+        Google's reason, not its URL."""
+        uk = "en-gb.uk.official#holiday@group.v.calendar.google.com"
+        usa = "en-gb.usa.official#holiday@group.v.calendar.google.com"
+        mock_cals.return_value = list(self._TWO) + [
+            {"id": f"team{i}@itv.com", "summary": f"Team {i}", "primary": False}
+            for i in range(4)
+        ] + [
+            {"id": uk, "summary": "Holidays in United Kingdom", "primary": False},
+            {"id": usa, "summary": "Holidays in United States", "primary": False},
+        ]
+        def per_calendar(**kw):
+            if "#holiday" in kw["calendar_id"]:  # the with_retry-formatted message shape
+                raise MiseError(ErrorKind.NOT_FOUND,
+                                "Client error '404 Not Found' for url "
+                                "'https://www.googleapis.com/calendar/v3/calendars/x/events' "
+                                "| API: Not Found")
+            return CalendarSearchResult(events=[])
+        mock_events.side_effect = per_calendar
+
+        result = do_search(query="", sources=["calendar"], base_path=tmp_path)
+
+        assert result.errors == []
+        cue = result.cues["calendars_read"]
+        assert "6 of 8" in cue and "2 could not be read" in cue
+        assert uk in cue and usa in cue and "not found" in cue
+        assert "https://" not in cue  # Google's reason teaches; its URL does not
+        assert [f["id"] for f in result.cues["calendars_failed"]] == [uk, usa]
+        assert result.cues["calendars_failed"][0]["kind"] == "not_found"

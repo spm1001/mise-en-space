@@ -6,6 +6,24 @@
 > intentionally absent — the shipped version number can therefore be ahead of
 > the newest entry here.
 
+## [Unreleased] (mise-gudeci)
+
+### Fixed
+- **A calendar the fan-out could not read is now counted, named and
+  explained in the coverage cue, not dropped from it.** On the first live
+  calendar-list read (15 Sep) two of eight calendars 404'd and
+  `cues.calendars_read` said "6 calendars from your calendar list" as though
+  six were the list — an event on the two that failed was absent with no
+  other sign. Now the headline reads "6 of 8 calendars in your calendar
+  list. 2 could not be read — <name> (<id>): not found (<Google's reason>)
+  …", and `cues.calendars_failed` carries the same as records
+  `[{id, summary, kind, error}]`. `CalendarSearchResult.calendars_failed`
+  is the adapter-side field (beside the existing `.warnings` prose, which
+  library callers already read); coverage is `.calendars` plus
+  `.calendars_failed`, never `.calendars` alone. A 404 (the id) and a 403
+  (their sharing) are both named. Seams: `adapters/calendar_list.py`,
+  `tools/search_calendar.py::calendars_read_cue`.
+
 ## [Unreleased] (mise-cegeva)
 
 ### Added
