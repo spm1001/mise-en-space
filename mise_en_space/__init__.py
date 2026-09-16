@@ -133,7 +133,7 @@ class Mise:
         query: str = "",
         sources: list[str] | None = None,
         max_results: int = 20,
-        base_path: Path | None = None,
+        base_path: Path | str | None = None,
         folder_id: str | None = None,
         type: str | None = None,  # shadows the builtin for parity with the tool surface
         raw_query: str | None = None,
@@ -155,7 +155,9 @@ class Mise:
             query=query,
             sources=sources,
             max_results=max_results,
-            base_path=base_path or self.base_path,
+            # The facade is the edge: a str here is a caller's convenience, and
+            # the tools layer does `base_path / DEPOSIT_DIR` (mise-zapelu).
+            base_path=Path(base_path) if base_path else self.base_path,
             folder_id=folder_id,
             type=type,
             raw_query=raw_query,
@@ -167,7 +169,7 @@ class Mise:
     def fetch(
         self,
         file_id: str,
-        base_path: Path | None = None,
+        base_path: Path | str | None = None,
         attachment: str | None = None,
         recursive: bool = False,
         tabs: list[str] | None = None,
@@ -188,7 +190,7 @@ class Mise:
         """
         return do_fetch(
             file_id,
-            base_path=base_path or self.base_path,
+            base_path=Path(base_path) if base_path else self.base_path,  # mise-zapelu
             attachment=attachment,
             recursive=recursive,
             tabs=tabs,

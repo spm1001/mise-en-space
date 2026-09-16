@@ -198,3 +198,23 @@ class TestFacadeContract:
 
         Mise(base_path="/deposits").fetch("abc123")
         assert captured["base_path"] == Path("/deposits")
+
+    @pytest.mark.parametrize("method", ["search", "fetch"])
+    def test_per_call_string_base_path_arrives_as_a_path(self, monkeypatch, method):
+        """mise-zapelu: the constructor coerced a str since ea45cc0, but the
+        per-call `base_path=` passed a str straight through to the tools layer,
+        which does `base_path / DEPOSIT_DIR` and dies with a TypeError — a
+        caller-facing crash on a documented argument. The facade is the edge;
+        it validates, and downstream trusts."""
+        from pathlib import Path
+        captured = {}
+
+        def fake(*args, **kwargs):
+            captured.update(kwargs)
+            return {"ok": True}
+
+        monkeypatch.setattr(f"mise_en_space.do_{method}", fake)
+        m = Mise(base_path="/deposits")
+        getattr(m, method)("abc123" if method == "fetch" else "", base_path="/elsewhere")
+        assert captured["base_path"] == Path("/elsewhere")
+        assert isinstance(captured["base_path"], Path)
