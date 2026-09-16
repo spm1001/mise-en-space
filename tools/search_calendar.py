@@ -8,11 +8,17 @@ is the cohesive slice that funds the new capability (the "which unfrozen
 sibling owns this logic?" move, .bon/understanding.md).
 """
 
+import re
 from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
 from models import CalendarEvent
+
+# httpx's own message quotes the status: "Client error '404 Not Found' for url '…'"
+_HTTPX_STATUS = re.compile(r"'(\d{3} [^']*)' for url")
+# A raw response body past this is HTML noise; the cue is prose, not a dump.
+_REASON_CAP = 160
 
 # A resource calendar's address — the organiser of a room hold, not a person.
 _ROOM_SUFFIX = "@resource.calendar.google.com"
@@ -117,9 +123,18 @@ def _enrich_drive_results_with_meetings(
 
 
 def _google_reason(message: str) -> str:
-    """retry._format_http_error appends Google's own reason after " | API: ";
-    the URL and MDN link ahead of it teach nothing in a cue."""
-    return message.split(" | API: ", 1)[-1].strip()
+    """The part of an HTTP error message that teaches. retry._format_http_error
+    appends Google's structured reason after " | API: " or a raw body after
+    " | Body: "; a bare httpx string carries the status in quotes plus an MDN
+    footer. The URL teaches nothing in a cue, so it never survives this."""
+    for sep in (" | API: ", " | Body: "):
+        if sep in message:
+            reason = message.split(sep, 1)[1].strip()
+            break
+    else:
+        match = _HTTPX_STATUS.search(message)
+        reason = match.group(1) if match else message.splitlines()[0].strip()
+    return reason if len(reason) <= _REASON_CAP else reason[:_REASON_CAP] + "…"
 
 
 def _calendar_label(cal: dict[str, Any]) -> str:
@@ -153,8 +168,8 @@ def calendars_read_cue(
     else:
         coverage = f"{n} calendar{'s' if n != 1 else ''} from your calendar list."
     return (
-        f"calendars read: {', '.join(names)} — {coverage} An event absent here is "
-        "absent from these; a colleague's diary is a calendar_id= away."
+        f"calendars read: {', '.join(names) or 'none'} — {coverage} An event absent "
+        "here is absent from these; a colleague's diary is a calendar_id= away."
     )
 
 

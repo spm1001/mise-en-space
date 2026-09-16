@@ -213,3 +213,38 @@ class TestFanOutWiring:
         assert "https://" not in cue  # Google's reason teaches; its URL does not
         assert [f["id"] for f in result.cues["calendars_failed"]] == [uk, usa]
         assert result.cues["calendars_failed"][0]["kind"] == "not_found"
+
+
+class TestCalendarsReadCueShapes:
+    """The coverage cue's edges, found by the gudeci essayeur: a read where
+    EVERY calendar failed, and the three message shapes retry._format_http_error
+    produces (Google's structured '| API:', a raw '| Body:', and the bare httpx
+    string with its MDN footer). The cue carries Google's reason, never a URL."""
+
+    def test_all_calendars_failed_renders_none_and_zero_of_n(self):
+        from tools.search_calendar import calendars_read_cue
+        failed = [
+            {"id": "primary", "summary": "Me", "primary": True, "kind": "auth_expired",
+             "error": "Client error '401 Unauthorized' for url 'https://x' | API: Invalid Credentials"},
+            {"id": "b@x.com", "summary": "B", "kind": "auth_expired",
+             "error": "Client error '401 Unauthorized' for url 'https://x' | API: Invalid Credentials"},
+        ]
+        cue = calendars_read_cue([], failed)
+        assert cue.startswith("calendars read: none — 0 of 2 calendars")
+        assert "2 could not be read" in cue and "auth expired (Invalid Credentials)" in cue
+        assert "https://" not in cue
+
+    @pytest.mark.parametrize("message, expect, forbid", [
+        ("Client error '404 Not Found' for url 'https://www.googleapis.com/x' | API: Not Found",
+         "Not Found", "https://"),
+        ("Server error '502 Bad Gateway' for url 'https://www.googleapis.com/x' | Body: <html>"
+         + "x" * 400 + "</html>", "<html>", "https://"),
+        ("Client error '404 Not Found' for url 'https://www.googleapis.com/x'\n"
+         "For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+         "404 Not Found", "https://"),
+    ])
+    def test_google_reason_survives_every_message_shape(self, message, expect, forbid):
+        from tools.search_calendar import _google_reason
+        reason = _google_reason(message)
+        assert expect in reason and forbid not in reason
+        assert len(reason) <= 200  # a raw body is capped; the cue is prose, not a dump

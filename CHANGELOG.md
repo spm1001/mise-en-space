@@ -21,10 +21,13 @@
   is the adapter-side field (beside the existing `.warnings` prose, which
   library callers already read); coverage is `.calendars` plus
   `.calendars_failed`, never `.calendars` alone. A 404 (the id) and a 403
-  (their sharing) are both named. Seams: `adapters/calendar_list.py`,
+  (their sharing) are both named. A read where every calendar failed
+  renders "calendars read: none — 0 of N"; the reason survives all three
+  message shapes `retry` produces (`| API:`, `| Body:`, bare httpx) and a
+  raw body is capped at 160 chars. Seams: `adapters/calendar_list.py`,
   `tools/search_calendar.py::calendars_read_cue`.
 
-## [Unreleased] (mise-cegeva)
+## [1.85.12] - 2026-09-15 (mise-cegeva)
 
 ### Added
 - **Calendar search reads every calendar in your list, not just primary, and
