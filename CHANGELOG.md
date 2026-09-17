@@ -5,6 +5,25 @@
 > specifically; suite releases that carried no mise change (e.g. 1.8.0) are
 > intentionally absent — the shipped version number can therefore be ahead of
 > the newest entry here.
+>
+> **Headings (convention since 2026-09-17, mise-leceva):** `## [<suite>] - <date> (<card>)`
+> once the shipping version is known, otherwise `## <commit date> (<card>)`.
+> **Never `[Unreleased]`.** This file is not vendored — the assembler excludes
+> `/CHANGELOG.md` and ships its own generated stub — and since bds-hajeli
+> (2026-09-09) the daily assemble auto-bumps the suite and ships any push to
+> `main`, so a pending label goes false within a day and no publish step exists
+> to re-stamp it: four shipped blocks sat under `[Unreleased]` for a fortnight.
+> The shipping version is the assembler's own record (each reassemble commit
+> names the mise-en-space SHA it vendored), one function away:
+
+```bash
+git -C ~/repos/spm1001/batterie fetch -q origin
+shipped_in() { git -C ~/repos/spm1001/batterie log origin/main --reverse --format='%b' \
+  | grep -oE 'mise ← mise-en-space \([0-9.]+ @ [0-9a-f]+\)' \
+  | while read -r _ _ _ ver _ vsha; do ver=${ver#(}; vsha=${vsha%)}; \
+      git merge-base --is-ancestor "$1" "$vsha" 2>/dev/null && { echo "$ver"; return; }; done; }
+shipped_in <commit>   # first suite version whose vendored mise contains it; empty = not shipped yet
+```
 
 ## [1.85.15] - 2026-09-16 (mise-gudeci)
 
@@ -56,7 +75,7 @@
   events scope has been live since 2026-08-09), so no console step precedes
   the consent click.
 
-## [Unreleased] (mise-hopife)
+## [1.85.10] - 2026-09-14 (mise-hopife)
 
 ### Fixed
 - **Gmail thread `Date:` lines are UTC with a `Z` suffix** (`2026-09-14 08:30Z`),
@@ -70,7 +89,7 @@
   `tests/unit/test_gmail_extractor.py::TestDateRendering` pins the real
   message's header and `internalDate` against the rendered stamp.
 
-## [Unreleased] (mise-hupago)
+## [1.85.4] - 2026-09-09 (mise-jonoha — the 14 Sep "seen live" amendment below shipped in 1.85.12)
 
 ### Added
 - **`do(share)` asks the client, not the model, for the yes** (mise-jonoha,
@@ -89,6 +108,10 @@
   mechanism-naming cue, Decline shares nothing, and `claude -p` auto-cancels
   to the confirm= preview — captures in `docs/research/2026-09-14-jonoha-hublot/`.
   The skill's Share section now describes both paths (mise-wagina step 4, share half).
+
+## [1.85.0] - 2026-09-01 (mise-hupago)
+
+### Added
 - **`suggest=True` proposes instead of editing.** On `prepend`, `append` and
   `replace_text` against a Google Doc, the batchUpdate carries
   `writeControl.writeMode=SUGGEST`, so the edit arrives as a tracked change
@@ -131,7 +154,7 @@
 - `suggest=True` off the Docs plane refuses instead of silently making a real
   edit.
 
-## [Unreleased] (mise-jupuja)
+## [1.85.0] - 2026-09-01 (mise-jupuja)
 
 ### Added
 - **`do(comment, anchor=…)` attaches a comment to a place.** `'slide 3'` on a
@@ -179,7 +202,7 @@
 - A transport failure on the write now says the outcome is unknown rather than
   "failed" — a blind retry would post the comment twice.
 
-## [Unreleased] (mise-dukacu)
+## [1.84.2] - 2026-09-01 (mise-dukacu)
 
 ### Added
 - **`comments.md` locates Slides and Sheets comments.** A deck's comments now
