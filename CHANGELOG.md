@@ -21,8 +21,9 @@ git -C ~/repos/spm1001/batterie fetch -q origin
 shipped_in() { git -C ~/repos/spm1001/batterie log origin/main --reverse --format='%b' \
   | grep -oE 'mise ← mise-en-space \([0-9.]+ @ [0-9a-f]+\)' \
   | while read -r _ _ _ ver _ vsha; do ver=${ver#(}; vsha=${vsha%)}; \
-      git merge-base --is-ancestor "$1" "$vsha" 2>/dev/null && { echo "$ver"; return; }; done; }
+      git -C ~/repos/spm1001/mise-en-space merge-base --is-ancestor "$1" "$vsha" 2>/dev/null && { echo "$ver"; return; }; done; }
 shipped_in <commit>   # first suite version whose vendored mise contains it; empty = not shipped yet
+# Both -C flags are load-bearing: without them "not shipped" and "wrong directory" print identically (cold read, 2026-09-17).
 ```
 
 ## [1.85.15] - 2026-09-16 (mise-gudeci)
