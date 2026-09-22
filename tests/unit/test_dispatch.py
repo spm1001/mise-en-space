@@ -312,6 +312,56 @@ class TestWrongOpParamsRefuse:
         assert "range=" in result["message"]
 
 
+class TestHandlerTolerances:
+    """The deliberate silences one layer below the gate (mise-tijeko).
+
+    A tolerance is a param the op consumes on one branch and ignores on
+    another, on purpose. The table carries each reason so a purity pass has
+    to read it before turning a tolerance into a refusal; these tests pin
+    that the table can't name a param the gate would refuse anyway, and that
+    the two measured cases stay non-refusals end to end.
+    """
+
+    def test_every_tolerance_names_a_param_its_op_consumes(self) -> None:
+        from tools.dispatch import HANDLER_TOLERANCES, OP_PARAMS
+
+        for (op, param), reason in HANDLER_TOLERANCES.items():
+            assert param in OP_PARAMS[op], f"{op}/{param}: the gate refuses it, so no tolerance"
+            assert len(reason) > 40, f"{op}/{param}: a tolerance without its reason is a guess"
+
+    @patch("tools.overwrite.sheet_overwrite")
+    @patch("tools.dispatch.get_file_metadata",
+           return_value={"mimeType": "application/vnd.google-apps.spreadsheet", "name": "S"})
+    def test_restore_comment_false_on_a_sheet_writes(self, _meta, mock_sheet) -> None:
+        # Measured case C7: 5/8 wanted silence, 0/8 a refusal.
+        mock_sheet.return_value = DoResult(file_id="s1", title="S", web_link="",
+                                           operation="overwrite", cues={})
+        result = do(operation="overwrite", file_id="sheet1", content="a,b\n1,2",
+                    restore_comment=False)
+        assert result.get("error") is not True
+        mock_sheet.assert_called_once()
+
+    @patch("tools.create_event.insert_event",
+           return_value={"id": "e1", "summary": "Focus time", "htmlLink": ""})
+    @patch("tools.events_util.resolve_calendar_timezone", return_value="Europe/London")
+    def test_confirm_and_send_updates_without_attendees_book(self, _tz, mock_insert) -> None:
+        # Measured case C8: 6/8 wanted silence, 0/8 a refusal.
+        result = do(operation="create_event", title="Focus time",
+                    time_min="2026-09-24T09:00:00", time_max="2026-09-24T11:00:00",
+                    confirm=True, send_updates="all")
+        assert result.get("error") is not True, result
+        mock_insert.assert_called_once()
+        assert "attendees" not in mock_insert.call_args[0][0]
+
+    def test_meet_false_is_now_visible_to_the_gate(self) -> None:
+        # meet's default moved False -> None so update_event can hear an
+        # explicit False; the side effect is that the gate now hears it too.
+        from tools.dispatch import wrong_op_params
+
+        assert wrong_op_params("freebusy", {"meet": False}) == ["meet"]
+        assert wrong_op_params("update_event", {"meet": False}) == []
+
+
 class TestWrongOpParamsTeach:
     """The refusal has to say what to do instead — the brief's motivating
     cases, each one a caller mirroring another op's grammar."""

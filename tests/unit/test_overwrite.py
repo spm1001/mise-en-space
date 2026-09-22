@@ -339,3 +339,17 @@ class TestOverwriteFromSource:
         result = do_overwrite(file_id="doc123", source="mise/some-folder/")
         assert result["error"] is True
         assert "base_path" in result["message"]
+
+
+class TestOverwriteFormSource:
+    def test_source_on_a_form_teaches_instead_of_blaming_content(self, tmp_path) -> None:
+        """source= on a Form used to be dropped, then "requires content" (mise-tijeko)."""
+        from tools.overwrite import do_overwrite
+
+        deposit = tmp_path / "form--x--abc"
+        deposit.mkdir()
+        (deposit / "manifest.json").write_text("{}")
+        result = do_overwrite(file_id="form1", source="form--x--abc", base_path=str(tmp_path),
+                              metadata={"mimeType": "application/vnd.google-apps.form"})
+        assert result["error"] is True
+        assert "content=" in result["message"] and "file_path=" in result["message"]

@@ -1,0 +1,155 @@
+You are an AI agent that uses tools to get work done for a user. Below is the description of a real tool, `do`, from a Google Workspace MCP server, exactly as a calling agent sees it, followed by its parameter list. Then come 9 short scenarios. In each one you have just made the call shown. For each scenario, answer three things as the calling agent:
+
+1. predict — which option do you think this tool ACTUALLY does? (your best guess about the real implementation, not your wish)
+2. prefer — which option would you WANT it to do?
+3. distrust — which options, if the tool did them, would make you trust this tool less for the rest of your work? (a list; may be empty)
+
+Plus one short sentence of why for your preference.
+
+There are no trick answers and nothing to look up — answer from the description and your own experience of calling tools. Do not use any tools.
+
+=== TOOL DESCRIPTION (tool name: do) ===
+Act on Google Workspace: create, move, edit, draft/reply email, organise Gmail, book calendar.
+
+Operations: create, copy, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, suggest, trash, respond, create_event, update_event, freebusy, setup_oauth.
+Create: content + title + doc_type (doc/sheet/file/folder/form). page_setup='pageless'; file_path= reads disk; form: YAML/JSON.
+Edit: overwrite (full replace), prepend/append, replace_text (find + content); append tab='T' adds a new doc tab (plain text). Sheets: overwrite=CSV, range='Tab'/'Tab!F9:F15'; [label](url)→link, @url→chip. Doc edits return cues.restore_point. Docs: suggest=True on prepend/append/replace_text proposes a tracked change; do(suggest, action=accept|reject, find='s2') folds one ([sN] from a markup fetch; tags RENUMBER after each fold).
+Calendar: create_event (title + time_min/time_max + attendees/content/location/meet/recurrence/include; attendees ⇒ preview, confirm=True books). update_event (event or invite-thread id; time/attendees/recurrence gated). freebusy (attendees + window + duration → slots). respond (file_id + action). properties/color/visibility/transparency on both. See mise://docs/do.
+Email: draft (to + subject + content; file_id=draft_id updates it), reply_draft (file_id + content — refuses if the thread has a draft; supersede=True discards), archive/star/label. Signature auto-appends — no sign-off.
+Trash: file_id(s) — Drive→trash (recoverable); Gmail drafts (r+digits) go for good.
+Comments: comment (file_id + content = NEW thread; anchor='slide 3'/'Tab!B12'/quoted doc text anchors it, else panel-only; to= assigns), comment_reply (comment_id + content/action=resolve|reopen). '[agent] ' prefix.
+Share: file_id + to + role (reader/writer/commenter); confirm=True executes.
+Copy/Move: file_id(s) + folder_id.
+setup_oauth: bootstrap credentials (force=true re-auths).
+
+=== PARAMETERS (name: type = default) ===
+operation: str
+content: str | None = None
+title: str | None = None
+doc_type: str = 'doc'
+folder_id: str | None = None
+page_setup: str | None = None
+file_id: str | list[str] | None = None
+destination_folder_id: str | None = None
+source: str | None = None
+base_path: str | None = None
+file_path: str | None = None
+find: str | None = None
+to: str | None = None
+subject: str | None = None
+cc: str | None = None
+include: list[str] | None = None
+reply_all: bool = False
+role: str | None = None
+confirm: bool = False
+label: str | None = None
+remove: bool = False
+comment_id: str | None = None
+action: str | None = None
+force: bool = False
+restore_comment: bool = True
+supersede: bool = False
+range: str | None = None
+tab: str | None = None
+anchor: str | None = None
+suggest: bool = False
+attendees: list[str] | str | None = None
+time_min: str | None = None
+time_max: str | None = None
+location: str | None = None
+meet: bool = False
+recurrence: str | list[str] | None = None
+send_updates: str | None = None
+duration: int | None = None
+properties: dict[str, str] | None = None
+color: str | None = None
+visibility: str | None = None
+transparency: str | None = None
+
+=== SCENARIOS ===
+--- id: C2-move-two-folder-ids ---
+Situation: You want to move a Drive file into a folder. You passed both folder_id and destination_folder_id (both appear in the tool's parameter list), with DIFFERENT folder ids.
+Call: do(operation='move', file_id='1AbC', folder_id='FOLDER_A', destination_folder_id='FOLDER_B')
+Options:
+  second_wins: Moved into FOLDER_B (destination_folder_id wins). Nothing mentions FOLDER_A.
+  first_wins_warn: Moved into FOLDER_A, and the result warns that destination_folder_id was ignored.
+  refuse: Error naming the two conflicting folder ids. Nothing is moved.
+  first_wins: Moved into FOLDER_A (folder_id wins). Nothing mentions FOLDER_B.
+
+--- id: C3-folder-with-content ---
+Situation: You call create with doc_type='folder' and also pass content.
+Call: do(operation='create', doc_type='folder', title='Q3 planning', content='# Q3 planning\n\nGoals for the quarter: ...')
+Options:
+  ignore_warn: The folder is created, and the result warns that content was ignored because a folder holds no content.
+  refuse: Error: a folder takes no content (with a pointer to creating a doc inside it via folder_id). Nothing is created.
+  ignore: The folder is created. The content is ignored; nothing says so.
+  consume: The folder is created AND a Google Doc holding the content is created inside it.
+
+--- id: C7-restore-comment-on-sheet ---
+Situation: You have learned that overwrite on a Google DOC posts an '[agent]' comment naming the pre-edit version (so it can be restored), and that restore_comment=False suppresses that comment. Now you are overwriting a Google SHEET with CSV, and you pass restore_comment=False so nobody gets a comment notification.
+Call: do(operation='overwrite', file_id='1SheetId', content='a,b\n1,2', restore_comment=False)
+Options:
+  ignore: The sheet is overwritten; no comment is posted (Sheets never get that comment). Nothing is said about restore_comment.
+  ignore_note: The sheet is overwritten, and the result notes that restore_comment has no effect on Sheets.
+  refuse: Error: restore_comment applies only to Google Docs. Nothing is written.
+
+--- id: C8-event-confirm-without-attendees ---
+Situation: You book a solo focus-time block — no attendees. Out of caution you pass confirm=True and send_updates='all' anyway.
+Call: do(operation='create_event', title='Focus time', time_min='2026-09-24T09:00:00+01:00', time_max='2026-09-24T11:00:00+01:00', confirm=True, send_updates='all')
+Options:
+  refuse: Error: confirm/send_updates only apply when there are attendees. Nothing is created.
+  ignore: The event is created. Nothing is said about confirm or send_updates.
+  ignore_note: The event is created, and the result notes that confirm and send_updates had no effect because nobody was invited.
+
+--- id: C9-meet-false-on-update ---
+Situation: An existing calendar event has a Google Meet link. The meeting is now in person, so you want to rename it and remove the Meet link.
+Call: do(operation='update_event', file_id='evt_7h2k9', title='Offsite (in person)', meet=False)
+Options:
+  partial_warn: The event is renamed. The Meet link stays, and the result warns that meet=False cannot remove an existing link.
+  refuse: Error: removing a Meet link isn't supported. Nothing is changed.
+  partial_silent: The event is renamed. The Meet link stays. Nothing says so.
+  consume: The event is renamed and its Meet link is removed.
+
+--- id: C6-form-into-folder ---
+Situation: You create a Google Form from a valid spec and ask for it to land in a particular folder.
+Call: do(operation='create', doc_type='form', title='Team survey', content='<a valid YAML form spec>', folder_id='FOLDER_A')
+Options:
+  refuse: Error: forms can't be created in a folder. Nothing is created.
+  root_warn: The form is created in My Drive root, and the result says folder placement isn't supported for forms.
+  root_silent: The form is created in My Drive root. Nothing mentions the folder.
+  consume: The form is created and placed in FOLDER_A.
+
+--- id: C1-reply-all-plus-cc ---
+Situation: A Gmail thread's last message is from alice@example.com, sent To you, Cc bob@example.com and carol@example.com. You want to reply to everyone on it, and also bring dave@example.com in on Cc.
+Call: do(operation='reply_draft', file_id='18c2f0a9d3e4b7f1', content='Thanks all — looping in Dave.', reply_all=True, cc='dave@example.com')
+Options:
+  replace: Draft To alice; Cc dave only — an explicit cc= replaces the Cc that reply_all would have inferred. Nothing says so.
+  refuse: Error: reply_all=True and cc= can't be combined. Nothing is drafted.
+  union: Draft To alice; Cc bob, carol AND dave — the reply-all recipients plus the explicit cc.
+  replace_warn: Draft To alice; Cc dave only (cc= replaces the inferred Cc), and the result carries a warning naming bob and carol as dropped.
+
+--- id: C5-form-from-file-path ---
+Situation: /tmp/survey.yaml on the machine running the tool holds a valid YAML form spec. You create the form by pointing at the file instead of pasting the spec.
+Call: do(operation='create', doc_type='form', title='Team survey', file_path='/tmp/survey.yaml')
+Options:
+  consume: The file is read as the form spec and the form is created.
+  refuse_teach: Error: file_path isn't supported for forms — pass the spec text itself as content=. Nothing is created.
+  refuse_generic: Error: "Form creation requires 'content' with a YAML or JSON form spec." Nothing is created.
+
+--- id: C4-page-setup-on-form ---
+Situation: You create a Google Form from a valid spec and also pass page_setup='pageless'.
+Call: do(operation='create', doc_type='form', title='Team survey', content='<a valid YAML form spec>', page_setup='pageless')
+Options:
+  ignore: The form is created. page_setup is ignored; nothing says so.
+  ignore_warn: The form is created, and the result notes that page_setup applies only to Docs and was ignored.
+  refuse: Error: page_setup is only valid for doc_type='doc'. Nothing is created.
+
+
+=== ONE LAST QUESTION ===
+"echo_defaults": When you call a tool whose optional boolean parameters have defaults (say meet: bool = False), do you usually pass them explicitly at their default value, or leave them out? Answer "explicit", "omit", or "depends", plus one sentence.
+
+=== ANSWER FORMAT ===
+Reply with ONE JSON object and nothing else:
+{"answers": {"<scenario id>": {"predict": "<key>", "prefer": "<key>", "distrust": ["<key>", ...], "why": "<one sentence>"}, ...}, "echo_defaults": {"answer": "explicit|omit|depends", "why": "<one sentence>"}}
+Use the option keys exactly as given (the word before the colon).
+

@@ -133,6 +133,10 @@ def do_overwrite(
                        f"{mime}. For a Doc, use replace_text/prepend/append.",
         }
     if metadata and metadata.get("mimeType") == GOOGLE_FORM_MIME:
+        if resolved_source:  # source= was dropped here, then "requires content" blamed the wrong param (mise-tijeko)
+            return {"error": True, "kind": "invalid_input",
+                    "message": "source= replays a fetched deposit as a Doc or Sheet body; "
+                               "a form takes its YAML/JSON spec as content= or file_path=."}
         return form_overwrite(file_id, content, metadata)
     if metadata and metadata.get("mimeType") != GOOGLE_DOC_MIME:
         return plain_overwrite(file_id, content, source, base_path, metadata)

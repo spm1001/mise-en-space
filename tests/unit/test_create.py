@@ -47,6 +47,16 @@ class TestDoToolRouting:
         assert result["kind"] == "invalid_input"
         assert "content" in result["message"]
 
+    @patch("tools.create.create_form", return_value={"error": True, "kind": "x", "message": "stub"})
+    def test_form_route_hands_on_its_params(self, mock_form) -> None:
+        # The form early-return used to pass content/title/folder_id alone,
+        # dropping file_path, source, base_path and page_setup (mise-tijeko).
+        do(operation="create", doc_type="form", file_path="spec.yaml",
+           base_path="/tmp/work", folder_id="folder123", page_setup="pageless")
+        kwargs = mock_form.call_args.kwargs
+        assert kwargs["file_path"] == "spec.yaml" and kwargs["base_path"] == "/tmp/work"
+        assert kwargs["folder_id"] == "folder123" and kwargs["page_setup"] == "pageless"
+
     def test_create_without_title_returns_error(self) -> None:
         result = do(operation="create", content="# Hello")
         assert result["error"] is True
@@ -1526,22 +1536,44 @@ class TestCreateFolder:
         assert result["error"] is True
         assert "title" in result["message"].lower()
 
-    def test_folder_ignores_content(self) -> None:
-        """Content param is ignored for folder creation (no error, just unused)."""
-        with patch("tools.create.get_sync_client") as mock_get_client:
-            mock_client = MagicMock()
-            mock_get_client.return_value = mock_client
-            mock_client.post_json.return_value = {
-                "id": "folder_abc",
-                "name": "Test",
-                "webViewLink": "https://drive.google.com/drive/folders/folder_abc",
-                "parents": ["root"],
-            }
+    @staticmethod
+    def _folder_client(mock_get_client: MagicMock) -> MagicMock:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.post_json.return_value = {
+            "id": "folder_abc",
+            "name": "Test",
+            "webViewLink": "https://drive.google.com/drive/folders/folder_abc",
+            "parents": ["root"],
+        }
+        return mock_client
 
-            result = do_create(content="ignored", title="Test", doc_type="folder")
+    @patch("tools.create.get_sync_client")
+    def test_folder_warns_that_content_was_ignored(self, mock_get_client) -> None:
+        """The folder is made AND the result says content went nowhere (mise-tijeko).
 
-            assert isinstance(result, DoResult)
-            assert result.extras["type"] == "folder"
+        It used to vanish without a word. 5/8 blank-slate callers wanted the
+        folder plus a warning, 3/8 a refusal; 7/8 would distrust a tool that
+        quietly made a doc inside it. The warning names where the text can go.
+        """
+        mock_client = self._folder_client(mock_get_client)
+
+        result = do_create(content="# Q3 notes", title="Test", doc_type="folder",
+                           page_setup="pageless")
+
+        assert isinstance(result, DoResult)
+        assert result.extras["type"] == "folder"
+        assert mock_client.post_json.call_count == 1  # only the folder — no doc minted
+        warnings = result.cues["warnings"]
+        assert any("content= ignored" in w and "folder_id='folder_abc'" in w for w in warnings)
+        assert any("page_setup=" in w for w in warnings)
+
+    @patch("tools.create.get_sync_client")
+    def test_plain_folder_create_carries_no_warning(self, mock_get_client) -> None:
+        self._folder_client(mock_get_client)
+        result = do_create(title="Test", doc_type="folder")
+        assert isinstance(result, DoResult)
+        assert "warnings" not in result.cues
 
     def test_folder_with_invalid_folder_id_rejected(self) -> None:
         """Invalid parent folder_id is caught by validation."""

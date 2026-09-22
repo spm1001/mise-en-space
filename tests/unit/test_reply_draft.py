@@ -424,28 +424,91 @@ class TestDoReplyDraftSuccess:
         assert call_kwargs["cc"] == "robert@external.example.com"
 
     @patch("retry.time.sleep")
+    @patch("tools.reply_draft.current_user_email", return_value="me@example.com")
     @patch("tools.reply_draft.create_reply_draft")
     @patch("tools.reply_draft.fetch_thread")
-    def test_explicit_cc_overrides_inferred(self, mock_fetch, mock_create, _sleep) -> None:
+    def test_explicit_cc_adds_to_reply_all(self, mock_fetch, mock_create, _email, _sleep) -> None:
+        """reply_all=True + cc= is the reply-all audience PLUS the cc (mise-tijeko).
+
+        It used to REPLACE the inferred Cc: on 2026-03-25 a session drafted a
+        reply-all adding one colleague and told the user the whole thread was
+        on it, while the Cc held only that one name. 8/8 blank-slate callers
+        expected the union; 8/8 said the replace would cost the tool their trust.
+        """
         msg = _make_message(
             from_address="alice@example.com",
             to_addresses=["me@example.com", "bob@example.com"],
+            cc_addresses=['"Smith, Carol" <carol@example.com>'],
         )
         mock_fetch.return_value = _make_thread(messages=[msg])
         mock_create.return_value = ReplyDraftResult(
             draft_id="d1", message_id="m1", thread_id="a1b2c3d4e5f6a7b8",
             web_link="https://mail.google.com/mail/#drafts/d1",
             to="alice@example.com", subject="Re: Original Subject",
-            cc="explicit@example.com",
+            cc="merged",
         )
 
-        do_reply_draft(
+        result = do_reply_draft(
             file_id="a1b2c3d4e5f6a7b8", content="Reply.",
-            reply_all=True, cc="explicit@example.com",
+            reply_all=True, cc="dave@example.com, BOB@example.com",
         )
 
-        call_kwargs = mock_create.call_args[1]
-        assert call_kwargs["cc"] == "explicit@example.com"
+        cc = mock_create.call_args[1]["cc"]
+        # the display name with a comma survives as ONE address, bob is not
+        # doubled by the case-different repeat, and dave is added
+        assert cc == 'bob@example.com, "Smith, Carol" <carol@example.com>, dave@example.com'
+        assert isinstance(result, DoResult) and result.cues["cc"] == cc
+
+    @patch("retry.time.sleep")
+    @patch("tools.reply_draft.current_user_email", return_value="me@example.com")
+    @patch("tools.reply_draft.create_reply_draft")
+    @patch("tools.reply_draft.fetch_thread")
+    def test_sloppy_separators_keep_the_whole_audience(
+        self, mock_fetch, mock_create, _email, _sleep,
+    ) -> None:
+        """A trailing comma or semicolons must not wipe the reply-all Cc.
+
+        On Pythons with the CVE-2023-27043 fix one malformed element makes
+        getaddresses return [('', '')] for the WHOLE list; the first cut of
+        the merge fed both halves to one call, so cc='colleague@…,' produced a
+        draft with no Cc at all (essayeur catch, 2026-09-22).
+        """
+        mock_fetch.return_value = _make_thread(messages=[_make_message(
+            to_addresses=["me@example.com", "bob@example.com"])])
+        mock_create.return_value = ReplyDraftResult(
+            draft_id="d1", message_id="m1", thread_id="a1b2c3d4e5f6a7b8",
+            web_link="https://mail.google.com/mail/#drafts/d1",
+            to="alice@example.com", subject="Re: Original Subject", cc="x",
+        )
+        for sloppy in ("dave@example.com,", "dave@example.com; erin@example.com"):
+            do_reply_draft(file_id="a1b2c3d4e5f6a7b8", content="R.", reply_all=True, cc=sloppy)
+            cc = mock_create.call_args[1]["cc"]
+            assert cc.startswith("bob@example.com, dave@example.com"), (sloppy, cc)
+
+    @patch("tools.reply_draft.fetch_thread")
+    def test_unparseable_cc_refuses_before_any_call(self, mock_fetch) -> None:
+        result = do_reply_draft(file_id="a1b2c3d4e5f6a7b8", content="R.",
+                                reply_all=True, cc="dave@example.com erin@example.com")
+        assert result["error"] is True and "nothing was drafted" in result["message"]
+        mock_fetch.assert_not_called()
+
+    @patch("retry.time.sleep")
+    @patch("tools.reply_draft.create_reply_draft")
+    @patch("tools.reply_draft.fetch_thread")
+    def test_cc_without_reply_all_is_the_cc(self, mock_fetch, mock_create, _sleep) -> None:
+        """Plain reply infers no Cc, so an explicit cc= is the whole Cc."""
+        mock_fetch.return_value = _make_thread(messages=[_make_message(
+            to_addresses=["me@example.com", "bob@example.com"])])
+        mock_create.return_value = ReplyDraftResult(
+            draft_id="d1", message_id="m1", thread_id="a1b2c3d4e5f6a7b8",
+            web_link="https://mail.google.com/mail/#drafts/d1",
+            to="alice@example.com", subject="Re: Original Subject",
+            cc="dave@example.com",
+        )
+
+        do_reply_draft(file_id="a1b2c3d4e5f6a7b8", content="Reply.", cc="dave@example.com")
+
+        assert mock_create.call_args[1]["cc"] == "dave@example.com"
 
     @patch("retry.time.sleep")
     @patch("tools.reply_draft.fetch_thread")

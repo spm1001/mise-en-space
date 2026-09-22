@@ -46,6 +46,27 @@ class TestDoMoveValidation:
         assert via_canonical["message"] == via_alias["message"]
         assert "folder_id" in via_canonical["message"]
 
+    @patch("tools.move.get_sync_client")
+    def test_conflicting_folder_ids_refuse_before_any_call(self, mock_get_client) -> None:
+        """Both names, different folders: refuse, move nothing (mise-tijeko).
+
+        folder_id used to win silently. 8/8 blank-slate callers preferred a
+        refusal, and 8/8 said either silent winner would cost their trust.
+        """
+        result = do_move(file_id="fileid123", folder_id="folderA",
+                         destination_folder_id="folderB")
+        assert result["error"] is True
+        assert result["kind"] == "invalid_input"
+        assert "folderA" in result["message"] and "folderB" in result["message"]
+        mock_get_client.assert_not_called()
+
+    def test_matching_folder_ids_are_not_a_conflict(self) -> None:
+        # Same folder under both names is no ambiguity — it proceeds to the
+        # ordinary validation (a bad id here, so it stops there, not at the rail).
+        result = do_move(file_id="fileid123", folder_id="bad id!",
+                         destination_folder_id="bad id!")
+        assert "name different folders" not in result["message"]
+
     def test_rejects_bad_file_id(self) -> None:
         result = do_move(file_id="bad id!", destination_folder_id="folder1")
         assert result["error"] is True

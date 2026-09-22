@@ -1,0 +1,24 @@
+{
+  "stamp": "20260922T212927Z",
+  "C9": {
+    "at_insert": {
+      "hangoutLink": "https://meet.google.com/tzs-cmrb-tgv",
+      "has_conferenceData": true
+    },
+    "patch_response": {
+      "hangoutLink": null,
+      "has_conferenceData": false
+    },
+    "reread": {
+      "hangoutLink": null,
+      "has_conferenceData": false
+    },
+    "removed": true
+  },
+  "deleted": [
+    [
+      "event",
+      "47uvoql2vcqs8bf5a4tan1648s"
+    ]
+  ]
+}

@@ -98,7 +98,7 @@ DO_PARAM_DEFAULTS: dict[str, Any] = {
     "restore_comment": True, "supersede": False, "range": None, "tab": None,
     "anchor": None, "suggest": False,
     "attendees": None, "time_min": None, "time_max": None, "location": None,
-    "meet": False, "recurrence": None, "send_updates": None, "duration": None,
+    "meet": None, "recurrence": None, "send_updates": None, "duration": None,
     "properties": None, "color": None, "visibility": None, "transparency": None,
 }
 
@@ -168,6 +168,32 @@ PARAM_OWNERS: dict[str, frozenset[str]] = {
 # call it makes. Gating it would refuse every facade call from a base_path-
 # configured handle — a live break in the library door, not a hypothetical.
 UNGATED_PARAMS = frozenset({"base_path"})
+
+# Handler-level tolerances: a param the op consumes on one branch and that is
+# deliberately a no-op on another, left SILENT on purpose. The gate above can't
+# see these (the op does take the param), and a purity pass would turn them
+# into refusals — so each carries its reason. Decided by caller expectation
+# (mise-tijeko, docs/research/2026-09-22-tijeko-caller-expectations/): eight
+# blank-slate Claudes were put to the measured cases and all eight distrusted
+# a refusal. tests/unit/test_dispatch.py pins that every entry names a param
+# its op really consumes, and that the measured cases stay non-refusals.
+HANDLER_TOLERANCES: dict[tuple[str, str], str] = {
+    ("overwrite", "restore_comment"):
+        "Docs-only. On a Sheet, Form or plain file no restore comment is ever "
+        "posted, so restore_comment=False — asking for no notification — is "
+        "already met. Measured: 5/8 wanted silence, 3/8 a note, 0/8 a refusal.",
+    ("create_event", "confirm"):
+        "Gates attendee invites. With no attendees there is nothing to gate, "
+        "so confirm=True books directly. Measured: 6/8 silence, 0/8 refusal.",
+    ("create_event", "send_updates"):
+        "Same case as confirm: with no attendees nobody can be notified.",
+    ("create_event", "meet"):
+        "meet=False on a new event means no link, which is what it gets. "
+        "Inferred from the same class, not measured.",
+    ("update_event", "confirm"):
+        "Gates structural edits; a cosmetic-only edit has nothing to confirm "
+        "and runs directly. Inferred from the same class, not measured.",
+}
 
 # Extra teaching for params whose owner list alone doesn't explain the miss.
 # The tab= text is the wisuzu rail's, kept verbatim.
@@ -261,7 +287,7 @@ DISPATCH: dict[str, Any] = {
     "create_event": lambda p: do_create_event(
         title=p["title"], time_min=p.get("time_min"), time_max=p.get("time_max"),
         content=p["content"], attendees=p.get("attendees"),
-        location=p.get("location"), meet=p.get("meet", False),
+        location=p.get("location"), meet=bool(p.get("meet")),
         recurrence=p.get("recurrence"), include=p["include"],
         send_updates=p.get("send_updates"), properties=p.get("properties"),
         color=p.get("color"), visibility=p.get("visibility"),
@@ -272,7 +298,7 @@ DISPATCH: dict[str, Any] = {
         location=p.get("location"), time_min=p.get("time_min"),
         time_max=p.get("time_max"), attendees=p.get("attendees"),
         recurrence=p.get("recurrence"), include=p["include"],
-        meet=p.get("meet", False), send_updates=p.get("send_updates"),
+        meet=p.get("meet"), send_updates=p.get("send_updates"),
         properties=p.get("properties"), color=p.get("color"),
         visibility=p.get("visibility"), transparency=p.get("transparency"),
         confirm=p.get("confirm", False),

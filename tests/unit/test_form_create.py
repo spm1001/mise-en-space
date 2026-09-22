@@ -327,14 +327,79 @@ def test_create_form_title_override(mock_get_client):
     assert result.title == "Override Title"
 
 
+# --- the params a form create used to drop in silence (mise-tijeko) ---------
+# Blank-slate callers chose consume for file_path and folder_id (8/8 each) and
+# ignore-with-a-warning for page_setup (8/8).
+
+_SPEC = '{"title": "Test", "questions": []}'
+
+
+@patch("tools.form_create._move_file")
+@patch("tools.form_create._get_dest_meta", return_value={"name": "Reviews", "mimeType": "application/vnd.google-apps.folder"})
 @patch("tools.form_create.get_sync_client")
-def test_create_form_folder_id_warning(mock_get_client):
+def test_create_form_lands_in_folder(mock_get_client, mock_dest, mock_move):
+    """folder_id re-parents the minted form (probed live 2026-09-22)."""
     mock_get_client.return_value = _mock_client()
-    result = create_form(
-        content='{"title": "Test", "questions": []}',
-        folder_id="some-folder-id",
-    )
-    assert "folder_warning" in result.cues
+    result = create_form(content=_SPEC, folder_id="folder123")
+    mock_dest.assert_called_once_with("folder123")
+    mock_move.assert_called_once_with("test-form-id-123", "folder123", mock_dest.return_value)
+    assert result.cues["folder_id"] == "folder123"
+    assert result.cues["folder"] == "Reviews"
+    assert "warnings" not in result.cues
+
+
+@patch("tools.form_create._get_dest_meta")
+@patch("tools.form_create.get_sync_client")
+def test_create_form_bad_folder_refuses_before_minting(mock_get_client, mock_dest):
+    from models import ErrorKind, MiseError
+    mock_dest.side_effect = MiseError(ErrorKind.INVALID_INPUT, "Destination 'x' is not a folder")
+    client = _mock_client()
+    mock_get_client.return_value = client
+    result = create_form(content=_SPEC, folder_id="notafolder1")
+    assert result["error"] is True and "not a folder" in result["message"]
+    client.post_json.assert_not_called()  # no orphan form in My Drive root
+
+
+@patch("tools.form_create._move_file", side_effect=RuntimeError("boom"))
+@patch("tools.form_create._get_dest_meta", return_value={"name": "Reviews"})
+@patch("tools.form_create.get_sync_client")
+def test_create_form_failed_move_says_where_the_form_is(mock_get_client, _dest, _move):
+    mock_get_client.return_value = _mock_client()
+    result = create_form(content=_SPEC, folder_id="folder123")
+    assert result.file_id == "test-form-id-123"
+    assert any("My Drive root" in w and "do(move" in w for w in result.cues["warnings"])
+
+
+@patch("tools.form_create.get_sync_client")
+def test_create_form_reads_spec_from_file_path(mock_get_client, tmp_path):
+    mock_get_client.return_value = _mock_client()
+    (tmp_path / "survey.yaml").write_text("title: From Disk\nquestions: []\n")
+    result = create_form(file_path="survey.yaml", base_path=str(tmp_path))
+    assert result.title == "From Disk"
+
+
+def test_create_form_file_path_and_content_refuse(tmp_path):
+    (tmp_path / "s.yaml").write_text("title: X\n")
+    result = create_form(content=_SPEC, file_path=str(tmp_path / "s.yaml"))
+    assert result["error"] is True and "not both" in result["message"]
+
+
+def test_create_form_missing_file_names_it():
+    result = create_form(file_path="/nonexistent/survey.yaml")
+    assert result["error"] is True and "/nonexistent/survey.yaml" in result["message"]
+
+
+def test_create_form_source_refuses_with_teaching():
+    result = create_form(source="some-deposit")
+    assert result["error"] is True
+    assert "content=" in result["message"] and "file_path=" in result["message"]
+
+
+@patch("tools.form_create.get_sync_client")
+def test_create_form_page_setup_warns(mock_get_client):
+    mock_get_client.return_value = _mock_client()
+    result = create_form(content=_SPEC, page_setup="pageless")
+    assert any("page_setup=" in w for w in result.cues["warnings"])
 
 
 def test_create_form_no_content():

@@ -60,7 +60,7 @@ def do_update_event(
     attendees: list[str] | str | None = None,
     recurrence: str | list[str] | None = None,
     include: list[str] | None = None,
-    meet: bool = False,
+    meet: bool | None = None,
     send_updates: str | None = None,
     properties: dict[str, str] | None = None,
     color: str | None = None,
@@ -126,7 +126,15 @@ def do_update_event(
         changes["recurrence"] = _STRUCTURAL
     if emails:
         changes["attendees"] = _STRUCTURAL
-    if meet:
+    # meet: True adds a Meet link, False REMOVES one, None leaves it alone.
+    # Judged here, against the event already read, so the preview never
+    # promises a change the write would then skip (mise-tijeko: callers
+    # passing meet=False expected removal 8/8; none echo False as a default).
+    if meet is True and event.get("conferenceData"):
+        warnings.append("The event already has a Meet link — left as is.")
+    elif meet is False and not event.get("conferenceData"):
+        warnings.append("The event has no Meet link — nothing to remove.")
+    elif meet is not None:
         changes["meet"] = _STRUCTURAL
     if content is not None:
         changes["description"] = _COSMETIC
@@ -145,13 +153,15 @@ def do_update_event(
     if transp:
         changes["transparency"] = _COSMETIC
 
+    if not changes and warnings:
+        return error("invalid_input", "Nothing left to change: " + "; ".join(warnings))
     if not changes:
         return error(
             "invalid_input",
             "Nothing to change — pass content (description), title, location, "
             "time_min+time_max, attendees (added, never removed), recurrence, "
             "include (Drive attachments), properties (queryable key-values), "
-            "color, visibility, transparency or meet=True.",
+            "color, visibility, transparency, or meet=True/False (add/remove).",
         )
 
     # Guests don't own the event's shape. Attendee-ADD is the one edit Google
@@ -229,12 +239,10 @@ def do_update_event(
             changes.pop("attendees", None)
         else:
             body["attendees"] = existing + [{"email": e} for e in added]
-    if meet:
-        if event.get("conferenceData"):
-            warnings.append("The event already has a Meet link — left as is.")
-            changes.pop("meet", None)
-        else:
-            body["conferenceData"] = meet_request()
+    if "meet" in changes:
+        body["conferenceData"] = meet_request() if meet else None
+        if not meet:
+            previous["meet_link"] = extract_meet_link(event)
     if content is not None:
         body["description"] = content
         previous["description"] = event.get("description")
@@ -337,6 +345,11 @@ def do_update_event(
     meet_link = extract_meet_link(patched)
     if meet and meet_link:
         cues["meet_link"] = meet_link
+    elif meet is False and "meet" in changes:
+        cues["meet_removed"] = (
+            "Meet link removed" if not meet_link
+            else f"meet=False sent but a Meet link is still present on read-back: {meet_link}"
+        )
 
     logger.info(
         "update_event: id=%s changed=%s", event.get("id"), sorted(changes),
@@ -358,7 +371,7 @@ def _describe_changes(
     time_max: str | None,
     emails: list[str],
     recurrence_lines: list[str],
-    meet: bool,
+    meet: bool | None,
 ) -> dict[str, Any]:
     """Old → new, per changed field, for the preview."""
     described: dict[str, Any] = {}
@@ -379,8 +392,10 @@ def _describe_changes(
         described["attendees_to_add"] = [
             e for e in emails if e.lower() not in existing
         ]
-    if meet and "meet" in changes:
-        described["meet"] = "add a Meet link"
+    if "meet" in changes:
+        described["meet"] = "add a Meet link" if meet else (
+            f"remove the Meet link ({extract_meet_link(event) or 'conference'})"
+        )
     for cosmetic in (
         "description", "title", "location", "attachments",
         "properties", "color", "visibility", "transparency",

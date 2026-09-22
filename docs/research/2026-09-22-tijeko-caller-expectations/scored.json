@@ -1,0 +1,715 @@
+{
+  "subjects": [
+    [
+      "s1-claude-opus-5-5.json",
+      "claude-opus-5-5"
+    ],
+    [
+      "s2-claude-opus-5-5.json",
+      "claude-opus-5-5"
+    ],
+    [
+      "s3-claude-opus-5-5.json",
+      "claude-opus-5-5"
+    ],
+    [
+      "s4-claude-fable-5-1.json",
+      "claude-fable-5-1"
+    ],
+    [
+      "s5-claude-fable-5-1.json",
+      "claude-fable-5-1"
+    ],
+    [
+      "s6-claude-fable-5-1.json",
+      "claude-fable-5-1"
+    ],
+    [
+      "s7-claude-sonnet-5.json",
+      "claude-sonnet-5"
+    ],
+    [
+      "s8-claude-sonnet-5.json",
+      "claude-sonnet-5"
+    ]
+  ],
+  "cases": {
+    "C1-reply-all-plus-cc": {
+      "current": "replace",
+      "predict": {
+        "union": 7,
+        "replace": 1
+      },
+      "prefer": {
+        "union": 8
+      },
+      "distrust": {
+        "replace": 8
+      },
+      "by_model": {
+        "claude-opus-5-5": {
+          "union": 3
+        },
+        "claude-fable-5-1": {
+          "union": 3
+        },
+        "claude-sonnet-5": {
+          "union": 2
+        }
+      },
+      "decided": "union",
+      "how": "rule 1 (8/8)",
+      "perturbing": true,
+      "author_matches": true,
+      "whys": [
+        [
+          "claude-opus-5-5",
+          "union",
+          "Reply-all plus an extra Cc clearly means adding Dave, and quietly dropping Bob and Carol would be a real mistake in communication."
+        ],
+        [
+          "claude-opus-5-5",
+          "union",
+          "Reply-all plus an extra cc naturally means adding to the recipients, and silently dropping bob and carol would leave people out of the thread."
+        ],
+        [
+          "claude-opus-5-5",
+          "union",
+          "reply_all plus an extra cc clearly means everyone on the thread plus Dave, and dropping Bob and Carol without a word would be a real mistake in an outgoing email."
+        ],
+        [
+          "claude-fable-5-1",
+          "union",
+          "reply_all=True plus cc= clearly means 'everyone plus Dave'; silently dropping bob and carol would send a reply that misses people I intended to include."
+        ],
+        [
+          "claude-fable-5-1",
+          "union",
+          "reply_all plus cc reads naturally as 'everyone, plus this person', and silently dropping bob and carol would be a hidden recipient change."
+        ],
+        [
+          "claude-fable-5-1",
+          "union",
+          "reply_all defines the base recipient set and cc= adds to it; silently dropping bob and carol would produce a wrong email nobody notices."
+        ],
+        [
+          "claude-sonnet-5",
+          "union",
+          "Combining reply_all and cc should additively include everyone rather than silently dropping people, which risks dropped communication with no warning."
+        ],
+        [
+          "claude-sonnet-5",
+          "union",
+          "I want everyone on the original thread plus Dave, not to accidentally drop bob and carol from the conversation."
+        ]
+      ]
+    },
+    "C2-move-two-folder-ids": {
+      "current": "first_wins",
+      "predict": {
+        "first_wins": 6,
+        "second_wins": 2
+      },
+      "prefer": {
+        "refuse": 8
+      },
+      "distrust": {
+        "first_wins": 8,
+        "second_wins": 8
+      },
+      "by_model": {
+        "claude-opus-5-5": {
+          "refuse": 3
+        },
+        "claude-fable-5-1": {
+          "refuse": 3
+        },
+        "claude-sonnet-5": {
+          "refuse": 2
+        }
+      },
+      "decided": "refuse",
+      "how": "rule 1 (8/8)",
+      "perturbing": true,
+      "author_matches": true,
+      "whys": [
+        [
+          "claude-opus-5-5",
+          "refuse",
+          "Two conflicting destinations is ambiguous, and a silent pick could put the file in the wrong place, so an error is the safe answer."
+        ],
+        [
+          "claude-opus-5-5",
+          "refuse",
+          "Two conflicting destinations mean my intent is unclear, and silently picking one moves a real file somewhere I may not have meant."
+        ],
+        [
+          "claude-opus-5-5",
+          "refuse",
+          "When two folder ids conflict, the tool can't know which one I meant, so it should stop and ask instead of quietly picking one."
+        ],
+        [
+          "claude-fable-5-1",
+          "refuse",
+          "Two different targets for one move is a genuine conflict; silently picking one moves a file somewhere I did not verify."
+        ],
+        [
+          "claude-fable-5-1",
+          "refuse",
+          "Two different destinations is a genuine contradiction and a silent pick can put a file in the wrong place with no signal."
+        ],
+        [
+          "claude-fable-5-1",
+          "refuse",
+          "Two different destinations is a genuine conflict; silently picking one moves a file somewhere I may not have intended with no signal."
+        ],
+        [
+          "claude-sonnet-5",
+          "refuse",
+          "Silently picking one of two conflicting explicit params is a landmine; an ambiguous call should error rather than guess."
+        ],
+        [
+          "claude-sonnet-5",
+          "refuse",
+          "Two conflicting folder ids is an ambiguous request and silently picking one risks moving a file to the wrong place without me noticing."
+        ]
+      ]
+    },
+    "C3-folder-with-content": {
+      "current": "ignore",
+      "predict": {
+        "ignore": 8
+      },
+      "prefer": {
+        "ignore_warn": 5,
+        "refuse": 3
+      },
+      "distrust": {
+        "consume": 7,
+        "ignore": 4,
+        "refuse": 1
+      },
+      "by_model": {
+        "claude-opus-5-5": {
+          "ignore_warn": 2,
+          "refuse": 1
+        },
+        "claude-fable-5-1": {
+          "ignore_warn": 2,
+          "refuse": 1
+        },
+        "claude-sonnet-5": {
+          "ignore_warn": 1,
+          "refuse": 1
+        }
+      },
+      "decided": "ignore_warn",
+      "how": "rule 1 (5/8)",
+      "perturbing": true,
+      "author_matches": false,
+      "whys": [
+        [
+          "claude-opus-5-5",
+          "ignore_warn",
+          "The folder is what I asked for, but I should hear that my content was dropped so I can create the doc myself, and making a doc I never asked for would overreach."
+        ],
+        [
+          "claude-opus-5-5",
+          "ignore_warn",
+          "Content I pass carries meaning, so dropping it silently loses data and making an extra doc I didn't ask for is overreach; a warning lets me follow up myself."
+        ],
+        [
+          "claude-opus-5-5",
+          "refuse",
+          "Passing content with a folder means I've misunderstood something, so an error that points me to creating a doc inside the folder is better than dropping the content or guessing what I wanted."
+        ],
+        [
+          "claude-fable-5-1",
+          "ignore_warn",
+          "Creating a folder is harmless, but I need to be told my content went nowhere so I can create the doc myself rather than assume it exists."
+        ],
+        [
+          "claude-fable-5-1",
+          "ignore_warn",
+          "Creating an unrequested extra doc is a surprising side effect; a warning tells me my content went nowhere so I can follow up."
+        ],
+        [
+          "claude-fable-5-1",
+          "refuse",
+          "Content on a folder is a clear caller mistake; refusing with a pointer is cheap and prevents silent data loss, while inventing a doc is surprising scope creep."
+        ],
+        [
+          "claude-sonnet-5",
+          "ignore_warn",
+          "Silently dropping content I explicitly provided could make me think it was saved somewhere when it wasn't."
+        ],
+        [
+          "claude-sonnet-5",
+          "refuse",
+          "Silently dropping content is confusing, but auto-creating a doc inside the folder is a surprising side effect I didn't ask for; an explicit error pointing me to the right pattern is safest."
+        ]
+      ]
+    },
+    "C4-page-setup-on-form": {
+      "current": "ignore",
+      "predict": {
+        "ignore": 8
+      },
+      "prefer": {
+        "ignore_warn": 8
+      },
+      "distrust": {
+        "refuse": 4
+      },
+      "by_model": {
+        "claude-opus-5-5": {
+          "ignore_warn": 3
+        },
+        "claude-fable-5-1": {
+          "ignore_warn": 3
+        },
+        "claude-sonnet-5": {
+          "ignore_warn": 2
+        }
+      },
+      "decided": "ignore_warn",
+      "how": "rule 1 (8/8)",
+      "perturbing": false,
+      "author_matches": true,
+      "whys": [
+        [
+          "claude-opus-5-5",
+          "ignore_warn",
+          "The extra parameter does no harm, so the form should be created, and a short note would fix my mental model."
+        ],
+        [
+          "claude-opus-5-5",
+          "ignore_warn",
+          "It's a harmless cosmetic parameter, so creating the form and telling me it was ignored gets the work done and fixes my picture of what the parameter does."
+        ],
+        [
+          "claude-opus-5-5",
+          "ignore_warn",
+          "The form is what matters and the page_setup flag makes no difference to it, so the tool should go ahead and just mention that the flag was ignored."
+        ],
+        [
+          "claude-fable-5-1",
+          "ignore_warn",
+          "A brief note that page_setup was ignored costs nothing and corrects my model of the tool, but silent ignoring is harmless here."
+        ],
+        [
+          "claude-fable-5-1",
+          "ignore_warn",
+          "A harmless formatting flag shouldn't block creation, but a note keeps me from believing it applied."
+        ],
+        [
+          "claude-fable-5-1",
+          "ignore_warn",
+          "It's a harmless irrelevant parameter, so create the form but tell me it was ignored so I stop passing it."
+        ],
+        [
+          "claude-sonnet-5",
+          "ignore_warn",
+          "An irrelevant param shouldn't block creation, but a note prevents me from thinking pageless formatting was applied."
+        ],
+        [
+          "claude-sonnet-5",
+          "ignore_warn",
+          "A harmless irrelevant param shouldn't block creation, but a warning helps me know it had no effect."
+        ]
+      ]
+    },
+    "C5-form-from-file-path": {
+      "current": "refuse_generic",
+      "predict": {
+        "consume": 4,
+        "refuse_generic": 4
+      },
+      "prefer": {
+        "consume": 8
+      },
+      "distrust": {
+        "refuse_generic": 6
+      },
+      "by_model": {
+        "claude-opus-5-5": {
+          "consume": 3
+        },
+        "claude-fable-5-1": {
+          "consume": 3
+        },
+        "claude-sonnet-5": {
+          "consume": 2
+        }
+      },
+      "decided": "consume",
+      "how": "rule 1 (8/8)",
+      "perturbing": true,
+      "author_matches": true,
+      "whys": [
+        [
+          "claude-opus-5-5",
+          "consume",
+          "The description says file_path reads from disk, so I expect that to work for form specs too, and a generic error that never mentions file_path would mislead me."
+        ],
+        [
+          "claude-opus-5-5",
+          "consume",
+          "The description says file_path reads from disk for create, so reading the spec file is the consistent behavior, and a generic error that never mentions file_path would mislead me."
+        ],
+        [
+          "claude-opus-5-5",
+          "consume",
+          "The description says file_path reads from disk, so I'd expect it to work for forms, and if not, an error that tells me the fix is the next best thing."
+        ],
+        [
+          "claude-fable-5-1",
+          "consume",
+          "The description says file_path reads disk for create, so it should feed the form spec too; a generic error that hides the real cause would waste a retry cycle."
+        ],
+        [
+          "claude-fable-5-1",
+          "consume",
+          "The description says file_path reads disk for create, so reading the spec from disk is the natural reading, though a teaching error is acceptable."
+        ],
+        [
+          "claude-fable-5-1",
+          "consume",
+          "The description says file_path reads disk for create, so reading the spec from the file is the natural reading; a generic error that hides the real cause wastes a round trip."
+        ],
+        [
+          "claude-sonnet-5",
+          "consume",
+          "The description explicitly ties file_path to reading from disk for create, so it should just work for forms too."
+        ],
+        [
+          "claude-sonnet-5",
+          "consume",
+          "The description explicitly says file_path= reads disk, and it's listed under create generally, so forms should honor it too."
+        ]
+      ]
+    },
+    "C6-form-into-folder": {
+      "current": "root_warn",
+      "predict": {
+        "consume": 5,
+        "root_warn": 1,
+        "root_silent": 2
+      },
+      "prefer": {
+        "consume": 8
+      },
+      "distrust": {
+        "root_silent": 8
+      },
+      "by_model": {
+        "claude-opus-5-5": {
+          "consume": 3
+        },
+        "claude-fable-5-1": {
+          "consume": 3
+        },
+        "claude-sonnet-5": {
+          "consume": 2
+        }
+      },
+      "decided": "consume",
+      "how": "rule 1 (8/8)",
+      "perturbing": true,
+      "author_matches": true,
+      "whys": [
+        [
+          "claude-opus-5-5",
+          "consume",
+          "The Drive API can move any file, forms included, into a folder, so honoring folder_id is both doable and what I asked for."
+        ],
+        [
+          "claude-opus-5-5",
+          "consume",
+          "Placing the form in the folder is what I asked for, and quietly putting it in root would leave files where I think they aren't."
+        ],
+        [
+          "claude-opus-5-5",
+          "consume",
+          "The description lists folder_id for creates, so I expect it to work for forms too, and landing in root without saying so would leave me thinking it's somewhere it isn't."
+        ],
+        [
+          "claude-fable-5-1",
+          "consume",
+          "Forms are Drive files and can be moved after creation, so honoring folder_id is the expected behavior; landing in root without a note misplaces the file invisibly."
+        ],
+        [
+          "claude-fable-5-1",
+          "consume",
+          "Forms are Drive files and the description lists folder_id generically for create, so placement should just work, and if not I must be told."
+        ],
+        [
+          "claude-fable-5-1",
+          "consume",
+          "The Forms API creates in root, but a well-built tool would follow up with a Drive move so the folder_id I passed is honoured."
+        ],
+        [
+          "claude-sonnet-5",
+          "consume",
+          "folder_id is a general create parameter, so I'd expect and want it honored for forms rather than silently defaulting to root."
+        ],
+        [
+          "claude-sonnet-5",
+          "consume",
+          "I specified a destination folder and want the form to land there, not silently end up in root."
+        ]
+      ]
+    },
+    "C7-restore-comment-on-sheet": {
+      "current": "ignore",
+      "predict": {
+        "ignore": 8
+      },
+      "prefer": {
+        "ignore": 5,
+        "ignore_note": 3
+      },
+      "distrust": {
+        "refuse": 8
+      },
+      "by_model": {
+        "claude-opus-5-5": {
+          "ignore": 2,
+          "ignore_note": 1
+        },
+        "claude-fable-5-1": {
+          "ignore": 3
+        },
+        "claude-sonnet-5": {
+          "ignore_note": 2
+        }
+      },
+      "decided": "ignore",
+      "how": "rule 1 (5/8)",
+      "perturbing": false,
+      "author_matches": true,
+      "whys": [
+        [
+          "claude-opus-5-5",
+          "ignore",
+          "What I wanted was no comment, and that's what happens, so refusing the write would be pointless pedantry."
+        ],
+        [
+          "claude-opus-5-5",
+          "ignore_note",
+          "What I wanted (no comment notification) already happens, so the write should go through, and a short note tells me the flag does nothing on Sheets."
+        ],
+        [
+          "claude-opus-5-5",
+          "ignore",
+          "What I wanted was no comment, and that's what happens, so refusing to write over a harmless flag would only get in the way."
+        ],
+        [
+          "claude-fable-5-1",
+          "ignore",
+          "The flag's intent (no comment) is fully satisfied on a Sheet, so there is nothing to warn about and refusing would punish harmless caution."
+        ],
+        [
+          "claude-fable-5-1",
+          "ignore",
+          "The flag's intent (no comment) is already satisfied on Sheets, so quietly accepting it is correct and refusing would block a valid write."
+        ],
+        [
+          "claude-fable-5-1",
+          "ignore",
+          "The flag is a no-op that matches the outcome I wanted, so a quiet success is fine and refusing a write over an irrelevant flag would be obstructive."
+        ],
+        [
+          "claude-sonnet-5",
+          "ignore_note",
+          "A no-op param should be surfaced so the caller learns the mental model instead of assuming it worked as intended silently."
+        ],
+        [
+          "claude-sonnet-5",
+          "ignore_note",
+          "A brief note confirms my flag was a no-op rather than leaving me guessing whether it silently worked or was ignored."
+        ]
+      ]
+    },
+    "C8-event-confirm-without-attendees": {
+      "current": "ignore",
+      "predict": {
+        "ignore": 8
+      },
+      "prefer": {
+        "ignore": 6,
+        "ignore_note": 2
+      },
+      "distrust": {
+        "refuse": 8
+      },
+      "by_model": {
+        "claude-opus-5-5": {
+          "ignore": 3
+        },
+        "claude-fable-5-1": {
+          "ignore": 3
+        },
+        "claude-sonnet-5": {
+          "ignore_note": 2
+        }
+      },
+      "decided": "ignore",
+      "how": "rule 1 (6/8)",
+      "perturbing": false,
+      "author_matches": true,
+      "whys": [
+        [
+          "claude-opus-5-5",
+          "ignore",
+          "Passing confirm and send_updates out of caution does no harm, and a solo event should just get booked."
+        ],
+        [
+          "claude-opus-5-5",
+          "ignore",
+          "The extra safety flags change nothing for a solo event, so creating it quietly is fine, and refusing would be pointless friction."
+        ],
+        [
+          "claude-opus-5-5",
+          "ignore",
+          "Passing confirm and send_updates on a solo event does no harm, so the tool should just create the event."
+        ],
+        [
+          "claude-fable-5-1",
+          "ignore",
+          "Passing confirm=True on a solo event is redundant but consistent with intent; refusing would make defensive calling patterns unusable."
+        ],
+        [
+          "claude-fable-5-1",
+          "ignore",
+          "These flags are harmless no-ops here and refusing would punish defensive over-specification with no benefit."
+        ],
+        [
+          "claude-fable-5-1",
+          "ignore",
+          "confirm=True is a superset of the required intent, so the event should just be created; erroring on extra caution would punish safe behaviour."
+        ],
+        [
+          "claude-sonnet-5",
+          "ignore_note",
+          "Harmless no-op flags shouldn't block the call, but telling me they were irrelevant helps me stop passing them needlessly."
+        ],
+        [
+          "claude-sonnet-5",
+          "ignore_note",
+          "A small note confirming the flags were no-ops is more informative than silence without being an unnecessary hard failure."
+        ]
+      ]
+    },
+    "C9-meet-false-on-update": {
+      "current": "partial_silent",
+      "predict": {
+        "partial_silent": 8
+      },
+      "prefer": {
+        "consume": 8
+      },
+      "distrust": {
+        "partial_silent": 8
+      },
+      "by_model": {
+        "claude-opus-5-5": {
+          "consume": 3
+        },
+        "claude-fable-5-1": {
+          "consume": 3
+        },
+        "claude-sonnet-5": {
+          "consume": 2
+        }
+      },
+      "decided": "consume",
+      "how": "rule 1 (8/8)",
+      "perturbing": true,
+      "author_matches": false,
+      "whys": [
+        [
+          "claude-opus-5-5",
+          "consume",
+          "I asked explicitly for the Meet link to go, and if it can't, I need to be told so attendees don't join a stale link."
+        ],
+        [
+          "claude-opus-5-5",
+          "consume",
+          "Passing meet=False explicitly is a clear request to remove the link, and silently leaving it would send people to the wrong place."
+        ],
+        [
+          "claude-opus-5-5",
+          "consume",
+          "meet=False on an update clearly asks to remove the link, and if that can't be done I need to be told so attendees don't join a stale Meet link."
+        ],
+        [
+          "claude-fable-5-1",
+          "consume",
+          "meet=False on an update reads naturally as 'no Meet link'; if that cannot be done, the result must say so or I will report a removal that never happened."
+        ],
+        [
+          "claude-fable-5-1",
+          "consume",
+          "meet=False on an update is the obvious way to express removal; if it can't, I need to be told rather than assume the link is gone."
+        ],
+        [
+          "claude-fable-5-1",
+          "consume",
+          "meet=False on an update should remove the link; a default-valued flag silently doing nothing is the worst outcome because I can't tell intent from default."
+        ],
+        [
+          "claude-sonnet-5",
+          "consume",
+          "meet is a documented parameter for events, so toggling it False should actively remove an existing link, not silently no-op."
+        ],
+        [
+          "claude-sonnet-5",
+          "consume",
+          "I explicitly asked to remove the Meet link, so I want that to actually happen rather than being silently ignored."
+        ]
+      ]
+    }
+  },
+  "echo_defaults": {
+    "claude-opus-5-5:omit": 2,
+    "claude-opus-5-5:depends": 1,
+    "claude-fable-5-1:omit": 3,
+    "claude-sonnet-5:omit": 2
+  },
+  "echo_whys": [
+    [
+      "claude-opus-5-5",
+      "I usually leave defaults out, unless I want to make my intent explicit to a reader or I don't trust the default."
+    ],
+    [
+      "claude-opus-5-5",
+      "I usually leave defaults out, but I pass them explicitly when the value states an intent, like meet=False on an update, and not just the default."
+    ],
+    [
+      "claude-opus-5-5",
+      "I usually leave out parameters that are at their default and only pass one explicitly when its value matters to what I intend, like meet=False on an update to remove a link."
+    ],
+    [
+      "claude-fable-5-1",
+      "Omitting defaults keeps calls minimal and avoids accidentally triggering explicit-value semantics like meet=False being interpreted as 'remove the link'."
+    ],
+    [
+      "claude-fable-5-1",
+      "Passing defaults explicitly adds noise and risks triggering unintended behaviour when a flag like meet=False is interpreted as an active request rather than absence."
+    ],
+    [
+      "claude-fable-5-1",
+      "I leave defaults out and pass a flag only when I mean it, which is exactly why a tool that treats an explicit meet=False as a no-op is dangerous."
+    ],
+    [
+      "claude-sonnet-5",
+      "Leaving defaults out keeps calls minimal and avoids accidentally signaling intent I don't actually have."
+    ],
+    [
+      "claude-sonnet-5",
+      "Passing only non-default values keeps calls concise and avoids implying I care about a setting I'm not actually overriding."
+    ]
+  ],
+  "validation_problems": []
+}

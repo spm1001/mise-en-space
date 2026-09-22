@@ -8,6 +8,7 @@ Gmail conversation. Draft-only: user reviews and sends from Gmail.
 
 import logging
 import re
+from email.utils import formataddr, getaddresses
 from typing import Any
 
 from adapters.gmail import (
@@ -93,6 +94,43 @@ def _infer_recipients_all(
     return sender, cc
 
 
+def _parse_cc(cc: str) -> list[tuple[str, str]]:
+    """The caller's cc as (name, address) pairs; ValueError if it won't parse.
+
+    getaddresses, not split(","): a display name like "Smith, Jo" carries a
+    comma. But on Pythons carrying the CVE-2023-27043 fix, ONE malformed
+    element makes getaddresses return [('', '')] for the whole list — so a
+    trailing comma once wiped the entire reply-all audience to no Cc at all
+    (caught by the essayeur before release). Trailing separators and bare
+    semicolons are normalised first; anything still unparseable refuses,
+    because merging a half-parsed list is the silent drop this replaced.
+    """
+    cleaned = cc.strip().strip(",;").strip()
+    if '"' not in cleaned:
+        cleaned = ", ".join(p.strip() for p in re.split(r"[;,]", cleaned) if p.strip())
+    pairs = getaddresses([cleaned]) if cleaned else []
+    if not pairs or any("@" not in addr for _, addr in pairs):
+        raise ValueError(
+            f"cc={cc!r} doesn't parse as an address list — nothing was drafted. "
+            "Separate addresses with commas: cc='a@example.com, B <b@example.com>'.")
+    return pairs
+
+
+def _merge_cc(inferred: str | None, explicit: list[tuple[str, str]]) -> str | None:
+    """Reply-all's inferred Cc plus the caller's parsed cc, deduped on the address.
+
+    The inferred half is already well-formed (_parse_address_list built each
+    entry), so it is kept verbatim and only new explicit addresses append.
+    """
+    seen = {addr.lower() for _, addr in getaddresses([inferred or ""]) if addr}
+    merged = [inferred] if inferred else []
+    for name, addr in explicit:
+        if addr.lower() not in seen:
+            seen.add(addr.lower())
+            merged.append(formataddr((name, addr)))
+    return ", ".join(merged) or None
+
+
 def _format_existing_drafts(existing: list[dict[str, str]]) -> str:
     """Render existing-draft details for the guard's teaching error."""
     parts = []
@@ -147,6 +185,7 @@ def do_reply_draft(
                 "message": "reply_draft requires 'content' (reply body)"}
     try:
         validate_gmail_id(file_id, "file_id")
+        explicit_cc = _parse_cc(cc) if reply_all and cc else []
     except ValueError as e:
         return {"error": True, "kind": "invalid_input", "message": str(e)}
 
@@ -205,8 +244,12 @@ def do_reply_draft(
     else:
         to, inferred_cc = _infer_recipients(last_message)
 
-    # Explicit cc overrides inferred
-    final_cc = cc if cc is not None else inferred_cc
+    # Explicit cc ADDS to reply-all's inferred Cc rather than replacing it —
+    # replacing silently dropped everyone reply_all had just gathered, and a
+    # 2026-03-25 session reported a replied-all draft to the user while its
+    # Cc held only the one added name (mise-tijeko: callers expected the
+    # union 8/8). Without reply_all there is nothing inferred to keep.
+    final_cc = _merge_cc(inferred_cc, explicit_cc) if reply_all else (cc if cc is not None else inferred_cc)
 
     # Build threading headers
     in_reply_to, references = _build_references(last_message)

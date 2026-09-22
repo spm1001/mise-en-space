@@ -11,6 +11,7 @@ The content parameter accepts a YAML or JSON spec defining the form structure.
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -18,7 +19,8 @@ import yaml
 from adapters.http_client import get_sync_client
 from models import DoResult, MiseError, ErrorKind
 from retry import with_retry
-from validation import sanitize_title
+from tools.move import _get_dest_meta, _move_file
+from validation import sanitize_title, validate_drive_id
 
 logger = logging.getLogger(__name__)
 
@@ -231,18 +233,54 @@ def create_form(
     content: str | None = None,
     title: str | None = None,
     folder_id: str | None = None,
+    file_path: str | None = None,
+    source: str | None = None,
+    base_path: str | None = None,
+    page_setup: str | None = None,
 ) -> DoResult | dict[str, Any]:
     """Create a Google Form from a YAML or JSON spec.
 
     Args:
         content: YAML or JSON string defining the form structure
         title: Form title (overrides spec title if both provided)
-        folder_id: Ignored — Forms API doesn't support folder placement at creation.
-                   Included for do_create interface consistency.
+        folder_id: Destination folder. The Forms API always mints in My Drive
+            root, so the form is re-parented through Drive right after —
+            probed live 2026-09-22 (mise-tijeko). Checked BEFORE the form is
+            minted, so a bad folder costs nothing.
+        file_path: Local file holding the spec — read as UTF-8 text, the same
+            meaning file_path has for doc/sheet creates.
+        source: Refused with teaching — a deposit replays a Doc/Sheet body,
+            never a form spec.
+        base_path: Resolves a relative file_path.
+        page_setup: Docs-only; ignored here with a warning cue.
+
+    Every one of these used to be dropped in silence (mise-tijeko); blank-slate
+    callers put to the cases chose consume (file_path, folder_id 8/8) and
+    ignore-with-a-warning (page_setup 8/8).
 
     Returns:
         DoResult on success, error dict on failure
     """
+    if source:
+        return {"error": True, "kind": "invalid_input",
+                "message": "source= replays a fetched deposit as a Doc or Sheet "
+                           "body; a form needs its YAML/JSON spec — pass it as "
+                           "content= or file_path=."}
+    if file_path:
+        if content:
+            return {"error": True, "kind": "invalid_input",
+                    "message": "Provide either 'content' or 'file_path', not both."}
+        spec_file = Path(file_path)
+        if not spec_file.is_absolute() and base_path:
+            spec_file = Path(base_path) / spec_file
+        if not spec_file.resolve().is_file():
+            return {"error": True, "kind": "invalid_input",
+                    "message": f"File not found: {file_path}"}
+        try:
+            content = spec_file.resolve().read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            return {"error": True, "kind": "invalid_input",
+                    "message": f"File is not valid UTF-8 text: {file_path}"}
     if not content:
         return {"error": True, "kind": "invalid_input",
                 "message": "Form creation requires 'content' with a YAML or JSON form spec."}
@@ -261,6 +299,16 @@ def create_form(
     if errors:
         return {"error": True, "kind": "invalid_input",
                 "message": f"Invalid form spec: {'; '.join(errors)}"}
+
+    dest_meta: dict[str, Any] | None = None
+    if folder_id:
+        try:
+            validate_drive_id(folder_id, "folder_id")
+            dest_meta = _get_dest_meta(folder_id)
+        except ValueError as e:
+            return {"error": True, "kind": "invalid_input", "message": str(e)}
+        except MiseError as e:
+            return {"error": True, "kind": e.kind.value, "message": e.message}
 
     form_title = spec["title"]
     questions = spec.get("questions", [])
@@ -292,8 +340,19 @@ def create_form(
         "question_count": len(questions),
         "responder_url": responder_uri,
     }
-    if folder_id:
-        cues["folder_warning"] = "Forms API doesn't support folder placement at creation. Form was created in My Drive root."
+    if folder_id and dest_meta is not None:
+        try:
+            _move_file(form_id, folder_id, dest_meta)
+            cues["folder"] = dest_meta.get("name", folder_id)
+            cues["folder_id"] = folder_id
+        except Exception as e:  # noqa: BLE001 — the form exists; say where it is
+            cues.setdefault("warnings", []).append(
+                f"Form created in My Drive root — moving it into folder "
+                f"{folder_id} failed ({e}). do(move, file_id='{form_id}', "
+                f"folder_id='{folder_id}') retries.")
+    if page_setup:
+        cues.setdefault("warnings", []).append(
+            "page_setup= applies only to doc_type='doc' — ignored for this form.")
 
     return DoResult(
         file_id=form_id,

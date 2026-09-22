@@ -297,3 +297,76 @@ class TestVisibilityTransparency:
         assert result.cues["previous"]["visibility"] == "default"
         assert result.cues["previous"]["transparency"] == "opaque (busy)"
         assert result.cues["visibility"] == "private"
+
+
+_MEET = {
+    "conferenceData": {"entryPoints": [
+        {"entryPointType": "video", "uri": "https://meet.google.com/abc-defg-hij"}]},
+    "hangoutLink": "https://meet.google.com/abc-defg-hij",
+}
+
+
+class TestMeetRemoval:
+    """meet=False removes a Meet link; meet=None leaves it alone (mise-tijeko).
+
+    meet=False used to be indistinguishable from "not mentioned" — the default
+    was False — so a caller removing a link got the rest of the edit and a
+    silent no. 8/8 blank-slate callers expected removal; across 1,668 real
+    do() calls no caller ever passed a boolean at its default, so treating an
+    explicit False as a request is safe. Removal = conferenceData null on the
+    patch, probed live 2026-09-22.
+    """
+
+    @patch("tools.update_event.patch_event")
+    @patch("tools.update_event.get_event")
+    def test_meet_false_previews_the_removal(self, mock_get, mock_patch) -> None:
+        mock_get.return_value = _event(**_MEET)
+        result = do_update_event(file_id="evt123", title="Offsite (in person)", meet=False)
+        assert result["preview"] is True
+        assert "remove the Meet link" in result["changes"]["meet"]
+        assert "meet.google.com/abc-defg-hij" in result["changes"]["meet"]
+        mock_patch.assert_not_called()
+
+    @patch("tools.update_event.patch_event", return_value=_event(summary="Offsite (in person)"))
+    @patch("tools.update_event.get_event")
+    def test_confirmed_meet_false_nulls_conference_data(self, mock_get, mock_patch) -> None:
+        mock_get.return_value = _event(**_MEET)
+        result = do_update_event(file_id="evt123", title="Offsite (in person)",
+                                 meet=False, confirm=True)
+        assert isinstance(result, DoResult)
+        body = mock_patch.call_args[0][1]
+        assert body["conferenceData"] is None and body["summary"] == "Offsite (in person)"
+        assert result.cues["meet_removed"] == "Meet link removed"
+        assert result.cues["previous"]["meet_link"] == "https://meet.google.com/abc-defg-hij"
+
+    @patch("tools.update_event.patch_event", return_value=_event(**_MEET))
+    @patch("tools.update_event.get_event")
+    def test_meet_still_present_on_readback_is_said(self, mock_get, _patch) -> None:
+        mock_get.return_value = _event(**_MEET)
+        result = do_update_event(file_id="evt123", meet=False, confirm=True)
+        assert "still present" in result.cues["meet_removed"]
+
+    @patch("tools.update_event.patch_event", return_value=_event(summary="Renamed"))
+    @patch("tools.update_event.get_event")
+    def test_meet_none_leaves_the_link_alone(self, mock_get, mock_patch) -> None:
+        mock_get.return_value = _event(**_MEET)
+        result = do_update_event(file_id="evt123", title="Renamed")
+        assert isinstance(result, DoResult)  # cosmetic only — ran direct
+        assert "conferenceData" not in mock_patch.call_args[0][1]
+
+    @patch("tools.update_event.get_event")
+    def test_meet_false_without_a_link_says_so(self, mock_get) -> None:
+        mock_get.return_value = _event()
+        result = do_update_event(file_id="evt123", meet=False)
+        assert result["error"] is True
+        assert "no Meet link" in result["message"]
+
+    @patch("tools.update_event.patch_event")
+    @patch("tools.update_event.get_event")
+    def test_meet_true_on_linked_event_no_longer_previews_a_phantom(self, mock_get, mock_patch) -> None:
+        # The already-has-a-link check moved ahead of the preview, so the
+        # preview can't promise "add a Meet link" and then skip it on confirm.
+        mock_get.return_value = _event(**_MEET)
+        result = do_update_event(file_id="evt123", meet=True)
+        assert result["error"] is True and "already has a Meet link" in result["message"]
+        mock_patch.assert_not_called()

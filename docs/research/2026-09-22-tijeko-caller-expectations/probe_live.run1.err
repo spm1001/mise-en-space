@@ -1,0 +1,29 @@
+patch_event failed after 1 attempts: Client error '403 Forbidden' for url 'https://www.googleapis.com/calendar/v3/calendars/primary/events/rpd8ei4tde3868jmr56l6ksgks?sendUpdates=none&supportsAttachments=true&conferenceDataVersion=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403
+Traceback (most recent call last):
+  File "/home/modha/repos/spm1001/mise-en-space/retry.py", line 226, in sync_wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/modha/repos/spm1001/mise-en-space/adapters/calendar.py", line 348, in patch_event
+    return client.patch_json(
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/modha/repos/spm1001/mise-en-space/adapters/http_client.py", line 567, in patch_json
+    response = self.request("PATCH", url, json_body=json_body, params=params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/modha/repos/spm1001/mise-en-space/adapters/http_client.py", line 535, in request
+    response.raise_for_status()
+  File "/home/modha/repos/spm1001/mise-en-space/.venv/lib/python3.11/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '403 Forbidden' for url 'https://www.googleapis.com/calendar/v3/calendars/primary/events/rpd8ei4tde3868jmr56l6ksgks?sendUpdates=none&supportsAttachments=true&conferenceDataVersion=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/modha/repos/spm1001/mise-en-space/docs/research/2026-09-22-tijeko-caller-expectations/probe_live.py", line 64, in <module>
+    patched = patch_event(minted_event, {"conferenceData": None}, send_updates="none")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/modha/repos/spm1001/mise-en-space/retry.py", line 235, in sync_wrapper
+    raise _convert_to_mise_error(e) from e
+models.MiseError: Client error '403 Forbidden' for url 'https://www.googleapis.com/calendar/v3/calendars/primary/events/rpd8ei4tde3868jmr56l6ksgks?sendUpdates=none&supportsAttachments=true&conferenceDataVersion=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403 | API: Rate Limit Exceeded

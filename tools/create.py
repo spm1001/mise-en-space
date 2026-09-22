@@ -33,6 +33,7 @@ from tools.doc_chips import (CHIP_REF_RE, ChipRef, find_placeholder_indices,
                              insert_chips_in_doc, parse_chip_refs, restore_placeholders)
 from tools.doc_control_chars import apply_sanitise_cues, sanitise_for_import
 from tools.doc_footnotes import apply_footnote_cues, footnotes_for_import
+from tools.folder_cues import warn_folder_ignored
 from tools.form_create import create_form
 from validation import validate_drive_id, sanitize_title
 
@@ -267,13 +268,15 @@ def do_create(
     Returns:
         DoResult on success, error dict on failure
     """
-    # Folder creation — no content needed, early return
+    # Folder creation — no content; content-shaped params warn (mise-tijeko)
     if doc_type == "folder":
-        return _create_folder(title, folder_id)
+        return warn_folder_ignored(_create_folder(title, folder_id), content=content,
+                                   source=source, file_path=file_path, page_setup=page_setup)
 
     # Form creation — entirely different API (Forms API, not Drive), early return
     if doc_type == "form":
-        return create_form(content=content, title=title, folder_id=folder_id)
+        return create_form(content=content, title=title, folder_id=folder_id, file_path=file_path,
+                           source=source, base_path=base_path, page_setup=page_setup)
 
     # Validate page_setup
     if page_setup and page_setup != "pageless":

@@ -1,0 +1,43 @@
+{
+  "stamp": "20260922T212859Z",
+  "C6": {
+    "parents_before": [
+      "0AKk5ew6SUxWwUk9PVA"
+    ],
+    "folder": "1BmrR-gX-voIIiqpGVd1KZWlBfWxsMouJ",
+    "parents_after": [
+      "1BmrR-gX-voIIiqpGVd1KZWlBfWxsMouJ"
+    ],
+    "move_result": {
+      "file_id": "1ie49tXv7tXDmgirsXr-07Z4x36jZ48GeZI0TCB8Toe0",
+      "title": "tijeko probe form 20260922T212859Z (scratch)",
+      "web_link": "https://docs.google.com/forms/d/1ie49tXv7tXDmgirsXr-07Z4x36jZ48GeZI0TCB8Toe0/edit?usp=drivesdk",
+      "operation": "move",
+      "cues": {
+        "destination_folder": "tijeko probe folder 20260922T212859Z (scratch)",
+        "destination_folder_id": "1BmrR-gX-voIIiqpGVd1KZWlBfWxsMouJ",
+        "previous_parents": [
+          "0AKk5ew6SUxWwUk9PVA"
+        ],
+        "_identity": {
+          "email": "sameer.modha@itv.com"
+        }
+      }
+    },
+    "landed": true
+  },
+  "deleted": [
+    [
+      "event",
+      "rpd8ei4tde3868jmr56l6ksgks"
+    ],
+    [
+      "drive",
+      "1ie49tXv7tXDmgirsXr-07Z4x36jZ48GeZI0TCB8Toe0"
+    ],
+    [
+      "drive",
+      "1BmrR-gX-voIIiqpGVd1KZWlBfWxsMouJ"
+    ]
+  ]
+}

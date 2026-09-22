@@ -43,7 +43,16 @@ def do_move(
         DoResult on single success, batch summary dict on list input,
         error dict on failure
     """
-    # folder_id is canonical; destination_folder_id is the kept-working alias
+    # folder_id is canonical; destination_folder_id is the kept-working alias.
+    # Both given and different is ambiguous — refuse rather than let one win
+    # silently (mise-tijeko: 8/8 callers preferred refusal, and all 8 said
+    # either silent winner would cost the tool their trust).
+    if folder_id and destination_folder_id and folder_id != destination_folder_id:
+        return {"error": True, "kind": "invalid_input",
+                "message": f"folder_id='{folder_id}' and destination_folder_id="
+                           f"'{destination_folder_id}' name different folders — "
+                           "nothing was moved. Pass folder_id alone "
+                           "(destination_folder_id is its deprecated alias)."}
     folder_id = folder_id or destination_folder_id
     if not file_id or not folder_id:
         missing = []

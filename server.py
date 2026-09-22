@@ -330,7 +330,7 @@ def do(
     anchor: str | None = None, suggest: bool = False,  # two on one line: server.py sits at its 500-line cap
     attendees: list[str] | str | None = None,
     time_min: str | None = None, time_max: str | None = None,
-    location: str | None = None, meet: bool = False,
+    location: str | None = None, meet: bool | None = None,
     recurrence: str | list[str] | None = None,
     send_updates: str | None = None,
     duration: int | None = None,
@@ -357,7 +357,7 @@ def do(
         ("properties", properties), ("color", color),
         ("visibility", visibility), ("transparency", transparency),
     ]:
-        if v is not None and v is not False:
+        if v is not None and (v is not False or k == "meet"):  # meet=False removes (mise-tijeko)
             call_params[k] = v
     if restore_comment is False:
         call_params["restore_comment"] = False
