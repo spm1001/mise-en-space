@@ -89,3 +89,4 @@ One line per handoff, newest first. `- [ ]` = not yet processed by an /open swee
 - [x] 2026-04-08 [2026-04-08-0bc39057.md](2026-04-08-0bc39057.md) — pre-ledger history (processed at adoption 2026-08-31)
 - [x] 2026-04-08 [2026-04-08-0aed85e9.md](2026-04-08-0aed85e9.md) — pre-ledger history (processed at adoption 2026-08-31)
 - [x] 2026-04-05 [2026-04-05-f40e389d.md](2026-04-05-f40e389d.md) — pre-ledger history (processed at adoption 2026-08-31)
+- [ ] 2026-09-22 [2026-09-22-atelier-tables-field-report.md](2026-09-22-atelier-tables-field-report.md) — field report: tables into existing Docs (Candidate: insert_table / update_table)
