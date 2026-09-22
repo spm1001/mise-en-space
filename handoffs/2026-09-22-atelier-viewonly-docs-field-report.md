@@ -17,7 +17,7 @@ format: fond-v2
 - Control: `documents.get(documentId, includeTabsContent=True)` with no `suggestionsViewMode` (DEFAULT_FOR_CURRENT_ACCESS) under ADC returned all five in full. Script: `~/briefs/docs/doc_text.py` on the atelier.
 - Cost: the previous session's handoff recorded these Docs as "the API 403s; Sameer opens them", and Sameer was asked to open five Docs he did not need to. The error text says "permission" and reads as a sharing problem, not a view-mode one.
 
-### Candidates
+### Candidates (folded 2026-09-22 into mise-tiroti, re-parented under mise-kuvuwe — the defect was already filed twice; no new item minted)
 
 <!-- Board visible, writer unreachable (dolt on tube) — a writer-bearing /open mints or drops each; unminted = wish. -->
 Provenance: Claude Code on the atelier, session da3765ed-29b5-4777-bd1c-6db963474e05 — 2026-09-22
