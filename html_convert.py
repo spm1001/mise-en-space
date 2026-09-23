@@ -138,19 +138,6 @@ def clean_html_for_conversion(html: str) -> str:
         soup = BeautifulSoup(html, "html.parser")
         for el in soup.find_all(style=re.compile(r'display:\s*none', re.IGNORECASE)):
             el.decompose()
-        # bs4's html.parser builder (4.14.3) records each bare void tag (<br>)
-        # as awaiting an explicit </br> that never comes; a LATER self-closing
-        # <br /> then consumes that stale entry, is left open, and swallows the
-        # text after it until the enclosing tag closes. str(soup) emits
-        # <br>text</br> and markitdown drops everything inside the <br>.
-        # Minimal trigger: <p>x<br>y</p><p>a<br />b<br />END</p>. Templates
-        # mixing <br> with user text's <br /> hit it: a Microsoft invitation
-        # lost the sender's message after its first sentence (mise-kubolo,
-        # 2026-09-23; mechanism found by the essayeur). Void elements cannot
-        # have children, so hoist any they acquired.
-        for void in reversed(soup.find_all(["br", "hr", "img"])):
-            for child in reversed(list(void.contents)):
-                void.insert_after(child.extract())
         html = str(soup)
     except ImportError:
         # Fallback: strip only self-closing/void hidden elements (safe subset)

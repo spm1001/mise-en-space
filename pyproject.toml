@@ -43,6 +43,12 @@ mise = "cli:main"
 extraction = [
     "markitdown[pdf]>=0.1.7",
     "pdf2image>=1.17.0",
+    # Floor, not a new dependency (markitdown already pulls it): bs4 < 4.15.0's
+    # html.parser builder leaves a <br /> open after an earlier bare <br>, so
+    # html_convert's display:none round-trip nested text inside it and markitdown
+    # dropped it — a Microsoft invitation lost the sender's message (mise-kubolo).
+    # Fixed upstream in 4.15.0 (handle_startendtag skips the already-closed check).
+    "beautifulsoup4>=4.15.0",
     # CDP browser lane (self-sent Gmail resolution, Chrome PDF thumbs).
     # Optional at runtime by design — adapters/cdp.py and gmail_browser.py
     # guard the import and fail open ("slim build"). Moved out of core

@@ -430,7 +430,8 @@ class TestMachineNotificationKeepsItsLinks:
 
     def test_minimal_bs4_void_trigger(self) -> None:
         """The mechanism in 38 chars: a bare <br> earlier, then self-closing
-        <br />s — bs4 leaves one open and markitdown drops what it swallowed."""
+        <br />s. bs4 < 4.15.0 left one open and markitdown dropped what it
+        swallowed; this pins the pyproject floor (red on 4.14.3)."""
         from html_convert import clean_html_for_conversion, convert_html_to_markdown
         md, _ = convert_html_to_markdown(
             clean_html_for_conversion("<p>x<br>y</p><p>a<br />b<br />END</p>"))
