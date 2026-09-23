@@ -467,7 +467,7 @@ search("orgTitle='Head of Strategy'", sources=["people"], base_path="...")
 | `append` | Insert at end of file — or, with `tab='Title'`, place content in a NEW Google Doc tab | `file_id`, `content`, optional `tab` |
 | `replace_text` | Find-and-replace in file — applies across ALL tabs, Docs and Sheets alike (probed 2026-08-24) | `file_id`, `find`, `content` |
 | `draft` | Compose a new Gmail draft — or update an existing one in place | `to`, `subject`, `content`, optional `include` (Drive file IDs); update: `file_id` (draft ID) + `content` |
-| `reply_draft` | Reply draft in an existing thread | `file_id` (thread ID), `content`, optional `include` |
+| `reply_draft` | Reply draft in an existing thread | `file_id` (thread ID), `content`, optional `include`, `to=` to override the inferred recipient |
 | `respond` | Accept/decline/tentative a calendar invite — the RSVP lands live, organiser sees it | `file_id` (invite thread ID or Calendar event ID), `action` (`accept`/`decline`/`tentative`) |
 | `create_event` | Book a calendar event — invites, Meet link, recurrence, Drive attachments | `title`, `time_min`/`time_max` (start/end); with `attendees`: preview → `confirm=True` |
 | `update_event` | Edit an event — quiet description edits direct; time/attendee/series changes gated | `file_id` (event ID or invite thread ID), then the fields to change |
@@ -506,7 +506,7 @@ search("orgTitle='Head of Strategy'", sources=["people"], base_path="...")
 
 **Editing a Form:** `overwrite` on a form takes the same YAML/JSON spec as `create` — fetch the form first (`structure.json` shows current state), tweak the spec (e.g. add one option to a checkbox question), and overwrite. It replaces ALL questions wholesale; if the form already has responses, edit in the Forms UI instead.
 
-**Updating a draft:** `draft` with `file_id` (the draft ID a previous draft/reply_draft returned) rewrites that draft instead of minting a stray new one. `content` is required; `to`/`subject`/`cc` carry over when not resupplied; reply drafts keep their threading. Superseded drafts and files: `trash` — Drive files go to the recoverable bin, drafts are discarded permanently.
+**Updating a draft:** `draft` with `file_id` (the draft ID a previous draft/reply_draft returned) rewrites that draft instead of minting a stray new one. `content` is required; `to`/`subject`/`cc` carry over when not resupplied; reply drafts keep their threading; attachments ride along (`cues.attachments_kept`), and when they are unreadable the update refuses rather than deleting them. Superseded drafts and files: `trash` — Drive files go to the recoverable bin, drafts are discarded permanently.
 
 ### Writing & Replying to Comments
 
@@ -930,6 +930,8 @@ Draft-only — Claude composes, the user reviews and sends from Gmail. This is a
 **What recipients see from `include=`** (characterised live, 2026-08-09): each file renders as a **Gmail Drive chip** — the grey rounded card with the file-type icon, same as the composer's own "insert from Drive" — because mise emits Gmail's own chip markup (plain styled HTML; Gmail never upgrades bare links to chips at read time, so markup at compose time is the only route). The text/plain part carries emoji + URL lines for non-HTML clients. **One thing the native composer does that mise does not: check the recipient can access the file.** Gmail's compose UI offers "Share & send"; mise sends the chip regardless, and a recipient without access hits "request access" on click. Before including a file someone outside the owner's domain needs, share it first (`do(share)`) — mise won't warn you.
 
 Both draft ops auto-append the user's Gmail signature (from their sendAs settings, links intact) to the body. **Don't write a sign-off in `content`** — no "Best regards, ..." — end at the last sentence; the real signature lands below it. The `signature` cue in the response confirms it was appended.
+
+**Check who a reply draft is addressed to before you report it.** It answers the last LIVE message in the thread (trashed ones are skipped) and its result states `to`, `cc` and `reply_anchor`. If that last message was an internal aside, the inferred To is your colleague, not the correspondent: a warning names the thread's originator when they are missing, and `to=` (plus `cc=`) sets the addressing explicitly.
 
 **One draft per thread.** Gmail's conversation view shows only ONE draft inline per thread — a second draft object exists but hides exactly where the user hits Send. So `reply_draft` refuses when the thread already carries a draft, naming its id. The right move is almost always to **update the existing draft**: `do(operation="draft", file_id="<draft_id>", content=...)`. Pass `supersede=True` only when you deliberately want to discard the old draft and start fresh (permanent — and it may eat the user's hand-edits, so check whose words are in it first: the refusal includes a snippet).
 

@@ -228,7 +228,10 @@ def do_draft(
 
     cues: dict[str, Any] = {
         "action": "Draft created \u2014 review and send from Gmail",
+        "to": to,  # resolved addressing, stated (mise-cesico)
     }
+    if cc:
+        cues["cc"] = cc
     if sig_html:
         cues["signature"] = "Gmail signature appended automatically"
     if included_links:
@@ -327,7 +330,10 @@ def _update_draft_in_place(
 
     cues: dict[str, Any] = {
         "action": "Draft updated in place — review and send from Gmail",
+        "to": to,  # resolved addressing, including carried-over values (mise-cesico)
     }
+    if cc:
+        cues["cc"] = cc
     if attachments:
         cues["attachments_kept"] = [name for name, _, _ in attachments]
     # Gmail materialises the signature's <img> as an inline part on every save,

@@ -133,7 +133,7 @@ OP_PARAMS: dict[str, frozenset[str]] = {
     "replace_text": frozenset({"file_id", "find", "content", "suggest"}),
     "draft": frozenset({"to", "subject", "content", "cc", "include", "file_id"}),
     "reply_draft": frozenset({"file_id", "content", "cc", "include",
-                              "reply_all", "supersede"}),
+                              "reply_all", "supersede", "to"}),
     "archive": frozenset({"file_id"}),
     "star": frozenset({"file_id"}),
     "label": frozenset({"file_id", "label", "remove"}),
@@ -262,7 +262,7 @@ DISPATCH: dict[str, Any] = {
     "reply_draft": lambda p: do_reply_draft(
         file_id=p["file_id"], content=p["content"],
         cc=p["cc"], include=p["include"], reply_all=p.get("reply_all", False),
-        supersede=p.get("supersede", False),
+        supersede=p.get("supersede", False), to=p.get("to"),
     ),
     "archive": lambda p: do_archive(file_id=p["file_id"]),
     "star": lambda p: do_star(file_id=p["file_id"]),

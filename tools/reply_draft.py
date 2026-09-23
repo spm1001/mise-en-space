@@ -140,6 +140,29 @@ def _format_existing_drafts(existing: list[dict[str, str]]) -> str:
     return "; ".join(parts)
 
 
+_NOT_LIVE = {"TRASH", "DRAFT"}
+
+
+def _reply_anchor(messages: list[EmailMessage]) -> tuple[EmailMessage, int]:
+    """The last LIVE message and how many trashed/draft messages sat after it.
+
+    Trashed messages stay in the thread from the API's view, so the tail of a
+    thread whose internal asides were binned still read as the one to answer:
+    the draft went To: the binned aside's sender, and anchored on a trashed
+    message it then vanished from Gmail's conversation view (mise-newidu,
+    mise-womuse, 2026-09-02). With no live message at all, the last one stands.
+    """
+    for back, msg in enumerate(reversed(messages)):
+        if not _NOT_LIVE.intersection(msg.label_ids):
+            return msg, back
+    return messages[-1], 0
+
+
+def _describe(msg: EmailMessage) -> str:
+    when = msg.date.strftime("%Y-%m-%d %H:%MZ") if msg.date else "undated"
+    return f"{msg.from_address} ({when})"
+
+
 def do_reply_draft(
     file_id: str | None = None,
     content: str | None = None,
@@ -147,6 +170,7 @@ def do_reply_draft(
     include: list[str] | None = None,
     reply_all: bool = False,
     supersede: bool = False,
+    to: str | None = None,
     **_kwargs: Any,
 ) -> DoResult | dict[str, Any]:
     """
@@ -172,6 +196,8 @@ def do_reply_draft(
         reply_all: If True, infer Cc from all recipients on the last message
         supersede: If True, discard any existing drafts on this thread before
             creating the new one (drafts.delete is permanent)
+        to: Optional explicit To, replacing the inferred sender — for when the
+            message being answered is an internal aside (mise-newidu)
 
     Returns:
         DoResult on success, error dict on failure
@@ -236,13 +262,15 @@ def do_reply_draft(
         return {"error": True, "kind": "invalid_input",
                 "message": f"Thread {file_id} has no messages"}
 
-    last_message = thread.messages[-1]
+    last_message, skipped = _reply_anchor(thread.messages)
+    me = (current_user_email() or "").lower()
 
     # Infer recipients
     if reply_all:
-        to, inferred_cc = _infer_recipients_all(last_message, current_user_email())
+        inferred_to, inferred_cc = _infer_recipients_all(last_message, current_user_email())
     else:
-        to, inferred_cc = _infer_recipients(last_message)
+        inferred_to, inferred_cc = _infer_recipients(last_message)
+    to = to or inferred_to
 
     # Explicit cc ADDS to reply-all's inferred Cc rather than replacing it —
     # replacing silently dropped everyone reply_all had just gathered, and a
@@ -283,11 +311,29 @@ def do_reply_draft(
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
 
+    # The draft's resolved addressing, stated: a fetch of the draft link renders
+    # the THREAD, so without this nothing can confirm who it goes to (mise-cesico).
     cues: dict[str, Any] = {
         "action": "Reply draft created \u2014 review and send from Gmail",
         "thread_id": file_id,
         "replying_to": last_message.from_address,
+        "reply_anchor": _describe(last_message),
+        "to": to,
     }
+    warnings: list[str] = []
+    if skipped:
+        warnings.append(
+            f"Skipped {skipped} trashed/draft message(s) at the end of the thread; "
+            f"replying to the last live one, from {_describe(last_message)}.")
+    originator = thread.messages[0].from_address
+    addressed = {_extract_email(a) for _, a in getaddresses([to, final_cc or ""]) if a}
+    if _extract_email(originator) not in addressed | {me}:
+        warnings.append(
+            f"The thread's originator {originator} is not on this draft (To: {to}"
+            + (f"; Cc: {final_cc}" if final_cc else "") + "). If the message you are "
+            "answering was an internal aside, pass to=/cc= explicitly.")
+    if warnings:
+        cues.setdefault("warnings", []).extend(warnings)
     if sig_html:
         cues["signature"] = "Gmail signature appended automatically"
     if superseded:

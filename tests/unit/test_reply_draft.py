@@ -735,3 +735,62 @@ class TestListThreadDrafts:
             result = list_thread_drafts("T")
         assert [d["draft_id"] for d in result] == ["r1", "r2"]
         assert mock_client.get_bytes.call_args_list[1].kwargs["params"]["pageToken"] == "tok"
+
+
+class TestReplyAddressing:
+    """reply_draft answered the thread's LAST message, trashed or not, and never
+    said who the draft was addressed to (mise-newidu, mise-womuse, mise-cesico)."""
+
+    def _ok(self, mock_create):
+        mock_create.return_value = ReplyDraftResult(
+            draft_id="d1", message_id="m1", thread_id="abc123def456abc1",
+            web_link="https://mail.google.com/mail/#drafts/d1", to="x", subject="Re: s")
+
+    def _bart_thread(self, tail_labels=None):
+        bart = _make_message("m1", from_address="Bart <bart@partner.example>",
+                             to_addresses=["me@example.com"], message_id_header="<bart@x>")
+        aside = _make_message("m2", from_address="Nicola <nicola@example.com>",
+                              to_addresses=["me@example.com"], message_id_header="<aside@x>")
+        aside.label_ids = tail_labels or []
+        return _make_thread(messages=[bart, aside])
+
+    @patch("tools.reply_draft.current_user_email", return_value="me@example.com")
+    @patch("tools.reply_draft.create_reply_draft")
+    @patch("tools.reply_draft.fetch_thread")
+    def test_trashed_tail_is_skipped_for_anchor_and_recipients(self, mock_fetch, mock_create, _me) -> None:
+        mock_fetch.return_value = self._bart_thread(tail_labels=["TRASH", "SENT"])
+        self._ok(mock_create)
+        result = do_reply_draft(file_id="abc123def456abc1", content="Thanks", reply_all=True)
+        kw = mock_create.call_args.kwargs
+        assert kw["to"] == "Bart <bart@partner.example>"
+        assert kw["in_reply_to"] == "<bart@x>"
+        assert result.cues["to"] == "Bart <bart@partner.example>"
+        assert "bart@partner.example" in result.cues["reply_anchor"]
+        assert any("Skipped 1 trashed" in w for w in result.cues["warnings"])
+
+    @patch("tools.reply_draft.current_user_email", return_value="me@example.com")
+    @patch("tools.reply_draft.create_reply_draft")
+    @patch("tools.reply_draft.fetch_thread")
+    def test_internal_aside_warns_that_the_originator_is_missing(self, mock_fetch, mock_create, _me) -> None:
+        mock_fetch.return_value = self._bart_thread()
+        self._ok(mock_create)
+        result = do_reply_draft(file_id="abc123def456abc1", content="Thanks", reply_all=True)
+        assert mock_create.call_args.kwargs["to"] == "Nicola <nicola@example.com>"
+        assert any("originator Bart <bart@partner.example> is not on this draft" in w
+                   for w in result.cues["warnings"])
+
+    @patch("tools.reply_draft.current_user_email", return_value="me@example.com")
+    @patch("tools.reply_draft.create_reply_draft")
+    @patch("tools.reply_draft.fetch_thread")
+    def test_to_override_addresses_the_draft_and_silences_the_warning(self, mock_fetch, mock_create, _me) -> None:
+        mock_fetch.return_value = self._bart_thread()
+        self._ok(mock_create)
+        result = do_reply_draft(file_id="abc123def456abc1", content="Thanks",
+                                to="bart@partner.example")
+        assert mock_create.call_args.kwargs["to"] == "bart@partner.example"
+        assert result.cues["to"] == "bart@partner.example"
+        assert "warnings" not in result.cues
+
+    def test_to_reaches_reply_draft_through_dispatch(self) -> None:
+        from tools.dispatch import OP_PARAMS
+        assert "to" in OP_PARAMS["reply_draft"]
