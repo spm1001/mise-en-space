@@ -125,6 +125,36 @@ def _is_extractable_attachment(mime_type: str) -> bool:
     return classify_attachment(mime_type) in ("pdf", "image")
 
 
+def assign_attachment_refs(messages: list[Any]) -> None:
+    """Give every attachment in a thread a unique ref, in thread order.
+
+    Visible and hidden parts share one numbering (image.png, image-2.png, ...)
+    so the name a deposit uses, the name the hidden list shows and the name
+    attachment= accepts are one vocabulary. A part identical by name and size
+    to an earlier one (the same slide carried by each reply) is marked
+    duplicate and keeps the first one's ref (essayeur on mise-sajeso: the
+    'two slides' deposited were one slide twice, and the second slide could
+    not be named).
+    """
+    seen: dict[tuple[str, int], str] = {}
+    used: set[str] = set()
+    for msg in messages:
+        for att in [*getattr(msg, "attachments", []), *getattr(msg, "hidden_attachments", [])]:
+            key = (att.filename.lower(), att.size)
+            if key in seen:
+                att.ref, att.duplicate = seen[key], True
+                continue
+            stem, dot, ext = att.filename.rpartition(".")
+            if not dot:
+                stem, ext = att.filename, ""
+            ref, n = att.filename, 1
+            while ref.lower() in used:
+                n += 1
+                ref = f"{stem}-{n}.{ext}" if dot else f"{stem}-{n}"
+            used.add(ref.lower())
+            att.ref = seen[key] = ref
+
+
 def _unique_name(folder: Path, filename: str) -> str:
     """A name no earlier attachment in this deposit took. Gmail names every
     pasted image 'image.png', so two slides wrote one file and the first was
@@ -269,7 +299,7 @@ def _extract_attachment_content(
             content_bytes = download.content
 
         result = _deposit_attachment_content(
-            content_bytes, att.filename, mime, att.attachment_id, folder
+            content_bytes, att.ref or att.filename, mime, att.attachment_id, folder
         )
 
         # Clean up temp file if created
@@ -303,21 +333,29 @@ def hidden_attachment_cues(thread_data: Any) -> dict[str, Any]:
     """Name what the trivial filter hid, so hidden never means unreachable.
 
     Small images and generic filenames are kept out of the deposit (usually
-    signature logos), but a thread whose payload was two pasted slides fetched
-    as 'no attachments' and attachment='image.png' said 'Available: (none)'
-    (mise-sajeso, 2026-08-20). They are listed here and fetchable by name.
+    signature logos), but a thread whose payload was pasted slides fetched as
+    'no attachments' (mise-sajeso). Each hidden part is listed once (repeats
+    carried by later replies are dropped) with the ref attachment= accepts;
+    the list is capped so a long thread with a logo on every message stays small.
     """
     hidden = [
-        {"filename": a.filename, "mime_type": a.mime_type, "size": a.size}
+        {"fetch_as": a.ref or a.filename, "mime_type": a.mime_type, "size": a.size}
         for msg in thread_data.messages for a in getattr(msg, "hidden_attachments", [])
+        if not getattr(a, "duplicate", False)
     ]
     if not hidden:
         return {}
-    return {
-        "hidden_attachments": hidden,
+    cues: dict[str, Any] = {
+        "hidden_attachments": hidden[:_HIDDEN_LIST_CAP],
         "hidden_attachments_note": (
             f"{len(hidden)} attachment(s) not deposited because they look like "
             "logos or signature images (small images, generic names). If one is "
-            "content, fetch it by name: fetch(<thread>, attachment='<filename>')."
+            "content, fetch it by its fetch_as name: fetch(<thread>, attachment='<fetch_as>')."
         ),
     }
+    if len(hidden) > _HIDDEN_LIST_CAP:
+        cues["hidden_attachments_note"] += f" Showing the first {_HIDDEN_LIST_CAP}."
+    return cues
+
+
+_HIDDEN_LIST_CAP = 10

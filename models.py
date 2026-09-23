@@ -216,6 +216,14 @@ class EmailAttachment:
     size: int
     attachment_id: str  # For fetching content later
 
+    # Thread-unique handle (tools.fetch.gmail_attachments.assign_attachment_refs):
+    # the deposit filename AND what attachment= accepts, so same-named parts
+    # (every pasted image is 'image.png') stay reachable one by one.
+    ref: str | None = None
+    # The same part (name + size) already seen earlier in the thread, carried
+    # again by a reply or forward: not deposited or listed twice.
+    duplicate: bool = False
+
     # If already fetched
     content: bytes | None = None
 

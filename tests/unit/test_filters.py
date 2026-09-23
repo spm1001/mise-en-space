@@ -291,8 +291,8 @@ def test_hidden_attachments_are_disclosed_with_the_route():
     logo = EmailAttachment(filename="image.png", mime_type="image/png", size=4_000, attachment_id="A")
     thread = SimpleNamespace(messages=[SimpleNamespace(hidden_attachments=[logo])])
     cues = hidden_attachment_cues(thread)
-    assert cues["hidden_attachments"] == [{"filename": "image.png", "mime_type": "image/png", "size": 4000}]
-    assert "attachment='<filename>'" in cues["hidden_attachments_note"]
+    assert cues["hidden_attachments"] == [{"fetch_as": "image.png", "mime_type": "image/png", "size": 4000}]
+    assert "attachment='<fetch_as>'" in cues["hidden_attachments_note"]
     assert hidden_attachment_cues(SimpleNamespace(messages=[SimpleNamespace(hidden_attachments=[])])) == {}
 
 
@@ -306,3 +306,57 @@ def test_same_named_attachments_do_not_overwrite(tmp_path):
     (tmp_path / "report.pdf.md").write_text("x")
     assert _unique_name(tmp_path, "report.pdf") == "report-2.pdf"
     assert _unique_name(tmp_path, "README") == "README"
+
+
+class TestAttachmentRefs:
+    """One name per part across a thread (essayeur refutation of mise-sajeso:
+    the 'two slides' deposited were one slide twice, and the real second
+    slide could not be named)."""
+
+    def _thread(self):
+        from types import SimpleNamespace
+        from models import EmailAttachment
+        big = lambda: EmailAttachment(filename="image.png", mime_type="image/png", size=207304, attachment_id="A")
+        small = lambda: EmailAttachment(filename="image.png", mime_type="image/png", size=183220, attachment_id="B")
+        m1 = SimpleNamespace(attachments=[big()], hidden_attachments=[small()], message_id="m1")
+        m2 = SimpleNamespace(attachments=[big()], hidden_attachments=[small()], message_id="m2")
+        return SimpleNamespace(messages=[m1, m2])
+
+    def test_refs_are_unique_and_repeats_are_duplicates(self):
+        from tools.fetch.gmail_attachments import assign_attachment_refs
+        t = self._thread()
+        assign_attachment_refs(t.messages)
+        m1, m2 = t.messages
+        assert (m1.attachments[0].ref, m1.hidden_attachments[0].ref) == ("image.png", "image-2.png")
+        assert m2.attachments[0].duplicate and m2.attachments[0].ref == "image.png"
+        assert m2.hidden_attachments[0].duplicate and m2.hidden_attachments[0].ref == "image-2.png"
+
+    def test_hidden_list_names_the_fetchable_ref_once(self):
+        from tools.fetch.gmail_attachments import assign_attachment_refs, hidden_attachment_cues
+        t = self._thread()
+        assign_attachment_refs(t.messages)
+        assert [h["fetch_as"] for h in hidden_attachment_cues(t)["hidden_attachments"]] == ["image-2.png"]
+
+    def test_attachment_lookup_reaches_a_hidden_part_by_ref(self):
+        from unittest.mock import patch
+        from tools.fetch.gmail import fetch_attachment
+        t = self._thread()
+        with patch("tools.fetch.gmail.fetch_thread", return_value=t), \
+             patch("tools.fetch.gmail._download_attachment_bytes", side_effect=RuntimeError("reached")):
+            try:
+                fetch_attachment("thread001", "image-2.png")
+            except RuntimeError as e:
+                assert str(e) == "reached"  # the lookup found the hidden part and tried to download it
+            else:
+                raise AssertionError("lookup did not reach the hidden part")
+
+    def test_hidden_list_is_capped(self):
+        from types import SimpleNamespace
+        from models import EmailAttachment
+        from tools.fetch.gmail_attachments import assign_attachment_refs, hidden_attachment_cues
+        msgs = [SimpleNamespace(attachments=[], hidden_attachments=[
+            EmailAttachment(filename=f"logo{i}.png", mime_type="image/png", size=100 + i, attachment_id=str(i))])
+            for i in range(14)]
+        assign_attachment_refs(msgs)
+        cues = hidden_attachment_cues(SimpleNamespace(messages=msgs))
+        assert len(cues["hidden_attachments"]) == 10 and "Showing the first 10" in cues["hidden_attachments_note"]

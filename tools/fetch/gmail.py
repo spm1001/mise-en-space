@@ -26,6 +26,7 @@ from .gmail_attachments import (
     _extract_from_drive,
     _resolve_attachment_mime,
     classify_attachment,
+    assign_attachment_refs,
     hidden_attachment_cues,
 )
 from .gmail_exfil import _match_exfil_for_message
@@ -117,6 +118,7 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
         thread_id = actual_thread_id
         thread_data = fetch_thread(thread_id)
 
+    assign_attachment_refs(thread_data.messages)  # one name per part: deposit, cue, attachment=
     # Extract thread text content
     content = extract_thread_content(thread_data)
 
@@ -166,6 +168,8 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
             exfil_matches = _match_exfil_for_message(msg.attachments, exfil_files)
 
             for att in msg.attachments:
+                if att.duplicate:  # the same part an earlier message already carried
+                    continue
                 att_info = {
                     "filename": att.filename,
                     "mime_type": att.mime_type,
@@ -216,7 +220,7 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
                 if exfil_match and eager:
                     result = _extract_from_drive(
                         file_id=exfil_match["file_id"],
-                        filename=att.filename,
+                        filename=att.ref or att.filename,
                         mime_type=resolved_mime,
                         folder=folder,
                         warnings=extraction_warnings,
@@ -422,6 +426,7 @@ def fetch_attachment(
     """
     # 1. Fetch thread to find the attachment
     thread_data = fetch_thread(thread_id)
+    assign_attachment_refs(thread_data.messages)
 
     # 2. Scan all messages for matching attachment
     target_att = None
@@ -430,8 +435,8 @@ def fetch_attachment(
 
     for msg in thread_data.messages:
         for att in [*msg.attachments, *msg.hidden_attachments]:  # hidden: filtered, still fetchable (mise-sajeso)
-            all_attachment_names.append(att.filename)
-            if att.filename.lower() == attachment_name.lower():
+            all_attachment_names.append(att.ref or att.filename)
+            if (att.ref or att.filename).lower() == attachment_name.lower():
                 target_att = att
                 target_msg = msg
                 break
