@@ -41,14 +41,14 @@ esac
 
 # --- Install the rules shard, stamped with this flavour's identity (betiko) --
 if [ -f "$_PLUGIN_ROOT/instructions.md" ]; then
-    mkdir -p "$HOME/.claude/rules"
+    mkdir -p "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/rules"
     # Filename derives from the plugin name (mise.md / mise-home.md), so the hook
     # self-adjusts per flavour and needs no rules/<name>.md substitution in the
     # transform. Copy, NOT symlink: the plugin root can be an ephemeral temp dir
     # (Desktop stages under /var/folders, which macOS purges) — a symlink there
     # dangles and the shard vanishes. Re-run each session-start keeps it current.
     # Do NOT revert to ln -sf.
-    RULES_DEST="$HOME/.claude/rules/${NAME}.md"
+    RULES_DEST="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/rules/${NAME}.md"
     # Robust write via temp+mv: a stale entry may be a SYMLINK from an older
     # session, and cp-ing source over a symlink-to-source errors ("same file").
     # mv -f replaces the entry atomically whatever it was, never following it.
