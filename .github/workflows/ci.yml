@@ -20,6 +20,21 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v8
+      # spm1001/jeton is private since 2026-09-23 (bds-sipaba) and the dev
+      # source map + the consumer-door tests fetch it by git URL. Route that
+      # one repo over SSH with a read-only deploy key; everything else is
+      # untouched. The secret exists twice — Actions and Dependabot — because
+      # Dependabot-triggered runs only see Dependabot secrets.
+      - name: Reach private jeton over a read-only deploy key
+        env:
+          JETON_DEPLOY_KEY: ${{ secrets.JETON_DEPLOY_KEY }}
+        run: |
+          test -n "$JETON_DEPLOY_KEY" || { echo "::error::JETON_DEPLOY_KEY secret missing — jeton is private"; exit 1; }
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$JETON_DEPLOY_KEY" > ~/.ssh/jeton && chmod 600 ~/.ssh/jeton
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          git config --global core.sshCommand "ssh -i $HOME/.ssh/jeton -o IdentitiesOnly=yes"
+          git config --global url."git@github.com:spm1001/jeton".insteadOf "https://github.com/spm1001/jeton"
       - run: uv sync --all-extras --all-groups
       # poppler-utils backs pdf2image (page counts, thumbnails) — the full
       # flavour assumes it, and count_pdf_pages returns None without it, so
