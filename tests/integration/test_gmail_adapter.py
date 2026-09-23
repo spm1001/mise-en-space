@@ -133,7 +133,7 @@ def test_invalid_thread_id() -> None:
 def test_search_threads_returns_results() -> None:
     """Test that search_threads returns valid results."""
     # Search for something that should exist in any Gmail account
-    results = search_threads("in:inbox", max_results=5)
+    results = search_threads("in:inbox", max_results=5).results
 
     assert isinstance(results, list)
     # May or may not have results depending on inbox state
@@ -148,7 +148,7 @@ def test_search_threads_returns_results() -> None:
 def test_search_threads_with_query() -> None:
     """Test search with a specific query."""
     # Search for a common term
-    results = search_threads("test", max_results=3)
+    results = search_threads("test", max_results=3).results
 
     assert isinstance(results, list)
     for result in results:
@@ -161,7 +161,7 @@ def test_search_threads_with_query() -> None:
 def test_search_threads_empty_query() -> None:
     """Test search with query that likely returns nothing."""
     # Highly specific query unlikely to match
-    results = search_threads("xyzzy12345nosuchterm98765", max_results=5)
+    results = search_threads("xyzzy12345nosuchterm98765", max_results=5).results
 
     assert isinstance(results, list)
     assert len(results) == 0  # Should find nothing

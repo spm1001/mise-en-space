@@ -161,6 +161,13 @@ def _parse_comment_action(action_detail: dict[str, Any]) -> tuple[str, list[str]
     return (action_type, mentioned_users, None)
 
 
+def _activity_id(activity: dict[str, Any], timestamp: str, target: Any) -> str:
+    """DriveActivity has no id field ('name' is never populated), so every
+    activity_id was '' and pagination dedupe compared empty sets (found by the
+    integration run, 2026-09-23). Derive a stable one from what identifies it."""
+    return activity.get("name") or f"{timestamp}|{target.file_id}"
+
+
 @with_retry(max_attempts=3, delay_ms=1000)
 def search_comment_activities(
     page_size: int = 50,
@@ -217,7 +224,7 @@ def search_comment_activities(
 
         activities.append(
             CommentActivity(
-                activity_id=activity.get("name", ""),
+                activity_id=_activity_id(activity, timestamp, target),
                 timestamp=timestamp,
                 actor=actor,
                 target=target,
@@ -330,7 +337,7 @@ def get_file_activities(
 
         activities.append(
             CommentActivity(
-                activity_id=activity.get("name", ""),
+                activity_id=_activity_id(activity, timestamp, target),
                 timestamp=timestamp,
                 actor=actor,
                 target=target,

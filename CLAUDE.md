@@ -259,7 +259,7 @@ uv run --all-extras python -m mypy models.py extractors/ adapters/ validation.py
 uv run --all-extras python scripts/smoke_stdio.py   # drive the WORKING TREE over real stdio MCP
 ```
 
-Integration tests require `-m integration` flag and real credentials.
+Integration tests require `-m integration` flag and real credentials: `uv run --all-extras python -m pytest tests/integration -m integration -o addopts="" --no-cov` (about 5 minutes, runs as the token's account, creates and bins test files). **Run them before shipping a change to an adapter or a dependency refresh** — the chosen cadence (mise-pirusu, 2026-09-23), rather than a schedule, because a scheduled run needs a non-expiring token in CI and a red that tells Google drift from moved test data. The first run in months found 13 of 107 red, and every one was a stale test asserting a pre-change contract (list-shaped search results, markitdown as the PDF primary, inline search results before deposits), not Google drift; one had been passing vacuously. A run nobody reads rots into exactly that.
 
 **`tests/bench/` is the model-qualification battery, not part of the test suite** (mise-rolira): a committed, re-runnable harness that takes new model strings — the deposit-format league, the consumer riders, three generations of scorer. It exists so the next model generation gets *measured* against the deposit-format policy (`docs/2026-08-18-deposit-format-policy.md`) rather than assumed; per-rig facts live in `~/notes/practices/model-profiles/`, findings and archived evidence in `~/notes/practices/mise/`. Costs real API money — run deliberately, never in CI.
 

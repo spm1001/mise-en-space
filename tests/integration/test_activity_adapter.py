@@ -48,7 +48,7 @@ def test_search_activities_have_structure() -> None:
 
     for act in result.activities:
         assert isinstance(act, CommentActivity)
-        assert act.activity_id  # Non-empty
+        assert act.activity_id  # Non-empty — derived since the API has no id field (2026-09-23)
         assert act.timestamp  # Non-empty
         assert isinstance(act.actor, ActivityActor)
         assert isinstance(act.target, ActivityTarget)

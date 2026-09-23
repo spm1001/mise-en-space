@@ -67,7 +67,7 @@ def test_export_doc_to_markdown(integration_ids: dict[str, str]) -> None:
 def test_search_files_returns_results(integration_ids: dict[str, str]) -> None:
     """Test that search returns results."""
     # Search for test documents
-    results = search_files("name contains 'Test'", max_results=5)
+    results = search_files("name contains 'Test'", max_results=5).results
 
     assert isinstance(results, list)
     # May return empty if no matches, but should be a list
@@ -81,7 +81,7 @@ def test_search_files_returns_results(integration_ids: dict[str, str]) -> None:
 @pytest.mark.integration
 def test_search_files_respects_max_results() -> None:
     """Test that max_results limits results."""
-    results = search_files("mimeType != 'application/vnd.google-apps.folder'", max_results=3)
+    results = search_files("mimeType != 'application/vnd.google-apps.folder'", max_results=3).results
 
     assert len(results) <= 3
 

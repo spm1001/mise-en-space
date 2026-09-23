@@ -34,7 +34,7 @@ def test_fetch_and_convert_pdf_returns_content(integration_ids: dict[str, str]) 
 
     assert result.content
     assert len(result.content) > 0
-    assert result.method in ("markitdown", "drive")
+    assert result.method in ("pdftotext", "markitdown", "drive")  # pdftotext primary since mise-mitoki
     assert result.char_count > 0
 
 
@@ -48,8 +48,8 @@ def test_pdf_extraction_method_reported(integration_ids: dict[str, str]) -> None
     result = fetch_and_convert_pdf(pdf_id)
 
     # Method should match the threshold logic
-    if result.char_count >= DEFAULT_MIN_CHARS_THRESHOLD and result.method == "markitdown":
-        # Markitdown succeeded
+    if result.char_count >= DEFAULT_MIN_CHARS_THRESHOLD and result.method in ("pdftotext", "markitdown"):
+        # Local extraction succeeded
         assert len(result.warnings) == 0 or not any("falling back" in w for w in result.warnings)
     elif result.method == "drive":
         # Drive fallback was used
@@ -73,7 +73,7 @@ def test_pdf_extraction_with_high_threshold(integration_ids: dict[str, str]) -> 
 
 @pytest.mark.integration
 def test_pdf_extraction_with_zero_threshold(integration_ids: dict[str, str]) -> None:
-    """Test that setting threshold to 0 always uses markitdown."""
+    """Threshold 0: local extraction always 'succeeds' (pdftotext, or markitdown without poppler)."""
     pdf_id = integration_ids.get("test_pdf_id")
     if not pdf_id:
         pytest.skip("test_pdf_id not in integration_ids.json")
@@ -81,9 +81,9 @@ def test_pdf_extraction_with_zero_threshold(integration_ids: dict[str, str]) -> 
     # Set threshold to 0 - markitdown always "succeeds"
     result = fetch_and_convert_pdf(pdf_id, min_chars_threshold=0)
 
-    # Should use markitdown (unless it extracts literally nothing)
+    # Local path, never the Drive fallback (unless it extracts literally nothing)
     if result.char_count > 0:
-        assert result.method == "markitdown"
+        assert result.method in ("pdftotext", "markitdown")
 
 
 # --- Local rendering tests (no Google API, needs poppler-utils) ---

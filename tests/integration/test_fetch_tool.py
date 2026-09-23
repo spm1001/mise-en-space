@@ -208,7 +208,7 @@ def test_fetch_pdf_extraction_method(integration_ids: dict[str, str], cleanup_mi
     folder = Path(result["path"])
     manifest = json.loads((folder / "manifest.json").read_text())
     assert "extraction_method" in manifest
-    assert manifest["extraction_method"] in ("markitdown", "drive")
+    assert manifest["extraction_method"] in ("pdftotext", "markitdown", "drive")  # mise-mitoki
 
 
 # --- Office File Tests ---
