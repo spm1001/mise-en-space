@@ -156,7 +156,7 @@ def _reply_anchor(messages: list[EmailMessage]) -> tuple[EmailMessage, int]:
     for back, msg in enumerate(reversed(messages)):
         if not _NOT_LIVE.intersection(msg.label_ids):
             return msg, back
-    return messages[-1], 0
+    return messages[-1], -1  # every message trashed: no live anchor exists
 
 
 def _describe(msg: EmailMessage) -> str:
@@ -271,6 +271,9 @@ def do_reply_draft(
         inferred_to, inferred_cc = _infer_recipients_all(last_message, current_user_email())
     else:
         inferred_to, inferred_cc = _infer_recipients(last_message)
+    if to and reply_all and _extract_email(inferred_to) not in {_extract_email(a) for _, a in getaddresses([to])}:
+        # reply_all expects the sender in To; an explicit to= must not drop them
+        explicit_cc = [*explicit_cc, *getaddresses([inferred_to])]
     to = to or inferred_to
 
     # Explicit cc ADDS to reply-all's inferred Cc rather than replacing it —
@@ -322,13 +325,23 @@ def do_reply_draft(
         "to": to,
     }
     warnings: list[str] = []
-    if skipped:
+    if skipped > 0:
         warnings.append(
             f"Skipped {skipped} trashed/draft message(s) at the end of the thread; "
             f"replying to the last live one, from {_describe(last_message)}.")
+    elif skipped < 0:
+        warnings.append(
+            "Every message in this thread is in the trash, so the draft answers a "
+            "trashed message; Gmail may show it only in Drafts, not in the conversation.")
     originator = thread.messages[0].from_address
     addressed = {_extract_email(a) for _, a in getaddresses([to, final_cc or ""]) if a}
-    if _extract_email(originator) not in addressed | {me}:
+    domain = me.rpartition("@")[2]
+    # Warn when the draft plainly means "everyone" (reply_all) or answers a
+    # colleague's aside (anchor sender in my domain) while an outside
+    # originator is left off — not on every ordinary reply (essayeur note).
+    aside = domain and _extract_email(last_message.from_address).endswith("@" + domain) \
+        and not _extract_email(originator).endswith("@" + domain)
+    if (reply_all or aside) and _extract_email(originator) not in addressed | {me}:
         warnings.append(
             f"The thread's originator {originator} is not on this draft (To: {to}"
             + (f"; Cc: {final_cc}" if final_cc else "") + "). If the message you are "

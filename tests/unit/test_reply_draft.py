@@ -794,3 +794,59 @@ class TestReplyAddressing:
     def test_to_reaches_reply_draft_through_dispatch(self) -> None:
         from tools.dispatch import OP_PARAMS
         assert "to" in OP_PARAMS["reply_draft"]
+
+
+class TestReplyAddressingEssayeurNotes:
+    def _ok(self, mock_create):
+        mock_create.return_value = ReplyDraftResult(
+            draft_id="d9", message_id="m9", thread_id="abc123def456abc1",
+            web_link="w", to="x", subject="Re: s")
+
+    @patch("tools.reply_draft.current_user_email", return_value="me@example.com")
+    @patch("tools.reply_draft.create_reply_draft")
+    @patch("tools.reply_draft.fetch_thread")
+    def test_to_with_reply_all_keeps_the_sender(self, mock_fetch, mock_create, _me) -> None:
+        msg = _make_message(from_address="X <x@partner.example>",
+                            to_addresses=["me@example.com", "alice@example.com"])
+        mock_fetch.return_value = _make_thread(messages=[msg])
+        self._ok(mock_create)
+        do_reply_draft(file_id="abc123def456abc1", content="Hi", reply_all=True, to="alice@example.com")
+        kw = mock_create.call_args.kwargs
+        assert kw["to"] == "alice@example.com" and "x@partner.example" in (kw["cc"] or "")
+
+    @patch("tools.reply_draft.current_user_email", return_value="me@example.com")
+    @patch("tools.reply_draft.create_reply_draft")
+    @patch("tools.reply_draft.fetch_thread")
+    def test_ordinary_reply_to_a_later_external_does_not_warn(self, mock_fetch, mock_create, _me) -> None:
+        alice = _make_message("m1", from_address="Alice <alice@example.com>")
+        ext = _make_message("m2", from_address="X <x@partner.example>")
+        mock_fetch.return_value = _make_thread(messages=[alice, ext])
+        self._ok(mock_create)
+        result = do_reply_draft(file_id="abc123def456abc1", content="Hi")
+        assert "warnings" not in result.cues
+
+    @patch("tools.reply_draft.current_user_email", return_value="me@example.com")
+    @patch("tools.reply_draft.create_reply_draft")
+    @patch("tools.reply_draft.fetch_thread")
+    def test_draft_labelled_tail_is_skipped_and_a_fully_trashed_thread_warns(self, mock_fetch, mock_create, _me) -> None:
+        a = _make_message("m1", from_address="X <x@partner.example>", message_id_header="<a@x>")
+        d = _make_message("m2", from_address="me@example.com", message_id_header="<d@x>")
+        d.label_ids = ["DRAFT"]
+        mock_fetch.return_value = _make_thread(messages=[a, d])
+        self._ok(mock_create)
+        do_reply_draft(file_id="abc123def456abc1", content="Hi", supersede=True)
+        assert mock_create.call_args.kwargs["in_reply_to"] == "<a@x>"
+        a.label_ids = ["TRASH"]
+        d.label_ids = ["TRASH"]
+        result = do_reply_draft(file_id="abc123def456abc1", content="Hi")
+        assert any("Every message in this thread is in the trash" in w for w in result.cues["warnings"])
+
+    @patch("tools.reply_draft.current_user_email", return_value="me@example.com")
+    @patch("tools.reply_draft.create_reply_draft")
+    @patch("tools.reply_draft.fetch_thread")
+    def test_reply_draft_write_is_remembered(self, mock_fetch, mock_create, _me) -> None:
+        from tools.draft import _LAST_WRITTEN
+        mock_fetch.return_value = _make_thread()
+        self._ok(mock_create)
+        do_reply_draft(file_id="abc123def456abc1", content="Hi")
+        assert _LAST_WRITTEN["d9"] == "m9"

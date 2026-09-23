@@ -36,6 +36,8 @@ def _headers(part: dict[str, Any]) -> dict[str, str]:
 def _scan(part: dict[str, Any], found: list[dict[str, Any]]) -> None:
     body = part.get("body", {}) or {}
     if body.get("attachmentId") and part.get("filename"):
+        # An attached .eml is carried whole; recursing into it as well would
+        # carry its inner attachments a second time (essayeur note).
         hdrs = _headers(part)
         inline = bool(hdrs.get("content-id")) and not hdrs.get(
             "content-disposition", "").lower().startswith("attachment")
@@ -45,6 +47,7 @@ def _scan(part: dict[str, Any], found: list[dict[str, Any]]) -> None:
             "attachment_id": body["attachmentId"],
             "inline": inline,
         })
+        return
     for child in part.get("parts", []) or []:
         _scan(child, found)
 
@@ -72,6 +75,8 @@ def download_draft_attachments(
             continue
         dl = download_attachment(message_id, p["attachment_id"], p["filename"], p["mimeType"])
         data = dl.temp_path.read_bytes() if dl.temp_path else dl.content
+        if dl.temp_path:
+            dl.temp_path.unlink(missing_ok=True)
         out.append((p["filename"], p["mimeType"], data))
     return out
 
