@@ -37,6 +37,16 @@ FIXTURES_DIR = PROJECT_ROOT / "fixtures"
 # re-patch with a known email. Patches `cues_util.current_user_email` because
 # that's what `with_identity` (used by all to_dict methods) calls.
 @pytest.fixture(autouse=True)
+def _hermetic_call_log(monkeypatch, tmp_path):
+    """Never write the machine's real call log (mise-bewono): the env var reaches
+    servers the suite spawns over stdio (test_consumer_doors copies os.environ); the attrs cover in-process wiring."""
+    log = tmp_path / "hermetic-calls.jsonl"
+    monkeypatch.setenv("MISE_CALLS_LOG", str(log))
+    monkeypatch.setattr("logging_config._CALLS_FILE", log)
+    monkeypatch.setattr("logging_config._CALLS_DIR", tmp_path)
+
+
+@pytest.fixture(autouse=True)
 def _no_identity_in_tests() -> "object":
     with patch("cues_util.current_user_email", return_value=None):
         yield

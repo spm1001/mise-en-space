@@ -218,3 +218,19 @@ class TestServerIntegration:
         assert call_kwargs["params"]["title"] == "TitleName"
         assert call_kwargs["params"]["content_len"] == 7
         assert call_kwargs["result_summary"]["file_id"] == "new123"
+
+
+def test_mise_calls_log_env_redirects_the_log(tmp_path: Path) -> None:
+    """A spawned server must honour MISE_CALLS_LOG, read at import (mise-bewono):
+    the unit suite used to append ~4 fake refusals to the real log per run."""
+    import os
+    import subprocess
+    import sys
+
+    target = tmp_path / "elsewhere.jsonl"
+    out = subprocess.run(
+        [sys.executable, "-c", "import logging_config; print(logging_config._CALLS_FILE)"],
+        cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True,
+        env={**os.environ, "MISE_CALLS_LOG": str(target)}, check=True,
+    )
+    assert out.stdout.strip() == str(target)

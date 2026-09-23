@@ -11,6 +11,7 @@ records for every search/fetch/do invocation.
 
 import json
 import logging
+import os
 import logging.handlers
 import sys
 import time
@@ -24,8 +25,13 @@ logger = logging.getLogger("mise")
 _calls_logger = logging.getLogger("mise.calls")
 _calls_logger.propagate = False
 
-_CALLS_DIR = Path.home() / ".local" / "share" / "mise"
-_CALLS_FILE = _CALLS_DIR / "calls.jsonl"
+# MISE_CALLS_LOG redirects the call log (read at import, so a spawned server
+# inherits it). The unit suite points it at a temp file: before 2026-09-23 every
+# pytest run appended ~4 fake refusals to the real log — 13% of its rows and
+# most of its errors since 24 Aug (mise-bewono).
+_CALLS_FILE = Path(os.environ.get("MISE_CALLS_LOG")
+                   or Path.home() / ".local" / "share" / "mise" / "calls.jsonl")
+_CALLS_DIR = _CALLS_FILE.parent
 
 
 def configure_logging(level: str = "INFO") -> None:
