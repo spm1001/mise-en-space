@@ -121,9 +121,11 @@ def plain_overwrite(
     if file_bytes is not None:
         mime_type = metadata.get("mimeType", "application/octet-stream")
         upload_file_content(file_id, file_bytes, mime_type)
-        cues: dict[str, Any] = {"byte_count": len(file_bytes)}
+        cues: dict[str, Any] = {"char_count": len(file_bytes)}  # same key (and bytes) as content=
         guessed = mimetypes.guess_type(local_name or "")[0]
-        if guessed and guessed != mime_type:
+        # Warn on a real kind change (PNG over a PDF), not text/markdown over text/plain
+        if guessed and guessed != mime_type and not (
+                guessed.startswith("text/") and mime_type.startswith("text/")):
             cues["warning"] = (
                 f"Local file looks like {guessed} but the Drive file is {mime_type}; "
                 f"the bytes were uploaded under {mime_type}. If that is wrong, "

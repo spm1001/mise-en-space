@@ -271,7 +271,7 @@ class TestOverwriteFromFilePath:
         assert isinstance(result, DoResult)
         assert result.file_id == "png123"
         mock_ul.assert_called_once_with("png123", png, "image/png")
-        assert result.cues["byte_count"] == len(png)
+        assert result.cues["char_count"] == len(png)
         assert "warning" not in result.cues
 
     @patch("retry.time.sleep")
@@ -287,6 +287,30 @@ class TestOverwriteFromFilePath:
 
         assert isinstance(result, DoResult)
         assert "image/png" in result.cues["warning"] and "application/pdf" in result.cues["warning"]
+
+    def test_range_on_a_plain_file_path_is_refused_not_dropped(self, tmp_path) -> None:
+        """The bytes branch returned before the range= refusal (essayeur, 2026-09-23)."""
+        f = tmp_path / "notes.md"
+        f.write_text("x")
+        result = do_overwrite(file_id="t1", file_path=str(f), base_path=str(tmp_path), range_="Costs!A1",
+                              metadata=_plain_file_metadata(name="notes.txt", mime="text/plain"))
+        assert isinstance(result, dict) and "range= applies only to spreadsheets" in result["message"]
+
+    @patch("retry.time.sleep")
+    @patch("tools.plain_file.upload_file_content")
+    def test_markdown_over_plain_text_does_not_warn(self, mock_ul, _sleep, tmp_path) -> None:
+        f = tmp_path / "notes.md"
+        f.write_text("# hi")
+        result = do_overwrite(file_id="t1", file_path=str(f), base_path=str(tmp_path),
+                              metadata=_plain_file_metadata(name="notes.txt", mime="text/plain"))
+        assert isinstance(result, DoResult) and "warning" not in result.cues
+
+    def test_binary_into_slides_names_the_real_limit(self, tmp_path) -> None:
+        img = tmp_path / "c.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n\xff")
+        result = do_overwrite(file_id="s1", file_path=str(img), base_path=str(tmp_path),
+                              metadata={"mimeType": "application/vnd.google-apps.presentation", "name": "Deck"})
+        assert "cannot replace this file (application/vnd.google-apps.presentation)" in result["message"]
 
     def test_binary_file_path_into_google_doc_refuses_with_route(self, tmp_path) -> None:
         img = tmp_path / "chart.png"

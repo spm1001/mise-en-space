@@ -13,6 +13,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
+from html_convert import html_to_text_with_links
 from models import CalendarEvent
 
 # httpx's own message quotes the status: "Client error '404 Not Found' for url '…'"
@@ -51,6 +52,7 @@ def calendar_acl_note(calendar_id: str) -> str:
 
 
 _DESCRIPTION_CAP = 500  # agenda-check length; the full text is one get_event away
+_HTML_TAG = re.compile(r'<[a-zA-Z/][^>]*>')
 
 
 def format_calendar_result(event: CalendarEvent) -> dict[str, Any]:
@@ -88,9 +90,12 @@ def format_calendar_result(event: CalendarEvent) -> dict[str, Any]:
     # Agenda-check reads had no route to the description without mutating the
     # event (mise-bonezo): an absent key read as an empty agenda.
     if event.description:
-        result["description"] = event.description[:_DESCRIPTION_CAP]
-        if len(event.description) > _DESCRIPTION_CAP:
-            result["description_truncated"] = len(event.description)
+        # Half of real descriptions are HTML (Teams/Zoom boilerplate); capping the
+        # markup left 500 chars of <div> instead of the agenda (essayeur, 2026-09-23).
+        text = html_to_text_with_links(event.description) if _HTML_TAG.search(event.description) else event.description
+        result["description"] = text[:_DESCRIPTION_CAP]
+        if len(text) > _DESCRIPTION_CAP:
+            result["description_truncated"] = len(text)
     # Rooms were filtered out with nothing in their place, so a room that had
     # accepted read as a room that was missing (mise-bonezo, second shape).
     rooms = [a for a in event.attendees if a.is_resource]

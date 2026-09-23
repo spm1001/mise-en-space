@@ -31,6 +31,12 @@ class TestReadableWithoutMutating:
         assert len(long["description"]) == 500 and long["description_truncated"] == 1200
         assert "description" not in format_calendar_result(_event())
 
+    def test_html_description_becomes_text_before_the_cap(self):
+        html = "<div><p>Agenda:</p><ul><li>Budget</li></ul><a href='https://x.example/doc'>Pre-read</a></div>" + "<div></div>" * 200
+        r = format_calendar_result(_event(description=html))
+        assert "<div>" not in r["description"] and "Agenda:" in r["description"]
+        assert "https://x.example/doc" in r["description"]
+
     def test_room_attendee_reported_as_a_resource(self):
         r = format_calendar_result(_event(attendees=[
             CalendarAttendee(email="me@itv.com", is_self=True, response_status="accepted"),

@@ -108,6 +108,10 @@ def do_overwrite(
                     "message": f"Not a file: {file_path}"}
         raw = resolved.read_bytes()
         if _is_plain_target(metadata):
+            if range_:  # the early return below would otherwise drop it in silence
+                return {"error": True, "kind": "invalid_input",
+                        "message": "range= applies only to spreadsheets — this is a plain "
+                                   f"{metadata.get('mimeType')} file."}
             # A plain Drive file (PDF, PNG, xlsx...) takes the bytes as they are;
             # decoding first refused every binary overwrite (mise-josebe).
             return plain_overwrite(file_id, None, None, base_path, metadata,
@@ -115,6 +119,10 @@ def do_overwrite(
         try:
             content = raw.decode("utf-8")
         except UnicodeDecodeError:
+            mime = (metadata or {}).get("mimeType", GOOGLE_DOC_MIME)
+            if mime not in (GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_FORM_MIME):
+                return {"error": True, "kind": "invalid_input",
+                        "message": f"overwrite cannot replace this file ({mime}) with a local file."}
             return {"error": True, "kind": "invalid_input",
                     "message": f"File is not valid UTF-8 text: {file_path} — a Google "
                                "Doc, Sheet or Form takes text. Binary overwrite works "
