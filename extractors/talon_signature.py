@@ -16,6 +16,7 @@ from dataclasses import dataclass
 # which re (stdlib) doesn't support. The regex module does. If this becomes a perf
 # concern (backtracking), we'd need to rewrite the pattern without named groups.
 import regex as re
+from extractors.signature_guards import has_anchored_link, is_texty
 
 log = logging.getLogger(__name__)
 
@@ -421,8 +422,8 @@ def _strip_trailing_contact_block(body: str) -> tuple[str, list[str]]:
             continue  # Need a blank line before
 
         line = lines[i].strip()
-        if not line or len(line) >= 30 or _RE_URL.search(line):
-            continue  # Not a short name line
+        if not line or len(line) >= 30 or _RE_URL.search(line) or not is_texty(line):
+            continue  # Not a short name line (markdown table furniture like '|  |' is not a name)
 
         # Find next non-blank line — should be text, not a URL
         next_text = None
@@ -431,8 +432,8 @@ def _strip_trailing_contact_block(body: str) -> tuple[str, list[str]]:
                 next_text = lines[j].strip()
                 break
 
-        if not next_text or _RE_URL.search(next_text) or len(next_text) >= 60:
-            continue  # Next line is a URL or too long — not a name block
+        if not next_text or _RE_URL.search(next_text) or len(next_text) >= 60 or not is_texty(next_text):
+            continue  # Next line is a URL, too long, or table furniture — not a name block
 
         # Check URL/phone density below this point
         trailing = '\n'.join(lines[i:])
@@ -440,6 +441,8 @@ def _strip_trailing_contact_block(body: str) -> tuple[str, list[str]]:
         has_phone = bool(_RE_PHONE.search(trailing))
 
         if url_count >= 3 or (url_count >= 1 and has_phone):
+            if has_anchored_link(trailing):  # a call to action, not a contact block
+                return body, warnings
             stripped = '\n'.join(lines[:i]).rstrip()
             if original_len > 0 and len(stripped) / original_len < _AGGRESSIVE_STRIP_RATIO:
                 warnings.append(

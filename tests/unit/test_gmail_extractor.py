@@ -388,6 +388,54 @@ class TestCatastrophicStripReverts:
         )
 
 
+class TestMachineNotificationKeepsItsLinks:
+    """A Microsoft B2B invitation (HTML-only) lost its Accept-invitation link and
+    4 of 5 real links, silently (mise-kubolo, 2026-09-23). Two faults: the
+    display:none bs4 pass serialised three bare <br>s as containers, so
+    markitdown dropped the sender's message after its first sentence; and the
+    trailing-contact rule read markdown table furniture ('|  |') as a name block
+    and cut everything below it. Fixture: the real HTML, names and ids scrubbed."""
+
+    FIXTURE = Path(__file__).parent.parent.parent / "fixtures/gmail/ms_invitation_notification.html"
+
+    def _body(self) -> str:
+        from html_convert import select_body_text
+        body, _ = select_body_text(None, self.FIXTURE.read_text())
+        assert body
+        return body
+
+    def test_converter_keeps_the_senders_whole_message(self) -> None:
+        body = self._body()
+        assert "documenter.getpostman.com" in body
+        assert "API 3.0 Support" in body
+
+    def test_strip_keeps_every_call_to_action(self) -> None:
+        out, warnings = strip_signature_and_quotes(self._body())
+        for link in ("login.microsoftonline.com/redeem", "myapplications.microsoft.com",
+                     "documenter.getpostman.com", "go.microsoft.com/fwlink"):
+            assert link in out, link
+        assert "[Accept invitation](" in out
+
+    def test_human_contact_block_is_still_stripped(self) -> None:
+        """Control: bare-URL contact blocks (no anchor text) still go."""
+        body = (
+            "Hi team,\n\nThe numbers are in the sheet; shout if anything looks off.\n"
+            "Happy to walk through it Thursday.\n\nJo\n"
+            "Jo Bloggs | Head of Measurement\n"
+            "https://www.example.com\nhttps://www.linkedin.com/in/jo\n"
+            "https://twitter.com/jo\n"
+        )
+        out, _ = strip_signature_and_quotes(body)
+        assert "linkedin" not in out and "Happy to walk through it" in out
+
+    def test_guards(self) -> None:
+        from extractors.signature_guards import has_anchored_link, is_texty
+        assert has_anchored_link("[Accept invitation](https://x.example/r)")
+        assert not has_anchored_link("![logo](https://x.example/l.png)")
+        assert not has_anchored_link("https://www.linkedin.com/in/jo")
+        assert not is_texty("|  |") and not is_texty("| --- |") and is_texty("Jo Bloggs")
+
+
 class TestHTMLCleaning:
     """Tests for HTML cleaning before markdown conversion."""
 
