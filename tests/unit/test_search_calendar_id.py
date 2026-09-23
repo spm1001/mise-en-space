@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from models import CalendarEvent, CalendarSearchResult, ErrorKind, MiseError
+from models import CalendarAttendee, CalendarEvent, CalendarSearchResult, ErrorKind, MiseError
 from tools.search import do_search
 from tools.search_calendar import (
     calendar_acl_note,
@@ -20,6 +20,43 @@ def _event(**kw):
     )
     base.update(kw)
     return CalendarEvent(**base)
+
+
+class TestReadableWithoutMutating:
+    """Description, rooms and a dead 1:1 reach the search result (mise-bonezo, mise-dodapa)."""
+
+    def test_description_carried_and_capped(self):
+        assert format_calendar_result(_event(description="Agenda: 1. Budget"))["description"] == "Agenda: 1. Budget"
+        long = format_calendar_result(_event(description="x" * 1200))
+        assert len(long["description"]) == 500 and long["description_truncated"] == 1200
+        assert "description" not in format_calendar_result(_event())
+
+    def test_room_attendee_reported_as_a_resource(self):
+        r = format_calendar_result(_event(attendees=[
+            CalendarAttendee(email="me@itv.com", is_self=True, response_status="accepted"),
+            CalendarAttendee(email="c_1@resource.calendar.google.com", display_name="LSM 3.1",
+                             is_resource=True, response_status="accepted"),
+        ]))
+        assert r["resources"] == [{"email": "c_1@resource.calendar.google.com",
+                                   "name": "LSM 3.1", "status": "accepted"}]
+        assert r["attendee_count"] == 1
+
+    def test_sole_guest_declined_is_flagged_and_reaches_the_preview(self):
+        from models import SearchResult
+        declined = format_calendar_result(_event(attendees=[
+            CalendarAttendee(email="me@itv.com", is_self=True, response_status="accepted"),
+            CalendarAttendee(email="kate@itv.com", response_status="declined"),
+        ]))
+        assert declined["all_guests_declined"] is True
+        live = format_calendar_result(_event(attendees=[
+            CalendarAttendee(email="me@itv.com", is_self=True, response_status="accepted"),
+            CalendarAttendee(email="kate@itv.com", response_status="declined"),
+            CalendarAttendee(email="stef@itv.com", response_status="accepted"),
+        ]))
+        assert "all_guests_declined" not in live
+        assert "all_guests_declined" not in format_calendar_result(_event())  # solo block
+        preview = SearchResult(query="", sources=["calendar"], calendar_results=[declined])._build_preview()
+        assert preview["calendar"][0]["all_guests_declined"] is True
 
 
 class TestValidation:

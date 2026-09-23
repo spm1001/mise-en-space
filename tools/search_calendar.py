@@ -50,6 +50,9 @@ def calendar_acl_note(calendar_id: str) -> str:
     )
 
 
+_DESCRIPTION_CAP = 500  # agenda-check length; the full text is one get_event away
+
+
 def format_calendar_result(event: CalendarEvent) -> dict[str, Any]:
     """Convert CalendarEvent to JSON-serializable dict for search results."""
     human_attendees = [a for a in event.attendees if not a.is_resource]
@@ -82,6 +85,24 @@ def format_calendar_result(event: CalendarEvent) -> dict[str, Any]:
         result["attachment_count"] = len(event.attachments)
     if event.meet_link:
         result["meet_link"] = event.meet_link
+    # Agenda-check reads had no route to the description without mutating the
+    # event (mise-bonezo): an absent key read as an empty agenda.
+    if event.description:
+        result["description"] = event.description[:_DESCRIPTION_CAP]
+        if len(event.description) > _DESCRIPTION_CAP:
+            result["description_truncated"] = len(event.description)
+    # Rooms were filtered out with nothing in their place, so a room that had
+    # accepted read as a room that was missing (mise-bonezo, second shape).
+    rooms = [a for a in event.attendees if a.is_resource]
+    if rooms:
+        result["resources"] = [
+            {"email": a.email, "name": a.display_name, "status": a.response_status}
+            for a in rooms
+        ]
+    # A 1:1 whose only guest declined looked live (mise-dodapa).
+    guests = [a for a in human_attendees if not a.is_self]
+    if guests and all(a.response_status == "declined" for a in guests):
+        result["all_guests_declined"] = True
     return result
 
 

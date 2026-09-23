@@ -708,6 +708,8 @@ class SearchResult:
                     item["attachment_count"] = r["attachment_count"]
                 if r.get("meet_link"):
                     item["has_meet"] = True
+                if r.get("all_guests_declined"):
+                    item["all_guests_declined"] = True
                 calendar_items.append(item)
             preview["calendar"] = calendar_items
         if self.people_results:
