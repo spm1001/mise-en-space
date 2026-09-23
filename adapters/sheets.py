@@ -11,10 +11,11 @@ MiseHttpClient (async) when the tools/server layer goes async.
 """
 
 from typing import Any, Literal
+from urllib.parse import quote
 
 import orjson
 
-from models import SpreadsheetData, SheetTab, ChartData, CellValue
+from models import SpreadsheetData, SheetTab, ChartData, CellValue, ErrorKind, MiseError
 from retry import with_retry
 from adapters.http_client import get_sync_client
 from adapters.charts import get_charts_from_spreadsheet, render_charts_as_pngs
@@ -160,17 +161,26 @@ def fetch_spreadsheet(
     # Filter to requested tabs (if specified)
     warnings: list[str] = []
     if tabs:
+        # Exact names only. Chart-only (non-GRID) tabs used to pass this filter
+        # unconditionally, so tabs=['CAMPAIGNS'] on a sheet whose tab is really
+        # '4. CAMPAIGNS' returned the empty chart tab '2. TIMELINE' as if it
+        # were the answer (mise-zofoja). A request matching NOTHING refuses;
+        # a partial match keeps what matched and names the rest.
         tab_set = set(tabs)
-        matched = {name for name, _ in grid_sheets if name in tab_set}
-        missing = tab_set - matched
+        available = ", ".join(repr(name) for name, _ in all_sheet_info)
+        missing = tab_set - {name for name, _ in all_sheet_info}
+        if missing == tab_set:
+            raise MiseError(
+                ErrorKind.INVALID_INPUT,
+                f"No tab named {', '.join(repr(t) for t in sorted(missing))} in this "
+                f"spreadsheet (names match exactly). Tabs: {available}",
+            )
         if missing:
             warnings.append(
-                f"Requested tab(s) not found: {', '.join(sorted(missing))}. "
-                f"Available: {', '.join(name for name, _ in grid_sheets)}"
+                f"Requested tab(s) not found: {', '.join(sorted(missing))}. Tabs: {available}"
             )
         grid_sheets = [(name, st) for name, st in grid_sheets if name in tab_set]
-        # Also filter non-GRID sheets
-        all_sheet_info = [(name, st) for name, st in all_sheet_info if name in tab_set or st != "GRID"]
+        all_sheet_info = [(name, st) for name, st in all_sheet_info if name in tab_set]
 
     # Fetch values only for GRID sheets
     sheets: list[SheetTab] = []
@@ -288,6 +298,13 @@ def add_sheet(spreadsheet_id: str, title: str) -> int:
     return int(response["replies"][0]["addSheet"]["properties"]["sheetId"])
 
 
+def _path_range(range_: str) -> str:
+    """Percent-encode an A1 range for the URL PATH. Tab names legally hold
+    '?', '#', '&' and '%'; unencoded, '?' starts a query string and '#' a
+    fragment, so the request 400s or aims at a truncated range (mise-cacogi)."""
+    return quote(range_, safe="")
+
+
 @with_retry(max_attempts=3, delay_ms=1000)
 def update_sheet_values(
     spreadsheet_id: str,
@@ -313,7 +330,7 @@ def update_sheet_values(
     # No put_json on client — use request() + orjson directly (same pattern as drive upload)
     response = client.request(
         "PUT",
-        f"{_SHEETS_API}/{spreadsheet_id}/values/{range_}",
+        f"{_SHEETS_API}/{spreadsheet_id}/values/{_path_range(range_)}",
         params={"valueInputOption": value_input_option},
         json_body=body,
     )
@@ -394,7 +411,7 @@ def clear_sheet_values(spreadsheet_id: str, range_: str) -> None:
     """
     client = get_sync_client()
     client.post_json(
-        f"{_SHEETS_API}/{spreadsheet_id}/values/{range_}:clear",
+        f"{_SHEETS_API}/{spreadsheet_id}/values/{_path_range(range_)}:clear",
         json_body={},
     )
 

@@ -494,3 +494,75 @@ class TestTabFiltering:
             result = fetch_spreadsheet("sheet123", tabs=None)
 
         assert len(result.sheets) == 3
+
+
+class TestTabMissesAreLoud:
+    """tabs= that matches nothing refuses; chart tabs never stand in (mise-zofoja)."""
+
+    _META = {
+        "spreadsheetId": "camp1",
+        "properties": {"title": "MIT Campaign Tracking"},
+        "sheets": [
+            {"properties": {"sheetId": 0, "title": "1. OVERVIEW", "sheetType": "GRID"}},
+            {"properties": {"sheetId": 1, "title": "2. TIMELINE", "sheetType": "OBJECT"}},
+            {"properties": {"sheetId": 2, "title": "4. CAMPAIGNS", "sheetType": "GRID"}},
+        ],
+    }
+
+    @patch('adapters.sheets.get_charts_from_spreadsheet', return_value=[])
+    @patch('adapters.sheets.get_sync_client')
+    def test_zero_matches_refuses_and_lists_every_tab(self, mock_get_client, _charts) -> None:
+        from models import ErrorKind, MiseError
+        mock_get_client.return_value.get_json.side_effect = [self._META]
+
+        with patch('retry.time.sleep'):
+            with pytest.raises(MiseError) as ei:
+                fetch_spreadsheet("camp1", tabs=["CAMPAIGNS"])
+
+        assert ei.value.kind == ErrorKind.INVALID_INPUT
+        for name in ("'1. OVERVIEW'", "'2. TIMELINE'", "'4. CAMPAIGNS'"):
+            assert name in ei.value.message
+        assert mock_get_client.return_value.get_json.call_count == 1  # no value fetch
+
+    @patch('adapters.sheets.get_charts_from_spreadsheet', return_value=[])
+    @patch('adapters.sheets.get_sync_client')
+    def test_chart_tab_does_not_ride_along_with_a_partial_match(self, mock_get_client, _charts) -> None:
+        mock_get_client.return_value.get_json.side_effect = [
+            self._META,
+            {"valueRanges": [{"values": [["Campaign"]]}]},
+            {"valueRanges": [{"values": [["Campaign"]]}]},
+        ]
+
+        with patch('retry.time.sleep'):
+            result = fetch_spreadsheet("camp1", tabs=["4. CAMPAIGNS", "Nope"])
+
+        assert [t.name for t in result.sheets] == ["4. CAMPAIGNS"]
+        assert any("Nope" in w and "'2. TIMELINE'" in w for w in result.warnings)
+
+
+class TestRangeInUrlPath:
+    """Tab names legally hold '?', '#', '&', '%' — the A1 range rides the URL
+    PATH, so it must be percent-encoded or '?' starts a query string and the
+    write 400s (mise-cacogi: 'Which ITV1 does ITVX show? (draft map to correct)')."""
+
+    @pytest.mark.parametrize("tab", [
+        "Which ITV1 does ITVX show? (draft map to correct)", "P&L #2", "Growth 50%",
+    ])
+    def test_update_and_clear_encode_the_range(self, tab: str) -> None:
+        from adapters.sheets import clear_sheet_values, update_sheet_values
+
+        client = MagicMock()
+        client.request.return_value.content = b'{"updatedCells": 1}'
+        client.post_json.return_value = {}
+        rng = "'" + tab + "'!A1"
+        with patch("adapters.sheets.get_sync_client", return_value=client), \
+             patch("retry.time.sleep"):
+            update_sheet_values("sid", range_=rng, values=[["x"]])
+            clear_sheet_values("sid", range_=rng)
+
+        urls = [c.args[1] for c in client.request.call_args_list]
+        urls += [c.args[0] for c in client.post_json.call_args_list]
+        assert len(urls) == 2
+        for url in urls:
+            path_range = url.split("/values/", 1)[1]
+            assert not any(ch in path_range for ch in "?#& '"), url
