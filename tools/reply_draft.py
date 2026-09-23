@@ -28,6 +28,7 @@ from tools.draft import (
     _format_links_text,
     _format_links_html,
     _resolve_include,
+    remember_write,
 )
 from validation import validate_gmail_id
 
@@ -351,6 +352,7 @@ def do_reply_draft(
     if sig_warnings:
         cues["signature_warnings"] = sig_warnings
 
+    remember_write(result.draft_id, result.message_id)
     return DoResult(
         file_id=result.draft_id,
         title=subject,

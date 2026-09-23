@@ -705,3 +705,36 @@ class TestDraftAttachmentScan:
             mid, parts = get_draft_attachments("r1")
         assert mid == "m7"
         assert [(p["filename"], p["inline"]) for p in parts] == [("logo.png", True), ("letter.pdf", False)]
+
+
+class TestConcurrentEditTell:
+    """Two writers on one draft: last writer won with no signal (mise-zefele,
+    mise-vuropa, mise-decuvu). Gmail mints a new message id per save, so a
+    different id than mise's own last write means someone else wrote since."""
+
+    def _update(self, current_mid: str):
+        with patch("tools.draft.get_primary_signature", return_value=None), \
+             patch("tools.draft.get_draft_headers", return_value=_existing_draft_headers()), \
+             patch("tools.draft.get_draft_attachments", return_value=(current_mid, [])), \
+             patch("tools.draft.download_draft_attachments", return_value=[]), \
+             patch("tools.draft.update_draft", return_value=DraftResult(
+                 draft_id="r5", message_id="m-after", web_link="w", to="a@x", subject="s")):
+            return do_draft(file_id="r5", content="new words")
+
+    def test_changed_since_our_last_write_warns(self) -> None:
+        from tools.draft import remember_write
+        remember_write("r5", "m-ours")
+        result = self._update(current_mid="m-gmail-autosave")
+        assert any("changed since mise last wrote it" in w for w in result.cues["warnings"])
+
+    def test_unchanged_since_our_last_write_is_quiet(self) -> None:
+        from tools.draft import remember_write
+        remember_write("r5", "m-ours")
+        result = self._update(current_mid="m-ours")
+        assert "warnings" not in result.cues
+        assert "compose window" in result.cues["compose_window_note"]
+
+    def test_our_update_is_remembered_for_the_next_one(self) -> None:
+        from tools.draft import _LAST_WRITTEN
+        self._update(current_mid="m-first")
+        assert _LAST_WRITTEN["r5"] == "m-after"

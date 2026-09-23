@@ -53,3 +53,13 @@ def _single_tab_doc_guard(monkeypatch):
             "tabs": [{"tab_id": "t.0", "title": "Tab 1", "index": 0, "depth": 0}],
         },
     )
+
+
+@pytest.fixture(autouse=True)
+def _fresh_draft_write_registry():
+    """tools.draft remembers mise's last write per draft id (mise-zefele); a
+    value left by one test would read as 'changed under us' in the next."""
+    from tools.draft import _LAST_WRITTEN
+    _LAST_WRITTEN.clear()
+    yield
+    _LAST_WRITTEN.clear()

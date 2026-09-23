@@ -506,7 +506,7 @@ search("orgTitle='Head of Strategy'", sources=["people"], base_path="...")
 
 **Editing a Form:** `overwrite` on a form takes the same YAML/JSON spec as `create` — fetch the form first (`structure.json` shows current state), tweak the spec (e.g. add one option to a checkbox question), and overwrite. It replaces ALL questions wholesale; if the form already has responses, edit in the Forms UI instead.
 
-**Updating a draft:** `draft` with `file_id` (the draft ID a previous draft/reply_draft returned) rewrites that draft instead of minting a stray new one. `content` is required; `to`/`subject`/`cc` carry over when not resupplied; reply drafts keep their threading; attachments ride along (`cues.attachments_kept`), and when they are unreadable the update refuses rather than deleting them. Superseded drafts and files: `trash` — Drive files go to the recoverable bin, drafts are discarded permanently.
+**Updating a draft:** `draft` with `file_id` (the draft ID a previous draft/reply_draft returned) rewrites that draft instead of minting a stray new one. `content` is required; `to`/`subject`/`cc` carry over when not resupplied; reply drafts keep their threading; attachments ride along (`cues.attachments_kept`), and when they are unreadable the update refuses rather than deleting them. If the draft is open in someone's Gmail compose window, its next autosave overwrites your update; a warning fires when the draft changed since mise's own last write to it, which means someone else's words were just replaced. Superseded drafts and files: `trash` — Drive files go to the recoverable bin, drafts are discarded permanently.
 
 ### Writing & Replying to Comments
 

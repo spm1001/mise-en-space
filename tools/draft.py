@@ -37,6 +37,26 @@ _GOOGLE_NATIVE_MIME_ICONS: dict[str, str] = {
 _DEFAULT_FILE_ICON = "\U0001f4ce"  # 📎
 
 
+# draft_id → the message id of mise's last write to it, this process. Gmail
+# mints a new message id on every save, so a different id at update time means
+# something else wrote the draft since: an open compose window's autosave or a
+# human edit (mise-zefele / mise-decuvu / mise-vuropa). Process-local by design:
+# after a restart there is nothing to compare, and the always-on note stands.
+_LAST_WRITTEN: dict[str, str] = {}
+
+_COMPOSE_NOTE = (
+    "If this draft is open in a Gmail compose window, that window's next "
+    "autosave overwrites this update. Ask for it to be closed first, or "
+    "re-fetch the thread and check the draft before saying the change landed."
+)
+
+
+def remember_write(draft_id: str, message_id: str) -> None:
+    """Record mise's own write so the next update can tell if someone else wrote since."""
+    if draft_id and message_id:
+        _LAST_WRITTEN[draft_id] = message_id
+
+
 def _icon_for_mime(mime_type: str) -> str:
     """Return an emoji icon for a MIME type."""
     return _GOOGLE_NATIVE_MIME_ICONS.get(mime_type, _DEFAULT_FILE_ICON)
@@ -243,6 +263,7 @@ def do_draft(
     if sig_warnings:
         cues["signature_warnings"] = sig_warnings
 
+    remember_write(result.draft_id, result.message_id)
     return DoResult(
         file_id=result.draft_id,
         title=subject,
@@ -302,6 +323,7 @@ def _update_draft_in_place(
                 "message": f"Draft not updated: could not read its attachments to carry them "
                            f"over ({e.message}), and updating would delete them."}
     dropped_inline = [p["filename"] for p in parts if p["inline"]]
+    moved_under_us = draft_id in _LAST_WRITTEN and _LAST_WRITTEN[draft_id] != message_id
 
     included_links: list[IncludedLink] = []
     include_warnings: list[str] = []
@@ -334,6 +356,12 @@ def _update_draft_in_place(
     }
     if cc:
         cues["cc"] = cc
+    cues["compose_window_note"] = _COMPOSE_NOTE
+    if moved_under_us:
+        cues.setdefault("warnings", []).append(
+            "This draft changed since mise last wrote it (a Gmail compose window's "
+            "autosave or a human edit); this update replaced those changes. If the "
+            "person was editing it, their words are gone from the draft — check with them.")
     if attachments:
         cues["attachments_kept"] = [name for name, _, _ in attachments]
     # Gmail materialises the signature's <img> as an inline part on every save,
@@ -360,6 +388,7 @@ def _update_draft_in_place(
     if sig_warnings:
         cues["signature_warnings"] = sig_warnings
 
+    remember_write(result.draft_id, result.message_id)
     return DoResult(
         file_id=result.draft_id,
         title=subject,
