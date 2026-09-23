@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 import orjson
 import pytest
 
-from models import DoResult
+from models import DoResult, ErrorKind, MiseError
 from server import do
 from extractors.sheets import csv_text_to_values
 from tools.create import (
@@ -985,7 +985,29 @@ class TestReadMultiTabSource:
         assert "No tabs" in str(exc_info.value)
 
 
+# Drive's CSV import mints tab 1's sheetId at random (380190192 measured,
+# mise-suwopu) — never 0. The fake below reads back whatever the patched
+# rename/add mocks were asked to do, so tab_names assertions test the READ-BACK.
+_FIRST_SHEET_ID = 380190192
+
+
+def _fake_sheet_properties(spreadsheet_id: str) -> list[dict]:
+    import tools.sheet_create as sc
+    titles = ["(workbook title)"]
+    for c in sc.rename_sheet.call_args_list:
+        if c.kwargs.get("sheet_id") == _FIRST_SHEET_ID and not getattr(sc.rename_sheet, "side_effect", None):
+            titles[0] = c.kwargs["new_title"]
+    titles += [c.args[1] for c in sc.add_sheet.call_args_list]
+    return [{"sheetId": _FIRST_SHEET_ID if i == 0 else 1000 + i, "title": t}
+            for i, t in enumerate(titles)]
+
+
 class TestMultiTabSheetCreation:
+    @pytest.fixture(autouse=True)
+    def _read_back(self):
+        with patch("tools.sheet_create.get_sheet_properties", side_effect=_fake_sheet_properties):
+            yield
+
     """Tests for multi-tab sheet creation via hybrid path."""
 
     def _make_multi_tab_deposit(self, tmp_path: Path) -> Path:
@@ -1005,9 +1027,9 @@ class TestMultiTabSheetCreation:
         return tmp_path
 
     @patch("retry.time.sleep")
-    @patch("tools.create.rename_sheet")
-    @patch("tools.create.add_sheet", return_value=1)
-    @patch("tools.create.update_sheet_values", return_value=4)
+    @patch("tools.sheet_create.rename_sheet")
+    @patch("tools.sheet_create.add_sheet", return_value=1)
+    @patch("tools.sheet_create.update_sheet_values", return_value=4)
     @patch("tools.create.get_sync_client")
     def test_multi_tab_creates_sheet_with_tabs(
         self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
@@ -1030,7 +1052,7 @@ class TestMultiTabSheetCreation:
         assert result.extras["type"] == "sheet"
 
         # Tab 1: renamed from CSV upload default
-        mock_rename.assert_called_once_with("sheet1", sheet_id=0, new_title="Revenue")
+        mock_rename.assert_called_once_with("sheet1", sheet_id=_FIRST_SHEET_ID, new_title="Revenue")
 
         # Tab 2: added via Sheets API
         mock_add.assert_called_once_with("sheet1", "Costs")
@@ -1042,9 +1064,9 @@ class TestMultiTabSheetCreation:
         assert "'Costs'!A1" in call_args[1]["range_"]
 
     @patch("retry.time.sleep")
-    @patch("tools.create.rename_sheet")
-    @patch("tools.create.add_sheet", return_value=1)
-    @patch("tools.create.update_sheet_values", return_value=4)
+    @patch("tools.sheet_create.rename_sheet")
+    @patch("tools.sheet_create.add_sheet", return_value=1)
+    @patch("tools.sheet_create.update_sheet_values", return_value=4)
     @patch("tools.create.get_sync_client")
     def test_single_tab_deposit_routes_multi_tab_and_keeps_name(
         self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
@@ -1082,16 +1104,16 @@ class TestMultiTabSheetCreation:
         assert isinstance(result, DoResult)
         # Tab 1 renamed to the deposit's real tab name — the improvement the
         # new routing buys; the old path left the CSV-upload default.
-        mock_rename.assert_called_once_with("sheet2", sheet_id=0, new_title="Ledger")
+        mock_rename.assert_called_once_with("sheet2", sheet_id=_FIRST_SHEET_ID, new_title="Ledger")
         # No second tab: nothing added, no values written beyond the upload.
         mock_add.assert_not_called()
         mock_update.assert_not_called()
         assert result.cues["tab_names"] == ["Ledger"]
 
     @patch("retry.time.sleep")
-    @patch("tools.create.rename_sheet")
-    @patch("tools.create.add_sheet", return_value=1)
-    @patch("tools.create.update_sheet_values", return_value=4)
+    @patch("tools.sheet_create.rename_sheet")
+    @patch("tools.sheet_create.add_sheet", return_value=1)
+    @patch("tools.sheet_create.update_sheet_values", return_value=4)
     @patch("tools.create.get_sync_client")
     def test_single_tab_round_trip_strips_sheet_header(
         self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
@@ -1132,9 +1154,9 @@ class TestMultiTabSheetCreation:
         assert uploaded_csv.startswith("Product,Amount")
 
     @patch("retry.time.sleep")
-    @patch("tools.create.rename_sheet")
-    @patch("tools.create.add_sheet", return_value=1)
-    @patch("tools.create.update_sheet_values", return_value=4)
+    @patch("tools.sheet_create.rename_sheet")
+    @patch("tools.sheet_create.add_sheet", return_value=1)
+    @patch("tools.sheet_create.update_sheet_values", return_value=4)
     @patch("tools.create.get_sync_client")
     def test_multi_tab_cues_include_tab_info(
         self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
@@ -1180,9 +1202,9 @@ class TestMultiTabSheetCreation:
         assert "tab_count" not in result.cues
 
     @patch("retry.time.sleep")
-    @patch("tools.create.rename_sheet")
-    @patch("tools.create.add_sheet", return_value=1)
-    @patch("tools.create.update_sheet_values", return_value=4)
+    @patch("tools.sheet_create.rename_sheet")
+    @patch("tools.sheet_create.add_sheet", return_value=1)
+    @patch("tools.sheet_create.update_sheet_values", return_value=4)
     @patch("tools.create.get_sync_client")
     def test_multi_tab_manifest_enriched(
         self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
@@ -1205,9 +1227,9 @@ class TestMultiTabSheetCreation:
         assert manifest["file_id"] == "sheet1"
 
     @patch("retry.time.sleep")
-    @patch("tools.create.rename_sheet")
-    @patch("tools.create.add_sheet", return_value=1)
-    @patch("tools.create.update_sheet_values", return_value=0)
+    @patch("tools.sheet_create.rename_sheet")
+    @patch("tools.sheet_create.add_sheet", return_value=1)
+    @patch("tools.sheet_create.update_sheet_values", return_value=0)
     @patch("tools.create.get_sync_client")
     def test_multi_tab_with_formula_cells(
         self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
@@ -1241,6 +1263,56 @@ class TestMultiTabSheetCreation:
         values = call_args[1]["values"]
         assert any("=SUM(Data!B:B)" in str(row) for row in values)
 
+
+    @patch("retry.time.sleep")
+    @patch("tools.sheet_create.rename_sheet", side_effect=MiseError(ErrorKind.INVALID_INPUT, "no sheet with id"))
+    @patch("tools.sheet_create.add_sheet", return_value=1)
+    @patch("tools.sheet_create.update_sheet_values", return_value=4)
+    @patch("tools.create.get_sync_client")
+    def test_rename_failure_warns_and_cue_reports_the_real_names(
+        self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
+    ) -> None:
+        """The old except-pass hid this and the cue echoed the request (mise-suwopu)."""
+        deposit = self._make_multi_tab_deposit(tmp_path)
+        mock_get_client.return_value.upload_multipart.return_value = _make_upload_response(
+            id="sheet1", webViewLink="https://docs.google.com/spreadsheets/d/sheet1/edit", name="Budget")
+
+        result = do_create(title="Budget", doc_type="sheet", source=str(deposit), base_path=str(deposit))
+
+        assert isinstance(result, DoResult)
+        assert result.cues["tab_names"] == ["(workbook title)", "Costs"]
+        assert any("could not be renamed to 'Revenue'" in w for w in result.cues["warnings"])
+
+    @patch("retry.time.sleep")
+    @patch("tools.sheet_create.rename_sheet")
+    @patch("tools.sheet_create.add_sheet")
+    @patch("tools.sheet_create.update_sheet_values")
+    @patch("tools.create.get_sync_client")
+    def test_every_tab_exists_before_formulas_go_in(
+        self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
+    ) -> None:
+        """A formula on tab 1 naming tab 3 is #REF at entry time unless tab 3
+        exists first, and never heals (mise-taciku) — so all tabs are added
+        before any fill, and tab 1 is re-entered because it holds a formula."""
+        (tmp_path / "content_a.csv").write_text("total\n=SUM(C!A:A)\n")
+        (tmp_path / "content_b.csv").write_text("x\n=A!A2\n")
+        (tmp_path / "content_c.csv").write_text("1\n2\n")
+        (tmp_path / "manifest.json").write_text(json.dumps({
+            "type": "sheet", "title": "Refs",
+            "tabs": [{"name": n, "filename": f"content_{n.lower()}.csv"} for n in ("A", "B", "C")],
+        }))
+        order: list[str] = []
+        mock_add.side_effect = lambda sid, name: order.append(f"add {name}") or 1
+        mock_update.side_effect = lambda sid, range_, values: order.append(f"fill {range_}") or 1
+        mock_get_client.return_value.upload_multipart.return_value = _make_upload_response(
+            id="sheet9", webViewLink="https://docs.google.com/spreadsheets/d/sheet9/edit", name="Refs")
+
+        result = do_create(title="Refs", doc_type="sheet", source=str(tmp_path), base_path=str(tmp_path))
+
+        assert isinstance(result, DoResult)
+        assert order == ["add B", "add C", "fill 'B'!A1", "fill 'C'!A1", "fill 'A'!A1"]
+        assert result.cues["tab_names"] == ["A", "B", "C"]
+        assert "warnings" not in result.cues
 
 # ============================================================================
 # IMAGE EMBEDDING TESTS

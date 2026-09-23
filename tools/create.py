@@ -21,7 +21,7 @@ from typing import Any
 
 from adapters.http_client import get_sync_client
 from adapters.drive import GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, GOOGLE_FOLDER_MIME
-from adapters.sheets import add_sheet, update_sheet_values, rename_sheet
+from tools.sheet_create import finish_multi_tab_sheet
 from extractors.sheets import csv_text_to_values, strip_sheet_header
 from markdown_import import convert_fenced_blocks
 from models import DoResult, MiseError, ErrorKind
@@ -644,53 +644,11 @@ def _create_multi_tab_sheet(
     title: str,
     folder_id: str | None = None,
 ) -> DoResult | dict[str, Any]:
-    """
-    Create a multi-tab Google Sheet using hybrid path.
-
-    Strategy:
-    1. CSV upload for tab 1 (fast, 94% type detection by Drive)
-    2. Rename tab 1 from CSV filename to actual tab name
-    3. For each additional tab: addSheet + values().update(USER_ENTERED)
-
-    USER_ENTERED preserves formulae (cells starting with =) and auto-detects
-    dates, numbers, booleans — same behaviour as typing into a cell.
-    """
+    """Multi-tab sheet: CSV upload creates tab 1; tools/sheet_create.py does the rest."""
     if not tabs:
         return _create_error("invalid_input", "No tabs provided for multi-tab sheet.")
-
-    first_tab_name, first_tab_csv = tabs[0]
-
-    # Step 1: CSV upload creates the spreadsheet with tab 1
-    result = _create_sheet(first_tab_csv, title, folder_id)
-    if isinstance(result, dict):
-        return result
-
-    spreadsheet_id = result.file_id
-
-    # Step 2: Rename tab 1 to actual tab name (CSV upload names it after filename)
-    try:
-        rename_sheet(spreadsheet_id, sheet_id=0, new_title=first_tab_name)
-    except Exception:
-        pass  # Non-critical — tab will just have a generic name
-
-    # Step 3: Add remaining tabs via Sheets API
-    tab_count = 1
-    for tab_name, tab_csv in tabs[1:]:
-        add_sheet(spreadsheet_id, tab_name)
-        values = csv_text_to_values(tab_csv)
-        if values:
-            update_sheet_values(
-                spreadsheet_id,
-                range_=f"'{tab_name}'!A1",
-                values=values,
-            )
-        tab_count += 1
-
-    # Update cues with tab info
-    result.cues["tab_count"] = tab_count
-    result.cues["tab_names"] = [name for name, _ in tabs]
-
-    return result
+    result = _create_sheet(tabs[0][1], title, folder_id)
+    return result if isinstance(result, dict) else finish_multi_tab_sheet(result, tabs)
 
 
 # ============================================================================
