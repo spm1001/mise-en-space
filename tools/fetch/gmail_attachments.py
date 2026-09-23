@@ -125,6 +125,21 @@ def _is_extractable_attachment(mime_type: str) -> bool:
     return classify_attachment(mime_type) in ("pdf", "image")
 
 
+def _unique_name(folder: Path, filename: str) -> str:
+    """A name no earlier attachment in this deposit took. Gmail names every
+    pasted image 'image.png', so two slides wrote one file and the first was
+    silently overwritten (mise-sajeso, found on its own evidence thread)."""
+    stem, dot, ext = filename.rpartition(".")
+    if not dot:
+        stem, ext = filename, ""
+    candidate, n = filename, 1
+    taken = lambda name: any((folder / f).exists() for f in (name, f"{name}.md"))  # noqa: E731
+    while taken(candidate):
+        n += 1
+        candidate = f"{stem}-{n}.{ext}" if dot else f"{stem}-{n}"
+    return candidate
+
+
 def _deposit_attachment_content(
     content_bytes: bytes,
     filename: str,
@@ -138,6 +153,7 @@ def _deposit_attachment_content(
     Shared by both Drive (pre-exfil) and Gmail download paths.
     Returns extraction result dict or None if type not handled.
     """
+    filename = _unique_name(folder, filename)
     category = classify_attachment(mime_type)
 
     if category == "pdf":
@@ -281,3 +297,27 @@ def _download_attachment_bytes(msg: Any, att: Any, mime_type: str) -> bytes:
         dl.temp_path.unlink(missing_ok=True)
         return data
     return dl.content
+
+
+def hidden_attachment_cues(thread_data: Any) -> dict[str, Any]:
+    """Name what the trivial filter hid, so hidden never means unreachable.
+
+    Small images and generic filenames are kept out of the deposit (usually
+    signature logos), but a thread whose payload was two pasted slides fetched
+    as 'no attachments' and attachment='image.png' said 'Available: (none)'
+    (mise-sajeso, 2026-08-20). They are listed here and fetchable by name.
+    """
+    hidden = [
+        {"filename": a.filename, "mime_type": a.mime_type, "size": a.size}
+        for msg in thread_data.messages for a in getattr(msg, "hidden_attachments", [])
+    ]
+    if not hidden:
+        return {}
+    return {
+        "hidden_attachments": hidden,
+        "hidden_attachments_note": (
+            f"{len(hidden)} attachment(s) not deposited because they look like "
+            "logos or signature images (small images, generic names). If one is "
+            "content, fetch it by name: fetch(<thread>, attachment='<filename>')."
+        ),
+    }

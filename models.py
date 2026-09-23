@@ -240,6 +240,10 @@ class EmailMessage:
     # Calendar invite parts, kept even though filtered from `attachments` — the
     # ICS carries the iCalUID used to read live event state (mise-pinodi).
     calendar_attachments: list[EmailAttachment] = field(default_factory=list)
+    # Everything else the trivial filter hid (small images, generic names):
+    # never deposited eagerly, but disclosed in cues and fetchable by name with
+    # attachment= — hidden used to mean unreachable (mise-sajeso).
+    hidden_attachments: list[EmailAttachment] = field(default_factory=list)
 
     # Threading headers (for reply drafts)
     message_id_header: str | None = None  # Message-ID header (RFC 5322)

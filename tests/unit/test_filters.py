@@ -267,3 +267,42 @@ class TestFilterAttachments:
 
         filtered = filter_attachments(attachments)
         assert filtered == []
+
+
+class TestPastedImagesAreJudgedBySize:
+    """Gmail names every pasted image 'image.png'; the name rule hid ~200KB
+    budget slides that were the payload (mise-sajeso). Images are judged by
+    size alone; generic document names still filter."""
+
+    def test_large_generic_image_is_content(self):
+        assert is_trivial_attachment("image.png", "image/png", 210_000) is False
+
+    def test_small_generic_image_is_still_trivial(self):
+        assert is_trivial_attachment("image.png", "image/png", 50_000) is True
+
+    def test_generic_document_name_still_filters(self):
+        assert is_trivial_attachment("attachment.pdf", "application/pdf", 900_000) is True
+
+
+def test_hidden_attachments_are_disclosed_with_the_route():
+    from types import SimpleNamespace
+    from models import EmailAttachment
+    from tools.fetch.gmail_attachments import hidden_attachment_cues
+    logo = EmailAttachment(filename="image.png", mime_type="image/png", size=4_000, attachment_id="A")
+    thread = SimpleNamespace(messages=[SimpleNamespace(hidden_attachments=[logo])])
+    cues = hidden_attachment_cues(thread)
+    assert cues["hidden_attachments"] == [{"filename": "image.png", "mime_type": "image/png", "size": 4000}]
+    assert "attachment='<filename>'" in cues["hidden_attachments_note"]
+    assert hidden_attachment_cues(SimpleNamespace(messages=[SimpleNamespace(hidden_attachments=[])])) == {}
+
+
+def test_same_named_attachments_do_not_overwrite(tmp_path):
+    from tools.fetch.gmail_attachments import _unique_name
+    assert _unique_name(tmp_path, "image.png") == "image.png"
+    (tmp_path / "image.png").write_bytes(b"1")
+    assert _unique_name(tmp_path, "image.png") == "image-2.png"
+    (tmp_path / "image-2.png").write_bytes(b"2")
+    assert _unique_name(tmp_path, "image.png") == "image-3.png"
+    (tmp_path / "report.pdf.md").write_text("x")
+    assert _unique_name(tmp_path, "report.pdf") == "report-2.pdf"
+    assert _unique_name(tmp_path, "README") == "README"

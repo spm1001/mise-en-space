@@ -122,9 +122,13 @@ def is_trivial_attachment(filename: str, mime_type: str, size: int) -> bool:
         return True
 
     # Excluded filename patterns (generic names like "image.png", "attachment.pdf")
-    # Uses pre-compiled patterns for 3x speedup
+    # Uses pre-compiled patterns for 3x speedup. NOT for images: an image's
+    # triviality is its size (the rule below). Gmail names every pasted image
+    # 'image.png', so the name rule hid ~200KB budget slides that WERE the
+    # message's payload (mise-sajeso, 2026-08-20).
+    is_image = bool(mime_type) and mime_type.startswith("image/")
     for compiled_pattern in _get_compiled_patterns():
-        if compiled_pattern.match(name):
+        if not is_image and compiled_pattern.match(name):
             return True
 
     # Small images (logos, signatures, inline graphics)

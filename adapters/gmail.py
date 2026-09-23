@@ -175,6 +175,11 @@ def _parse_date(date_str: str | None, internal_date: str | None) -> datetime | N
     return None
 
 
+def _as_attachments(rows: list[dict[str, Any]]) -> list[EmailAttachment]:
+    return [EmailAttachment(filename=a["filename"], mime_type=a["mimeType"],
+                            size=a["size"], attachment_id=a["attachment_id"]) for a in rows]
+
+
 def _extract_drive_links(text: str | None) -> list[dict[str, str]]:
     """Extract Google Drive/Docs links from text."""
     if not text:
@@ -206,29 +211,19 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
     # Parse attachments (filtered - hide trivials from Claude)
     attachments_raw = parse_attachments_from_payload(payload)
     filtered_raw = filter_attachments(attachments_raw)
-    attachments = [
-        EmailAttachment(
-            filename=a["filename"],
-            mime_type=a["mimeType"],
-            size=a["size"],
-            attachment_id=a["attachment_id"],
-        )
-        for a in filtered_raw
-    ]
+    attachments = _as_attachments(filtered_raw)
     # Calendar parts are trivial-filtered out of `attachments` above, but the
     # ICS carries the iCalUID for live invite-state lookup — keep them separately
     # (mise-pinodi). Sourced from the UNFILTERED list.
-    calendar_attachments = [
-        EmailAttachment(
-            filename=a["filename"],
-            mime_type=a["mimeType"],
-            size=a["size"],
-            attachment_id=a["attachment_id"],
-        )
-        for a in attachments_raw
+    calendar_rows = [
+        a for a in attachments_raw
         if (a["mimeType"] or "").lower() in _CALENDAR_MIME_TYPES
         or (a["filename"] or "").lower().endswith(".ics")
     ]
+    calendar_attachments = _as_attachments(calendar_rows)
+    # What the trivial filter hid (mise-sajeso): disclosed and fetchable by name.
+    hidden_attachments = _as_attachments(
+        [a for a in attachments_raw if a not in filtered_raw and a not in calendar_rows])
 
     # Extract Drive links from body
     drive_links = _extract_drive_links(body_text) or _extract_drive_links(body_html)
@@ -257,6 +252,7 @@ def _build_message(msg: dict[str, Any]) -> EmailMessage:
         references=headers.get("References"),
         attachments=attachments,
         calendar_attachments=calendar_attachments,
+        hidden_attachments=hidden_attachments,
         drive_links=drive_links,
         forwarded_messages=forwarded,
         label_ids=msg.get("labelIds", []),

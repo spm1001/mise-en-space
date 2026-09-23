@@ -26,6 +26,7 @@ from .gmail_attachments import (
     _extract_from_drive,
     _resolve_attachment_mime,
     classify_attachment,
+    hidden_attachment_cues,
 )
 from .gmail_exfil import _match_exfil_for_message
 from .gmail_participants import participants_with_placement
@@ -362,6 +363,7 @@ def fetch_gmail(thread_id: str, base_path: Path | None = None) -> FetchResult:
         # Add label-derived cues
         if unread_count:
             cues["unread_messages"] = unread_count
+        cues |= hidden_attachment_cues(thread_data)
         notable_labels = all_label_ids & {"STARRED", "IMPORTANT"}
         if notable_labels:
             cues["notable_labels"] = sorted(notable_labels)
@@ -427,7 +429,7 @@ def fetch_attachment(
     all_attachment_names: list[str] = []
 
     for msg in thread_data.messages:
-        for att in msg.attachments:
+        for att in [*msg.attachments, *msg.hidden_attachments]:  # hidden: filtered, still fetchable (mise-sajeso)
             all_attachment_names.append(att.filename)
             if att.filename.lower() == attachment_name.lower():
                 target_att = att
