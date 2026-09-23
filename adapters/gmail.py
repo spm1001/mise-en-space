@@ -31,6 +31,7 @@ from models import (
 from retry import with_retry
 from adapters.http_client import get_sync_client
 from cues_util import current_user_email
+from adapters.gmail_draft_attachments import with_attachments
 from extractors.gmail import parse_message_payload, parse_attachments_from_payload, parse_forwarded_messages
 from html_convert import select_body_text
 from filters import is_trivial_attachment, filter_attachments
@@ -591,6 +592,7 @@ def _build_draft_message(
     cc: str | None = None,
     in_reply_to: str | None = None,
     references: str | None = None,
+    attachments: list[tuple[str, str, bytes]] | None = None,
 ) -> str:
     """
     Build RFC 2822 message as base64url string for Gmail API.
@@ -610,7 +612,7 @@ def _build_draft_message(
 
     msg.attach(MIMEText(body_text, "plain", "utf-8"))
     msg.attach(MIMEText(body_html, "html", "utf-8"))
-
+    msg = with_attachments(msg, attachments)  # carried-over draft attachments (mise-mudupa)
     return base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")
 
 
@@ -707,6 +709,7 @@ def update_draft(
     thread_id: str | None = None,
     in_reply_to: str | None = None,
     references: str | None = None,
+    attachments: list[tuple[str, str, bytes]] | None = None,
 ) -> DraftResult:
     """
     Replace an existing Gmail draft's message in place (drafts.update).
@@ -722,7 +725,7 @@ def update_draft(
 
     raw = _build_draft_message(
         to, subject, body_text, body_html, cc=cc,
-        in_reply_to=in_reply_to, references=references,
+        in_reply_to=in_reply_to, references=references, attachments=attachments,
     )
     message: dict[str, Any] = {"raw": raw}
     if thread_id:

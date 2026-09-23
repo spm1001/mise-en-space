@@ -18,6 +18,7 @@ from adapters.gmail import (
     update_draft,
 )
 from html_convert import html_to_text_with_links, markdown_to_html
+from adapters.gmail_draft_attachments import download_draft_attachments, get_draft_attachments
 from models import DoResult, MiseError
 from validation import validate_drive_id
 
@@ -287,6 +288,18 @@ def _update_draft_in_place(
                 "message": "draft update requires 'to' — the existing draft "
                            "has no recipient to carry over"}
 
+    # drafts.update replaces the message wholesale, so the draft's attachments
+    # must be carried or they vanish (mise-mudupa: a human's PDF did, silently).
+    # If they cannot be read, refuse: an update that drops a file is worse than none.
+    try:
+        message_id, parts = get_draft_attachments(draft_id)
+        attachments = download_draft_attachments(message_id, parts)
+    except MiseError as e:
+        return {"error": True, "kind": e.kind.value,
+                "message": f"Draft not updated: could not read its attachments to carry them "
+                           f"over ({e.message}), and updating would delete them."}
+    dropped_inline = [p["filename"] for p in parts if p["inline"]]
+
     included_links: list[IncludedLink] = []
     include_warnings: list[str] = []
     if include:
@@ -307,6 +320,7 @@ def _update_draft_in_place(
             thread_id=existing.get("thread_id"),
             in_reply_to=headers.get("in-reply-to"),
             references=headers.get("references"),
+            attachments=attachments,
         )
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
@@ -314,6 +328,19 @@ def _update_draft_in_place(
     cues: dict[str, Any] = {
         "action": "Draft updated in place — review and send from Gmail",
     }
+    if attachments:
+        cues["attachments_kept"] = [name for name, _, _ in attachments]
+    # Gmail materialises the signature's <img> as an inline part on every save,
+    # and the signature is re-appended below, so those come back by themselves
+    # (measured live: warning on every repeat update otherwise). Warn only for
+    # inline images beyond what the signature accounts for.
+    lost = len(dropped_inline) - sig_html.lower().count("<img")
+    if lost > 0:
+        cues["inline_images_dropped"] = dropped_inline
+        cues.setdefault("warnings", []).append(
+            f"{lost} inline image(s) in the old body were not carried over (the body "
+            "was rebuilt from your content, so nothing references them); re-add them "
+            "in Gmail if they matter.")
     if carried:
         cues["carried_over"] = carried
     if sig_html:

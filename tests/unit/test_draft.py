@@ -535,6 +535,14 @@ def _existing_draft_headers():
 class TestDraftUpdate:
     """draft with file_id updates an existing draft in place."""
 
+    @pytest.fixture(autouse=True)
+    def _no_attachments(self):
+        # The update path now reads the stored draft's attachments (mise-mudupa);
+        # default to a draft with none so these tests stay about headers.
+        with patch("tools.draft.get_draft_attachments", return_value=("m0", [])), \
+             patch("tools.draft.download_draft_attachments", return_value=[]):
+            yield
+
     def test_update_requires_content(self) -> None:
         result = do_draft(file_id="r123456")
         assert result["error"] is True
@@ -600,3 +608,100 @@ class TestDraftUpdate:
         result = do_draft(file_id="r123", content="x")
         assert result["error"] is True
         assert "to" in result["message"]
+
+
+class TestDraftUpdateKeepsAttachments:
+    """drafts.update rebuilt the message without the draft's attachments, so a
+    text fix silently deleted a human's PDF (mise-mudupa, 2026-08-14)."""
+
+    _PARTS = [
+        {"filename": "engagement-letter.pdf", "mimeType": "application/pdf",
+         "attachment_id": "A1", "inline": False},
+        {"filename": "logo.png", "mimeType": "image/png", "attachment_id": "A2", "inline": True},
+    ]
+
+    @patch("tools.draft.get_primary_signature", return_value=None)
+    @patch("tools.draft.update_draft")
+    @patch("tools.draft.get_draft_headers", return_value=_existing_draft_headers())
+    def test_attachments_ride_the_update_and_inline_images_are_named(
+        self, _get, mock_update, _sig
+    ) -> None:
+        mock_update.return_value = DraftResult(draft_id="r1", message_id="m1", web_link="w",
+                                               to="alice@example.com", subject="s")
+        pdf = ("engagement-letter.pdf", "application/pdf", b"%PDF-1.7 bytes")
+        with patch("tools.draft.get_draft_attachments", return_value=("m9", self._PARTS)), \
+             patch("tools.draft.download_draft_attachments", return_value=[pdf]) as dl:
+            result = do_draft(file_id="r1", content="Better wording")
+
+        dl.assert_called_once_with("m9", self._PARTS)
+        assert mock_update.call_args.kwargs["attachments"] == [pdf]
+        assert result.cues["attachments_kept"] == ["engagement-letter.pdf"]
+        assert result.cues["inline_images_dropped"] == ["logo.png"]
+
+    @patch("tools.draft.get_primary_signature",
+           return_value='Jo<br><img src="https://example.com/logo.jpg">')
+    @patch("tools.draft.update_draft")
+    @patch("tools.draft.get_draft_headers", return_value=_existing_draft_headers())
+    def test_signature_image_is_not_reported_lost(self, _get, mock_update, _sig) -> None:
+        """Gmail turns the signature's <img> into an inline part on every save; it
+        comes back with the re-appended signature, so no warning (measured live)."""
+        mock_update.return_value = DraftResult(draft_id="r1", message_id="m1", web_link="w",
+                                               to="alice@example.com", subject="s")
+        parts = [{"filename": "inline_image", "mimeType": "image/jpeg",
+                  "attachment_id": "A3", "inline": True}]
+        with patch("tools.draft.get_draft_attachments", return_value=("m9", parts)), \
+             patch("tools.draft.download_draft_attachments", return_value=[]):
+            result = do_draft(file_id="r1", content="v3")
+        assert "inline_images_dropped" not in result.cues and "warnings" not in result.cues
+
+    @patch("tools.draft.update_draft")
+    @patch("tools.draft.get_draft_headers", return_value=_existing_draft_headers())
+    def test_unreadable_attachments_refuse_rather_than_delete(self, _get, mock_update) -> None:
+        from models import ErrorKind, MiseError
+        with patch("tools.draft.get_draft_attachments",
+                   side_effect=MiseError(ErrorKind.NETWORK_ERROR, "timeout")):
+            result = do_draft(file_id="r1", content="Better wording")
+        assert result["error"] and "would delete them" in result["message"]
+        mock_update.assert_not_called()
+
+    def test_mime_wraps_body_and_attachment_in_mixed(self) -> None:
+        import base64
+        import email
+        from adapters.gmail import _build_draft_message
+        raw = _build_draft_message("a@x.com", "Subj", "text", "<p>html</p>", cc="b@x.com",
+                                   in_reply_to="<m@x>", references="<m@x>",
+                                   attachments=[("letter.pdf", "application/pdf", b"%PDF")])
+        msg = email.message_from_bytes(base64.urlsafe_b64decode(raw))
+        assert msg.get_content_type() == "multipart/mixed"
+        assert msg["To"] == "a@x.com" and msg["In-Reply-To"] == "<m@x>" and msg["Cc"] == "b@x.com"
+        body, att = msg.get_payload()
+        assert body.get_content_type() == "multipart/alternative" and "To" not in body
+        assert att.get_filename() == "letter.pdf" and att.get_payload(decode=True) == b"%PDF"
+
+    def test_no_attachments_keeps_the_old_shape(self) -> None:
+        import base64
+        import email
+        from adapters.gmail import _build_draft_message
+        msg = email.message_from_bytes(base64.urlsafe_b64decode(
+            _build_draft_message("a@x.com", "S", "t", "<p>h</p>")))
+        assert msg.get_content_type() == "multipart/alternative"
+
+
+class TestDraftAttachmentScan:
+    def test_scan_marks_inline_by_content_id(self) -> None:
+        from adapters.gmail_draft_attachments import get_draft_attachments
+        payload = {"mimeType": "multipart/mixed", "parts": [
+            {"mimeType": "multipart/related", "parts": [
+                {"mimeType": "text/html", "body": {"size": 5}},
+                {"mimeType": "image/png", "filename": "logo.png", "body": {"attachmentId": "A2"},
+                 "headers": [{"name": "Content-ID", "value": "<ii_1>"},
+                             {"name": "Content-Disposition", "value": "inline"}]}]},
+            {"mimeType": "application/pdf", "filename": "letter.pdf", "body": {"attachmentId": "A1"},
+             "headers": [{"name": "Content-Disposition", "value": "attachment; filename=letter.pdf"}]},
+        ]}
+        client = MagicMock()
+        client.get_json.return_value = {"message": {"id": "m7", "payload": payload}}
+        with patch("adapters.gmail_draft_attachments.get_sync_client", return_value=client):
+            mid, parts = get_draft_attachments("r1")
+        assert mid == "m7"
+        assert [(p["filename"], p["inline"]) for p in parts] == [("logo.png", True), ("letter.pdf", False)]
