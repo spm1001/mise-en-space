@@ -60,16 +60,19 @@ def parse_event_time(
             f"{param} must be an ISO date or datetime — '2026-09-08' or "
             f"'2026-09-08T14:00' or '2026-09-08T14:00:00+01:00' — got {text!r}"
         ) from None
+    # Always re-serialise: Google rejects seconds-less RFC3339 ('T13:00'),
+    # which the preview used to echo happily and the confirmed insert then
+    # 400'd on — after the human had approved it (mise-duralu).
     if dt.tzinfo is None:
         if tz:
-            return {"dateTime": text, "timeZone": tz}
+            return {"dateTime": dt.isoformat(), "timeZone": tz}
         warnings.append(
             f"{param} has no timezone and none could be resolved from your "
             "calendar — treated as UTC. Pass an offset (e.g. +01:00) if that "
             "is wrong."
         )
         return {"dateTime": dt.replace(tzinfo=timezone.utc).isoformat()}
-    return {"dateTime": text}
+    return {"dateTime": dt.isoformat()}
 
 
 def bound_datetime(time_dict: dict[str, Any]) -> datetime:

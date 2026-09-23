@@ -82,7 +82,23 @@ class TestTimeHandling:
             title="X", time_min="2026-09-08T14:00", time_max="2026-09-08T14:30",
         )
         body = mock_insert.call_args[0][0]
-        assert body["start"] == {"dateTime": "2026-09-08T14:00", "timeZone": "Europe/London"}
+        # Seconds padded: Google 400s 'T14:00' (mise-duralu — this test used to pin the bug)
+        assert body["start"] == {"dateTime": "2026-09-08T14:00:00", "timeZone": "Europe/London"}
+
+    @patch("tools.create_event.clash_summaries", return_value=[])
+    @patch("tools.create_event.insert_event", return_value=_created())
+    @patch(_TZ, return_value="Europe/London")
+    def test_preview_shows_exactly_what_confirm_sends(self, _tz, mock_insert, _clash) -> None:
+        """The human approves the preview; a confirm that sends something else
+        (seconds-less, then 400) is the preview-lies shape (mise-duralu)."""
+        for t_min, t_max in (("2026-09-08T13:00", "2026-09-08T13:30"),
+                             ("2026-09-08T13:00+01:00", "2026-09-08T13:30+01:00")):
+            kwargs = dict(title="X", time_min=t_min, time_max=t_max, attendees=["a@itv.com"])
+            preview = do_create_event(**kwargs)
+            do_create_event(**kwargs, confirm=True)
+            body = mock_insert.call_args[0][0]
+            assert preview["start"] == body["start"] and preview["end"] == body["end"]
+            assert body["start"]["dateTime"].startswith("2026-09-08T13:00:00")
 
     @patch("tools.create_event.insert_event", return_value=_created())
     @patch(_TZ, return_value=None)

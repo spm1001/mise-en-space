@@ -69,16 +69,21 @@ def do_freebusy(
                 f"attendee {email!r} doesn't look like an email address.",
             )
 
+    if duration is not None and duration <= 0:
+        return _error("invalid_input", "duration is minutes and must be > 0.")
+
+    # Naive times and bare dates mean the user's wall-clock, as they do for
+    # create_event — read as UTC they slid the window an hour in BST (mise-lemawe).
+    tz_name = resolve_calendar_timezone()
+    tz = ZoneInfo(tz_name or "UTC")
     try:
-        window_min, window_max = parse_time_window(time_min, time_max)
+        window_min, window_max = parse_time_window(time_min, time_max, tz)
     except ValueError as e:
         return _error("invalid_input", str(e))
     if window_min is None or window_max is None:
         return _error(
             "invalid_input", "freebusy needs both time_min and time_max.",
         )
-    if duration is not None and duration <= 0:
-        return _error("invalid_input", "duration is minutes and must be > 0.")
 
     # The user's own diary always joins the arithmetic — a slot that ignores
     # the asker's calendar is not a slot anyone can book.
@@ -159,13 +164,12 @@ def do_freebusy(
     # user's zone, and the first live run leaked both into one payload: a
     # real 09:00–10:00 London slot rendered as start 09:00+01:00 /
     # end 09:00+00:00, which reads as zero-length (2026-08-19).
-    tz_name = resolve_calendar_timezone()
-    if not tz_name and duration is not None:
+    if not tz_name:
         warnings.append(
-            "No timezone found on your calendar — office hours (09:00–"
-            "17:30) applied in UTC."
+            "No timezone found on your calendar — times without an offset were "
+            "read as UTC" + (", and office hours (09:00–17:30) applied in UTC."
+                             if duration is not None else ".")
         )
-    tz = ZoneInfo(tz_name or "UTC")
 
     result: dict[str, Any] = {
         "operation": "freebusy",

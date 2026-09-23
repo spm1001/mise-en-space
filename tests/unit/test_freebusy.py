@@ -144,10 +144,11 @@ class TestDoFreebusy:
         starts = [s["start"] for s in result["common_free"]]
         assert starts == [_dt(8, 12).isoformat()]
 
+    @patch("tools.freebusy.resolve_calendar_timezone", return_value=None)
     @patch("tools.freebusy.current_user_email", return_value=None)
     @patch("tools.freebusy.freebusy_query",
            side_effect=MiseError(ErrorKind.PERMISSION_DENIED, "insufficient scope"))
-    def test_scope_403_teaches_the_new_scope(self, mock_fb, _me) -> None:
+    def test_scope_403_teaches_the_new_scope(self, mock_fb, _me, _tz) -> None:
         result = do_freebusy(
             attendees=["a@itv.com"],
             time_min="2026-09-08", time_max="2026-09-09",
@@ -192,6 +193,26 @@ class TestDoFreebusy:
             time_min="2026-09-08", time_max="2026-09-09", duration=0,
         )
         assert result["error"] is True
+
+    @patch("tools.freebusy.resolve_calendar_timezone", return_value="Europe/London")
+    @patch("tools.freebusy.list_status_events", return_value=[])
+    @patch("tools.freebusy.current_user_email", return_value=None)
+    @patch("tools.freebusy.freebusy_query", return_value={"a@itv.com": {"busy": []}})
+    def test_naive_time_means_the_same_wall_clock_as_create_event(
+        self, mock_fb, _me, _wl, _tz,
+    ) -> None:
+        """freebusy read '08:00' as UTC while create_event read it as London,
+        silently sliding the window an hour in BST (mise-lemawe)."""
+        from tools.events_util import parse_event_time
+
+        result = do_freebusy(attendees=["a@itv.com"],
+                             time_min="2026-08-27T08:00", time_max="2026-08-27T09:00")
+
+        sent_min = mock_fb.call_args[0][1]
+        assert sent_min == datetime(2026, 8, 27, 7, 0, tzinfo=timezone.utc)
+        assert result["window"]["time_min"] == "2026-08-27T08:00:00+01:00"
+        event_start = parse_event_time("2026-08-27T08:00", "time_min", "Europe/London", [])
+        assert event_start == {"dateTime": "2026-08-27T08:00:00", "timeZone": "Europe/London"}
 
     def test_freebusy_not_in_remote_allowed_ops(self) -> None:
         """Read-only, but remote's whitelist is an audited security decision —
