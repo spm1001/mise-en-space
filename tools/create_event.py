@@ -17,7 +17,7 @@ import logging
 from typing import Any
 
 from adapters.calendar import insert_event
-from cues_util import with_identity
+from cues_util import current_user_email, with_identity
 from models import DoResult, ErrorKind, MiseError
 from tools.events_util import (
     REAUTH_ADVICE,
@@ -132,6 +132,12 @@ def do_create_event(
         body["transparency"] = transp
     if emails:
         body["attendees"] = [{"email": e} for e in emails]
+        # The API does NOT add the organiser to attendees the way the Calendar UI
+        # does: every 1:1 booked through here listed only the other person, so
+        # the invite showed Sameer as organiser but not as a guest (2026-09-23).
+        me = current_user_email()
+        if me and me.lower() not in {e.lower() for e in emails}:
+            body["attendees"].append({"email": me, "responseStatus": "accepted"})
     if recurrence_lines:
         body["recurrence"] = recurrence_lines
     if meet:

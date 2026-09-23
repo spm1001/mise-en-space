@@ -371,3 +371,29 @@ class TestVisibilityTransparency:
         assert result["error"] is True
         assert "opaque/busy" in result["message"]
         assert "transparent/free" in result["message"]
+
+
+class TestOrganiserIsOnTheInvite:
+    """The API does not add the organiser as a guest; every 1:1 booked through
+    create_event listed only the other person (Sameer, 2026-09-23)."""
+
+    @patch("tools.create_event.current_user_email", return_value="me@example.com")
+    @patch("tools.create_event.clash_summaries", return_value=[])
+    @patch("tools.create_event.insert_event", return_value=_created())
+    @patch(_TZ, return_value="Europe/London")
+    def test_organiser_joins_attendees_as_accepted(self, _tz, mock_insert, _clash, _me) -> None:
+        do_create_event(title="Kate / Me 1:1", time_min="2026-10-02T15:30", time_max="2026-10-02T16:00",
+                        attendees=["kate@example.com"], confirm=True)
+        att = mock_insert.call_args[0][0]["attendees"]
+        assert {"email": "me@example.com", "responseStatus": "accepted"} in att
+        assert {"email": "kate@example.com"} in att
+
+    @patch("tools.create_event.current_user_email", return_value="me@example.com")
+    @patch("tools.create_event.clash_summaries", return_value=[])
+    @patch("tools.create_event.insert_event", return_value=_created())
+    @patch(_TZ, return_value="Europe/London")
+    def test_not_added_twice(self, _tz, mock_insert, _clash, _me) -> None:
+        do_create_event(title="x", time_min="2026-10-02T15:30", time_max="2026-10-02T16:00",
+                        attendees=["kate@example.com", "ME@example.com"], confirm=True)
+        emails = [a["email"].lower() for a in mock_insert.call_args[0][0]["attendees"]]
+        assert emails.count("me@example.com") == 1
