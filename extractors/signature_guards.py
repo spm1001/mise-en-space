@@ -26,3 +26,23 @@ def has_anchored_link(text: str) -> bool:
 def is_texty(line: str) -> bool:
     """A name/title line has letters and is not markdown table furniture ('|  |')."""
     return bool(_LETTER.search(line)) and not line.startswith('|')
+
+
+_URL_HOST = re.compile(r'https?://(?:www\.)?([^/\s)>|\]]+)')
+
+
+def link_loss_warnings(discarded: str) -> list[str]:
+    """Name the links a signature strip threw away, whatever the character ratio.
+
+    A ratio test cannot see this loss: the invitation kept 41% of its
+    characters and 1 of 6 links (mise-kubolo). Real contact blocks will warn
+    too; the hosts let the reader tell a LinkedIn footer from a call to action.
+    """
+    hosts = list(dict.fromkeys(_URL_HOST.findall(discarded)))
+    if not hosts:
+        return []
+    return [
+        f"Signature strip removed a trailing block holding {len(_URL_HOST.findall(discarded))} "
+        f"link(s) ({', '.join(hosts[:5])}{', ...' if len(hosts) > 5 else ''}). If those were "
+        "content, not a contact block, read the message in Gmail."
+    ]

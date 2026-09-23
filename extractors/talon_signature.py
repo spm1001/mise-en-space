@@ -16,7 +16,7 @@ from dataclasses import dataclass
 # which re (stdlib) doesn't support. The regex module does. If this becomes a perf
 # concern (backtracking), we'd need to rewrite the pattern without named groups.
 import regex as re
-from extractors.signature_guards import has_anchored_link, is_texty
+from extractors.signature_guards import has_anchored_link, is_texty, link_loss_warnings
 
 log = logging.getLogger(__name__)
 
@@ -444,6 +444,7 @@ def _strip_trailing_contact_block(body: str) -> tuple[str, list[str]]:
             if has_anchored_link(trailing):  # a call to action, not a contact block
                 return body, warnings
             stripped = '\n'.join(lines[:i]).rstrip()
+            warnings.extend(link_loss_warnings(trailing))
             if original_len > 0 and len(stripped) / original_len < _AGGRESSIVE_STRIP_RATIO:
                 warnings.append(
                     f"Aggressive signature strip: kept "

@@ -428,6 +428,46 @@ class TestMachineNotificationKeepsItsLinks:
         out, _ = strip_signature_and_quotes(body)
         assert "linkedin" not in out and "Happy to walk through it" in out
 
+    def test_minimal_bs4_void_trigger(self) -> None:
+        """The mechanism in 38 chars: a bare <br> earlier, then self-closing
+        <br />s — bs4 leaves one open and markitdown drops what it swallowed."""
+        from html_convert import clean_html_for_conversion, convert_html_to_markdown
+        md, _ = convert_html_to_markdown(
+            clean_html_for_conversion("<p>x<br>y</p><p>a<br />b<br />END</p>"))
+        assert "END" in md
+
+    def test_anchored_call_to_action_vetoes_the_strip(self) -> None:
+        """Pins the veto alone (the fixture survives on either guard)."""
+        body = (
+            "@jo requested your review on this pull request.\n\n"
+            "Please take a look when you can.\n\nThanks\nThe GitHub Team\n"
+            "[View it on GitHub](https://github.com/o/r/pull/1)\n"
+            "[Unsubscribe](https://github.com/notifications/unsubscribe/x)\n"
+            "[Manage settings](https://github.com/settings/notifications)\n"
+        )
+        out, _ = strip_signature_and_quotes(body)
+        assert "[View it on GitHub](" in out
+
+    def test_table_furniture_is_never_a_name_block(self) -> None:
+        """Pins is_texty alone: bare URLs, so only the furniture rule saves them."""
+        body = (
+            "Your export is ready.\n\nIt covers the last 30 days.\n\n|  |\n| --- |\n"
+            "Download: https://export.example.com/f/1\nhttps://export.example.com/help\n"
+            "https://export.example.com/settings\n"
+        )
+        out, _ = strip_signature_and_quotes(body)
+        assert "https://export.example.com/f/1" in out
+
+    def test_a_strip_that_discards_links_says_so(self) -> None:
+        """The ratio test missed a 41%-kept, 1-in-6-links strip; any link loss warns."""
+        body = (
+            "Hi team,\n\nThe numbers are in the sheet; shout if anything looks off.\n"
+            "Happy to walk through it Thursday.\n\nJo\nJo Bloggs | Head of Measurement\n"
+            "https://www.example.com\nhttps://www.linkedin.com/in/jo\nhttps://twitter.com/jo\n"
+        )
+        _, warnings = strip_signature_and_quotes(body)
+        assert any("3 link(s)" in w and "linkedin.com" in w for w in warnings)
+
     def test_guards(self) -> None:
         from extractors.signature_guards import has_anchored_link, is_texty
         assert has_anchored_link("[Accept invitation](https://x.example/r)")
