@@ -114,6 +114,10 @@ ADJUDICATED: tuple[tuple[str, str, str], ...] = (
      "true platform limit: revision restore/naming is UI-only (mise-cizuzi)"),
     ("skills/mise/SKILL.md", "| Doc has images, tables, or rich formatting | `prepend`/`append`",
      "advice: overwrite destroys rich content — deliberate steering, true"),
+    ("skills/mise/SKILL.md", "- **`comment`** opens a NEW thread",
+     "true design + measured-pending limit: a refused anchor never degrades to "
+     "unanchored (CLAUDE.md anchored-comment row); multi-tab quoted anchors "
+     "refuse until mise-fulefe measures the per-tab index space"),
     ("skills/mise/SKILL.md", "- **Don't guess the `comment_id`.**",
      "advice: ids come from comments.md — not a capability claim"),
     ("skills/mise/SKILL.md", "Pass CSV as `content` with `doc_type=\"sheet\"`.",

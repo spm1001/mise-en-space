@@ -512,12 +512,12 @@ search("orgTitle='Head of Strategy'", sources=["people"], base_path="...")
 
 Comments are a two-way channel with the human. Two write operations:
 
-- **`comment`** opens a NEW thread — use it to proactively flag something ("this figure looks stale", "confirmed against source") when there's no existing thread to answer. Unanchored: it lands at the document level, not tied to specific text.
+- **`comment`** opens a NEW thread — use it to proactively flag something ("this figure looks stale", "confirmed against source") when there's no existing thread to answer. **Pass `anchor=`** so it lands where a reader will see it: quoted text on a Doc, `'slide 3'` on a deck, `'Sheet1!B12'` on a workbook — the same spellings `comments.md` prints, so a read locator pastes straight back. Without `anchor=`, a Google Doc shows the comment only in the comments panel, labelled "Original content deleted", never in the margin (`cues.visibility` says so). A refused anchor is never downgraded to an unanchored comment; quoted-text anchors on multi-tab Docs currently refuse.
 - **`comment_reply`** answers an existing thread (and can resolve/reopen it).
 
 ```python
-# Open a new comment thread on a doc (no comment_id needed)
-do(operation="comment", file_id="1abc...",
+# Open a new comment thread anchored to the text it is about
+do(operation="comment", file_id="1abc...", anchor="Total for Q3",
    content="Checked these totals against the source sheet — row 14 is off by 2.")
 ```
 
