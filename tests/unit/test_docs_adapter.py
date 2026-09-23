@@ -5,11 +5,12 @@ Mocks the sync HTTP client, feeds real fixture data,
 and verifies the adapter parses into DocData correctly.
 """
 
+import httpx
 import pytest
 import orjson
 from unittest.mock import patch, MagicMock
 
-from models import DocData, MiseError
+from models import DocData, ErrorKind, MiseError
 from adapters.docs import fetch_document, _build_tab, _build_legacy_tab
 from tests.conftest import load_fixture
 
@@ -267,3 +268,67 @@ class TestFetchDocumentSuggestions:
             with patch('retry.time.sleep'):
                 fetch_document("any", suggestions="bogus")
         mock_get_client.return_value.get_json.assert_not_called()
+
+
+def _http_403(text: str) -> httpx.HTTPStatusError:
+    return httpx.HTTPStatusError(
+        "403 Forbidden", request=MagicMock(), response=httpx.Response(403, text=text)
+    )
+
+
+_SUGGESTIONS_403 = (
+    '{"error": {"code": 403, "message": "You do not have permission to access '
+    'the document suggestions.", "status": "PERMISSION_DENIED"}}'
+)
+_PLAIN_403 = (
+    '{"error": {"code": 403, "message": "The caller does not have permission", '
+    '"status": "PERMISSION_DENIED"}}'
+)
+
+
+class TestViewOnlySuggestionsRefusal:
+    """A view-only Doc 403s on SUGGESTIONS_INLINE alone (mise-kuvuwe/tiroti)."""
+
+    @patch('adapters.docs.get_sync_client')
+    def test_suggestions_403_degrades_to_access_default_view(self, mock_get_client) -> None:
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = [
+            _http_403(_SUGGESTIONS_403),
+            {"documentId": "view1", "title": "Viewer copy",
+             "body": {"content": [{"paragraph": {"elements": [{"textRun": {"content": "Readable\n"}}]}}]}},
+        ]
+
+        with patch('retry.time.sleep'):
+            result = fetch_document("view1", suggestions="original")
+
+        assert mock_client.get_json.call_count == 2
+        retry_params = mock_client.get_json.call_args_list[1].kwargs["params"]
+        assert "suggestionsViewMode" not in retry_params
+        assert result.title == "Viewer copy"
+        assert result.suggestions_mode == "unavailable"
+        assert result.suggestion_count == 0
+        assert any("Suggested edits unavailable" in w for w in result.adapter_warnings)
+
+    @patch('adapters.docs.get_sync_client')
+    def test_plain_403_still_refuses(self, mock_get_client) -> None:
+        """Known-bad arm: a genuine no-access 403 must NOT be retried into a read."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_client.get_json.side_effect = _http_403(_PLAIN_403)
+
+        with patch('retry.time.sleep'):
+            with pytest.raises(MiseError) as ei:
+                fetch_document("locked1")
+
+        assert ei.value.kind == ErrorKind.PERMISSION_DENIED
+        for call in mock_client.get_json.call_args_list:
+            assert call.kwargs["params"]["suggestionsViewMode"] == "SUGGESTIONS_INLINE"
+
+    def test_cues_say_unknown_not_absent(self) -> None:
+        from tools.fetch.common import suggestion_cues
+
+        doc = DocData(title="t", document_id="d", tabs=[], suggestions_mode="unavailable")
+        cues = suggestion_cues(doc)
+        assert cues["suggestions_mode"] == "unavailable"
+        assert "has_suggestions" in cues and cues["has_suggestions"] is None

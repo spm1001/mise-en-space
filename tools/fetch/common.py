@@ -421,7 +421,11 @@ def suggestion_cues(doc_data: Any) -> dict[str, Any]:
     total mise cannot act on.
     """
     cues: dict[str, Any] = {}
-    if doc_data.suggestion_count > 0:
+    if doc_data.suggestions_mode == "unavailable":
+        # Suggestions view refused (view-only access) — unknown, not absent
+        cues["has_suggestions"] = None
+        cues["suggestions_mode"] = "unavailable"
+    elif doc_data.suggestion_count > 0:
         cues["has_suggestions"] = True
         cues["suggestion_count"] = doc_data.suggestion_count
         cues["suggestions_mode"] = doc_data.suggestions_mode

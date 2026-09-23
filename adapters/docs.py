@@ -9,6 +9,8 @@ MiseHttpClient (async) when the tools/server layer goes async.
 
 from typing import Any
 
+import httpx
+
 from models import DocData, DocTab
 from retry import with_retry
 from adapters.http_client import get_sync_client
@@ -123,6 +125,40 @@ def _build_tabs(doc: dict[str, Any]) -> list[DocTab]:
     return [_build_legacy_tab(doc)]
 
 
+# Google refuses the inline suggestions view to a caller without suggestion
+# access (view-only sharing) and answers the WHOLE request 403 with this
+# wording — distinct from the ordinary "The caller does not have permission",
+# so Google is naming which thing it refused (mise-kuvuwe / mise-tiroti; every
+# real Docs 403 in the call log from 24 Aug to 23 Sep was this one). The
+# document itself is readable, so retry once without a view mode (Google then
+# applies DEFAULT_FOR_CURRENT_ACCESS) and say so. Any OTHER 403 re-raises: a
+# genuine no-access refusal must stay a refusal, never a masked second failure.
+_SUGGESTIONS_403_MARKER = "document suggestions"
+_SUGGESTIONS_UNAVAILABLE = "unavailable"
+_SUGGESTIONS_REFUSED_WARNING = (
+    "Suggested edits unavailable: your access to this document does not "
+    "include its suggestions (Google refused the suggestions view — typical "
+    "of view-only sharing), so mise fetched the plain view your access "
+    "allows. Pending suggestions, if any, are neither shown nor counted, and "
+    "suggestions= has no effect on this file."
+)
+
+
+def _get_inline_or_degrade(client: Any, document_id: str) -> tuple[dict[str, Any], bool]:
+    """documents.get in SUGGESTIONS_INLINE; on the suggestions-scoped 403, the
+    access-default view instead. Returns (doc, suggestions_refused)."""
+    params = {"includeTabsContent": "true", "fields": DOCUMENT_FIELDS}
+    try:
+        return client.get_json(
+            f"{_DOCS_API}/{document_id}",
+            params={**params, "suggestionsViewMode": "SUGGESTIONS_INLINE"},
+        ), False
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 403 or _SUGGESTIONS_403_MARKER not in exc.response.text:
+            raise
+    return client.get_json(f"{_DOCS_API}/{document_id}", params=params), True
+
+
 @with_retry(max_attempts=3, delay_ms=1000)
 def fetch_document(document_id: str, suggestions: str = "accepted") -> DocData:
     """
@@ -166,21 +202,17 @@ def fetch_document(document_id: str, suggestions: str = "accepted") -> DocData:
     client = get_sync_client()
 
     # First call: inline view, so unresolved suggestions are visible/countable
-    doc = client.get_json(
-        f"{_DOCS_API}/{document_id}",
-        params={
-            "includeTabsContent": "true",
-            "fields": DOCUMENT_FIELDS,
-            "suggestionsViewMode": "SUGGESTIONS_INLINE",
-        },
-    )
+    doc, suggestions_refused = _get_inline_or_degrade(client, document_id)
 
     title = doc.get("title", "Untitled")
     tabs = _build_tabs(doc)
     suggestion_count = count_suggestions(tabs)
     adapter_warnings: list[str] = []
 
-    if suggestion_count > 0:
+    if suggestions_refused:
+        suggestions = _SUGGESTIONS_UNAVAILABLE
+        adapter_warnings.append(_SUGGESTIONS_REFUSED_WARNING)
+    elif suggestion_count > 0:
         if suggestions == "markup":
             annotate_suggestion_markup(tabs)
             adapter_warnings.append(
