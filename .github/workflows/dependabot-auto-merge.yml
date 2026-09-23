@@ -15,6 +15,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write  # dispatch CI on the merged tree (GITHUB_TOKEN pushes trigger nothing)
 
 jobs:
   auto-merge:
@@ -44,3 +45,6 @@ jobs:
           fi
           echo "CI green on $BRANCH → squash-merging Dependabot PR #$pr"
           gh pr merge "$pr" --repo "$REPO" --squash --delete-branch
+          # workflow_dispatch is the one event a GITHUB_TOKEN can still fire,
+          # so the merged main gets its own verdict (mise-sasoti).
+          gh workflow run ci.yml --repo "$REPO" --ref main

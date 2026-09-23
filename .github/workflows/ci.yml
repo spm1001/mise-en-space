@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # A push made with GITHUB_TOKEN (the Dependabot auto-merge) triggers no
+  # workflows, so the merged tree used to reach main — and, via the daily
+  # assemble, every user — with no CI verdict (mise-sasoti). The auto-merge
+  # now dispatches this workflow after merging; the schedule is the backstop,
+  # timed ahead of the 07:00 UTC assemble.
+  workflow_dispatch:
+  schedule:
+    - cron: "15 6 * * *"
 
 jobs:
   test:
