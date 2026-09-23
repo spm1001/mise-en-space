@@ -1,6 +1,7 @@
 # Handoffs ledger
 
-One line per handoff, newest first. `- [ ]` = not yet processed by an /open sweep; every close appends its line in the same change that writes the handoff.
+One line per handoff, newest first. `- [ ] 2026-09-23 [2026-09-23-atelier-inline-reply-field-report.md](2026-09-23-atelier-inline-reply-field-report.md) — field report: Gmail fetch strips quoted lines, so inline answers ("Response below") deposit as an empty reply (Candidate: keep or diff the quoted block, or cue that it was stripped)
+- [ ]` = not yet processed by an /open sweep; every close appends its line in the same change that writes the handoff.
 
 - [x] 2026-09-23 [2026-09-23-1019-146fd2e7.md](2026-09-23-1019-146fd2e7.md) — Whole-board read and a silent-wrong-answers campaign: 32 cards closed, drafts made safe (Sameer verified in Gmail), live integration suite repaired to 107/107, 40 deps refreshed in gated slices, bs4 floor replaced a workaround; tomorrow's assemble ships ~30 commits — check the installed plugin (mise-tiroti, mise-suwopu, mise-josebe, mise-kubolo, mise-mudupa, mise-newidu, mise-zefele, mise-sajeso, mise-pirusu, mise-sokaji, mise-sasoti) (processed 2026-09-23)
 - [x] 2026-09-23 [2026-09-23-0744-71067d5b.md](2026-09-23-0744-71067d5b.md) — Orientation-only session - /open swept the 22 Sep evening handoff and carried its open questions onto mise-lewube; block-3 timer re-created on Opus 5.5 (a reported pre-registration deviation, Sameer's call); main was force-rewritten overnight by another lane (mise-lewube, mise-hawuja) (processed 2026-09-23)
