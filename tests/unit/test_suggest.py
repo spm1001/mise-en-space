@@ -299,6 +299,17 @@ class TestFolding:
         r = do_suggest(file_id=FID, action="accept", find="banana")
         assert r["error"] and "not a suggestion reference" in r["message"]
 
+    def test_view_only_access_names_the_access_not_a_false_count(self) -> None:
+        """After the view-only degrade (mise-tiroti) the fetched doc shows no
+        suggestions; saying 'this document has 0 suggestions' would be false
+        (essayeur, 2026-09-23). Name the missing access instead."""
+        from models import DocData
+        doc = DocData(title="t", document_id=FID, tabs=[], suggestions_mode="unavailable")
+        with patch("tools.suggestions.fetch_document", return_value=doc):
+            r = do_suggest(file_id=FID, action="accept", find="s2")
+        assert r["error"] and "does not include its suggested edits" in r["message"]
+        assert "0 TEXT" not in r["message"]
+
     def test_a_word_import_id_is_accepted_raw(self) -> None:
         """`suggestIdImport…` is what a converted .docx produces. Refusing it as
         "not a suggestion reference" would fail on exactly the documents this

@@ -221,6 +221,12 @@ def resolve_suggestion_id(file_id: str, wanted: str) -> tuple[str, int]:
         )
 
     doc = fetch_document(file_id, suggestions="markup")
+    if doc.suggestions_mode == "unavailable":  # view-only: Google refused the suggestions view
+        raise ValueError(
+            f"Cannot resolve {wanted!r}: your access to this document does not include its "
+            "suggested edits (Google refused the suggestions view, typical of view-only "
+            "sharing). Accepting or rejecting a suggestion needs edit access."
+        )
     annotate_suggestion_markup(doc.tabs)
     seen: dict[str, str] = {}
     for run in _iter_suggestion_runs(doc.tabs):

@@ -30,39 +30,57 @@ from tools.sheet_edit import _quote_tab as quote_tab
 
 
 def finish_multi_tab_sheet(result: DoResult, tabs: list[tuple[str, str]]) -> DoResult:
-    """Rename tab 1, add and fill tabs 2..n, re-enter tab 1's formulas, read back."""
+    """Rename tab 1, add and fill tabs 2..n, re-enter tab 1's formulas, read back.
+
+    The spreadsheet already exists when this runs, so no failure here may turn
+    into a bare error: that would orphan a real file whose id the caller never
+    sees (essayeur, 2026-09-23). Every step reports into warnings instead, and
+    the result always carries the file id.
+    """
     spreadsheet_id = result.file_id
     first_tab_name, first_tab_csv = tabs[0]
     warnings: list[str] = []
-
-    first = get_sheet_properties(spreadsheet_id)[0]
-    first_title = first.get("title", "")
+    step = "reading tab 1's id"
     try:
-        rename_sheet(spreadsheet_id, sheet_id=first["sheetId"], new_title=first_tab_name)
-        first_title = first_tab_name
+        first = get_sheet_properties(spreadsheet_id)[0]
+        first_title = first.get("title", "")
+        step = f"renaming tab 1 to {first_tab_name!r}"
+        try:
+            rename_sheet(spreadsheet_id, sheet_id=first["sheetId"], new_title=first_tab_name)
+            first_title = first_tab_name
+        except (MiseError, httpx.HTTPError) as e:
+            warnings.append(
+                f"Tab 1 could not be renamed to {first_tab_name!r} ({e}); it is named "
+                f"{first_title!r}, so formulas naming {first_tab_name!r} will not resolve."
+            )
+        for tab_name, _ in tabs[1:]:
+            step = f"adding tab {tab_name!r}"
+            add_sheet(spreadsheet_id, tab_name)
+        for tab_name, tab_csv in tabs[1:]:
+            step = f"filling tab {tab_name!r}"
+            if values := csv_text_to_values(tab_csv):
+                update_sheet_values(spreadsheet_id, range_=f"{quote_tab(tab_name)}!A1", values=values)
+        first_values = csv_text_to_values(first_tab_csv)
+        if any(cell.startswith("=") for row in first_values for cell in row):
+            step = "re-entering tab 1's formulas"
+            update_sheet_values(spreadsheet_id, range_=f"{quote_tab(first_title)}!A1", values=first_values)
     except (MiseError, httpx.HTTPError) as e:
         warnings.append(
-            f"Tab 1 could not be renamed to {first_tab_name!r} ({e}); it is named "
-            f"{first_title!r}, so formulas naming {first_tab_name!r} will not resolve."
+            f"The spreadsheet was created ({spreadsheet_id}) but building it stopped while "
+            f"{step}: {e}. It is incomplete; tab_names below says what exists."
         )
 
-    for tab_name, _ in tabs[1:]:
-        add_sheet(spreadsheet_id, tab_name)
-    for tab_name, tab_csv in tabs[1:]:
-        if values := csv_text_to_values(tab_csv):
-            update_sheet_values(spreadsheet_id, range_=f"{quote_tab(tab_name)}!A1", values=values)
-
-    first_values = csv_text_to_values(first_tab_csv)
-    if any(cell.startswith("=") for row in first_values for cell in row):
-        update_sheet_values(spreadsheet_id, range_=f"{quote_tab(first_title)}!A1", values=first_values)
-
     requested = [name for name, _ in tabs]
-    actual = [p.get("title", "") for p in get_sheet_properties(spreadsheet_id)]
-    if actual != requested:
-        warnings.append(f"Tab names on read-back {actual} differ from the requested {requested}.")
     cues: dict[str, Any] = result.cues
-    cues["tab_count"] = len(actual)
-    cues["tab_names"] = actual
+    try:
+        actual = [p.get("title", "") for p in get_sheet_properties(spreadsheet_id)]
+    except (MiseError, httpx.HTTPError) as e:
+        warnings.append(f"Could not read the tabs back ({e}); tab names are unverified.")
+    else:
+        if actual != requested:
+            warnings.append(f"Tab names on read-back {actual} differ from the requested {requested}.")
+        cues["tab_count"] = len(actual)
+        cues["tab_names"] = actual
     if warnings:
         cues.setdefault("warnings", []).extend(warnings)
     return result

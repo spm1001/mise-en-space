@@ -188,7 +188,8 @@ def fetch_spreadsheet(
     merged_cell_count = 0
 
     if grid_sheets:
-        ranges = [f"'{name}'" for name, _ in grid_sheets]
+        # Double internal quotes: a tab named Bob's is the range 'Bob''s' (essayeur, 2026-09-23)
+        ranges = ["'" + name.replace("'", "''") + "'" for name, _ in grid_sheets]
 
         # batchGet uses repeated "ranges" query params — httpx needs list of tuples
         batch_params: list[tuple[str, str]] = [("valueRenderOption", "FORMATTED_VALUE")]

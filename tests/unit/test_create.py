@@ -997,7 +997,8 @@ def _fake_sheet_properties(spreadsheet_id: str) -> list[dict]:
     for c in sc.rename_sheet.call_args_list:
         if c.kwargs.get("sheet_id") == _FIRST_SHEET_ID and not getattr(sc.rename_sheet, "side_effect", None):
             titles[0] = c.kwargs["new_title"]
-    titles += [c.args[1] for c in sc.add_sheet.call_args_list]
+    if not isinstance(sc.add_sheet.side_effect, Exception):  # a raising add created nothing
+        titles += [c.args[1] for c in sc.add_sheet.call_args_list]
     return [{"sheetId": _FIRST_SHEET_ID if i == 0 else 1000 + i, "title": t}
             for i, t in enumerate(titles)]
 
@@ -1282,6 +1283,26 @@ class TestMultiTabSheetCreation:
         assert isinstance(result, DoResult)
         assert result.cues["tab_names"] == ["(workbook title)", "Costs"]
         assert any("could not be renamed to 'Revenue'" in w for w in result.cues["warnings"])
+
+    @patch("retry.time.sleep")
+    @patch("tools.sheet_create.rename_sheet")
+    @patch("tools.sheet_create.add_sheet", side_effect=MiseError(ErrorKind.INVALID_INPUT, "duplicate tab"))
+    @patch("tools.sheet_create.update_sheet_values", return_value=4)
+    @patch("tools.create.get_sync_client")
+    def test_a_failure_after_upload_never_orphans_the_sheet(
+        self, mock_get_client, mock_update, mock_add, mock_rename, _sleep, tmp_path: Path,
+    ) -> None:
+        """The file exists once the CSV upload lands; a bare error would hide its
+        id (essayeur, 2026-09-23). The result keeps the id and says where it stopped."""
+        deposit = self._make_multi_tab_deposit(tmp_path)
+        mock_get_client.return_value.upload_multipart.return_value = _make_upload_response(
+            id="sheet1", webViewLink="https://docs.google.com/spreadsheets/d/sheet1/edit", name="Budget")
+
+        result = do_create(title="Budget", doc_type="sheet", source=str(deposit), base_path=str(deposit))
+
+        assert isinstance(result, DoResult) and result.file_id == "sheet1"
+        assert any("stopped while adding tab 'Costs'" in w for w in result.cues["warnings"])
+        assert result.cues["tab_names"] == ["Revenue"]
 
     @patch("retry.time.sleep")
     @patch("tools.sheet_create.rename_sheet")
