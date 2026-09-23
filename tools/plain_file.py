@@ -6,6 +6,7 @@ Handles text/* and known text-safe MIME types (JSON, YAML, SVG, etc.).
 Binary files are rejected for text operations.
 """
 
+import mimetypes
 from pathlib import Path
 from typing import Any
 
@@ -107,10 +108,28 @@ def plain_overwrite(
     source: str | None,
     base_path: str | None,
     metadata: dict[str, Any],
+    file_bytes: bytes | None = None,
+    local_name: str | None = None,
 ) -> DoResult | dict[str, Any]:
-    """Replace full content of a plain file via Drive Files API."""
+    """Replace full content of a plain file via Drive Files API.
+
+    file_bytes: raw bytes from a local file_path — sent untouched, so binary
+    files (PDF, PNG, xlsx) overwrite in place with their file id kept.
+    """
     if err := _reject_google_native(metadata):
         return err
+    if file_bytes is not None:
+        mime_type = metadata.get("mimeType", "application/octet-stream")
+        upload_file_content(file_id, file_bytes, mime_type)
+        cues: dict[str, Any] = {"byte_count": len(file_bytes)}
+        guessed = mimetypes.guess_type(local_name or "")[0]
+        if guessed and guessed != mime_type:
+            cues["warning"] = (
+                f"Local file looks like {guessed} but the Drive file is {mime_type}; "
+                f"the bytes were uploaded under {mime_type}. If that is wrong, "
+                "create a new file instead (the id will change)."
+            )
+        return _make_result(file_id, metadata, "overwrite", cues)
     # Resolve source
     try:
         resolved_source = _resolve_source(source, base_path)

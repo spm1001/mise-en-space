@@ -253,6 +253,55 @@ class TestOverwriteFromFilePath:
 
     @patch("retry.time.sleep")
     @patch("tools.plain_file.upload_file_content")
+    def test_binary_file_path_uploads_bytes_untouched(self, mock_ul, _sleep, tmp_path) -> None:
+        """A PNG via file_path replaces the Drive PNG in place (mise-josebe).
+
+        It used to read_text() first and refuse 'not valid UTF-8', so the
+        documented route for updating a linked chart was unusable.
+        """
+        png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\xff\xfe"
+        img = tmp_path / "chart-v2.png"
+        img.write_bytes(png)
+
+        result = do_overwrite(
+            file_id="png123", file_path=str(img), base_path=str(tmp_path),
+            metadata=_plain_file_metadata(name="chart.png", mime="image/png"),
+        )
+
+        assert isinstance(result, DoResult)
+        assert result.file_id == "png123"
+        mock_ul.assert_called_once_with("png123", png, "image/png")
+        assert result.cues["byte_count"] == len(png)
+        assert "warning" not in result.cues
+
+    @patch("retry.time.sleep")
+    @patch("tools.plain_file.upload_file_content")
+    def test_binary_file_path_type_mismatch_warns(self, mock_ul, _sleep, tmp_path) -> None:
+        img = tmp_path / "chart.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n\xff")
+
+        result = do_overwrite(
+            file_id="pdf123", file_path=str(img), base_path=str(tmp_path),
+            metadata=_plain_file_metadata(name="report.pdf", mime="application/pdf"),
+        )
+
+        assert isinstance(result, DoResult)
+        assert "image/png" in result.cues["warning"] and "application/pdf" in result.cues["warning"]
+
+    def test_binary_file_path_into_google_doc_refuses_with_route(self, tmp_path) -> None:
+        img = tmp_path / "chart.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n\xff")
+
+        result = do_overwrite(
+            file_id="doc123", file_path=str(img), base_path=str(tmp_path),
+            metadata=_google_doc_metadata(),
+        )
+
+        assert isinstance(result, dict) and result["error"]
+        assert "not valid UTF-8" in result["message"] and "plain Drive files" in result["message"]
+
+    @patch("retry.time.sleep")
+    @patch("tools.plain_file.upload_file_content")
     def test_overwrites_plain_file_from_file_path(self, mock_ul, _sleep, tmp_path) -> None:
         """file_path works for plain file overwrite too."""
         txt_file = tmp_path / "notes.txt"

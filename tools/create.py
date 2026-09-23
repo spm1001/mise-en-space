@@ -431,7 +431,7 @@ def _do_create_internal(
     try:
         if doc_type == "file":
             file_bytes = file_path.read_bytes() if file_path else None
-            result = _create_file(content, title, folder_id, file_bytes=file_bytes)
+            result = _create_file(content, title, folder_id, file_bytes=file_bytes, source_name=file_path.name if file_path else None)
         elif doc_type == "doc":
             result = _create_doc(content, title, folder_id)
         elif doc_type == "sheet" and multi_tab_data:
@@ -511,13 +511,13 @@ _EXTRA_MIME_TYPES: dict[str, str] = {
 }
 
 
-def _infer_mime_type(title: str) -> str:
-    """Infer MIME type from file extension in title. Defaults to text/plain."""
-    ext = Path(title).suffix.lower()
-    if ext in _EXTRA_MIME_TYPES:
-        return _EXTRA_MIME_TYPES[ext]
-    mime, _ = mimetypes.guess_type(title)
-    return mime or "text/plain"
+def _infer_mime_type(*names: str | None) -> str:
+    """MIME type from the first name with a known extension: title, then local file."""
+    for name in filter(None, names):
+        mime = _EXTRA_MIME_TYPES.get(Path(name).suffix.lower()) or mimetypes.guess_type(name)[0]
+        if mime:
+            return mime
+    return "text/plain"
 
 
 @with_retry(max_attempts=3, delay_ms=1000)
@@ -525,13 +525,13 @@ def _create_file(
     content: str | None,
     title: str,
     folder_id: str | None = None,
-    file_bytes: bytes | None = None,
+    file_bytes: bytes | None = None, source_name: str | None = None,
 ) -> DoResult:
     """
     Upload a plain file to Drive without Google conversion.
 
-    MIME type is inferred from the title's file extension (e.g. .md → text/markdown,
-    .svg → image/svg+xml, .json → application/json). Falls back to text/plain.
+    MIME type from the title's extension, else the local file's (source_name),
+    else text/plain (e.g. .md → text/markdown, .svg → image/svg+xml).
 
     Content comes from either:
     - file_bytes (binary upload from file_path — PNG, DOCX, PDF etc.)
@@ -540,7 +540,7 @@ def _create_file(
     The file stays as-is in Drive — no conversion to Google Doc/Sheet/Slides.
     """
     client = get_sync_client()
-    mime_type = _infer_mime_type(title)
+    mime_type = _infer_mime_type(title, source_name)
 
     file_metadata = _mise_file_metadata(title, folder_id=folder_id)
 

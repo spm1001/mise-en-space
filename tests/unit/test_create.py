@@ -475,6 +475,14 @@ class TestInferMimeType:
         assert _infer_mime_type("file.xyz123") == "text/plain"
         assert _infer_mime_type("noext") == "text/plain"
 
+    def test_extensionless_title_falls_back_to_the_local_file(self) -> None:
+        """A PNG titled 'Q3 chart' uploaded as text/plain until 2026-09-23 —
+        the title has no extension, so the file_path's name decides."""
+        from tools.create import _infer_mime_type
+        assert _infer_mime_type("Q3 chart", "chart-v2.png") == "image/png"
+        assert _infer_mime_type("report.pdf", "chart.png") == "application/pdf"  # title wins
+        assert _infer_mime_type("Q3 chart", None) == "text/plain"
+
 
 class TestCreateCues:
     """Post-action cues on create responses."""
