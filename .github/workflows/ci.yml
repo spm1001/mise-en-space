@@ -22,5 +22,5 @@ jobs:
       - run: uv run pytest
       - name: README skill table matches skills/
         run: |
-          curl -fsSL https://raw.githubusercontent.com/spm1001/batterie-de-savoir/main/scripts/render-skills.py -o /tmp/render-skills.py
+          curl -fsSL https://raw.githubusercontent.com/spm1001/batterie/main/plugins/batterie/scripts/render-skills.py -o /tmp/render-skills.py
           uv run --script /tmp/render-skills.py . --check
