@@ -269,6 +269,8 @@ Integration tests require `-m integration` flag and real credentials: `uv run --
 plus a ~85-line coverage table that pushes the summary off the top of a truncated view.
 `-m 'not integration'` is baked in too, hence the 100 deselected.
 
+**The lock is refreshed deliberately, monthly, in slices** (mise-sokaji, first pass 2026-09-23). Dependabot's weekly group proved no substitute: it opened two-package PRs while 47 locked packages drifted behind, the MCP SDK and markitdown included, and a transitive Beautiful Soup sat on a bug fixed upstream three months earlier. Slices: (1) patch/minor utilities; (2) markitdown and the PDF chain, gated on a before/after diff of real extraction output (HTML fixtures, recently fetched threads, the PDF fallback); (3) the MCP SDK and HTTP stack, read against the concurrency notes and gated on the interleave test, smoke_stdio and a remote-mode start. Every slice also passes the live integration suite before push, because a push is a release. `uv tree --outdated --all-groups` then lists only what upstream pins hold back — on 2026-09-23: magika/onnxruntime/mpmath (markitdown pins magika 0.6), pydantic-core (pinned by pydantic), and three majors (attrs, rich, rpds-py). Record the reason when one stays behind.
+
 **Unit tests run hermetically — a green may not use the machine's token.** `tests/unit/conftest.py`
 autouse-points `MISE_TOKEN_PATH` at an absent file, so every unit test stands where CI stands
 (no ambient credential, identity unresolved). This exists because a dev-token-dependent green kept
