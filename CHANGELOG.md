@@ -26,6 +26,11 @@ shipped_in <commit>   # first suite version whose vendored mise contains it; emp
 # Both -C flags are load-bearing: without them "not shipped" and "wrong directory" print identically (cold read, 2026-09-17).
 ```
 
+## 2026-09-27 (carte-kelori)
+
+### Changed
+- **One rules shard when both flavours are installed.** `hooks/ensure-mise.sh` wrote `rules/mise.md` and `rules/mise-home.md`, identical bar the stamp line, and every `rules/*.md` loads — so a machine with both flavours carried the same ~1.8k twice in every session (found getting the always-on corpus under Claude Code's 150k instruction-size warning). The work flavour is now the single writer: `mise-home` removes its own copy and writes nothing when `mise` is in `installed_plugins.json` and `rules/mise.md` exists. With either missing it writes its own as before, so the text is never absent; on a fresh machine the first session can still carry both. Exercised in four install states (both, home-only with a stale `mise.md`, work-only, no registry file).
+
 ## [1.87.0] - 2026-09-27 (mise-pubata, under mise-nujina)
 
 - **The OAuth client and token store can be supplied from outside** — `MISE_EN_SPACE_OAUTH_CLIENT` (client JSON) and `MISE_EN_SPACE_DATA_DIR` (absolute store directory). Both unset keeps the bundled client, the flavour's data dir and its Keychain service, so the published flavours behave exactly as before.

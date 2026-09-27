@@ -48,7 +48,23 @@ if [ -f "$_PLUGIN_ROOT/instructions.md" ]; then
     # (Desktop stages under /var/folders, which macOS purges) — a symlink there
     # dangles and the shard vanishes. Re-run each session-start keeps it current.
     # Do NOT revert to ln -sf.
-    RULES_DEST="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/rules/${NAME}.md"
+    RULES_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/rules"
+    RULES_DEST="$RULES_DIR/${NAME}.md"
+    # ONE SHARD WHEN BOTH FLAVOURS ARE INSTALLED (carte-kelori, 2026-09-27). The
+    # text below is byte-identical in both builds bar the stamp line, and every
+    # rules/*.md loads, so two flavours put the same ~1.8k into every session
+    # twice. The work flavour (`mise`) is the designated writer; any other
+    # flavour stands down, and removes its own copy, when `mise` is registered
+    # AND its shard is on disk. Either missing (mise uninstalled, or its hook
+    # not yet run on a fresh machine), this flavour writes its own as before, so
+    # the text is never absent — the worst case is one session carrying both.
+    # The literal "mise" below survives the flavour transform, which rewrites
+    # *.md/*.py only (see the routing-rule note further down).
+    _REG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json"
+    if [ "$NAME" != "mise" ] && [ -f "$RULES_DIR/mise.md" ] \
+       && grep -q '"mise@' "$_REG" 2>/dev/null; then
+        rm -f "$RULES_DEST"
+    else
     # Robust write via temp+mv: a stale entry may be a SYMLINK from an older
     # session, and cp-ing source over a symlink-to-source errors ("same file").
     # mv -f replaces the entry atomically whatever it was, never following it.
@@ -89,6 +105,7 @@ if [ -f "$_PLUGIN_ROOT/instructions.md" ]; then
         cat "$_PLUGIN_ROOT/instructions.md"
     } > "$_tmp"
     mv -f "$_tmp" "$RULES_DEST"
+    fi
 fi
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
