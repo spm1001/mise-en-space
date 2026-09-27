@@ -66,7 +66,7 @@ The fetch response includes a `cues` block with decision-tree signals — check 
   "content_length": 4280,
   "email_context": null,
   "participants": ["Rupa Jones", "Ella Collis"],  // Gmail only
-  "people": {"kate.waters@itv.com": {"name": "Kate Waters", "title": "...", "manager": "..."}},  // Gmail: directory profiles for own-domain participants
+  "people": {"jo.bloggs@example.com": {"name": "Jo Bloggs", "title": "...", "manager": "..."}},  // Gmail: directory profiles for own-domain participants
   "people_relations": ["Kate Waters is Sameer Modha's manager"],  // reporting lines across the thread, you included
   "people_note": "2 of 5 participants have directory profiles..."  // the rest are external or opted out — not failed lookups
 }
@@ -552,14 +552,14 @@ The pattern for all calendaring: the human states intent (who, roughly when, wha
 
 ```python
 # 1. Find the slot — busy blocks, common free slots, office days, one call
-do(operation="freebusy", attendees=["mat@itv.com", "jon@itv.com"],
+do(operation="freebusy", attendees=["ana@example.com", "raj@example.com"],
    time_min="2026-09-07", time_max="2026-09-11", duration=30)
 # → common_free: [...], people: {each: busy_blocks + office_days}
 
 # 2. Book it — first call previews (clash check included), nothing sends
 do(operation="create_event", title="LSM catch-up",
    time_min="2026-09-08T14:00", time_max="2026-09-08T14:30",
-   attendees=["mat@itv.com", "jon@itv.com"], meet=True)
+   attendees=["ana@example.com", "raj@example.com"], meet=True)
 # → preview: who gets invited, when, clashes. Show the user.
 
 # 3. One yes books the lot — confirm=True sends real invites immediately

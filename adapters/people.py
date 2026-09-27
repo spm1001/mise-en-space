@@ -146,7 +146,7 @@ def _convert_error(e: httpx.HTTPStatusError, subject: str) -> MiseError:
     if status == 400 and "userKey" in body:
         # A GROUP address, not a person — users.get answers "Type not supported:
         # userKey". Expected rather than exceptional: team distribution lists
-        # (mit-group@itv.com) sit in a large share of real threads, so this is a
+        # (e.g. team-list@example.com) sit in a large share of real threads, so this is a
         # routine outcome of placing senders and must read as one. Placing the
         # group itself would need the Groups API and its own scope; not worth a
         # re-consent until someone asks.
