@@ -465,3 +465,66 @@ class TestSaveTokenMessages:
         err = capsys.readouterr().err
         assert "Warning" in err
         assert "write failed" in err
+
+
+# =============================================================================
+# File modes — every token file mise writes is owner-only (mise-zuzogu)
+# =============================================================================
+
+
+class TestTokenFilesAreOwnerOnly:
+    """A token file is a refresh token in plaintext, so 0600 on every write.
+
+    The umask is pinned to 022 so a regression shows as the stock-machine
+    0644 rather than depending on the runner's umask.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _stock_umask(self):
+        import os
+        old = os.umask(0o022)
+        yield
+        os.umask(old)
+
+    @staticmethod
+    def _mode(path):
+        import stat
+        return stat.S_IMODE(path.stat().st_mode)
+
+    @patch("token_store.get_from_keychain", return_value=SAMPLE_TOKEN)
+    def test_keychain_materialisation_is_0600(self, _kc, tmp_path):
+        token_file = tmp_path / "data" / "token.json"
+        resolve_token_path(token_file)
+        assert self._mode(token_file) == 0o600
+
+    @patch("token_store.get_from_keychain", return_value=SAMPLE_TOKEN)
+    def test_keychain_materialisation_tightens_an_existing_0644_file(self, _kc, tmp_path):
+        """The Mac case: the same file is rewritten every server start, and
+        os.open's mode argument only applies when it creates the file."""
+        token_file = tmp_path / "token.json"
+        token_file.write_text("{}")
+        token_file.chmod(0o644)
+        resolve_token_path(token_file)
+        assert self._mode(token_file) == 0o600
+        assert json.loads(token_file.read_text())["access_token"] == "ya29.test"
+
+    @patch("token_store.get_from_keychain", return_value=None)
+    def test_legacy_migration_is_0600(self, _kc, tmp_path):
+        legacy = tmp_path / "legacy" / "token.json"
+        legacy.parent.mkdir()
+        legacy.write_text(SAMPLE_TOKEN)
+        stable = tmp_path / "data" / "token.json"
+        with patch("token_store._LEGACY_TOKEN_PATH", legacy):
+            resolve_token_path(stable)
+        assert self._mode(stable) == 0o600
+
+    @patch("token_store._fetch_user_email", return_value=None)
+    @patch("token_store.store_to_keychain", return_value=False)
+    def test_save_token_leaves_a_kept_file_0600(self, _store, _fetch, tmp_path):
+        """No Keychain (Linux): the auth flow's file is the designed store,
+        and it arrives at the umask — 0644 here — with no enrichment write."""
+        token_file = tmp_path / "token.json"
+        token_file.write_text(SAMPLE_TOKEN)
+        assert self._mode(token_file) == 0o644
+        save_token(token_file)
+        assert self._mode(token_file) == 0o600

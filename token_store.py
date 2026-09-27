@@ -317,8 +317,7 @@ def resolve_token_path(fallback_path: Path) -> Path:
 def _resolve_own_store(fallback_path: Path) -> Path:
     token_json = get_from_keychain()
     if token_json:
-        fallback_path.parent.mkdir(parents=True, exist_ok=True)
-        fallback_path.write_text(token_json)
+        _write_private(fallback_path, token_json)
         return fallback_path
 
     if fallback_path.exists():
@@ -328,8 +327,7 @@ def _resolve_own_store(fallback_path: Path) -> Path:
     legacy_path = _LEGACY_TOKEN_PATH
     if legacy_path != fallback_path and legacy_path.exists():
         # Migrate: copy to stable location so future versions find it
-        fallback_path.parent.mkdir(parents=True, exist_ok=True)
-        fallback_path.write_text(legacy_path.read_text())
+        _write_private(fallback_path, legacy_path.read_text())
         return fallback_path
 
     adopted = find_pre_seam_token()
@@ -391,9 +389,17 @@ def find_pre_seam_token() -> tuple[str, str] | None:
 
 
 def _write_private(path: Path, text: str) -> None:
-    """Write a credential file readable by its owner only."""
+    """Write a credential file readable by its owner only.
+
+    os.open's mode applies only when it CREATES the file, so an existing file
+    keeps whatever mode it had — the macOS Keychain materialisation rewrites
+    the same token.json on every server start, and files first written by
+    Path.write_text sat at 0644 for months (mise-zuzogu). The fchmod tightens
+    an existing file too, after the truncate and before the secret is written.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)
     with os.fdopen(fd, "w") as fh:
         fh.write(text)
 
@@ -454,6 +460,10 @@ def save_token(token_path: Path) -> None:
     """
     if not token_path.exists():
         return
+    # The auth flow's file arrives at the process umask (0644 on a stock
+    # machine), and on Linux it stays as the designed store — tighten it
+    # before anything else touches it (mise-zuzogu).
+    token_path.chmod(0o600)
     raw = token_path.read_text().strip()
     try:
         token = json.loads(raw)
@@ -463,7 +473,7 @@ def save_token(token_path: Path) -> None:
             if email:
                 token["_identity"] = {"email": email}
                 raw = json.dumps(token)
-                token_path.write_text(raw)
+                _write_private(token_path, raw)
                 print(f"  Identity resolved: {email}", file=sys.stderr)
     except (json.JSONDecodeError, OSError) as e:
         logger.warning(

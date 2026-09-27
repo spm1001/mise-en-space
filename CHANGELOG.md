@@ -26,6 +26,11 @@ shipped_in <commit>   # first suite version whose vendored mise contains it; emp
 # Both -C flags are load-bearing: without them "not shipped" and "wrong directory" print identically (cold read, 2026-09-17).
 ```
 
+## 2026-09-27 (mise-zuzogu)
+
+### Fixed
+- **Every token file mise writes is owner-only (0600).** The macOS Keychain materialisation and the legacy-path migration wrote `token.json` with `Path.write_text`, so it landed at the umask — 0644 on a stock Mac, world-readable on a multi-user machine — and the materialisation rewrites that file on every server start. Both now go through `_write_private`, which also `fchmod`s an EXISTING file (an `os.open` mode applies only at creation, so the seam's own adoption path would not have tightened a file already at 0644 either). `save_token` tightens the auth flow's file before touching it, which covers Linux, where that file is the designed store. Found by the mise-pubata essayeur; seen live on Sameer's Mac during the 1.87.0 deploy test. Four mutation controls, each reddening only its predicted test.
+
 ## 2026-09-27 (carte-kelori)
 
 ### Changed
