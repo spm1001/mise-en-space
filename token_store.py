@@ -16,6 +16,11 @@ is authoritative — no Keychain fallback, even if the file is missing
 Guest mode also means persist-nothing: store_to_keychain is a no-op, so
 neither auth flows nor identity enrichment can clobber the user's own
 mise Keychain entry with the caller's (differently-scoped) token.
+
+OAuth-client seam (mise-nujina): with MISE_OAUTH_CLIENT and/or MISE_DATA_DIR
+set, the Keychain entry is keyed by the supplied client, an empty store adopts
+a pre-seam token minted by that same client (a copy — the original stays), and
+a token minted by any other client is refused. Neither set: unchanged.
 """
 
 import json
@@ -27,9 +32,22 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from oauth_config import (
+    PRE_SEAM_DATA_DIRS,
+    client_from_env,
+    configured_client_id,
+    data_dir_from_env,
+)
+
 logger = logging.getLogger(__name__)
 
 KEYCHAIN_SERVICE = "mise-oauth-token"
+
+# The Keychain services each flavour used before the OAuth-client seam
+# (mise-nujina): adoption reads them, never writes them. Written through
+# KEYCHAIN_SERVICE so the flavour transform's rename leaves a clean pair
+# (it collapses to one name in the home build) instead of mangling a literal.
+PRE_SEAM_KEYCHAIN_SERVICES = tuple(dict.fromkeys((KEYCHAIN_SERVICE, "mise-home-oauth-token")))
 
 # Env var naming a caller-owned token file (guest mode). Authoritative
 # when set: no Keychain reads, no Keychain writes, no migration.
@@ -176,7 +194,20 @@ def _has_keychain() -> bool:
     return sys.platform == "darwin" and os.path.exists("/usr/bin/security")
 
 
-def get_from_keychain() -> str | None:
+def keychain_service() -> str:
+    """The Keychain service this process stores its token under.
+
+    A client supplied from outside (MISE_OAUTH_CLIENT) keys the entry by its
+    client_id: one engine serving two Workspaces on one Mac must not share a
+    single entry, and the flavour-renamed constant only separates builds, not
+    configurations. Unset, it is the flavour's pre-seam service unchanged.
+    """
+    if client_from_env():
+        return f"{KEYCHAIN_SERVICE}:{configured_client_id()}"
+    return KEYCHAIN_SERVICE
+
+
+def get_from_keychain(service: str | None = None) -> str | None:
     """Get token JSON from macOS Keychain.
 
     The `security` CLI hex-encodes long passwords. If the output looks
@@ -184,9 +215,10 @@ def get_from_keychain() -> str | None:
     """
     if not _has_keychain():
         return None
+    service = service or keychain_service()
     try:
         result = subprocess.run(
-            ["security", "find-generic-password", "-a", os.environ.get("USER", ""), "-s", KEYCHAIN_SERVICE, "-w"],
+            ["security", "find-generic-password", "-a", os.environ.get("USER", ""), "-s", service, "-w"],
             capture_output=True, text=True, check=True,
         )
         raw = result.stdout.strip()
@@ -221,14 +253,15 @@ def store_to_keychain(token_json: str) -> bool:
     if not _has_keychain():
         return False
     user = os.environ.get("USER", "")
+    service = keychain_service()
     try:
         # Remove existing entry (ignore if not found)
         subprocess.run(
-            ["security", "delete-generic-password", "-a", user, "-s", KEYCHAIN_SERVICE],
+            ["security", "delete-generic-password", "-a", user, "-s", service],
             capture_output=True, check=False,
         )
         subprocess.run(
-            ["security", "add-generic-password", "-a", user, "-s", KEYCHAIN_SERVICE, "-w", token_json],
+            ["security", "add-generic-password", "-a", user, "-s", service, "-w", token_json],
             capture_output=True, check=True,
         )
         return True
@@ -243,7 +276,7 @@ def delete_from_keychain() -> bool:
     user = os.environ.get("USER", "")
     try:
         subprocess.run(
-            ["security", "delete-generic-password", "-a", user, "-s", KEYCHAIN_SERVICE],
+            ["security", "delete-generic-password", "-a", user, "-s", keychain_service()],
             capture_output=True, check=True,
         )
         return True
@@ -262,14 +295,26 @@ def resolve_token_path(fallback_path: Path) -> Path:
     1. macOS Keychain → materialize to fallback_path
     2. fallback_path (typically plugin data dir or package root)
     3. _PACKAGE_ROOT/token.json (legacy — versioned plugin cache)
+    4. Only when the OAuth-client seam is in use (MISE_OAUTH_CLIENT or
+       MISE_DATA_DIR set): a pre-seam flavour store holding a token minted
+       by the configured client — see find_pre_seam_token (mise-nujina)
 
     If a token is found at a legacy location but not at fallback_path,
     it is copied forward (migration from versioned cache to stable data dir).
+
+    With the seam in use, a token minted by a DIFFERENT client than the
+    configured one is refused rather than returned: it belongs to another
+    Workspace, and loading it would act as that identity under this one's name.
     """
     override = override_path()
     if override is not None:
         return override
+    path = _resolve_own_store(fallback_path)
+    _refuse_foreign_token(path)
+    return path
 
+
+def _resolve_own_store(fallback_path: Path) -> Path:
     token_json = get_from_keychain()
     if token_json:
         fallback_path.parent.mkdir(parents=True, exist_ok=True)
@@ -287,7 +332,90 @@ def resolve_token_path(fallback_path: Path) -> Path:
         fallback_path.write_text(legacy_path.read_text())
         return fallback_path
 
+    adopted = find_pre_seam_token()
+    if adopted is not None:
+        where, token_json = adopted
+        _write_private(fallback_path, token_json)
+        logger.warning(
+            "Adopted the pre-seam token from %s into %s — it was minted by the "
+            "configured OAuth client, so no re-consent is needed. The original "
+            "is left in place for older mise versions still reading it.",
+            where, fallback_path,
+        )
     return fallback_path
+
+
+def _seam_in_use() -> bool:
+    return client_from_env() or data_dir_from_env()
+
+
+def _client_id_of(token_json: str) -> str | None:
+    try:
+        data = json.loads(token_json)
+    except json.JSONDecodeError:
+        return None
+    cid = data.get("client_id") if isinstance(data, dict) else None
+    return cid if isinstance(cid, str) else None
+
+
+def find_pre_seam_token() -> tuple[str, str] | None:
+    """(where, token_json) for a pre-seam token minted by the configured client.
+
+    Consulted only with the seam in use and this process's own store empty,
+    so an unset environment behaves exactly as before. Matching on client_id
+    is what keeps adoption honest: each flavour's old store holds a different
+    Workspace's token, and a token only refreshes against the client that
+    minted it anyway. Nothing here writes to a pre-seam store.
+    """
+    if not _seam_in_use():
+        return None
+    want = configured_client_id()
+    if want is None:
+        return None
+    for service in PRE_SEAM_KEYCHAIN_SERVICES:
+        raw = get_from_keychain(service)
+        if raw and _client_id_of(raw) == want:
+            return f"Keychain service {service}", raw
+    for data_dir in PRE_SEAM_DATA_DIRS:
+        path = data_dir / "token.json"
+        if not path.is_file():
+            continue
+        try:
+            raw = path.read_text()
+        except OSError as e:
+            logger.warning("Pre-seam token at %s unreadable, skipped: %s", path, e)
+            continue
+        if _client_id_of(raw) == want:
+            return str(path), raw
+    return None
+
+
+def _write_private(path: Path, text: str) -> None:
+    """Write a credential file readable by its owner only."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(text)
+
+
+def _refuse_foreign_token(path: Path) -> None:
+    """With the seam in use, refuse a token another OAuth client minted."""
+    if not _seam_in_use() or not path.is_file():
+        return
+    try:
+        minted_by = _client_id_of(path.read_text())
+    except OSError:
+        return  # the credential loader diagnoses unreadable files
+    want = configured_client_id()
+    if minted_by and want and minted_by != want:
+        raise FileNotFoundError(
+            f"The token at {path} was minted by OAuth client "
+            f"{minted_by.split('-')[0]}…, but the configured client is "
+            f"{want.split('-')[0]}… — two different Workspace identities, and "
+            "mise will not act as one under the other's name. Point "
+            "MISE_DATA_DIR at this client's own store, or re-authenticate: "
+            'call mise.do(operation="setup_oauth", force=True).'
+        )
 
 
 def _fetch_user_email(access_token: str) -> str | None:
@@ -345,7 +473,7 @@ def save_token(token_path: Path) -> None:
 
     if store_to_keychain(raw):
         token_path.unlink(missing_ok=True)
-        print(f"  Token stored in macOS Keychain (service: {KEYCHAIN_SERVICE}).", file=sys.stderr)
+        print(f"  Token stored in macOS Keychain (service: {keychain_service()}).", file=sys.stderr)
     elif override_path() is not None:
         # Guest mode: the credential belongs to the embedding caller; the file
         # at its path is the designed home, not a fallback.
@@ -371,4 +499,8 @@ def has_token(fallback_path: Path) -> bool:
         return True
     # Check legacy location (package root)
     legacy_path = _LEGACY_TOKEN_PATH
-    return legacy_path != fallback_path and legacy_path.exists()
+    if legacy_path != fallback_path and legacy_path.exists():
+        return True
+    # Seam in use and own store empty: an adoptable pre-seam token counts,
+    # or setup_oauth would send a signed-in user through consent again.
+    return find_pre_seam_token() is not None

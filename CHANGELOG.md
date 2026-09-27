@@ -26,6 +26,14 @@ shipped_in <commit>   # first suite version whose vendored mise contains it; emp
 # Both -C flags are load-bearing: without them "not shipped" and "wrong directory" print identically (cold read, 2026-09-17).
 ```
 
+## 2026-09-27 (mise-pubata, under mise-nujina)
+
+- **The OAuth client and token store can be supplied from outside** — `MISE_OAUTH_CLIENT` (client JSON) and `MISE_DATA_DIR` (absolute store directory). Both unset keeps the bundled client, the flavour's data dir and its Keychain service, so the published flavours behave exactly as before.
+- With the seam in use, an empty store adopts by copy a pre-seam token minted by the same client (no re-consent); a token minted by a different client refuses; a named-but-broken client refuses instead of falling back to the bundled one; the macOS Keychain entry is keyed per supplied client.
+- `setup_oauth`'s headless `--code` command now carries `cd <engine root> &&` and the `MISE_*` env, and `cues.oauth_client` names the client used. The SessionStart hook is silent for an engine with no client.
+- Removed: the GCP Secret Manager fallback in `auth.py` (`planetmodha-tools` / `aby-hemimi-credentials`, `--project`).
+- Proof: `docs/research/2026-09-27-nujina-seam-proof/` — an engine shipping no client, both Workspaces answering on a claude-vanilla home.
+
 ## [1.85.15] - 2026-09-16 (mise-gudeci)
 
 ### Fixed

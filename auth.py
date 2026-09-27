@@ -2,9 +2,9 @@
 """
 OAuth Authentication for mise-en-space.
 
-Two credential sources, tried in order:
-1. Local credentials.json in repo root (for external users)
-2. GCP Secret Manager (for maintainer — requires gcloud CLI)
+The OAuth client comes from oauth_config.oauth_client_file(): the file named
+by MISE_OAUTH_CLIENT, else the credentials.json bundled beside the engine.
+MISE_DATA_DIR, when set, chooses where the token lands (see oauth_config).
 
 Usage:
     uv run python -m auth                     # Print the auth URL to paste elsewhere,
@@ -13,23 +13,15 @@ Usage:
     uv run python -m auth --auto --url URL    # Listener only (what setup_oauth spawns): exchange a pre-minted
                                               #   URL without minting a second one (would orphan the PKCE verifier)
     uv run python -m auth --code URL          # Exchange the code / redirect URL from the print or tunnel flow
-    uv run python -m auth --project OTHER     # Use a different GCP project for Secret Manager
 
-Prerequisites (external users):
-    - credentials.json in repo root (from GCP Console)
-
-Prerequisites (maintainer):
-    - gcloud CLI installed and authenticated
-    - Access to the GCP project containing the secret
+Run it with the same MISE_OAUTH_CLIENT / MISE_DATA_DIR as the MCP server it is
+authenticating — setup_oauth prints the exact command, env included.
 """
 
-import subprocess
 import sys
-import tempfile
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from jeton import authenticate, get_auth_url
@@ -38,38 +30,16 @@ from oauth_config import (
     TOKEN_FILE,
     SCOPES,
     OAUTH_PORT,
-    GCP_PROJECT,
-    SECRET_NAME,
-    LOCAL_CREDENTIALS_FILE,
+    ClientNotConfigured,
     can_open_browser,
+    cli_env_prefix,
+    oauth_client_file,
     port_is_free,
 )
 from token_store import save_token
 
 # How long the pre-minted-URL listener waits for the OAuth callback.
 _LISTEN_TIMEOUT_S = 300
-
-
-def fetch_credentials_from_secret_manager(project: str, secret_name: str) -> str:
-    """Fetch OAuth client credentials from GCP Secret Manager."""
-    cmd = [
-        'gcloud', 'secrets', 'versions', 'access', 'latest',
-        f'--secret={secret_name}',
-        f'--project={project}',
-    ]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        return result.stdout
-    except FileNotFoundError:
-        print("Error: gcloud CLI not found")
-        print("Install: https://cloud.google.com/sdk/docs/install")
-        sys.exit(1)
-    except subprocess.CalledProcessError as e:
-        print(f"Error fetching secret: {e.stderr.strip()}")
-        print()
-        print("Check that you have access to the secret:")
-        print(f"  gcloud secrets versions access latest --secret={secret_name} --project={project}")
-        sys.exit(1)
 
 
 def _can_open_browser() -> bool:
@@ -87,7 +57,7 @@ def _print_code_instructions() -> None:
     print("connection error — that's fine, the code is in the address bar).")
     print("Copy that full URL and run:")
     print()
-    print("  uv run python -m auth --code '<redirect_url>'")
+    print(f"  {cli_env_prefix()}uv run python -m auth --code '<redirect_url>'")
     print()
 
 
@@ -243,32 +213,18 @@ def main() -> None:
              'exchange WITHOUT generating a new URL — a second mint would '
              'overwrite the persisted PKCE verifier and orphan this URL.'
     )
-    parser.add_argument(
-        '--project',
-        type=str,
-        default=GCP_PROJECT,
-        help=f'GCP project containing credentials secret (default: {GCP_PROJECT})'
-    )
-
     args = parser.parse_args()
 
     if args.url and not args.auto:
         parser.error("--url requires --auto")
 
-    # Resolve credentials: local file first, then Secret Manager
-    tmp_path = None
-    if LOCAL_CREDENTIALS_FILE.exists():
-        print(f"Using local credentials: {LOCAL_CREDENTIALS_FILE}")
-        credentials_path = str(LOCAL_CREDENTIALS_FILE)
-    else:
-        print(f"No local credentials.json found.")
-        print(f"Fetching from Secret Manager: {args.project}/{SECRET_NAME}...")
-        credentials_json = fetch_credentials_from_secret_manager(args.project, SECRET_NAME)
-        tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
-        tmp.write(credentials_json)
-        tmp.close()
-        tmp_path = tmp.name
-        credentials_path = tmp_path
+    try:
+        credentials_path = str(oauth_client_file())
+    except ClientNotConfigured as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    print(f"Using OAuth client: {credentials_path}")
+    print(f"Token store: {TOKEN_FILE}")
 
     try:
         if args.code:
@@ -296,8 +252,8 @@ def main() -> None:
                 print("still in its window, or another dev server. Free the port and")
                 print("retry, or use the two-step flow:")
                 print()
-                print("  uv run python -m auth          # prints the URL")
-                print("  uv run python -m auth --code '<redirect_url>'")
+                print(f"  {cli_env_prefix()}uv run python -m auth          # prints the URL")
+                print(f"  {cli_env_prefix()}uv run python -m auth --code '<redirect_url>'")
                 sys.exit(1)
             # Auto flow: jeton.authenticate() opens browser, listens on localhost,
             # exchanges code, writes token to TOKEN_FILE. We then move it to Keychain.
@@ -324,7 +280,7 @@ def main() -> None:
             print()
             print("After granting permissions, copy the redirect URL and run:")
             print()
-            print(f"  uv run python -m auth --code '<redirect_url>'")
+            print(f"  {cli_env_prefix()}uv run python -m auth --code '<redirect_url>'")
             print()
     except KeyboardInterrupt:
         print("\n\nAuthentication cancelled")
@@ -332,10 +288,6 @@ def main() -> None:
     except Exception as e:
         print(f"\nAuthentication failed: {e}")
         sys.exit(1)
-    finally:
-        # Clean up temp credentials file (only if we fetched from Secret Manager)
-        if tmp_path:
-            Path(tmp_path).unlink(missing_ok=True)
 
 
 if __name__ == '__main__':

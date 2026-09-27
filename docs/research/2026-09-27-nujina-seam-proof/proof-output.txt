@@ -1,0 +1,15 @@
+[PASS] engine with no wiring refuses to sign in (ships no client) — mise has no OAuth client configured. Set MISE_OAUTH_CLIENT to the path of a Google install
+[PASS] mise: setup_oauth finds the adopted token — no consent — already_authenticated
+[PASS] mise: live Drive search answers as the itv.com identity — identity=itv.com drive_count=2 error=None
+[PASS] mise: token adopted into the kit store, 0600, minted by the kit's client — .claude/plugins/data/kit-mit/token.json
+[PASS] mise: pre-seam store left byte-identical
+[PASS] mise-home: setup_oauth finds the adopted token — no consent — already_authenticated
+[PASS] mise-home: live Drive search answers as the planetmodha.com identity — identity=planetmodha.com drive_count=2 error=None
+[PASS] mise-home: token adopted into the kit store, 0600, minted by the kit's client — .claude/plugins/data/kit-family/token.json
+[PASS] mise-home: pre-seam store left byte-identical
+[PASS] cross-wired kit (family client, MIT store) refuses to act as the other Workspace — {"path": "/var/tmp/claude-vanilla-modha/nujina/work/.mise/search--untitled--drive--2026-09-27T14-22-05.json", "query": "", "sources": ["driv
+[PASS] mise: CLI consent URL names the kit's client — client 413373784317
+[PASS] mise-home: CLI consent URL names the kit's client — client 903554315162
+[PASS] hook is silent for an engine with no client — (no output)
+[PASS] control: hook nags once a client is wired and the store is empty — {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "\u2139\ufe0f Mise \u2014 optional setup:\
+14/14 passed

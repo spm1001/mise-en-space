@@ -3,10 +3,14 @@ OAuth Configuration - Single Source of Truth
 
 All OAuth parameters defined here. Do not duplicate elsewhere.
 Also holds port_is_free() — the callback-port pre-check shared by the
-MCP setup_oauth tool and the auth.py CLI.
+MCP setup_oauth tool and the auth.py CLI — and the OAuth-client seam
+(MISE_OAUTH_CLIENT / MISE_DATA_DIR) that lets a kit tell the engine which
+Workspace it serves.
 """
 
+import json
 import os
+import shlex
 import socket
 import sys
 from pathlib import Path
@@ -165,7 +169,6 @@ def can_open_browser() -> bool:
     return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
-# Local credentials file (for external users who provide their own)
 # --- Ambient (service-account) scope tiers — mise-wasagu ---
 # Drive-family only: a service account has no Gmail mailbox and no personal
 # calendar, so ambient mode never requests those scopes (gmail-backed ops
@@ -204,20 +207,163 @@ def ambient_scopes() -> list[str]:
     )
 
 
-LOCAL_CREDENTIALS_FILE = _PACKAGE_ROOT / 'credentials.json'
+# --- The OAuth-client seam (mise-nujina, W4 of the estate rebuild) ----------
+#
+# Which OAuth client mise signs in with, and where its token lives, can be
+# told to the engine from OUTSIDE, so one engine serves any Workspace and the
+# client lives in each kit's wiring rather than in the engine:
+#
+#   MISE_OAUTH_CLIENT  path to a Google installed-app client JSON
+#   MISE_DATA_DIR      absolute directory for token.json, PKCE state, setup log
+#
+# Both unset is the pre-seam behaviour byte for byte: the credentials.json
+# bundled beside the engine, and the flavour's own data dir below (the flavour
+# transform rewrites its name per build). A kit wires them in its mcpServers
+# entry, e.g.
+#   "env": {"MISE_OAUTH_CLIENT": "${CLAUDE_PLUGIN_ROOT}/oauth-client.json",
+#           "MISE_DATA_DIR": "${CLAUDE_PLUGIN_DATA}"}
+# — explicitly. The engine never reads CLAUDE_PLUGIN_DATA itself: Claude Code
+# exports it to the MCP server but never to the Bash tool, so an implicit read
+# would put the server's token in one store and a `--code` re-auth run from
+# Bash in another. cli_env_prefix() carries both values into that command.
+CLIENT_ENV = 'MISE_OAUTH_CLIENT'
+DATA_DIR_ENV = 'MISE_DATA_DIR'
 
-# GCP Secret Manager (optional — used by maintainer when local credentials.json absent)
-GCP_PROJECT = 'planetmodha-tools'
-SECRET_NAME = 'aby-hemimi-credentials'
+# The client that ships beside the engine today. The flavour transform swaps
+# this file per build; an engine that ships none is "not configured".
+BUNDLED_CLIENT_FILE = _PACKAGE_ROOT / 'credentials.json'
+
+
+class ClientNotConfigured(ValueError):
+    """No usable OAuth client — the message says which knob to turn."""
+
+
+def client_from_env() -> bool:
+    """True when the OAuth client was supplied from outside (MISE_OAUTH_CLIENT)."""
+    return bool(os.environ.get(CLIENT_ENV))
+
+
+def read_client_id(path: Path) -> str:
+    """client_id from a Google client-secrets JSON; refuses anything else."""
+    try:
+        data = json.loads(Path(path).read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        raise ClientNotConfigured(
+            f"OAuth client file {path} could not be read as JSON "
+            f"({type(e).__name__}: {e})."
+        )
+    if isinstance(data, dict):
+        for kind in ('installed', 'web'):
+            section = data.get(kind)
+            if isinstance(section, dict) and section.get('client_id'):
+                return str(section['client_id'])
+    raise ClientNotConfigured(
+        f"OAuth client file {path} has no installed/web client_id — expected "
+        "the client-secrets JSON Google Cloud Console downloads for a Desktop "
+        "app client."
+    )
+
+
+def oauth_client_file() -> Path:
+    """The OAuth client mise authenticates with, validated.
+
+    MISE_OAUTH_CLIENT wins and is authoritative: a named file that is missing
+    or malformed refuses rather than falling back to the bundled client,
+    because the bundled client is a different Workspace's — falling through
+    would be a silent identity switch (the same rule as MISE_TOKEN_PATH).
+    """
+    raw = os.environ.get(CLIENT_ENV)
+    if raw:
+        path = Path(raw).expanduser()
+        if not path.is_file():
+            raise ClientNotConfigured(
+                f"{CLIENT_ENV}={raw!r} names no readable file. Fix the path — "
+                "mise will not fall back to a bundled client when one is "
+                "named, because that would sign in to a different Workspace."
+            )
+        read_client_id(path)
+        return path
+    if BUNDLED_CLIENT_FILE.is_file():
+        read_client_id(BUNDLED_CLIENT_FILE)
+        return BUNDLED_CLIENT_FILE
+    raise ClientNotConfigured(
+        "mise has no OAuth client configured. Set MISE_OAUTH_CLIENT to the "
+        "path of a Google installed-app client JSON — the Workspace's own "
+        "setup (its kit wiring) provides it. An existing token keeps working "
+        "meanwhile; only signing in needs the client."
+    )
+
+
+def configured_client_id() -> str | None:
+    """client_id of the configured client, or None when none is configured.
+
+    A client named in MISE_OAUTH_CLIENT that fails to load raises: the
+    operator asked for a specific identity, and None would read as
+    'no preference'.
+    """
+    try:
+        return read_client_id(oauth_client_file())
+    except ClientNotConfigured:
+        if client_from_env():
+            raise
+        return None
+
+
+def cli_env_prefix() -> str:
+    """The MISE_* assignments a shell-run `python -m auth` needs to reach the
+    same client and token store as this process (empty when neither is set)."""
+    parts = [
+        f"{name}={shlex.quote(value)}"
+        for name in (CLIENT_ENV, DATA_DIR_ENV)
+        if (value := os.environ.get(name))
+    ]
+    return " ".join(parts) + " " if parts else ""
+
 
 # Plugin data directory — version-stable, survives plugin cache upgrades AND
 # Cowork's session-scoped staging dir wipes. Path.home() on the Mac side resolves
 # to the real user home regardless of whether mise is running under Claude Code
 # or Cowork, so this is always persistent across sessions.
-_PLUGIN_DATA_DIR = Path.home() / '.claude' / 'plugins' / 'data' / 'mise-batterie-de-savoir'
-_PLUGIN_DATA_DIR.mkdir(parents=True, exist_ok=True)
+_DEFAULT_DATA_DIR = Path.home() / '.claude' / 'plugins' / 'data' / 'mise-batterie-de-savoir'
+
+# Where each flavour kept its token before the seam. An empty MISE_DATA_DIR
+# adopts from these — by COPY, and only a token minted by the configured
+# client (token_store) — so moving a Workspace onto kit wiring costs no
+# re-consent, and older plugin versions still reading the old store keep
+# working. The flavour transform rewrites the first name to 'mise-home' in
+# the home build, where the pair then collapses to one entry: harmless, and
+# the transform retires with the kit repackaging (bds-jakemi).
+PRE_SEAM_DATA_DIRS = tuple(dict.fromkeys((
+    _DEFAULT_DATA_DIR,
+    Path.home() / '.claude' / 'plugins' / 'data' / 'mise-home',
+)))
+
+
+def resolve_data_dir() -> Path:
+    """MISE_DATA_DIR when set (must be absolute), else the flavour's own dir."""
+    raw = os.environ.get(DATA_DIR_ENV)
+    if not raw:
+        return _DEFAULT_DATA_DIR
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        # A relative store would resolve against whatever cwd the MCP server
+        # was spawned in, so the token would move between launches.
+        raise ValueError(
+            f"{DATA_DIR_ENV}={raw!r} must be an absolute path — a kit passes "
+            "${CLAUDE_PLUGIN_DATA}."
+        )
+    return path
+
+
+def data_dir_from_env() -> bool:
+    """True when the token store was supplied from outside (MISE_DATA_DIR)."""
+    return bool(os.environ.get(DATA_DIR_ENV))
+
+
+DATA_DIR = resolve_data_dir()
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # Local token storage (user's OAuth tokens, not shared).
 # Always uses the persistent data dir — the legacy fallback to _PACKAGE_ROOT
 # silently lost tokens on Cowork because the staging dir is wiped per session.
-TOKEN_FILE = _PLUGIN_DATA_DIR / 'token.json'
+TOKEN_FILE = DATA_DIR / 'token.json'

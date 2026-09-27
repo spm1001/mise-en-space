@@ -24,6 +24,7 @@ User flow in Cowork:
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -33,11 +34,14 @@ from jeton import get_auth_url
 
 from cues_util import with_identity
 from oauth_config import (
-    LOCAL_CREDENTIALS_FILE,
     OAUTH_PORT,
     SCOPES,
     TOKEN_FILE,
+    ClientNotConfigured,
     can_open_browser,
+    cli_env_prefix,
+    client_from_env,
+    oauth_client_file,
     port_is_free,
 )
 from token_store import has_token
@@ -57,16 +61,18 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
     Returns:
         dict with status + url (inline fallback) + cues for the calling Claude.
     """
-    if not LOCAL_CREDENTIALS_FILE.exists():
-        return {
-            "error": True,
-            "kind": "invalid_input",
-            "message": (
-                f"OAuth client config not found at {LOCAL_CREDENTIALS_FILE}. "
-                "This shouldn't happen for a normal install — credentials.json "
-                "ships with the plugin. Reinstall the mise plugin."
-            ),
-        }
+    # Which OAuth client signs in: MISE_OAUTH_CLIENT from the kit's wiring,
+    # else the credentials.json bundled with the plugin (mise-nujina).
+    try:
+        client_file = oauth_client_file()
+    except ClientNotConfigured as e:
+        message = str(e)
+        if not client_from_env():
+            message += (
+                " If this is the mise or mise-home plugin, its bundled "
+                "credentials.json is missing. Reinstall the mise plugin."
+            )
+        return {"error": True, "kind": "invalid_input", "message": message}
 
     # A token blob existing is presence, not validity (has_token checks
     # Keychain/disk only). Before claiming already_authenticated, load the
@@ -119,7 +125,7 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
     # owns the verifier; the subprocess only listens and exchanges.
     try:
         auth_url = get_auth_url(
-            credentials_path=str(LOCAL_CREDENTIALS_FILE),
+            credentials_path=str(client_file),
             token_path=TOKEN_FILE,
             scopes=SCOPES,
             port=OAUTH_PORT,
@@ -155,6 +161,15 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
             "message": f"Failed to spawn auth subprocess: {e}",
         }
 
+    # The --code route runs from a shell, which carries neither the MCP
+    # server's cwd nor its MISE_* env — spell both out, or the exchange looks
+    # for the PKCE verifier in a different store and the token lands where
+    # this server never reads it (mise-nujina).
+    code_cmd = (
+        f"cd {shlex.quote(str(_PACKAGE_ROOT))} && "
+        f"{cli_env_prefix()}uv run python -m auth --code '<redirect_url>'"
+    )
+
     # The spawned subprocess inherits this env, so we can predict its browser
     # decision EXACTLY (same check as auth.py, shared via oauth_config). Don't
     # promise a browser tab that will never open on a headless box (mise-petaga)
@@ -180,7 +195,7 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
             "approving, the browser lands on a localhost URL (usually a "
             "connection-error page; that's expected — the code is in the "
             "address bar). Copy that full URL and run on the machine running "
-            "mise: uv run python -m auth --code '<redirect_url>'. "
+            f"mise: {code_cmd}. "
             "Alternative: run `ssh -L 3000:localhost:3000 <this-host>` from the "
             "browser's machine BEFORE clicking — a listener catches the "
             "callback for the next 5 minutes and finishes automatically."
@@ -191,12 +206,13 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
             "Google account (e.g. on your own machine) to open the 'url' "
             "field. After approving, copy the localhost redirect URL from the "
             "address bar and run on the machine running mise: "
-            "uv run python -m auth --code '<redirect_url>'. Alternative: "
+            f"{code_cmd}. Alternative: "
             "`ssh -L 3000:localhost:3000 <host>` from the browser's machine "
             "before clicking lets the 5-minute listener finish automatically."
         ),
         "log_path": str(log_path),
         "token_will_save_to": str(TOKEN_FILE),
+        "oauth_client": str(client_file),
     }
     if stale_creds_diagnostic:
         cues["stale_creds_diagnostic"] = stale_creds_diagnostic

@@ -138,6 +138,14 @@ fi
 #    Linux there is no Keychain, so the old "checked Keychain and token.json"
 #    claim was a lie that read as a defect (mise-tatego; coordinates with the
 #    token_store/setup_oauth honesty in mise-petaga).
+#    Quiet until configured (mise-nujina): an engine that ships no OAuth
+#    client and was handed none (MISE_OAUTH_CLIENT) has not been switched on
+#    for any Workspace, so a missing token is not news — say nothing. The
+#    kit that supplies the client owns that nag.
+UNCONFIGURED=false
+if [ ! -f "$_PLUGIN_ROOT/credentials.json" ] && [ -z "${MISE_OAUTH_CLIENT:-}" ]; then
+    UNCONFIGURED=true
+fi
 HAS_TOKEN=false
 CHECKED="the token file"
 if command -v security &>/dev/null; then
@@ -145,7 +153,8 @@ if command -v security &>/dev/null; then
     security find-generic-password -s "mise-oauth-token" -w &>/dev/null && HAS_TOKEN=true
 fi
 # Plugin data dir (version-stable, where token_store.py actually writes on Linux)
-PLUGIN_DATA_DIR="$HOME/.claude/plugins/data/mise-batterie-de-savoir"
+# — or MISE_DATA_DIR when the session carries the seam's store (oauth_config).
+PLUGIN_DATA_DIR="${MISE_DATA_DIR:-$HOME/.claude/plugins/data/mise-batterie-de-savoir}"
 if [ "$HAS_TOKEN" = false ] && [ -f "$PLUGIN_DATA_DIR/token.json" ]; then
     HAS_TOKEN=true
 fi
@@ -154,7 +163,7 @@ if [ "$HAS_TOKEN" = false ] && [ -f "$PLUGIN_ROOT/token.json" ]; then
     HAS_TOKEN=true
 fi
 
-if [ "$HAS_TOKEN" = false ]; then
+if [ "$HAS_TOKEN" = false ] && [ "$UNCONFIGURED" = false ]; then
     # Is the OTHER flavour authed? If so, a missing token HERE is ADVISORY — the
     # user has a working mise, nothing is broken (the exact 2026-07-12 misread).
     OWN_DATA="$(basename "$PLUGIN_DATA_DIR")"
