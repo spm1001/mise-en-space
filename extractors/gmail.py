@@ -13,7 +13,8 @@ from typing import Any
 from models import GmailThreadData, EmailMessage, ForwardedMessage
 from html_convert import clean_html_for_conversion as _clean_html_for_conversion
 
-from .talon_signature import strip_signature_and_quotes
+from extractors.inline_replies import find_inline_replies, render_inline_replies, reply_points_into_quote
+from .talon_signature import split_forward_sections, strip_signature_and_quotes
 
 
 def _convert_html_to_markdown(html: str) -> tuple[str, bool]:
@@ -106,6 +107,32 @@ def extract_message_content(
         body = '\n'.join(parts)
 
     return body.strip(), warnings
+
+
+def _raw_body(message: EmailMessage) -> str:
+    """The unstripped body — what a later reply's quote is compared against."""
+    if message.body_text:
+        return message.body_text
+    if message.body_html:
+        return _convert_html_to_markdown(_clean_html_for_conversion(message.body_html))[0]
+    return ""
+
+
+def _keep_inline_replies(data: GmailThreadData, i: int, body: str, raw: dict[int, str]) -> str:
+    """Append answers written inside message i's quote (1-based; mise-lopune)."""
+    if not reply_points_into_quote(body):
+        return body
+    for k in range(i):
+        raw.setdefault(k, _raw_body(data.messages[k]))
+    own, _ = split_forward_sections(raw[i - 1])
+    replies, _ = find_inline_replies(own, [raw[k] for k in range(i - 1)])
+    if not replies:
+        return body
+    data.warnings.append(
+        f"Message {i}: kept {len(replies)} inline reply passage(s) — text written "
+        "inside the quoted message, which quote stripping would have dropped"
+    )
+    return f"{body}\n\n{render_inline_replies(replies)}".strip()
 
 
 def format_message_date(dt: datetime) -> str:
@@ -210,6 +237,7 @@ def extract_thread_content(
 
     # Process each message
     truncated = False
+    raw_bodies: dict[int, str] = {}
     for i, message in enumerate(data.messages, start=1):
         # Message separator (except for first)
         if i > 1:
@@ -235,6 +263,8 @@ def extract_thread_content(
         body, msg_warnings = extract_message_content(message, strip_signature=strip_signatures)
         for w in msg_warnings:
             data.warnings.append(f"Message {i}: {w}")
+        if strip_signatures and i > 1:
+            body = _keep_inline_replies(data, i, body, raw_bodies)
 
         if max_length:
             remaining = max_length - total_length

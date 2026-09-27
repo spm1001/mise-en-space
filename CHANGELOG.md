@@ -26,6 +26,11 @@ shipped_in <commit>   # first suite version whose vendored mise contains it; emp
 # Both -C flags are load-bearing: without them "not shipped" and "wrong directory" print identically (cold read, 2026-09-17).
 ```
 
+## 2026-09-27 (mise-lopune)
+
+### Fixed
+- **Gmail fetch keeps answers written inside the quoted message.** A reply that says "response below" and answers between the lines of the quote reaches the plain-text part with its answers `>`-prefixed like the question, so quote stripping deleted them and the deposit read as a complete, contentless reply. The quote is now compared with the thread's earlier messages (word 4-gram shingles, `extractors/inline_replies.py`); passages no earlier message contains, and whose removal restores what was quoted, are kept under an **Inline replies** block after the reply, each shown after the quoted words it follows, and disclosed in `cues.warnings`. Gates, each from a false-positive class in a real-mail sweep: the reply's own text must point into the quote (or be empty); link targets, header lines and legal-footer paragraphs count as neither old nor new; a passage must be an insertion. Measured on real mail: the first cut fired on 10 of 43 multi-message threads with 1 true; the gated version fired once in those 43 and 3 times in 97 threads selected for "below"/"inline" phrasing — all 4 true answer-in-quote replies. Recall is unmeasured.
+
 ## 2026-09-27 (mise-zuzogu)
 
 ### Fixed
