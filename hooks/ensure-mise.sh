@@ -96,7 +96,7 @@ if [ -f "$_PLUGIN_ROOT/instructions.md" ]; then
         printf 'Reach for whichever matches where the content lives — only the flavours whose '
         printf 'tools are present in this session are installed.\n\n'
         printf '**Matching the tool names.** Under the plugin install — the normal case — the '
-        printf 'harness prefixes them `mcp__plugin_mise_mise__` and '
+        printf 'harness prefixes them `mcp__plugin_batterie_mise__` and '
         printf '`mcp__plugin_mise-home_mise-home__` (so `…__search`, `…__fetch`, `…__do`); '
         printf 'wired as a bare MCP server instead, the `plugin_<name>_` part is absent. '
         printf 'Match on the server name INSIDE the tool name rather than on a fixed prefix — '
