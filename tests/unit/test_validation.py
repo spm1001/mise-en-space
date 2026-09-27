@@ -161,7 +161,7 @@ class TestGmailFragmentSegments:
     # 3 segments: the old regex captured 'from' here and the fetch was refused.
     SEARCH_URL = (
         "https://mail.google.com/mail/u/0/#search/"
-        "from%3AStefano.Figoni%40itv.com+lantern/FMfcgzQhVNfMCxqltVrdVFJgqxZhgmhM"
+        "from%3AAlex.Example%40itv.com+lantern/FMfcgzQhVNfMCxqltVrdVFJgqxZhgmhM"
     )
     # 2 segments: worked before and must keep working.
     ALL_URL = "https://mail.google.com/mail/u/0/#all/FMfcgzQgMgKRTRzJtcVbpdRDPZKZGgrW"
@@ -739,9 +739,9 @@ class TestExtractGmailUrlContext:
         "https://mail.google.com/mail/u/0/#search/"
         "from%3Aniharika.verma%40captify.co.uk/FMfcgzQXKhLsKgFZmMwJgntMLhRLltMN"
     )
-    STEFANO_URL = (
+    EXAMPLE_URL = (
         "https://mail.google.com/mail/u/0/#search/"
-        "from%3AStefano.Figoni%40itv.com+lantern/FMfcgzQhVNfMCxqltVrdVFJgqxZhgmhM"
+        "from%3AAlex.Example%40itv.com+lantern/FMfcgzQhVNfMCxqltVrdVFJgqxZhgmhM"
     )
 
     def test_search_query_is_carried_and_decoded(self):
@@ -750,8 +750,8 @@ class TestExtractGmailUrlContext:
 
     def test_plus_decodes_to_space_not_literal_plus(self):
         """unquote alone leaves '+' intact — the brief names unquote_plus."""
-        ctx = extract_gmail_url_context(self.STEFANO_URL)
-        assert ctx["search_query"] == "from:Stefano.Figoni@itv.com lantern"
+        ctx = extract_gmail_url_context(self.EXAMPLE_URL)
+        assert ctx["search_query"] == "from:Alex.Example@itv.com lantern"
 
     def test_label_is_carried_and_decoded(self):
         url = "https://mail.google.com/mail/u/0/#label/Weekly+Digests/FMfcgzABC"

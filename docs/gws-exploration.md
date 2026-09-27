@@ -136,7 +136,7 @@ print(creds.token)
 |-------|---------|---------|
 | `summary` | Always | "Desired Outcomes and StW Update" |
 | `start.dateTime` | For timed events | `2026-03-06T09:30:00Z` |
-| `attendees[].displayName` | When attendees exist | "Rupert Coghlan" |
+| `attendees[].displayName` | When attendees exist | "Robin Sample" |
 | `attendees[].responseStatus` | Always on attendees | "accepted", "needsAction" |
 | `hangoutLink` | When Meet attached | `https://meet.google.com/...` |
 | `description` | When set | HTML content (agenda, links) |

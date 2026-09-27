@@ -65,9 +65,9 @@ The fetch response includes a `cues` block with decision-tree signals — check 
   "warnings": [],
   "content_length": 4280,
   "email_context": null,
-  "participants": ["Rupa Jones", "Ella Collis"],  // Gmail only
+  "participants": ["Rupa Jones", "Alex Example"],  // Gmail only
   "people": {"jo.bloggs@example.com": {"name": "Jo Bloggs", "title": "...", "manager": "..."}},  // Gmail: directory profiles for own-domain participants
-  "people_relations": ["Kate Waters is Sameer Modha's manager"],  // reporting lines across the thread, you included
+  "people_relations": ["Pat Example is Sam Example's manager"],  // reporting lines across the thread, you included
   "people_note": "2 of 5 participants have directory profiles..."  // the rest are external or opted out — not failed lookups
 }
 ```
@@ -81,7 +81,7 @@ The fetch response includes a `cues` block with decision-tree signals — check 
 7. For Gmail invites: if `cues.invite_state` is present, it's the **live** Calendar state, not the email's frozen snapshot — `{status, my_response, current_start, cancelled_at}`. A `status: "cancelled"` (with a warning) means the meeting is off even though the email body still reads as a live invitation; `current_start` reflects any reschedule. Trust this over the ICS in the body.
 8. For Google Docs: if `cues.has_suggestions` is true, the doc carries unresolved suggested edits (`suggestion_count` says how many, `suggestions_mode` says how they were treated). The default render is **accepted** — the suggester's intended text, with suggested deletions honoured. Don't treat that text as settled: the suggestions are still open in the Doc. See "Docs with suggested edits" under Workflow 1.
 9. If `cues.pointer` is present, the pasted URL named a specific spot — a tab, heading, slide or comment — and the pointer says which deposited artefact holds it (often with a `content.md` line number Read's offset consumes directly). **Start there**, not at the top of the document; that targeting is why the person pasted a decorated URL.
-10. For Gmail: `cues.people` places every own-domain participant from the staff directory (role, department, manager), and `cues.people_relations` names reporting lines across the thread — including the user's own ("Kate Waters is Sameer Modha's manager" on a thread from their boss). Read it before drafting a reply: who outranks whom changes the register. An address absent from `people` is external or directory-opted-out (`people_note` says so) — never report it as a failed lookup.
+10. For Gmail: `cues.people` places every own-domain participant from the staff directory (role, department, manager), and `cues.people_relations` names reporting lines across the thread — including the user's own ("Pat Example is Sam Example's manager" on a thread from their boss). Read it before drafting a reply: who outranks whom changes the register. An address absent from `people` is external or directory-opted-out (`people_note` says so) — never report it as a failed lookup.
 11. **Values printed inside chart images are in NO text extraction** — a census of real corporate PDFs measured ~3% of values as vision-only (chart data labels, watermark badges). PDF deposits extract embedded graphics as `crop_*.png` files, each announced by an eye-level anchor in content.md at its page (`<!-- exhibit: crop_p008_i012.png | page 8 | … -->`); thumbnailed slides carry the same anchor naming `slide_NN.png`. `grep 'exhibit:' content.md` lists every graphic. If the question hangs on a chart's numbers, Read the named crop (or the page/slide thumbnail for full-page graphics) before concluding the value is absent. Full contract: `references/deposit-structure.md`.
 
 `manifest.json` is still on disk for scripts/jq, but `cues` surfaces the actionable signals so you don't need to read it separately.

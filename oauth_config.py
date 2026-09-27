@@ -25,7 +25,7 @@ _PACKAGE_ROOT = Path(__file__).parent
 # flavour's OAuth client — there are two: the ITV one and planetmodha-workspace-mcp
 # (mise-home). Enablement is per-project, so doing one and not the other fails
 # only for the other flavour's users, at consent time, with
-# "Error 400: access_not_configured" (Isaac hit this 2026-08-15: tasks, labels
+# "Error 400: access_not_configured" (a family user hit this 2026-08-15: tasks, labels
 # and admin APIs were on for ITV but not planetmodha). The client_id prefix in
 # that error is the owning project's number — `gcloud projects describe <project>
 # --format='value(projectNumber)'` confirms which project to fix.
