@@ -59,6 +59,27 @@ class TestCredsValidityGate:
         assert "refresh failed" in result["cues"]["stale_creds_diagnostic"]
         popen.assert_called_once()
 
+    @pytest.mark.parametrize("fault", ["transport", "token_endpoint_503"])
+    def test_offline_is_not_stale_creds(self, tmp_token_file, fault):
+        """Loading refreshes, so an offline check fails. That must come back
+        as a network error, not as stale creds that mint a URL and hold the
+        callback port for five minutes (jeton-vajiro)."""
+        from google.auth.exceptions import RefreshError, TransportError
+
+        exc = (TransportError("Connection reset by peer") if fault == "transport"
+               else RefreshError("internal_failure", retryable=True))
+        with (
+            patch("tools.setup_oauth.has_token", return_value=True),
+            patch("adapters.http_client.get_sync_client", side_effect=exc),
+            patch("tools.setup_oauth.get_auth_url") as mint,
+            patch("tools.setup_oauth.subprocess.Popen") as spawn,
+        ):
+            result = do_setup_oauth()
+        assert result["kind"] == "network_error"
+        assert "not an authentication" in result["message"]
+        mint.assert_not_called()
+        spawn.assert_not_called()
+
     def test_valid_creds_return_already_authenticated(self, tmp_token_file):
         """Token present and loads cleanly → already_authenticated, no spawn."""
         with (
@@ -229,60 +250,63 @@ class TestBrowserEnvStatus:
         assert "ssh -L 3000:localhost:3000" in result["message"]
 
 
-class TestPreMintedCallbackHandler:
-    """The listener's state (CSRF) validation — auth.py's handler."""
+class TestPreMintedListener:
+    """auth.py's listener half hands the pre-minted URL to jeton.
 
-    @staticmethod
-    def _poke(path: str) -> tuple[int, object]:
-        """Run one request against a throwaway handler server, return
-        (http_status, server.oauth_result).
+    jeton's authenticate(auth_url=...) owns the listener now — state (CSRF)
+    check, bind before browser, threaded server, verifier kept on timeout —
+    and pins those in its own suite (jeton-jedaza). What mise still owns: the
+    URL goes through unminted, the browser decision is mise's, and each
+    failure ends with the right next step.
+    """
 
-        Uses plain HTTPServer (not the production ThreadingHTTPServer) so
-        handle_request() completes the handler synchronously — do_GET's
-        logic is identical under either mixin, and this removes the
-        read-before-handler-finishes race from the test itself.
-        """
-        import http.client
-        import threading
-        from http.server import HTTPServer
+    URL = FAKE_URL + "&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Foauth%2Fcallback"
 
-        from auth import _PreMintedCallbackHandler
+    def _run(self, open_browser=True, side_effect=None):
+        import auth
 
-        server = HTTPServer(("localhost", 0), _PreMintedCallbackHandler)
-        server.oauth_result = None
-        server.expected_state = "goodstate"
-        server.timeout = 5
-        port = server.server_address[1]
+        with (
+            patch("auth._can_open_browser", return_value=open_browser),
+            patch("auth.authenticate", side_effect=side_effect) as jeton_auth,
+            patch("auth.get_auth_url") as mint,
+            patch("auth.save_token") as save,
+        ):
+            auth._serve_pre_minted(self.URL, "/path/credentials.json")
+        return jeton_auth, mint, save
 
-        thread = threading.Thread(target=server.handle_request, daemon=True)
-        thread.start()
-        conn = http.client.HTTPConnection("localhost", port, timeout=5)
-        conn.request("GET", path)
-        status = conn.getresponse().status
-        conn.close()
-        thread.join(timeout=5)
-        server.server_close()
-        return status, server.oauth_result
+    def test_url_goes_to_jeton_unminted(self):
+        jeton_auth, mint, save = self._run(open_browser=True)
+        mint.assert_not_called()  # a second mint would orphan the returned URL
+        kwargs = jeton_auth.call_args.kwargs
+        assert kwargs["auth_url"] == self.URL
+        assert kwargs["open_browser"] is True
+        assert "code" not in kwargs
+        save.assert_called_once()
 
-    def test_good_state_yields_code(self):
-        status, result = self._poke("/oauth/callback?code=abc123&state=goodstate")
-        assert status == 200
-        assert result == ("code", "abc123")
+    def test_mise_browser_decision_reaches_jeton(self):
+        """MISE_NO_BROWSER / XRDP say no: jeton must not open one either."""
+        jeton_auth, _, _ = self._run(open_browser=False)
+        assert jeton_auth.call_args.kwargs["open_browser"] is False
 
-    def test_state_mismatch_rejected(self):
-        status, result = self._poke("/oauth/callback?code=abc123&state=EVIL")
-        assert status == 400
-        assert result == ("error", "state_mismatch")
+    def test_timeout_points_at_the_code_path(self, capsys):
+        with pytest.raises(SystemExit) as exc:
+            self._run(side_effect=TimeoutError("no callback"))
+        assert exc.value.code == 1
+        out = capsys.readouterr().out
+        assert "not wasted" in out and "--code" in out
 
-    def test_provider_error_surfaced(self):
-        status, result = self._poke("/oauth/callback?error=access_denied")
-        assert status == 400
-        assert result == ("error", "access_denied")
+    def test_taken_port_points_at_the_code_path(self, capsys):
+        import errno
 
-    def test_unrelated_path_is_404_and_keeps_listening(self):
-        status, result = self._poke("/favicon.ico")
-        assert status == 404
-        assert result is None  # not consumed — the flow keeps waiting
+        busy = OSError(errno.EADDRINUSE, "Cannot listen on localhost:3000")
+        with pytest.raises(SystemExit) as exc:
+            self._run(side_effect=busy)
+        assert exc.value.code == 1
+        assert "--code" in capsys.readouterr().out
+
+    def test_other_os_errors_are_not_dressed_as_a_busy_port(self):
+        with pytest.raises(FileNotFoundError):
+            self._run(side_effect=FileNotFoundError(2, "credentials.json"))
 
 
 class TestAuthCli:

@@ -528,3 +528,42 @@ class TestTokenFilesAreOwnerOnly:
         assert self._mode(token_file) == 0o644
         save_token(token_file)
         assert self._mode(token_file) == 0o600
+
+
+# =============================================================================
+# Atomic writes — a reader never sees a torn token file (jeton-pimoja)
+# =============================================================================
+
+
+def test_write_private_reader_never_sees_a_torn_file(tmp_path):
+    """The Keychain materialisation rewrites token.json on every server start
+    while other mise processes may be reading it. An in-place write (truncate,
+    then write) lets a reader land in between and see an empty or partial
+    file, which reads as 'corrupt, re-authenticate'."""
+    import threading
+
+    from token_store import _write_private
+
+    token_file = tmp_path / "token.json"
+    payload = json.dumps({"token": "t", "_pad": "x" * 200_000})
+    _write_private(token_file, payload)
+    stop = threading.Event()
+
+    def writer():
+        while not stop.is_set():
+            _write_private(token_file, payload)
+
+    t = threading.Thread(target=writer)
+    t.start()
+    bad = 0
+    try:
+        for _ in range(1000):
+            try:
+                json.loads(token_file.read_text())
+            except json.JSONDecodeError:
+                bad += 1
+    finally:
+        stop.set()
+        t.join()
+    assert bad == 0, f"{bad}/1000 reads saw a torn or empty token file"
+    assert not list(tmp_path.glob("*.tmp")), "temp file left behind"
