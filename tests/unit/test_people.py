@@ -81,7 +81,7 @@ class TestDomainPublicIsAlwaysSent:
         "call",
         [
             lambda: get_person("a@itv.com"),
-            lambda: search_people("Neil Charles"),
+            lambda: search_people("Chris Sample"),
             lambda: get_direct_reports("a@itv.com"),
         ],
         ids=["get_person", "search_people", "get_direct_reports"],

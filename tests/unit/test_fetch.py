@@ -3636,7 +3636,7 @@ class TestRelationsAmong:
               "manager": "pat@itv.com"}
     SAMEER = {"email": "sameer@itv.com", "name": "Sameer Modha",
               "manager": "pat@itv.com"}
-    NEIL = {"email": "neil@itv.com", "name": "Neil Charles",
+    CHRIS = {"email": "chris@itv.com", "name": "Chris Sample",
             "manager": "pat@itv.com"}
 
     def test_manager_in_set_yields_direct_lines_and_no_group_line(self):
@@ -3653,9 +3653,9 @@ class TestRelationsAmong:
     def test_shared_manager_outside_the_set_groups_to_one_line(self):
         from tools.fetch.gmail_participants import relations_among
 
-        rels = relations_among([self.ROBIN, self.SAMEER, self.NEIL])
+        rels = relations_among([self.ROBIN, self.SAMEER, self.CHRIS])
         assert rels == [
-            "Robin Sample, Sameer Modha and Neil Charles report to the "
+            "Robin Sample, Sameer Modha and Chris Sample report to the "
             "same manager"
         ], "three teammates are ONE fact, not three pairwise lines"
 

@@ -218,8 +218,8 @@ def search_people(query: str, max_results: int = 10) -> PeopleSearchResults:
 
     `query` goes straight to the Admin SDK's own search syntax:
 
-      - bare words match NAME and EMAIL only ("Neil Charles", "rupert.coghlan")
-      - `orgDepartment:MIT` scopes to a department, `email:rupert.coghlan*`
+      - bare words match NAME and EMAIL only ("Jo Bloggs", "jo.bloggs")
+      - `orgDepartment:MIT` scopes to a department, `email:jo.bloggs*`
         to an address prefix
       - a value containing a SPACE needs `=` and SINGLE quotes:
         `orgTitle='Head of Strategy'` works; `orgTitle:Head of Strategy` and

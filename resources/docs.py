@@ -155,7 +155,7 @@ Query grammar is the Admin SDK's, NOT Drive's:
 
 | Query | Matches |
 |---|---|
-| `Neil Charles` | name and email — bare words do NOT match job titles |
+| `Jo Bloggs` | name and email — bare words do NOT match job titles |
 | `email:jane.smith*` | address prefix |
 | `orgDepartment:MIT` | everyone in a department (single-word value) |
 | `orgTitle='Head of Strategy'` | any value with a SPACE — `=` and SINGLE quotes |

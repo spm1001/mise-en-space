@@ -65,7 +65,7 @@ The fetch response includes a `cues` block with decision-tree signals — check 
   "warnings": [],
   "content_length": 4280,
   "email_context": null,
-  "participants": ["Rupa Jones", "Alex Example"],  // Gmail only
+  "participants": ["Jo Bloggs", "Alex Example"],  // Gmail only
   "people": {"jo.bloggs@example.com": {"name": "Jo Bloggs", "title": "...", "manager": "..."}},  // Gmail: directory profiles for own-domain participants
   "people_relations": ["Pat Example is Sam Example's manager"],  // reporting lines across the thread, you included
   "people_note": "2 of 5 participants have directory profiles..."  // the rest are external or opted out — not failed lookups
