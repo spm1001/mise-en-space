@@ -26,6 +26,12 @@ shipped_in <commit>   # first suite version whose vendored mise contains it; emp
 # Both -C flags are load-bearing: without them "not shipped" and "wrong directory" print identically (cold read, 2026-09-17).
 ```
 
+## 2026-09-27 (bds-cofico sweep, mise side)
+
+### Fixed
+- **`ensure-mise.sh` knows the two kits.** The routing text in `rules/mise.md` named the retired `mise-home` plugin and its `mcp__plugin_mise-home_mise-home__` prefix; it now names the batterie kit's mise (ITV, `mcp__plugin_batterie_mise__`) and the family kit's (Planet Modha, `mcp__plugin_family_mise__`), and says to tell them apart by the kit part of the name, since both servers are called `mise`. The sibling-authed check now counts `data/family-family/token.json`, so a family member who installs the batterie kit gets an advisory line instead of a BLOCKING "no token" nag for an ITV Workspace they cannot use — exercised in throwaway homes (no token: blocking; family token only: advisory; own token: silent), with the old glob as the control (family token only: blocking).
+- CLAUDE.md's identity section rewritten for the two-kit shape (the flavour transform is gone), and the plugin-cache paths the fold moved.
+
 ## 2026-09-27 (mise-janago)
 
 ### Fixed
