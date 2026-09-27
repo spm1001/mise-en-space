@@ -99,6 +99,26 @@ class TestAuth:
                 with pytest.raises(FileNotFoundError, match="no refresh_token"):
                     MiseHttpClient()
 
+    def test_refresh_network_failure_is_a_network_error(self, tmp_path) -> None:
+        """jeton raises TransportError when Google can't be reached. That must
+        surface as a retryable network fault, never as 'refresh failed,
+        re-authenticate' (jeton-vajiro)."""
+        from google.auth.exceptions import TransportError
+
+        from models import ErrorKind
+        from retry import _convert_to_mise_error, _should_retry
+
+        token_file = tmp_path / "token.json"
+        token_file.write_text('{"token": "expired", "refresh_token": "good", "expiry": "2020-01-01T00:00:00Z"}')
+        with patch("adapters.http_client.resolve_token_path", return_value=token_file):
+            with patch("adapters.http_client.load_credentials",
+                       side_effect=TransportError("Connection reset by peer")):
+                with pytest.raises(TransportError) as exc:
+                    MiseHttpClient()
+        assert _should_retry(exc.value)
+        mise_error = _convert_to_mise_error(exc.value)
+        assert mise_error.kind is ErrorKind.NETWORK_ERROR and mise_error.retryable
+
     def test_expired_refresh_failed_raises(self, tmp_path) -> None:
         """Clear error when refresh_token exists but refresh fails."""
         token_file = tmp_path / "token.json"
@@ -558,23 +578,47 @@ class TestStaleTokenReload:
         # The new grant may be a different account — identity re-resolved
         resolve_identity.assert_called_once()
 
-    def test_sync_same_dead_grant_raises_friendly(self) -> None:
+    def test_sync_same_dead_grant_raises_friendly(self, tmp_path) -> None:
+        """The disk grant is compared BEFORE loading. Since jeton 1.5 loading
+        refreshes, so loading the same dead grant would fail again with the
+        generic "refresh failed" and lose "no restart needed"."""
         client = _make_sync_client(self._dead_creds())
-        same = _mock_credentials()
-        same.refresh_token = "dead-grant"  # disk holds the SAME revoked grant
+        token_file = tmp_path / "token.json"
+        token_file.write_text('{"token": "t", "refresh_token": "dead-grant"}')
 
         with (
-            patch(
-                "adapters.http_client._load_and_diagnose_credentials",
-                return_value=same,
-            ),
-            patch(
-                "adapters.http_client.resolve_token_path",
-                return_value=Path("/tmp/no-such-token.json"),
-            ),
+            patch("adapters.http_client._load_and_diagnose_credentials") as load,
+            patch("adapters.http_client.resolve_token_path", return_value=token_file),
         ):
             with pytest.raises(FileNotFoundError, match="same grant"):
                 client._refresh_or_reload()
+        load.assert_not_called()
+
+    def test_async_same_dead_grant_raises_friendly(self, tmp_path) -> None:
+        client = _make_client(self._dead_creds())
+        token_file = tmp_path / "token.json"
+        token_file.write_text('{"token": "t", "refresh_token": "dead-grant"}')
+
+        with (
+            patch("adapters.http_client._load_and_diagnose_credentials") as load,
+            patch("adapters.http_client.resolve_token_path", return_value=token_file),
+        ):
+            with pytest.raises(FileNotFoundError, match="same grant"):
+                client._refresh_or_reload()
+        load.assert_not_called()
+
+    def test_token_endpoint_outage_is_not_a_dead_grant(self) -> None:
+        """A retryable RefreshError (5xx/429 from the token endpoint) must not
+        trigger the dead-grant reload or its 'likely revoked' message."""
+        from google.auth.exceptions import RefreshError
+
+        creds = _mock_credentials()
+        creds.refresh.side_effect = RefreshError("internal_failure", retryable=True)
+        client = _make_sync_client(creds)
+        with patch("adapters.http_client.resolve_token_path") as reread:
+            with pytest.raises(RefreshError):
+                client._refresh_or_reload()
+        reread.assert_not_called()
 
     def test_async_swaps_fresh_grant_from_disk(self) -> None:
         client = _make_client(self._dead_creds())

@@ -388,20 +388,44 @@ def find_pre_seam_token() -> tuple[str, str] | None:
     return None
 
 
-def _write_private(path: Path, text: str) -> None:
-    """Write a credential file readable by its owner only.
+def stored_refresh_token(path: Path) -> str | None:
+    """The refresh token in a token file, read raw: no refresh, no network.
 
-    os.open's mode applies only when it CREATES the file, so an existing file
-    keeps whatever mode it had — the macOS Keychain materialisation rewrites
-    the same token.json on every server start, and files first written by
-    Path.write_text sat at 0644 for months (mise-zuzogu). The fchmod tightens
-    an existing file too, after the truncate and before the secret is written.
+    The dead-grant reload compares grants BEFORE loading. Since jeton 1.5,
+    loading refreshes an expired token, so loading the same dead grant would
+    fail again with a generic "refresh failed" and bury the "same grant, no
+    restart needed" diagnosis.
+    """
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data.get("refresh_token") if isinstance(data, dict) else None
+
+
+def _write_private(path: Path, text: str) -> None:
+    """Write a credential file readable by its owner only, atomically.
+
+    The macOS Keychain materialisation rewrites the same token.json on every
+    server start while other mise processes may be reading it, so it never
+    writes in place: a reader landing between truncate and write sees a torn
+    file, which reads as "corrupt, re-authenticate" (jeton-pimoja). A temp
+    file in the same directory is written, fsynced and os.replace()d over the
+    old one. mkstemp creates it owner-only, and the replace swaps in that
+    fresh inode, so an old 0644 file ends up 0600 too (mise-zuzogu) — the
+    same move as jeton's _atomic_write.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    os.fchmod(fd, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        fh.write(text)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 def _refuse_foreign_token(path: Path) -> None:

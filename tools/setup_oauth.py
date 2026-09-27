@@ -88,6 +88,20 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
             from adapters.http_client import get_sync_client
             get_sync_client()
         except Exception as e:
+            from retry import is_network_fault
+            if is_network_fault(e):
+                # Loading refreshes (jeton 1.5), so being offline now fails
+                # here. That is not stale creds: re-authing would mint a URL
+                # and hold the callback port over a network blip (jeton-vajiro).
+                return {
+                    "error": True,
+                    "kind": "network_error",
+                    "message": (
+                        f"Couldn't reach Google to check the stored token ({e}). "
+                        "This is a network problem, not an authentication one — "
+                        "the token is untouched. Retry when the connection is back."
+                    ),
+                }
             stale_creds_diagnostic = str(e)
         else:
             return {
