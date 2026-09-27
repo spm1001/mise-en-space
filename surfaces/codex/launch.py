@@ -9,17 +9,20 @@ import os
 from pathlib import Path
 import sys
 
-PLUGINS = {"mise": "mise@batterie", "mise-home": "mise-home@batterie-home"}
+# instance -> (registry key, subdirectory holding the engine). Since the kit fold
+# (bds-jakemi) the ITV flavour ships as the `mise` component of batterie@batterie,
+# so its engine sits one level down; mise-home is still a plugin of its own.
+PLUGINS = {"mise": ("batterie@batterie", "mise"), "mise-home": ("mise-home@batterie-home", "")}
 
 
 def resolve(instance, registry):
-    key = PLUGINS[instance]
+    key, sub = PLUGINS[instance]
     data = json.loads(registry.read_text())
     entries = data.get("plugins", {}).get(key, [])
     roots = {Path(row["installPath"]).resolve() for row in entries if row.get("scope") == "user"}
     if len(roots) != 1:
         raise ValueError(f"Expected one current user installation of {key}; found {len(roots)}")
-    root = roots.pop()
+    root = roots.pop() / sub if sub else roots.pop()
     metadata = json.loads((root / ".claude-plugin/plugin.json").read_text())
     if metadata.get("name") != instance:
         raise ValueError(f"Installed plugin identity does not match requested {instance}")
