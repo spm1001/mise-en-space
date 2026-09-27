@@ -2,11 +2,11 @@
 
 **What you're checking:** that nothing changed for you. The seam only switches on when a kit sets `MISE_EN_SPACE_OAUTH_CLIENT` or `MISE_EN_SPACE_DATA_DIR`, and no kit does yet. So the test passes when both flavours behave exactly as they did this morning. The Mac is the valuable half, because its Keychain path was only unit-tested with mocks; tube (the phone's host) keeps tokens in files, and the throwaway-home proof already covered that.
 
-**Before you start:** the new version has to be built and installed. A merge to main ships at the next assemble, so someone has to trigger that (a `/batterie:publish`, or a manual run of batterie's "Assemble plugins" workflow). A new Claude Code session then picks it up by auto-update within about ten minutes, or at once after `/batterie:update`. The version to expect is whatever that assemble stamps. It will be higher than 1.86.31.
+**Before you start:** this shipped as **suite 1.87.0**, live at 16:14 BST on 27 Sep. Don't trigger another publish — it would mint an empty version. On the Mac, a new Claude Code session picks it up by auto-update within about ten minutes, or at once after `/batterie:update`. *(Corrected 16:25 BST. The copy first handed over said to trigger a publish and to expect "higher than 1.86.31", because it was written before the release.)*
 
 ## On the Mac (Claude Code in Terminal)
 
-1. Start a fresh session anywhere and run `/batterie:version`. Both **mise** and **mise-home** should show the new version. If they still show 1.86.31, run `/batterie:update`, quit, and start again.
+1. Start a fresh session anywhere and run `/batterie:version`. Both **mise** and **mise-home** should show **1.87.0**. If they still show 1.86.31, run `/batterie:update`, quit, and start again.
 2. Look at the session-start text. There should be **no** "Mise MCP server needs setup" or "Mise Home — optional setup" warning.
 3. Type: *"Use mise to find one Google Doc in my Drive and tell me which account answered."* You should see a doc title, answered by your **itv.com** address.
 4. Type: *"Now do the same with mise-home."* You should see a doc title, answered by your **planetmodha.com** address.
@@ -15,7 +15,7 @@
 
 ## On the phone (Guéridon, which runs on tube)
 
-Tube updates after banc's corpus-ablation finishes (the pass-holder's call). After that:
+Tube is already on 1.87.0: the publish pulled it at 16:15 BST, and a post-publish check there answered as both identities.
 
 7. Start a new session from the phone and ask questions 3, 4 and 5 again. You should get the same two accounts, and "already authenticated" twice.
 

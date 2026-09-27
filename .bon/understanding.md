@@ -148,7 +148,7 @@ Live invariant if a long-running server ever exists again: token refresh needs t
 
 ## OAuth and credential architecture
 
-The OAuth client is installed-app type, so the client secret is intentionally distributable and `credentials.json` ships with the repo; **the real secret is the refresh token.** Two GCP projects, two clients: mise's production client lives in ITV's `mit-workspace-mcp-server`, and a second in `planetmodha-tools` backs daemon use under `claude@planetmodha.com`.
+The OAuth client is installed-app type, so the client secret is intentionally distributable and `credentials.json` ships with the repo; **the real secret is the refresh token.** mise's production client lives in ITV's `mit-workspace-mcp-server`; the home flavour ships the `planetmodha-workspace-mcp` client. (A third, in `planetmodha-tools` as secret `aby-hemimi-credentials`, backs daemon use under `claude@planetmodha.com`; mise stopped knowing about it in 1.87.0, when the Secret Manager fallback in `auth.py` was deleted.)
 
 **OAuth client User type matters and is invisible from `gcloud`.** The `mit-workspace-mcp-server` consent screen is **Internal**, so any `@itv.com` Workspace user authenticates without verification or a test-user list — bypassing Google's ~6-week verification for sensitive scopes. External-test caps at 100 explicitly-added users; External-published shows a "Google hasn't verified this app" warning. The setting lives only in the console, not the CLI. **For any future ITV-internal MCP, default to Internal.**
 
