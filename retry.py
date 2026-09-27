@@ -10,6 +10,9 @@ import time
 from functools import wraps
 from typing import TypeVar, Callable, Any, ParamSpec, Awaitable, cast
 
+from google.auth.exceptions import RefreshError as GoogleRefreshError
+from google.auth.exceptions import TransportError as GoogleTransportError
+
 from logging_config import logger, log_retry
 from models import MiseError, ErrorKind
 from adapters.http_client import clear_sync_client
@@ -22,6 +25,9 @@ P = ParamSpec("P")
 RETRYABLE_EXCEPTIONS: tuple[type[Exception], ...] = (
     ConnectionError,
     TimeoutError,
+    # google-auth's "couldn't reach the token endpoint" — raised by our own
+    # refreshes and, since jeton 1.5, by load_credentials (jeton-vajiro)
+    GoogleTransportError,
 )
 
 # HTTP status codes that should trigger retry
@@ -93,10 +99,19 @@ def _format_http_error(exception: Exception) -> str:
     return base
 
 
+def is_network_fault(exception: BaseException) -> bool:
+    """Connection trouble, google-auth's included: a token endpoint that can't
+    be reached (TransportError) or answers 5xx/429 (a retryable RefreshError).
+    Neither is a dead grant, so neither should send anyone to re-authenticate."""
+    return isinstance(exception, RETRYABLE_EXCEPTIONS) or (
+        isinstance(exception, GoogleRefreshError) and exception.retryable
+    )
+
+
 def _should_retry(exception: Exception) -> bool:
     """Determine if an exception is retryable."""
     # Check if it's a known retryable exception type
-    if isinstance(exception, RETRYABLE_EXCEPTIONS):
+    if is_network_fault(exception):
         return True
 
     # Check for HTTP status code
@@ -132,7 +147,7 @@ def _convert_to_mise_error(exception: Exception) -> MiseError:
             return MiseError(ErrorKind.UNKNOWN, message)
 
     # Fall back to exception type
-    if isinstance(exception, (ConnectionError, TimeoutError)):
+    if is_network_fault(exception):
         return MiseError(ErrorKind.NETWORK_ERROR, str(exception), retryable=True)
 
     return MiseError(ErrorKind.UNKNOWN, str(exception))
