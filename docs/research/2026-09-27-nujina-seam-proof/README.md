@@ -19,6 +19,10 @@ The whole world, tokens included, was deleted after the run.
 
 Both runs were repeated at 15:44–15:45 BST after the essayeur's one required fix — the variables were first named `MISE_OAUTH_CLIENT` / `MISE_DATA_DIR`, and `MISE_DATA_DIR` is jdx/mise's own documented override, so anyone using that tool would have switched the seam on by accident. The output here is the renamed run.
 
+## After the merge
+
+`deploy-test.md` is the check for Sameer to run on the Mac and the phone once the release is installed. It confirms nothing changed for either flavour, and it covers the Mac Keychain path this proof could not.
+
 ## Not covered
 
 - The macOS Keychain half (per-client service name, adoption from the old services) is unit-tested with mocks only; non-interactive ssh to the Mac has a locked keychain.

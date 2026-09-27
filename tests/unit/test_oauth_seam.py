@@ -159,6 +159,21 @@ class TestDataDir:
         assert oauth_client_file() == oauth_config.BUNDLED_CLIENT_FILE
         assert token_store._seam_in_use() is False
 
+    def test_jdx_mise_data_dir_leaves_the_import_time_store_alone(self, tmp_path):
+        """TOKEN_FILE is computed at import, so check it in a fresh process."""
+        import os
+        import subprocess
+        import sys
+        env = {k: v for k, v in os.environ.items() if not k.startswith("MISE_EN_SPACE_")}
+        env["MISE_DATA_DIR"] = str(tmp_path / "jdx-mise-tools")
+        out = subprocess.run(
+            [sys.executable, "-c", "import oauth_config; print(oauth_config.TOKEN_FILE)"],
+            cwd=Path(oauth_config.__file__).parent, env=env,
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert out == str(oauth_config._DEFAULT_DATA_DIR / "token.json")
+        assert not (tmp_path / "jdx-mise-tools").exists()
+
     def test_pre_seam_dirs_name_both_flavours(self):
         names = [d.name for d in oauth_config.PRE_SEAM_DATA_DIRS]
         assert names == ["mise-batterie-de-savoir", "mise-home"]

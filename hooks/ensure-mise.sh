@@ -162,8 +162,11 @@ if [ "$HAS_TOKEN" = false ] && [ -f "$PLUGIN_DATA_DIR/token.json" ]; then
     HAS_TOKEN=true
 fi
 # An empty seam store is not "no token" while the flavour's own pre-seam store
-# holds one: the engine adopts from there on first load (token_store).
-if [ "$HAS_TOKEN" = false ] && [ -f "$OWN_DEFAULT_DATA_DIR/token.json" ]; then
+# holds one: the engine adopts from there on first load (token_store). Only
+# when the client is the bundled one — adoption matches on client_id, so with
+# an outside client the old token may belong to another Workspace (essayeur).
+if [ "$HAS_TOKEN" = false ] && [ -z "${MISE_EN_SPACE_OAUTH_CLIENT:-}" ] \
+   && [ -f "$OWN_DEFAULT_DATA_DIR/token.json" ]; then
     HAS_TOKEN=true
 fi
 # Legacy: plugin root (versioned cache dir)
