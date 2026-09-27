@@ -146,7 +146,7 @@ def _convert_error(e: httpx.HTTPStatusError, subject: str) -> MiseError:
     if status == 400 and "userKey" in body:
         # A GROUP address, not a person — users.get answers "Type not supported:
         # userKey". Expected rather than exceptional: team distribution lists
-        # (mit-group@itv.com) sit in a large share of real threads, so this is a
+        # (e.g. team-list@example.com) sit in a large share of real threads, so this is a
         # routine outcome of placing senders and must read as one. Placing the
         # group itself would need the Groups API and its own scope; not worth a
         # re-consent until someone asks.
@@ -218,8 +218,8 @@ def search_people(query: str, max_results: int = 10) -> PeopleSearchResults:
 
     `query` goes straight to the Admin SDK's own search syntax:
 
-      - bare words match NAME and EMAIL only ("Neil Charles", "rupert.coghlan")
-      - `orgDepartment:MIT` scopes to a department, `email:rupert.coghlan*`
+      - bare words match NAME and EMAIL only ("Jo Bloggs", "jo.bloggs")
+      - `orgDepartment:MIT` scopes to a department, `email:jo.bloggs*`
         to an address prefix
       - a value containing a SPACE needs `=` and SINGLE quotes:
         `orgTitle='Head of Strategy'` works; `orgTitle:Head of Strategy` and

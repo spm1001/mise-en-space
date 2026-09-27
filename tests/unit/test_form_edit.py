@@ -10,7 +10,7 @@ from tools.form_edit import _overwrite_requests, form_overwrite
 
 
 _SPEC = json.dumps({
-    "title": "360 for Rupert",
+    "title": "360 for Robin",
     "description": "Round two",
     "questions": [
         {"type": "checkboxes", "title": "Which projects?",
@@ -19,7 +19,7 @@ _SPEC = json.dumps({
     ],
 })
 
-_METADATA = {"name": "360 for Rupert", "mimeType": "application/vnd.google-apps.form"}
+_METADATA = {"name": "360 for Robin", "mimeType": "application/vnd.google-apps.form"}
 
 
 def _existing_form(item_count: int = 3) -> dict:
@@ -38,7 +38,7 @@ class TestOverwriteRequests:
         # 1 updateFormInfo + 3 deletes + 2 creates
         assert len(requests) == 6
         info = requests[0]["updateFormInfo"]
-        assert info["info"]["title"] == "360 for Rupert"
+        assert info["info"]["title"] == "360 for Robin"
         assert info["updateMask"] == "title,description"
 
         delete_indexes = [r["deleteItem"]["location"]["index"] for r in requests[1:4]]
@@ -91,7 +91,7 @@ class TestFormOverwrite:
 
         assert isinstance(result, DoResult)
         requests = mock_batch.call_args.args[1]
-        assert requests[0]["updateFormInfo"]["info"]["title"] == "360 for Rupert"
+        assert requests[0]["updateFormInfo"]["info"]["title"] == "360 for Robin"
 
     @patch("tools.form_edit.fetch_form")
     def test_fetch_failure_is_clean_error(self, mock_fetch) -> None:

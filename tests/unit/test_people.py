@@ -81,7 +81,7 @@ class TestDomainPublicIsAlwaysSent:
         "call",
         [
             lambda: get_person("a@itv.com"),
-            lambda: search_people("Neil Charles"),
+            lambda: search_people("Chris Sample"),
             lambda: get_direct_reports("a@itv.com"),
         ],
         ids=["get_person", "search_people", "get_direct_reports"],
@@ -461,21 +461,21 @@ class TestPlacingSenders:
 class TestRelationBetween:
     """Reporting structure is arithmetic on data already in hand — no calls."""
 
-    BOSS = {"email": "kate@itv.com", "name": "Kate Waters"}
-    REPORT = {"email": "sameer@itv.com", "name": "Sameer Modha", "manager": "kate@itv.com"}
-    PEER = {"email": "rupert@itv.com", "name": "Rupert Coghlan", "manager": "kate@itv.com"}
+    BOSS = {"email": "pat@itv.com", "name": "Pat Example"}
+    REPORT = {"email": "sameer@itv.com", "name": "Sameer Modha", "manager": "pat@itv.com"}
+    PEER = {"email": "robin@itv.com", "name": "Robin Sample", "manager": "pat@itv.com"}
 
     def test_manager_is_named_as_such_in_both_orders(self) -> None:
         from adapters.people import relation_between
 
-        assert relation_between(self.REPORT, self.BOSS) == "Kate Waters is Sameer Modha's manager"
-        assert relation_between(self.BOSS, self.REPORT) == "Kate Waters is Sameer Modha's manager"
+        assert relation_between(self.REPORT, self.BOSS) == "Pat Example is Sameer Modha's manager"
+        assert relation_between(self.BOSS, self.REPORT) == "Pat Example is Sameer Modha's manager"
 
     def test_shared_manager_reads_as_same_team(self) -> None:
         from adapters.people import relation_between
 
         assert relation_between(self.REPORT, self.PEER) == (
-            "Sameer Modha and Rupert Coghlan report to the same manager"
+            "Sameer Modha and Robin Sample report to the same manager"
         )
 
     def test_unrelated_people_get_nothing_rather_than_a_guess(self) -> None:
@@ -536,17 +536,17 @@ class TestRelationIsWiredNotJustBuilt:
         from adapters import people as P
 
         profiles = {
-            "kate@itv.com": DirectoryPerson(email="kate@itv.com", full_name="Kate Waters",
+            "pat@itv.com": DirectoryPerson(email="pat@itv.com", full_name="Pat Example",
                                             title="Director"),
             "sameer@itv.com": DirectoryPerson(email="sameer@itv.com", full_name="Sameer Modha",
-                                              title="Lead", manager_email="kate@itv.com"),
+                                              title="Lead", manager_email="pat@itv.com"),
         }
-        rows = [{"from": "Kate <kate@itv.com>", "last_sender": "Sameer <sameer@itv.com>"}]
+        rows = [{"from": "Kate <pat@itv.com>", "last_sender": "Sameer <sameer@itv.com>"}]
         with patch.object(P, "get_person", lambda a: profiles[a]), patch.object(
             P, "current_user_email", return_value="someone.else@itv.com"
         ):
             P.attach_profiles(rows)
-        assert rows[0]["people_relation"] == "Kate Waters is Sameer Modha's manager"
+        assert rows[0]["people_relation"] == "Pat Example is Sameer Modha's manager"
 
     def test_one_placed_person_gets_no_relation_key(self) -> None:
         from adapters import people as P

@@ -1,7 +1,7 @@
 ---
 name: mise
 description: Orchestrates content fetching via the mise MCP server's search/fetch/do tools. Load before using search/fetch/do — invoke first when you see 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace', 'move this file', 'create a doc', 'triage my inbox', 'archive these', 'draft an email', 'book a meeting', 'when are they free'. Covers research loops, Gmail triage with batch ops, email drafting, calendar booking and free-slot finding, and result filtering the tools alone don't know. (user)
-allowed-tools: [Bash, Read, "mcp__plugin_mise_mise__*", "mcp__mise__*"]
+allowed-tools: [Bash, Read, "mcp__plugin_batterie_mise__*", "mcp__mise__*"]
 ---
 
 # mise
@@ -24,7 +24,7 @@ If `setup_oauth` itself fails (e.g. port 3000 in use), the error message will na
 
 When multiple Workspace connectors are loaded in the same session — Cowork's native Drive/Calendar bound to one Google account, mise bound to another — the connector names alone don't say which is which. **Mise responses self-disclose: `cues._identity.email` shows the authenticated email on every response.** Read it, especially when the user has both a personal and a work Workspace identity active.
 
-When in doubt about which account a question targets, prefer `mcp__plugin_mise_mise__*` (or whatever name your runtime gives mise's tools) over generic Drive/Gmail tools — mise's binding is explicit. If you've fetched data and the user reacts with "that's not the account I meant", check `cues._identity` in the response, then re-route or have them re-auth with the right account.
+When in doubt about which account a question targets, prefer `mcp__plugin_batterie_mise__*` (or whatever name your runtime gives mise's tools) over generic Drive/Gmail tools — mise's binding is explicit. If you've fetched data and the user reacts with "that's not the account I meant", check `cues._identity` in the response, then re-route or have them re-auth with the right account.
 
 **Iron Law: Files are artifacts. Emails are meaning.**
 
@@ -65,9 +65,9 @@ The fetch response includes a `cues` block with decision-tree signals — check 
   "warnings": [],
   "content_length": 4280,
   "email_context": null,
-  "participants": ["Rupa Jones", "Ella Collis"],  // Gmail only
-  "people": {"kate.waters@itv.com": {"name": "Kate Waters", "title": "...", "manager": "..."}},  // Gmail: directory profiles for own-domain participants
-  "people_relations": ["Kate Waters is Sameer Modha's manager"],  // reporting lines across the thread, you included
+  "participants": ["Jo Bloggs", "Alex Example"],  // Gmail only
+  "people": {"jo.bloggs@example.com": {"name": "Jo Bloggs", "title": "...", "manager": "..."}},  // Gmail: directory profiles for own-domain participants
+  "people_relations": ["Pat Example is Sam Example's manager"],  // reporting lines across the thread, you included
   "people_note": "2 of 5 participants have directory profiles..."  // the rest are external or opted out — not failed lookups
 }
 ```
@@ -81,7 +81,7 @@ The fetch response includes a `cues` block with decision-tree signals — check 
 7. For Gmail invites: if `cues.invite_state` is present, it's the **live** Calendar state, not the email's frozen snapshot — `{status, my_response, current_start, cancelled_at}`. A `status: "cancelled"` (with a warning) means the meeting is off even though the email body still reads as a live invitation; `current_start` reflects any reschedule. Trust this over the ICS in the body.
 8. For Google Docs: if `cues.has_suggestions` is true, the doc carries unresolved suggested edits (`suggestion_count` says how many, `suggestions_mode` says how they were treated). The default render is **accepted** — the suggester's intended text, with suggested deletions honoured. Don't treat that text as settled: the suggestions are still open in the Doc. See "Docs with suggested edits" under Workflow 1.
 9. If `cues.pointer` is present, the pasted URL named a specific spot — a tab, heading, slide or comment — and the pointer says which deposited artefact holds it (often with a `content.md` line number Read's offset consumes directly). **Start there**, not at the top of the document; that targeting is why the person pasted a decorated URL.
-10. For Gmail: `cues.people` places every own-domain participant from the staff directory (role, department, manager), and `cues.people_relations` names reporting lines across the thread — including the user's own ("Kate Waters is Sameer Modha's manager" on a thread from their boss). Read it before drafting a reply: who outranks whom changes the register. An address absent from `people` is external or directory-opted-out (`people_note` says so) — never report it as a failed lookup.
+10. For Gmail: `cues.people` places every own-domain participant from the staff directory (role, department, manager), and `cues.people_relations` names reporting lines across the thread — including the user's own ("Pat Example is Sam Example's manager" on a thread from their boss). Read it before drafting a reply: who outranks whom changes the register. An address absent from `people` is external or directory-opted-out (`people_note` says so) — never report it as a failed lookup.
 11. **Values printed inside chart images are in NO text extraction** — a census of real corporate PDFs measured ~3% of values as vision-only (chart data labels, watermark badges). PDF deposits extract embedded graphics as `crop_*.png` files, each announced by an eye-level anchor in content.md at its page (`<!-- exhibit: crop_p008_i012.png | page 8 | … -->`); thumbnailed slides carry the same anchor naming `slide_NN.png`. `grep 'exhibit:' content.md` lists every graphic. If the question hangs on a chart's numbers, Read the named crop (or the page/slide thumbnail for full-page graphics) before concluding the value is absent. Full contract: `references/deposit-structure.md`.
 
 `manifest.json` is still on disk for scripts/jq, but `cues` surfaces the actionable signals so you don't need to read it separately.
@@ -552,14 +552,14 @@ The pattern for all calendaring: the human states intent (who, roughly when, wha
 
 ```python
 # 1. Find the slot — busy blocks, common free slots, office days, one call
-do(operation="freebusy", attendees=["mat@itv.com", "jon@itv.com"],
+do(operation="freebusy", attendees=["ana@example.com", "raj@example.com"],
    time_min="2026-09-07", time_max="2026-09-11", duration=30)
 # → common_free: [...], people: {each: busy_blocks + office_days}
 
 # 2. Book it — first call previews (clash check included), nothing sends
 do(operation="create_event", title="LSM catch-up",
    time_min="2026-09-08T14:00", time_max="2026-09-08T14:30",
-   attendees=["mat@itv.com", "jon@itv.com"], meet=True)
+   attendees=["ana@example.com", "raj@example.com"], meet=True)
 # → preview: who gets invited, when, clashes. Show the user.
 
 # 3. One yes books the lot — confirm=True sends real invites immediately

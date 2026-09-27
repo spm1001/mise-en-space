@@ -3409,7 +3409,7 @@ class TestGmailUrlContextCues:
 
     SEARCH_URL = (
         "https://mail.google.com/mail/u/0/#search/"
-        "from%3AStefano.Figoni%40itv.com+lantern/FMfcgzQhVNfMCxqltVrdVFJgqxZhgmhM"
+        "from%3AAlex.Example%40itv.com+lantern/FMfcgzQhVNfMCxqltVrdVFJgqxZhgmhM"
     )
 
     def _fetch_result(self):
@@ -3423,7 +3423,7 @@ class TestGmailUrlContextCues:
                    return_value=self._fetch_result()):
             result = do_fetch(self.SEARCH_URL)
         assert result.cues["gmail_url_context"] == {
-            "search_query": "from:Stefano.Figoni@itv.com lantern"
+            "search_query": "from:Alex.Example@itv.com lantern"
         }
 
     def test_label_lands_in_cues(self):
@@ -3473,9 +3473,9 @@ class TestParticipantPlacement:
     """
 
     DIRECTORY = {
-        "kate.waters@itv.com": ("Kate Waters", None),
-        "rupert.coghlan@itv.com": ("Rupert Coghlan", "kate.waters@itv.com"),
-        "sameer.modha@itv.com": ("Sameer Modha", "kate.waters@itv.com"),
+        "pat.example@itv.com": ("Pat Example", None),
+        "robin.sample@itv.com": ("Robin Sample", "pat.example@itv.com"),
+        "sameer.modha@itv.com": ("Sameer Modha", "pat.example@itv.com"),
     }
 
     @pytest.fixture(autouse=True)
@@ -3505,10 +3505,10 @@ class TestParticipantPlacement:
     def _thread(self):
         msg = EmailMessage(
             message_id="m1",
-            from_address="Kate Waters <kate.waters@itv.com>",
+            from_address="Pat Example <pat.example@itv.com>",
             to_addresses=["Sameer Modha <sameer.modha@itv.com>"],
             cc_addresses=[
-                "Rupert Coghlan <rupert.coghlan@itv.com>", "ext@gmail.com",
+                "Robin Sample <robin.sample@itv.com>", "ext@gmail.com",
             ],
             body_text="",
         )
@@ -3527,16 +3527,16 @@ class TestParticipantPlacement:
     def test_colleagues_are_placed_and_the_user_is_not(self):
         participants, extras = self._placed()
         assert set(extras["people"]) == {
-            "kate.waters@itv.com", "rupert.coghlan@itv.com",
+            "pat.example@itv.com", "robin.sample@itv.com",
         }, "the user must never be placed to themselves"
         # The display list is unchanged by placement.
-        assert participants[0] == "Kate Waters <kate.waters@itv.com>"
+        assert participants[0] == "Pat Example <pat.example@itv.com>"
 
     def test_relations_cover_the_whole_set_including_the_user(self):
         _, extras = self._placed()
         rels = extras["people_relations"]
-        assert "Kate Waters is Rupert Coghlan's manager" in rels
-        assert "Kate Waters is Sameer Modha's manager" in rels, (
+        assert "Pat Example is Robin Sample's manager" in rels
+        assert "Pat Example is Sameer Modha's manager" in rels, (
             "the user's own profile joins the relation arithmetic — a thread "
             "with their boss on it must say so by name"
         )
@@ -3544,7 +3544,7 @@ class TestParticipantPlacement:
     def test_external_gap_is_an_honest_absence_note(self):
         _, extras = self._placed()
         assert extras["people_note"].startswith("2 of 3"), (
-            "kate + rupert placed, ext@gmail.com not, user excluded from the count"
+            "pat + robin placed, ext@gmail.com not, user excluded from the count"
         )
         assert "not a failed lookup" in extras["people_note"]
 
@@ -3579,12 +3579,12 @@ class TestParticipantPlacement:
         with patch.object(P, "get_person", self._fake_get_person(calls)), \
              patch.object(P, "current_user_email",
                           return_value="sameer.modha@itv.com"):
-            P.profiles_for(["Kate Waters <kate.waters@itv.com>"])  # search-shaped
+            P.profiles_for(["Pat Example <pat.example@itv.com>"])  # search-shaped
         warmed = len(calls)
         assert warmed == 1
 
         self._placed(calls)
-        assert calls.count("kate.waters@itv.com") == 1, (
+        assert calls.count("pat.example@itv.com") == 1, (
             "fetch re-asked the directory about an address search had already "
             "resolved — the shared cache is not holding"
         )
@@ -3620,31 +3620,31 @@ class TestParticipantPlacement:
             result = fetch_gmail("t1")
 
         assert set(result.cues["people"]) == {
-            "kate.waters@itv.com", "rupert.coghlan@itv.com",
+            "pat.example@itv.com", "robin.sample@itv.com",
         }
-        assert "Kate Waters is Rupert Coghlan's manager" in \
+        assert "Pat Example is Robin Sample's manager" in \
             result.cues["people_relations"]
         # And the pre-existing participants cue is intact beside it.
-        assert "Kate Waters <kate.waters@itv.com>" in result.cues["participants"]
+        assert "Pat Example <pat.example@itv.com>" in result.cues["participants"]
 
 
 class TestRelationsAmong:
     """Set-wise reporting lines — pure arithmetic, no calls, no quadratic noise."""
 
-    KATE = {"email": "kate@itv.com", "name": "Kate Waters"}
-    RUPERT = {"email": "rupert@itv.com", "name": "Rupert Coghlan",
-              "manager": "kate@itv.com"}
+    PAT = {"email": "pat@itv.com", "name": "Pat Example"}
+    ROBIN = {"email": "robin@itv.com", "name": "Robin Sample",
+              "manager": "pat@itv.com"}
     SAMEER = {"email": "sameer@itv.com", "name": "Sameer Modha",
-              "manager": "kate@itv.com"}
-    NEIL = {"email": "neil@itv.com", "name": "Neil Charles",
-            "manager": "kate@itv.com"}
+              "manager": "pat@itv.com"}
+    CHRIS = {"email": "chris@itv.com", "name": "Chris Sample",
+            "manager": "pat@itv.com"}
 
     def test_manager_in_set_yields_direct_lines_and_no_group_line(self):
         from tools.fetch.gmail_participants import relations_among
 
-        rels = relations_among([self.KATE, self.RUPERT, self.SAMEER])
-        assert "Kate Waters is Rupert Coghlan's manager" in rels
-        assert "Kate Waters is Sameer Modha's manager" in rels
+        rels = relations_among([self.PAT, self.ROBIN, self.SAMEER])
+        assert "Pat Example is Robin Sample's manager" in rels
+        assert "Pat Example is Sameer Modha's manager" in rels
         assert not any("same manager" in r for r in rels), (
             "when the shared manager is IN the set, the direct lines already "
             "say it — a group line on top is noise"
@@ -3653,13 +3653,13 @@ class TestRelationsAmong:
     def test_shared_manager_outside_the_set_groups_to_one_line(self):
         from tools.fetch.gmail_participants import relations_among
 
-        rels = relations_among([self.RUPERT, self.SAMEER, self.NEIL])
+        rels = relations_among([self.ROBIN, self.SAMEER, self.CHRIS])
         assert rels == [
-            "Rupert Coghlan, Sameer Modha and Neil Charles report to the "
+            "Robin Sample, Sameer Modha and Chris Sample report to the "
             "same manager"
         ], "three teammates are ONE fact, not three pairwise lines"
 
     def test_no_management_structure_means_no_lines(self):
         from tools.fetch.gmail_participants import relations_among
 
-        assert relations_among([self.KATE, {"email": "z@itv.com", "name": "Z"}]) == []
+        assert relations_among([self.PAT, {"email": "z@itv.com", "name": "Z"}]) == []

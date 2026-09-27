@@ -27,16 +27,21 @@ class LaunchSelection(unittest.TestCase):
     def register(self, key, paths):
         self.registry.write_text(json.dumps({"plugins": {key: [{"scope": "user", "installPath": str(path)} for path in paths]}}))
 
+    def kit(self, path):
+        # The kit fold (bds-jakemi): mise is the `mise` component of batterie@batterie.
+        self.package(f"{path}/mise", "mise")
+        return self.root / path
+
     def test_registry_update_changes_selected_version(self):
-        first = self.package("one", "mise")
-        second = self.package("two", "mise")
-        self.register("mise@batterie", [first])
-        self.assertEqual(resolve("mise", self.registry)[0], first)
-        self.register("mise@batterie", [second])
-        self.assertEqual(resolve("mise", self.registry)[0], second)
+        first = self.kit("one")
+        second = self.kit("two")
+        self.register("batterie@batterie", [first])
+        self.assertEqual(resolve("mise", self.registry)[0], first / "mise")
+        self.register("batterie@batterie", [second])
+        self.assertEqual(resolve("mise", self.registry)[0], second / "mise")
 
     def test_home_never_falls_back_to_itv(self):
-        self.register("mise@batterie", [self.package("itv", "mise")])
+        self.register("batterie@batterie", [self.kit("itv")])
         with self.assertRaisesRegex(ValueError, "found 0"):
             resolve("mise-home", self.registry)
 
@@ -46,8 +51,13 @@ class LaunchSelection(unittest.TestCase):
             resolve("mise-home", self.registry)
 
     def test_ambiguous_user_install_is_rejected(self):
-        self.register("mise@batterie", [self.package("one", "mise"), self.package("two", "mise")])
+        self.register("batterie@batterie", [self.kit("one"), self.kit("two")])
         with self.assertRaisesRegex(ValueError, "found 2"):
+            resolve("mise", self.registry)
+
+    def test_prefold_mise_install_is_not_the_kit(self):
+        self.register("mise@batterie", [self.package("old", "mise")])
+        with self.assertRaisesRegex(ValueError, "found 0"):
             resolve("mise", self.registry)
 
     def test_caller_identity_overrides_are_removed_without_mutating_caller(self):

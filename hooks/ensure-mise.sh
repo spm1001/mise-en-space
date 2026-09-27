@@ -58,11 +58,14 @@ if [ -f "$_PLUGIN_ROOT/instructions.md" ]; then
     # AND its shard is on disk. Either missing (mise uninstalled, or its hook
     # not yet run on a fresh machine), this flavour writes its own as before, so
     # the text is never absent — the worst case is one session carrying both.
+    # Since the kit fold (bds-jakemi) the work flavour is registered as
+    # batterie@batterie, so either key counts; the shard-on-disk test beside
+    # it keeps a pre-fold batterie without mise from counting.
     # The literal "mise" below survives the flavour transform, which rewrites
     # *.md/*.py only (see the routing-rule note further down).
     _REG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json"
     if [ "$NAME" != "mise" ] && [ -f "$RULES_DIR/mise.md" ] \
-       && grep -q '"mise@' "$_REG" 2>/dev/null; then
+       && grep -qE '"mise@|"batterie@batterie"' "$_REG" 2>/dev/null; then
         rm -f "$RULES_DEST"
     else
     # Robust write via temp+mv: a stale entry may be a SYMLINK from an older
@@ -96,7 +99,7 @@ if [ -f "$_PLUGIN_ROOT/instructions.md" ]; then
         printf 'Reach for whichever matches where the content lives — only the flavours whose '
         printf 'tools are present in this session are installed.\n\n'
         printf '**Matching the tool names.** Under the plugin install — the normal case — the '
-        printf 'harness prefixes them `mcp__plugin_mise_mise__` and '
+        printf 'harness prefixes them `mcp__plugin_batterie_mise__` and '
         printf '`mcp__plugin_mise-home_mise-home__` (so `…__search`, `…__fetch`, `…__do`); '
         printf 'wired as a bare MCP server instead, the `plugin_<name>_` part is absent. '
         printf 'Match on the server name INSIDE the tool name rather than on a fixed prefix — '
