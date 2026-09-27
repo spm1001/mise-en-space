@@ -26,6 +26,11 @@ shipped_in <commit>   # first suite version whose vendored mise contains it; emp
 # Both -C flags are load-bearing: without them "not shipped" and "wrong directory" print identically (cold read, 2026-09-17).
 ```
 
+## 2026-09-27 (mise-janago)
+
+### Fixed
+- **A Gmail search result's `date` now reads the same as the fetch's Date line** — UTC with a `Z`, minute resolution (`2026-09-23 11:41Z`), from the fetch's own formatter. It was `isoformat()` in the sender's offset, so one message read as two clock times across two calls (13:41+02:00 in search, 11:41Z in fetch). The field's shape changes; the two consumers named on the card were checked — glaneur reads the dataclass datetime through the library, not this string, and Cornichon does not read it.
+
 ## 2026-09-27 (mise-lopune)
 
 ### Fixed

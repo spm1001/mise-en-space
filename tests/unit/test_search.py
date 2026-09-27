@@ -162,7 +162,7 @@ class TestFormatGmailResult:
 
         assert formatted["thread_id"] == "thread456"
         assert formatted["subject"] == "Weekly Update"
-        assert formatted["date"] == "2026-02-01T09:00:00"
+        assert formatted["date"] == "2026-02-01 09:00Z"  # naive = UTC, as fetch reads it (mise-janago)
         assert formatted["from"] == "alice@example.com"
         assert formatted["message_count"] == 3
         assert formatted["has_attachments"] is True

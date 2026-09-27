@@ -8,6 +8,7 @@ under the module-size ceiling. Moved unchanged from search.py (mise-jefaki).
 from typing import Any
 
 from adapters.gmail import _is_own_address
+from extractors.gmail import format_message_date
 from models import CommentActivity, DriveSearchResult, GmailSearchResult
 from validation import gmail_thread_web_url
 
@@ -41,7 +42,9 @@ def format_gmail_result(result: GmailSearchResult) -> dict[str, Any]:
         "thread_id": result.thread_id,
         "subject": result.subject,
         "snippet": result.snippet,  # drawn from the LATEST message
-        "date": result.date.isoformat() if result.date else None,
+        # The fetch Date line's own stamp (UTC, Z), not the sender's offset —
+        # one message used to read as two clock times across search and fetch (mise-janago).
+        "date": format_message_date(result.date) if result.date else None,
         "from": result.from_address,  # thread ORIGINATOR — see last_sender for the latest voice
         "last_sender": result.last_sender,
         "from_me": result.from_me,  # None = identity unresolved, not "someone else"
