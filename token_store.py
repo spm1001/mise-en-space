@@ -17,7 +17,7 @@ Guest mode also means persist-nothing: store_to_keychain is a no-op, so
 neither auth flows nor identity enrichment can clobber the user's own
 mise Keychain entry with the caller's (differently-scoped) token.
 
-OAuth-client seam (mise-nujina): with MISE_OAUTH_CLIENT and/or MISE_DATA_DIR
+OAuth-client seam (mise-nujina): with MISE_EN_SPACE_OAUTH_CLIENT and/or MISE_EN_SPACE_DATA_DIR
 set, the Keychain entry is keyed by the supplied client, an empty store adopts
 a pre-seam token minted by that same client (a copy — the original stays), and
 a token minted by any other client is refused. Neither set: unchanged.
@@ -197,7 +197,7 @@ def _has_keychain() -> bool:
 def keychain_service() -> str:
     """The Keychain service this process stores its token under.
 
-    A client supplied from outside (MISE_OAUTH_CLIENT) keys the entry by its
+    A client supplied from outside (MISE_EN_SPACE_OAUTH_CLIENT) keys the entry by its
     client_id: one engine serving two Workspaces on one Mac must not share a
     single entry, and the flavour-renamed constant only separates builds, not
     configurations. Unset, it is the flavour's pre-seam service unchanged.
@@ -295,8 +295,8 @@ def resolve_token_path(fallback_path: Path) -> Path:
     1. macOS Keychain → materialize to fallback_path
     2. fallback_path (typically plugin data dir or package root)
     3. _PACKAGE_ROOT/token.json (legacy — versioned plugin cache)
-    4. Only when the OAuth-client seam is in use (MISE_OAUTH_CLIENT or
-       MISE_DATA_DIR set): a pre-seam flavour store holding a token minted
+    4. Only when the OAuth-client seam is in use (MISE_EN_SPACE_OAUTH_CLIENT or
+       MISE_EN_SPACE_DATA_DIR set): a pre-seam flavour store holding a token minted
        by the configured client — see find_pre_seam_token (mise-nujina)
 
     If a token is found at a legacy location but not at fallback_path,
@@ -413,7 +413,7 @@ def _refuse_foreign_token(path: Path) -> None:
             f"{minted_by.split('-')[0]}…, but the configured client is "
             f"{want.split('-')[0]}… — two different Workspace identities, and "
             "mise will not act as one under the other's name. Point "
-            "MISE_DATA_DIR at this client's own store, or re-authenticate: "
+            "MISE_EN_SPACE_DATA_DIR at this client's own store, or re-authenticate: "
             'call mise.do(operation="setup_oauth", force=True).'
         )
 

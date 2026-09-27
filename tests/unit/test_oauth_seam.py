@@ -1,7 +1,7 @@
 """The OAuth-client seam (mise-nujina, W4 of the estate rebuild).
 
 One engine, told from outside which OAuth client to sign in with
-(MISE_OAUTH_CLIENT) and where its token lives (MISE_DATA_DIR). Three
+(MISE_EN_SPACE_OAUTH_CLIENT) and where its token lives (MISE_EN_SPACE_DATA_DIR). Three
 promises are pinned here:
 
 - Both unset is the pre-seam behaviour: the bundled client, the flavour's
@@ -98,13 +98,13 @@ class TestClientResolution:
 
     def test_env_client_wins(self, tmp_path, monkeypatch):
         f = _client_file(tmp_path / "home.json", HOME_ID)
-        monkeypatch.setenv("MISE_OAUTH_CLIENT", str(f))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(f))
         assert oauth_client_file() == f
         assert configured_client_id() == HOME_ID
 
     def test_named_but_missing_client_refuses_without_fallback(self, tmp_path, monkeypatch):
         """The bundled client belongs to a different Workspace — never fall through."""
-        monkeypatch.setenv("MISE_OAUTH_CLIENT", str(tmp_path / "absent.json"))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(tmp_path / "absent.json"))
         with pytest.raises(ClientNotConfigured, match="will not fall back"):
             oauth_client_file()
         with pytest.raises(ClientNotConfigured):
@@ -113,13 +113,13 @@ class TestClientResolution:
     def test_named_client_without_client_id_refuses(self, tmp_path, monkeypatch):
         f = tmp_path / "bad.json"
         f.write_text(json.dumps({"type": "authorized_user"}))
-        monkeypatch.setenv("MISE_OAUTH_CLIENT", str(f))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(f))
         with pytest.raises(ClientNotConfigured, match="client_id"):
             oauth_client_file()
 
     def test_engine_with_no_client_is_not_configured(self, tmp_path):
         with patch("oauth_config.BUNDLED_CLIENT_FILE", tmp_path / "none.json"):
-            with pytest.raises(ClientNotConfigured, match="MISE_OAUTH_CLIENT"):
+            with pytest.raises(ClientNotConfigured, match="MISE_EN_SPACE_OAUTH_CLIENT"):
                 oauth_client_file()
             assert configured_client_id() is None
 
@@ -141,13 +141,23 @@ class TestDataDir:
             ".claude", "plugins", "data", "mise-batterie-de-savoir")
 
     def test_env_dir_wins(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("MISE_DATA_DIR", str(tmp_path / "kit-data"))
+        monkeypatch.setenv("MISE_EN_SPACE_DATA_DIR", str(tmp_path / "kit-data"))
         assert resolve_data_dir() == tmp_path / "kit-data"
 
     def test_relative_dir_refuses(self, monkeypatch):
-        monkeypatch.setenv("MISE_DATA_DIR", "relative/dir")
+        monkeypatch.setenv("MISE_EN_SPACE_DATA_DIR", "relative/dir")
         with pytest.raises(ValueError, match="absolute"):
             resolve_data_dir()
+
+    def test_jdx_mise_data_dir_does_not_engage_the_seam(self, tmp_path, monkeypatch, no_keychain):
+        """MISE_DATA_DIR is jdx/mise's own documented override — the unrelated
+        version manager's users export it. It must not move mise's token store
+        or turn adoption on (the short name did, essayeur 2026-09-27)."""
+        monkeypatch.setenv("MISE_DATA_DIR", str(tmp_path / "jdx-mise-tools"))
+        monkeypatch.setenv("MISE_OAUTH_CLIENT", str(tmp_path / "absent.json"))
+        assert resolve_data_dir() == oauth_config._DEFAULT_DATA_DIR
+        assert oauth_client_file() == oauth_config.BUNDLED_CLIENT_FILE
+        assert token_store._seam_in_use() is False
 
     def test_pre_seam_dirs_name_both_flavours(self):
         names = [d.name for d in oauth_config.PRE_SEAM_DATA_DIRS]
@@ -159,9 +169,9 @@ class TestCliEnvPrefix:
         assert cli_env_prefix() == ""
 
     def test_carries_both_values_shell_quoted(self, monkeypatch):
-        monkeypatch.setenv("MISE_OAUTH_CLIENT", "/k it/client.json")
-        monkeypatch.setenv("MISE_DATA_DIR", "/data")
-        assert cli_env_prefix() == "MISE_OAUTH_CLIENT='/k it/client.json' MISE_DATA_DIR=/data "
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", "/k it/client.json")
+        monkeypatch.setenv("MISE_EN_SPACE_DATA_DIR", "/data")
+        assert cli_env_prefix() == "MISE_EN_SPACE_OAUTH_CLIENT='/k it/client.json' MISE_EN_SPACE_DATA_DIR=/data "
 
 
 class TestKeychainService:
@@ -169,7 +179,7 @@ class TestKeychainService:
         assert token_store.keychain_service() == token_store.KEYCHAIN_SERVICE
 
     def test_supplied_client_keys_the_entry(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("MISE_OAUTH_CLIENT", str(_client_file(tmp_path / "c.json", HOME_ID)))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(_client_file(tmp_path / "c.json", HOME_ID)))
         assert token_store.keychain_service() == f"{token_store.KEYCHAIN_SERVICE}:{HOME_ID}"
 
     def test_pre_seam_services_name_both_flavours(self):
@@ -185,9 +195,9 @@ class TestAdoption:
     def test_empty_store_adopts_the_matching_client_token(
         self, tmp_path, monkeypatch, no_keychain, pre_seam, caplog
     ):
-        monkeypatch.setenv("MISE_OAUTH_CLIENT", str(_client_file(tmp_path / "home.json", HOME_ID)))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(_client_file(tmp_path / "home.json", HOME_ID)))
         store = tmp_path / "kit-data"
-        monkeypatch.setenv("MISE_DATA_DIR", str(store))
+        monkeypatch.setenv("MISE_EN_SPACE_DATA_DIR", str(store))
         target = store / "token.json"
 
         with caplog.at_level(logging.WARNING, logger="token_store"):
@@ -202,17 +212,17 @@ class TestAdoption:
         assert "Adopted the pre-seam token" in caplog.text
 
     def test_itv_client_adopts_the_itv_token(self, tmp_path, monkeypatch, no_keychain, pre_seam):
-        monkeypatch.setenv("MISE_OAUTH_CLIENT", str(_client_file(tmp_path / "itv.json", ITV_ID)))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(_client_file(tmp_path / "itv.json", ITV_ID)))
         target = tmp_path / "kit-data" / "token.json"
-        monkeypatch.setenv("MISE_DATA_DIR", str(target.parent))
+        monkeypatch.setenv("MISE_EN_SPACE_DATA_DIR", str(target.parent))
         token_store.resolve_token_path(target)
         assert json.loads(target.read_text())["refresh_token"] == "1//itv"
 
     def test_no_matching_client_adopts_nothing(self, tmp_path, monkeypatch, no_keychain, pre_seam):
         other = "333333333333-other.apps.googleusercontent.com"
-        monkeypatch.setenv("MISE_OAUTH_CLIENT", str(_client_file(tmp_path / "o.json", other)))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(_client_file(tmp_path / "o.json", other)))
         target = tmp_path / "kit-data" / "token.json"
-        monkeypatch.setenv("MISE_DATA_DIR", str(target.parent))
+        monkeypatch.setenv("MISE_EN_SPACE_DATA_DIR", str(target.parent))
         assert token_store.resolve_token_path(target) == target
         assert not target.exists()
         assert token_store.has_token(target) is False
@@ -237,22 +247,22 @@ class TestAdoption:
         monkeypatch.setattr(
             "oauth_config.BUNDLED_CLIENT_FILE", _client_file(tmp_path / "bundled.json", ITV_ID))
         target = tmp_path / "kit-data" / "token.json"
-        monkeypatch.setenv("MISE_DATA_DIR", str(target.parent))
+        monkeypatch.setenv("MISE_EN_SPACE_DATA_DIR", str(target.parent))
         token_store.resolve_token_path(target)
         assert json.loads(target.read_text())["client_id"] == ITV_ID
 
     def test_has_token_counts_an_adoptable_token(self, tmp_path, monkeypatch, no_keychain, pre_seam):
         """Else setup_oauth would send a signed-in user through consent again."""
-        monkeypatch.setenv("MISE_OAUTH_CLIENT", str(_client_file(tmp_path / "home.json", HOME_ID)))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(_client_file(tmp_path / "home.json", HOME_ID)))
         target = tmp_path / "kit-data" / "token.json"
-        monkeypatch.setenv("MISE_DATA_DIR", str(target.parent))
+        monkeypatch.setenv("MISE_EN_SPACE_DATA_DIR", str(target.parent))
         assert token_store.has_token(target) is True
         assert not target.exists()  # presence check only; adoption happens on load
 
     def test_keychain_pre_seam_service_is_adopted_on_macos(self, tmp_path, monkeypatch, pre_seam):
-        monkeypatch.setenv("MISE_OAUTH_CLIENT", str(_client_file(tmp_path / "home.json", HOME_ID)))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(_client_file(tmp_path / "home.json", HOME_ID)))
         target = tmp_path / "kit-data" / "token.json"
-        monkeypatch.setenv("MISE_DATA_DIR", str(target.parent))
+        monkeypatch.setenv("MISE_EN_SPACE_DATA_DIR", str(target.parent))
         entries = {"mise-home-oauth-token": _token(HOME_ID, "keychain-home")}
         monkeypatch.setattr("token_store.PRE_SEAM_KEYCHAIN_SERVICES", REAL_PRE_SEAM_SERVICES)
         with patch("token_store.get_from_keychain", side_effect=lambda service=None: entries.get(service)):
@@ -262,18 +272,18 @@ class TestAdoption:
 
 class TestForeignTokenRefused:
     def test_token_from_another_client_refuses(self, tmp_path, monkeypatch, no_keychain):
-        monkeypatch.setenv("MISE_OAUTH_CLIENT", str(_client_file(tmp_path / "itv.json", ITV_ID)))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(_client_file(tmp_path / "itv.json", ITV_ID)))
         target = tmp_path / "kit-data" / "token.json"
         target.parent.mkdir()
         target.write_text(_token(HOME_ID, "home"))
-        monkeypatch.setenv("MISE_DATA_DIR", str(target.parent))
+        monkeypatch.setenv("MISE_EN_SPACE_DATA_DIR", str(target.parent))
         with pytest.raises(FileNotFoundError, match="two different Workspace identities") as e:
             token_store.resolve_token_path(target)
         assert "222222222222" in str(e.value) and "111111111111" in str(e.value)
         assert "setup_oauth" in str(e.value)
 
     def test_matching_token_passes(self, tmp_path, monkeypatch, no_keychain):
-        monkeypatch.setenv("MISE_OAUTH_CLIENT", str(_client_file(tmp_path / "itv.json", ITV_ID)))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(_client_file(tmp_path / "itv.json", ITV_ID)))
         target = tmp_path / "token.json"
         target.write_text(_token(ITV_ID, "itv"))
         assert token_store.resolve_token_path(target) == target
@@ -296,8 +306,8 @@ FAKE_URL = "https://accounts.google.com/o/oauth2/auth?state=st&client_id=x"
 class TestSetupOauthUsesTheSuppliedClient:
     def test_mints_with_the_supplied_client_and_prints_the_env(self, tmp_path, monkeypatch):
         client = _client_file(tmp_path / "home.json", HOME_ID)
-        monkeypatch.setenv("MISE_OAUTH_CLIENT", str(client))
-        monkeypatch.setenv("MISE_DATA_DIR", str(tmp_path / "kit-data"))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(client))
+        monkeypatch.setenv("MISE_EN_SPACE_DATA_DIR", str(tmp_path / "kit-data"))
         monkeypatch.setattr("tools.setup_oauth.TOKEN_FILE", tmp_path / "kit-data" / "token.json")
         (tmp_path / "kit-data").mkdir()
         from tools.setup_oauth import do_setup_oauth
@@ -311,17 +321,17 @@ class TestSetupOauthUsesTheSuppliedClient:
             result = do_setup_oauth()
         assert mint.call_args.kwargs["credentials_path"] == str(client)
         assert result["cues"]["oauth_client"] == str(client)
-        assert f"MISE_OAUTH_CLIENT={client}" in result["message"]
-        assert f"MISE_DATA_DIR={tmp_path / 'kit-data'}" in result["cues"]["fallback"]
+        assert f"MISE_EN_SPACE_OAUTH_CLIENT={client}" in result["message"]
+        assert f"MISE_EN_SPACE_DATA_DIR={tmp_path / 'kit-data'}" in result["cues"]["fallback"]
         assert "uv run python -m auth --code" in result["message"]
 
     def test_broken_supplied_client_refuses_before_minting(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("MISE_OAUTH_CLIENT", str(tmp_path / "absent.json"))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(tmp_path / "absent.json"))
         from tools.setup_oauth import do_setup_oauth
         with patch("tools.setup_oauth.get_auth_url") as mint:
             result = do_setup_oauth()
         assert result["error"] is True and result["kind"] == "invalid_input"
-        assert "MISE_OAUTH_CLIENT" in result["message"]
+        assert "MISE_EN_SPACE_OAUTH_CLIENT" in result["message"]
         assert "Reinstall" not in result["message"]  # the kit named it; reinstalling mise won't help
         mint.assert_not_called()
 
@@ -329,7 +339,7 @@ class TestSetupOauthUsesTheSuppliedClient:
 class TestCliRefusesAnUnconfiguredClient:
     def test_exits_before_any_oauth_call(self, tmp_path, monkeypatch, capsys):
         import auth
-        monkeypatch.setenv("MISE_OAUTH_CLIENT", str(tmp_path / "absent.json"))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(tmp_path / "absent.json"))
         monkeypatch.setattr("sys.argv", ["auth"])
         with (
             patch("auth.get_auth_url") as mint,
@@ -338,6 +348,6 @@ class TestCliRefusesAnUnconfiguredClient:
         ):
             auth.main()
         assert e.value.code == 1
-        assert "MISE_OAUTH_CLIENT" in capsys.readouterr().out
+        assert "MISE_EN_SPACE_OAUTH_CLIENT" in capsys.readouterr().out
         mint.assert_not_called()
         exchange.assert_not_called()

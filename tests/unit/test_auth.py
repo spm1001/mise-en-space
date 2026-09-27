@@ -14,7 +14,7 @@ from oauth_config import BUNDLED_CLIENT_FILE, can_open_browser
 
 
 class TestCredentialResolution:
-    """The bundled credentials.json is the client when MISE_OAUTH_CLIENT is unset."""
+    """The bundled credentials.json is the client when MISE_EN_SPACE_OAUTH_CLIENT is unset."""
 
     def test_credentials_json_exists(self):
         """credentials.json ships with the repo — new users don't need gcloud."""

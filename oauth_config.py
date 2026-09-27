@@ -4,7 +4,7 @@ OAuth Configuration - Single Source of Truth
 All OAuth parameters defined here. Do not duplicate elsewhere.
 Also holds port_is_free() — the callback-port pre-check shared by the
 MCP setup_oauth tool and the auth.py CLI — and the OAuth-client seam
-(MISE_OAUTH_CLIENT / MISE_DATA_DIR) that lets a kit tell the engine which
+(MISE_EN_SPACE_OAUTH_CLIENT / MISE_EN_SPACE_DATA_DIR) that lets a kit tell the engine which
 Workspace it serves.
 """
 
@@ -213,21 +213,26 @@ def ambient_scopes() -> list[str]:
 # told to the engine from OUTSIDE, so one engine serves any Workspace and the
 # client lives in each kit's wiring rather than in the engine:
 #
-#   MISE_OAUTH_CLIENT  path to a Google installed-app client JSON
-#   MISE_DATA_DIR      absolute directory for token.json, PKCE state, setup log
+#   MISE_EN_SPACE_OAUTH_CLIENT  path to a Google installed-app client JSON
+#   MISE_EN_SPACE_DATA_DIR      absolute directory for token.json, PKCE state, setup log
 #
 # Both unset is the pre-seam behaviour byte for byte: the credentials.json
 # bundled beside the engine, and the flavour's own data dir below (the flavour
 # transform rewrites its name per build). A kit wires them in its mcpServers
 # entry, e.g.
-#   "env": {"MISE_OAUTH_CLIENT": "${CLAUDE_PLUGIN_ROOT}/oauth-client.json",
-#           "MISE_DATA_DIR": "${CLAUDE_PLUGIN_DATA}"}
+#   "env": {"MISE_EN_SPACE_OAUTH_CLIENT": "${CLAUDE_PLUGIN_ROOT}/oauth-client.json",
+#           "MISE_EN_SPACE_DATA_DIR": "${CLAUDE_PLUGIN_DATA}"}
 # — explicitly. The engine never reads CLAUDE_PLUGIN_DATA itself: Claude Code
 # exports it to the MCP server but never to the Bash tool, so an implicit read
 # would put the server's token in one store and a `--code` re-auth run from
 # Bash in another. cli_env_prefix() carries both values into that command.
-CLIENT_ENV = 'MISE_OAUTH_CLIENT'
-DATA_DIR_ENV = 'MISE_DATA_DIR'
+#
+# The MISE_EN_SPACE_ prefix is deliberate: MISE_DATA_DIR belongs to jdx/mise,
+# the unrelated runtime-version manager, whose docs tell users to export it —
+# so the short name would have switched this seam on for anyone using that
+# tool, and sent their token into its tools directory (essayeur, 2026-09-27).
+CLIENT_ENV = 'MISE_EN_SPACE_OAUTH_CLIENT'
+DATA_DIR_ENV = 'MISE_EN_SPACE_DATA_DIR'
 
 # The client that ships beside the engine today. The flavour transform swaps
 # this file per build; an engine that ships none is "not configured".
@@ -239,7 +244,7 @@ class ClientNotConfigured(ValueError):
 
 
 def client_from_env() -> bool:
-    """True when the OAuth client was supplied from outside (MISE_OAUTH_CLIENT)."""
+    """True when the OAuth client was supplied from outside (MISE_EN_SPACE_OAUTH_CLIENT)."""
     return bool(os.environ.get(CLIENT_ENV))
 
 
@@ -267,7 +272,7 @@ def read_client_id(path: Path) -> str:
 def oauth_client_file() -> Path:
     """The OAuth client mise authenticates with, validated.
 
-    MISE_OAUTH_CLIENT wins and is authoritative: a named file that is missing
+    MISE_EN_SPACE_OAUTH_CLIENT wins and is authoritative: a named file that is missing
     or malformed refuses rather than falling back to the bundled client,
     because the bundled client is a different Workspace's — falling through
     would be a silent identity switch (the same rule as MISE_TOKEN_PATH).
@@ -287,7 +292,7 @@ def oauth_client_file() -> Path:
         read_client_id(BUNDLED_CLIENT_FILE)
         return BUNDLED_CLIENT_FILE
     raise ClientNotConfigured(
-        "mise has no OAuth client configured. Set MISE_OAUTH_CLIENT to the "
+        "mise has no OAuth client configured. Set MISE_EN_SPACE_OAUTH_CLIENT to the "
         "path of a Google installed-app client JSON — the Workspace's own "
         "setup (its kit wiring) provides it. An existing token keeps working "
         "meanwhile; only signing in needs the client."
@@ -297,7 +302,7 @@ def oauth_client_file() -> Path:
 def configured_client_id() -> str | None:
     """client_id of the configured client, or None when none is configured.
 
-    A client named in MISE_OAUTH_CLIENT that fails to load raises: the
+    A client named in MISE_EN_SPACE_OAUTH_CLIENT that fails to load raises: the
     operator asked for a specific identity, and None would read as
     'no preference'.
     """
@@ -326,7 +331,7 @@ def cli_env_prefix() -> str:
 # or Cowork, so this is always persistent across sessions.
 _DEFAULT_DATA_DIR = Path.home() / '.claude' / 'plugins' / 'data' / 'mise-batterie-de-savoir'
 
-# Where each flavour kept its token before the seam. An empty MISE_DATA_DIR
+# Where each flavour kept its token before the seam. An empty MISE_EN_SPACE_DATA_DIR
 # adopts from these — by COPY, and only a token minted by the configured
 # client (token_store) — so moving a Workspace onto kit wiring costs no
 # re-consent, and older plugin versions still reading the old store keep
@@ -340,7 +345,7 @@ PRE_SEAM_DATA_DIRS = tuple(dict.fromkeys((
 
 
 def resolve_data_dir() -> Path:
-    """MISE_DATA_DIR when set (must be absolute), else the flavour's own dir."""
+    """MISE_EN_SPACE_DATA_DIR when set (must be absolute), else the flavour's own dir."""
     raw = os.environ.get(DATA_DIR_ENV)
     if not raw:
         return _DEFAULT_DATA_DIR
@@ -356,7 +361,7 @@ def resolve_data_dir() -> Path:
 
 
 def data_dir_from_env() -> bool:
-    """True when the token store was supplied from outside (MISE_DATA_DIR)."""
+    """True when the token store was supplied from outside (MISE_EN_SPACE_DATA_DIR)."""
     return bool(os.environ.get(DATA_DIR_ENV))
 
 

@@ -139,11 +139,11 @@ fi
 #    claim was a lie that read as a defect (mise-tatego; coordinates with the
 #    token_store/setup_oauth honesty in mise-petaga).
 #    Quiet until configured (mise-nujina): an engine that ships no OAuth
-#    client and was handed none (MISE_OAUTH_CLIENT) has not been switched on
+#    client and was handed none (MISE_EN_SPACE_OAUTH_CLIENT) has not been switched on
 #    for any Workspace, so a missing token is not news — say nothing. The
 #    kit that supplies the client owns that nag.
 UNCONFIGURED=false
-if [ ! -f "$_PLUGIN_ROOT/credentials.json" ] && [ -z "${MISE_OAUTH_CLIENT:-}" ]; then
+if [ ! -f "$_PLUGIN_ROOT/credentials.json" ] && [ -z "${MISE_EN_SPACE_OAUTH_CLIENT:-}" ]; then
     UNCONFIGURED=true
 fi
 HAS_TOKEN=false
@@ -153,9 +153,17 @@ if command -v security &>/dev/null; then
     security find-generic-password -s "mise-oauth-token" -w &>/dev/null && HAS_TOKEN=true
 fi
 # Plugin data dir (version-stable, where token_store.py actually writes on Linux)
-# — or MISE_DATA_DIR when the session carries the seam's store (oauth_config).
-PLUGIN_DATA_DIR="${MISE_DATA_DIR:-$HOME/.claude/plugins/data/mise-batterie-de-savoir}"
+# — or MISE_EN_SPACE_DATA_DIR when the session carries the seam's store (oauth_config).
+# The flavour's own dir name is kept separately: it is what the sibling check
+# below must skip, whatever store the seam points at.
+OWN_DEFAULT_DATA_DIR="$HOME/.claude/plugins/data/mise-batterie-de-savoir"
+PLUGIN_DATA_DIR="${MISE_EN_SPACE_DATA_DIR:-$OWN_DEFAULT_DATA_DIR}"
 if [ "$HAS_TOKEN" = false ] && [ -f "$PLUGIN_DATA_DIR/token.json" ]; then
+    HAS_TOKEN=true
+fi
+# An empty seam store is not "no token" while the flavour's own pre-seam store
+# holds one: the engine adopts from there on first load (token_store).
+if [ "$HAS_TOKEN" = false ] && [ -f "$OWN_DEFAULT_DATA_DIR/token.json" ]; then
     HAS_TOKEN=true
 fi
 # Legacy: plugin root (versioned cache dir)
@@ -166,7 +174,7 @@ fi
 if [ "$HAS_TOKEN" = false ] && [ "$UNCONFIGURED" = false ]; then
     # Is the OTHER flavour authed? If so, a missing token HERE is ADVISORY — the
     # user has a working mise, nothing is broken (the exact 2026-07-12 misread).
-    OWN_DATA="$(basename "$PLUGIN_DATA_DIR")"
+    OWN_DATA="$(basename "$OWN_DEFAULT_DATA_DIR")"
     SIBLING_AUTHED=false
     for _t in "$HOME"/.claude/plugins/data/mise*/token.json; do
         [ -e "$_t" ] || continue

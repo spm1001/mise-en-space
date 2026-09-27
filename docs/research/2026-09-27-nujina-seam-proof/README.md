@@ -8,14 +8,16 @@ Card: mise-pubata under mise-nujina (W4 of the estate rebuild). The claim: **one
 - `engine/` = the branch's tracked tree with `credentials.json` deleted — the engine ships no client.
 - `kits/mit/oauth-client.json` (the ITV client) and `kits/family/oauth-client.json` (the planetmodha client, read from the installed mise-home plugin) — the clients "from outside".
 - The two real pre-seam tokens copied (0600) into the throwaway's OLD locations, `~/.claude/plugins/data/mise-batterie-de-savoir/` and `~/.claude/plugins/data/mise-home/`. The kit stores (`kit-mit/`, `kit-family/`, standing in for `${CLAUDE_PLUGIN_DATA}`) start empty.
-- Every server spawned through `env -i` with `HOME=<throwaway>` and only `MISE_OAUTH_CLIENT` + `MISE_DATA_DIR`.
+- Every server spawned through `env -i` with `HOME=<throwaway>` and only `MISE_EN_SPACE_OAUTH_CLIENT` + `MISE_EN_SPACE_DATA_DIR`.
 
 The whole world, tokens included, was deleted after the run.
 
 ## What ran
 
-1. `proof.py` — speaks MCP to each server directly. Output: `proof-output.txt`, 14/14. It covers the no-wiring control, `setup_oauth` answering `already_authenticated` (no consent), a live Drive search answering as each identity, the adopted token's mode and client, the pre-seam store left byte-identical, the cross-wired refusal, the CLI's consent URL carrying each kit's client (print mode, never clicked), and the SessionStart hook silent-until-configured with its nag control.
+1. `proof.py` — speaks MCP to each server directly. Output: `proof-output.txt`, 15/15. It covers the no-wiring control, `setup_oauth` answering `already_authenticated` (no consent), a live Drive search answering as each identity, the adopted token's mode and client, the pre-seam store left byte-identical, the cross-wired refusal, the CLI's consent URL carrying each kit's client (print mode, never clicked), and the SessionStart hook: silent with no client, silent when an empty seam store will adopt the flavour's own old token, and nagging (the control) in a home with no token at all.
 2. A real Claude Code on the same home (`claude-vanilla nujina -- -p … --mcp-config mcp.json --strict-mcp-config`), kit stores reset first so it had to adopt again. Its transcript shows `mcp__mise__search` answering as `sameer.modha@itv.com` and `mcp__mise-home__search` as `sameer@planetmodha.com`, one Drive result each, with both kit tokens born during that run. Opus 5.5 on Vertex, 4 turns, $0.19.
+
+Both runs were repeated at 15:44–15:45 BST after the essayeur's one required fix — the variables were first named `MISE_OAUTH_CLIENT` / `MISE_DATA_DIR`, and `MISE_DATA_DIR` is jdx/mise's own documented override, so anyone using that tool would have switched the seam on by accident. The output here is the renamed run.
 
 ## Not covered
 

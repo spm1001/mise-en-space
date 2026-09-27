@@ -30,9 +30,9 @@ def _hermetic_credentials(monkeypatch, tmp_path):
         "MISE_TOKEN_PATH", str(tmp_path / "hermetic-absent-token.json")
     )
     # The OAuth-client seam (mise-nujina) is ambient too: a shell or MCP env
-    # carrying MISE_OAUTH_CLIENT / MISE_DATA_DIR must not steer a unit test.
-    monkeypatch.delenv("MISE_OAUTH_CLIENT", raising=False)
-    monkeypatch.delenv("MISE_DATA_DIR", raising=False)
+    # carrying MISE_EN_SPACE_OAUTH_CLIENT / MISE_EN_SPACE_DATA_DIR must not steer a unit test.
+    monkeypatch.delenv("MISE_EN_SPACE_OAUTH_CLIENT", raising=False)
+    monkeypatch.delenv("MISE_EN_SPACE_DATA_DIR", raising=False)
     # And its pre-seam stores point nowhere, so a broken seam guard can never
     # adopt the developer's REAL token into a test — green on a dev box, a
     # different world on CI. Found by a mutation control that reddened three

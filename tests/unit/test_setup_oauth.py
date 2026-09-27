@@ -93,7 +93,7 @@ class TestEarlyReturns:
     """Error branches before any flow is spawned."""
 
     def test_missing_credentials_json(self, tmp_token_file, tmp_path, monkeypatch):
-        monkeypatch.delenv("MISE_OAUTH_CLIENT", raising=False)
+        monkeypatch.delenv("MISE_EN_SPACE_OAUTH_CLIENT", raising=False)
         with patch("oauth_config.BUNDLED_CLIENT_FILE", tmp_path / "nope.json"):
             result = do_setup_oauth()
 

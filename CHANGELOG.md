@@ -28,7 +28,7 @@ shipped_in <commit>   # first suite version whose vendored mise contains it; emp
 
 ## 2026-09-27 (mise-pubata, under mise-nujina)
 
-- **The OAuth client and token store can be supplied from outside** — `MISE_OAUTH_CLIENT` (client JSON) and `MISE_DATA_DIR` (absolute store directory). Both unset keeps the bundled client, the flavour's data dir and its Keychain service, so the published flavours behave exactly as before.
+- **The OAuth client and token store can be supplied from outside** — `MISE_EN_SPACE_OAUTH_CLIENT` (client JSON) and `MISE_EN_SPACE_DATA_DIR` (absolute store directory). Both unset keeps the bundled client, the flavour's data dir and its Keychain service, so the published flavours behave exactly as before.
 - With the seam in use, an empty store adopts by copy a pre-seam token minted by the same client (no re-consent); a token minted by a different client refuses; a named-but-broken client refuses instead of falling back to the bundled one; the macOS Keychain entry is keyed per supplied client.
 - `setup_oauth`'s headless `--code` command now carries `cd <engine root> &&` and the `MISE_*` env, and `cues.oauth_client` names the client used. The SessionStart hook is silent for an engine with no client.
 - Removed: the GCP Secret Manager fallback in `auth.py` (`planetmodha-tools` / `aby-hemimi-credentials`, `--project`).

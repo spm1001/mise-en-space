@@ -3,8 +3,8 @@
 OAuth Authentication for mise-en-space.
 
 The OAuth client comes from oauth_config.oauth_client_file(): the file named
-by MISE_OAUTH_CLIENT, else the credentials.json bundled beside the engine.
-MISE_DATA_DIR, when set, chooses where the token lands (see oauth_config).
+by MISE_EN_SPACE_OAUTH_CLIENT, else the credentials.json bundled beside the engine.
+MISE_EN_SPACE_DATA_DIR, when set, chooses where the token lands (see oauth_config).
 
 Usage:
     uv run python -m auth                     # Print the auth URL to paste elsewhere,
@@ -14,7 +14,7 @@ Usage:
                                               #   URL without minting a second one (would orphan the PKCE verifier)
     uv run python -m auth --code URL          # Exchange the code / redirect URL from the print or tunnel flow
 
-Run it with the same MISE_OAUTH_CLIENT / MISE_DATA_DIR as the MCP server it is
+Run it with the same MISE_EN_SPACE_OAUTH_CLIENT / MISE_EN_SPACE_DATA_DIR as the MCP server it is
 authenticating — setup_oauth prints the exact command, env included.
 """
 

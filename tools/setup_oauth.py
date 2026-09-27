@@ -61,7 +61,7 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
     Returns:
         dict with status + url (inline fallback) + cues for the calling Claude.
     """
-    # Which OAuth client signs in: MISE_OAUTH_CLIENT from the kit's wiring,
+    # Which OAuth client signs in: MISE_EN_SPACE_OAUTH_CLIENT from the kit's wiring,
     # else the credentials.json bundled with the plugin (mise-nujina).
     try:
         client_file = oauth_client_file()

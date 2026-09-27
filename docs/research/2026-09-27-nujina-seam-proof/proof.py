@@ -2,7 +2,7 @@
 
 The engine at $VH/engine ships NO credentials.json. Each server is spawned
 through `env -i` with HOME=$VH (a claude-vanilla world) plus only the kit
-wiring: MISE_OAUTH_CLIENT and MISE_DATA_DIR. The pre-seam tokens sit at the
+wiring: MISE_EN_SPACE_OAUTH_CLIENT and MISE_EN_SPACE_DATA_DIR. The pre-seam tokens sit at the
 old per-flavour locations inside $VH; the kit data dirs start empty.
 """
 
@@ -81,7 +81,7 @@ async def main() -> int:
 
     # 1. Each kit: setup_oauth says already signed in, then a live Drive search answers.
     for name, kit in KITS.items():
-        wiring = {"MISE_OAUTH_CLIENT": str(kit["client"]), "MISE_DATA_DIR": str(kit["data"])}
+        wiring = {"MISE_EN_SPACE_OAUTH_CLIENT": str(kit["client"]), "MISE_EN_SPACE_DATA_DIR": str(kit["data"])}
         setup, search = await call(wiring, [
             ("do", {"operation": "setup_oauth", "base_path": str(VH / "work")}),
             ("search", {"sources": ["drive"], "type": "doc", "max_results": 2,
@@ -104,7 +104,7 @@ async def main() -> int:
 
     # 2. Control: cross-wired kit (family client over the MIT store) refuses.
     [r] = await call(
-        {"MISE_OAUTH_CLIENT": str(KITS["mise-home"]["client"]), "MISE_DATA_DIR": str(KITS["mise"]["data"])},
+        {"MISE_EN_SPACE_OAUTH_CLIENT": str(KITS["mise-home"]["client"]), "MISE_EN_SPACE_DATA_DIR": str(KITS["mise"]["data"])},
         [("search", {"sources": ["drive"], "type": "doc", "max_results": 1, "base_path": str(VH / "work")})])
     blob = json.dumps(r)
     check("cross-wired kit (family client, MIT store) refuses to act as the other Workspace",
@@ -114,22 +114,33 @@ async def main() -> int:
     for name, kit in KITS.items():
         cli_store = VH / "tmp" / f"cli-{name}"
         p = subprocess.run(
-            ["/usr/bin/env", *env_args({"MISE_OAUTH_CLIENT": str(kit["client"]), "MISE_DATA_DIR": str(cli_store)}),
+            ["/usr/bin/env", *env_args({"MISE_EN_SPACE_OAUTH_CLIENT": str(kit["client"]), "MISE_EN_SPACE_DATA_DIR": str(cli_store)}),
              str(PY), "-m", "auth"], cwd=ENGINE, capture_output=True, text=True, timeout=60)
         url = next((ln.strip() for ln in p.stdout.splitlines() if ln.strip().startswith("https://accounts.google.com")), "")
         got = parse_qs(urlparse(url).query).get("client_id", [""])[0]
         check(f"{name}: CLI consent URL names the kit's client",
               got == client_id(kit["client"]), f"client {got.split('-')[0] or 'NONE'}")
 
-    # 4. The SessionStart hook: quiet when unconfigured, nags when a client is wired and no token.
-    def hook(extra: dict[str, str]) -> str:
-        p = subprocess.run(["/usr/bin/env", *env_args({"CLAUDE_PLUGIN_ROOT": str(ENGINE), **extra}),
-                            "bash", str(ENGINE / "hooks/ensure-mise.sh")], capture_output=True, text=True, timeout=120)
+    # 4. The SessionStart hook: quiet when unconfigured; quiet when the store is
+    #    empty but the flavour's own pre-seam token is there to adopt; nags when
+    #    a client is wired and there is no token anywhere (a home with none).
+    def hook(extra: dict[str, str], home: Path = VH) -> str:
+        args = [a if not a.startswith("HOME=") else f"HOME={home}" for a in env_args({})]
+        args += [f"{k}={v}" for k, v in {"CLAUDE_PLUGIN_ROOT": str(ENGINE), **extra}.items()]
+        p = subprocess.run(["/usr/bin/env", *args, "bash", str(ENGINE / "hooks/ensure-mise.sh")],
+                           capture_output=True, text=True, timeout=120)
         return p.stdout + p.stderr
+    wired = {"MISE_EN_SPACE_OAUTH_CLIENT": str(KITS["mise"]["client"]),
+             "MISE_EN_SPACE_DATA_DIR": str(VH / "tmp" / "empty-store")}
     quiet = hook({})
     check("hook is silent for an engine with no client", "OAuth token" not in quiet, quiet.strip()[:120] or "(no output)")
-    loud = hook({"MISE_OAUTH_CLIENT": str(KITS["mise"]["client"]), "MISE_DATA_DIR": str(VH / "tmp" / "empty-store")})
-    check("control: hook nags once a client is wired and the store is empty", "OAuth token" in loud, loud.strip()[:120])
+    adoptable = hook(wired)
+    check("hook is silent when the seam store is empty but the own pre-seam token will be adopted",
+          "OAuth token" not in adoptable, adoptable.strip()[:120] or "(no output)")
+    bare_home = VH / "tmp" / "home-with-no-token"
+    bare_home.mkdir(parents=True, exist_ok=True)
+    loud = hook(wired, home=bare_home)
+    check("control: hook nags once a client is wired and no token exists anywhere", "OAuth token" in loud, loud.strip()[:120])
 
     failed = [label for label, ok, _ in results if not ok]
     print(f"\n{len(results) - len(failed)}/{len(results)} passed")
