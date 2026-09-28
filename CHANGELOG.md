@@ -26,6 +26,14 @@ shipped_in <commit>   # first suite version whose vendored mise contains it; emp
 # Both -C flags are load-bearing: without them "not shipped" and "wrong directory" print identically (cold read, 2026-09-17).
 ```
 
+## 2026-09-28 (mise-pukiri)
+
+### Added
+- **`do(create_event)` with attendees and a structural `do(update_event)` ask the client for the yes, as share does.** Where the connected client declared MCP form elicitation, the call shows the human a dialog carrying the preview's new `message` field, and it books or patches only on an accepted proceed=true. The cue reads `elicitation: the client answered proceed=true; booked on that answer` (`updated` for update_event). A decline returns the preview with `confirm_required` withdrawn. A cancel, or a client without the capability, gets the preview-then-`confirm=True` round-trip unchanged. A pre-supplied `confirm=True` still skips the dialog (policy A). `do()`'s resolver param `share_answer` became `confirm_answer`, filled by one resolver for all three ops (`tools/confirm_gate.py`), which checks the client's capability before any API read. Both calendar previews gained a `message`: short lines with the event, a human date (`Sun 4 Oct 2026 04:00–04:15 Europe/London`), every attendee, who gets emailed, the clash check and its first-instance caveat, and every warning. update_event's preview rendering moved to `tools/update_event_preview.py` (the 500-line module cap).
+
+### Changed
+- **A confirm dialog is raised only when Claude Code would show the whole message: at most 4 lines of 74 columns.** This came from the live render (`docs/research/2026-09-28-pukiri-hublot/`). CC 2.1.283 clips each dialog line at (terminal width − 6) columns, never wraps, and collapses everything past 4 lines to `… (+N more lines)` (read from its bundle: `tXe`, `t2=3`). The first cut's clash check, caveat and warnings were out of sight. A longer preview now takes the confirm= round-trip, where the model shows it in full. **This applies to share too:** a share whose file name or recipient list would clip now gets no dialog, and takes the confirm= preview it had before the jonoha pilot. That is share's one behaviour change. Its cue wording is pinned verbatim and unchanged. Seen live: a fitting booking's dialog shows all four lines, Accept books, Decline and Esc book nothing, and a warned booking through the same client gets no dialog. The scratch event was deleted and confirmed gone. Bypass-permissions mode was seen NOT to answer dialogs: each one waited for a keypress.
+
 ## 2026-09-27 (bds-cofico sweep, mise side)
 
 ### Fixed
