@@ -3,8 +3,11 @@ Token storage for mise-en-space OAuth tokens.
 
 Storage priority:
 0. MISE_TOKEN_PATH env override — caller-owned credential file (see below)
-1. macOS Keychain (service: mise-oauth-token) — persistent across installs
-2. File (token.json in package root) — fallback for non-macOS
+1. macOS Keychain (service: keychain_service() — mise-oauth-token, or
+   mise-oauth-token:<client_id> for a kit-supplied client) — written on consent,
+   copied back to token.json at each server start
+2. File (token.json in the data dir, oauth_config.TOKEN_FILE) — the store on
+   non-macOS, and the only copy of a token adopted from a pre-seam store
 
 The token is a JSON blob (access_token, refresh_token, client_id, etc.).
 Keychain stores it as the password field of a generic password entry.
@@ -496,6 +499,39 @@ def save_token(token_path: Path) -> None:
     else:
         # Keychain IS present but the write genuinely failed — a real problem.
         print(f"  Warning: Keychain is present but the token write failed. Token remains at {token_path}.", file=sys.stderr)
+
+
+def describe_store(token_file: Path, *, pending: bool = False) -> dict[str, str]:
+    """Cue text naming where the token really lives, for setup_oauth (mise-robive).
+
+    On macOS the Keychain is canonical only once a consent has put the token
+    there: save_token writes the entry and removes the file, and each server
+    start copies it back to token_file. A token ADOPTED from a pre-seam store
+    is copied to the file alone, so for a kit client (`keychain_service()` is
+    per client) the file can be the only copy — hence the read, not a claim.
+    `pending` describes a consent still to come rather than today's token.
+    """
+    if override_path() is not None:
+        return {"token_store": f"the caller-owned file named by {OVERRIDE_ENV} (guest "
+                "mode) — mise never copies it into the Keychain."}
+    if not _has_keychain():
+        return {"token_store": "the file at token_location — this platform has no "
+                "Keychain, so the file is the store."}
+    service = keychain_service()
+    if pending:
+        text = (f"macOS Keychain, service '{service}': once you approve, the token is "
+                f"stored there and {token_file} is removed; each server start copies "
+                "it back to that path.")
+    elif get_from_keychain(service):
+        text = (f"macOS Keychain, service '{service}' — the canonical copy. "
+                "token_location is re-copied from it at every server start, so "
+                "editing or deleting that file changes nothing.")
+    else:
+        text = (f"the file at token_location, which is the only copy: no macOS "
+                f"Keychain entry named '{service}' exists yet (the token was copied "
+                "in from an older store, or a Keychain write failed). The next "
+                "setup_oauth(force=True) stores it in the Keychain.")
+    return {"token_store": text, "token_keychain_service": service}
 
 
 def has_token(fallback_path: Path) -> bool:

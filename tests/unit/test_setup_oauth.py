@@ -358,3 +358,116 @@ class TestPortIsFree:
         port = holder.getsockname()[1]
         holder.close()
         assert port_is_free(port) is True
+
+
+class TestCueNamesTheRealStore:
+    """mise-robive: the cue names where the token LIVES, not just the file.
+
+    On macOS save_token stores the token in the Keychain and deletes the file;
+    each server start copies it back to token.json. A cue naming only the file
+    sent a careful reader (27 Sep) to report a docs-vs-reality mismatch that was
+    not one. The Keychain branch is faked by forcing _has_keychain and scripting
+    the `security` CLI, so the real get_from_keychain runs with the real service
+    name — the cue and the read cannot name different entries.
+    """
+
+    CLIENT_ID = "222222222222-home.apps.googleusercontent.com"
+    TOKEN = '{"token": "ya29.x", "refresh_token": "1//x", "client_id": "c"}'
+
+    @pytest.fixture(autouse=True)
+    def _own_store(self, monkeypatch):
+        """Not guest mode: conftest's hermetic MISE_TOKEN_PATH would route every
+        case to the caller-owned-file branch (covered by test_guest_mode_...)."""
+        monkeypatch.delenv("MISE_TOKEN_PATH", raising=False)
+        monkeypatch.delenv("MISE_CREDENTIALS", raising=False)
+
+    def test_guest_mode_names_the_callers_file_not_the_data_dir(self, tmp_token_file, tmp_path, monkeypatch):
+        guest = tmp_path / "caller" / "adc.json"
+        monkeypatch.setenv("MISE_TOKEN_PATH", str(guest))
+        r = self._already(tmp_token_file, darwin=True, present={"mise-oauth-token"})
+        assert r["cues"]["token_location"] == str(guest), "the token is at the caller's path"
+        assert "token_keychain_service" not in r["cues"]
+        assert "guest mode" in r["cues"]["token_store"]
+
+    def _security(self, present: set[str], calls: list):
+        import subprocess
+
+        def run(argv, **kw):
+            calls.append(argv)
+            if argv[:2] == ["security", "find-generic-password"]:
+                service = argv[argv.index("-s") + 1]
+                if service in present:
+                    return MagicMock(stdout=self.TOKEN, returncode=0)
+                raise subprocess.CalledProcessError(44, argv)
+            return MagicMock(stdout="", returncode=0)
+        return run
+
+    def _already(self, tmp_token_file, *, darwin: bool, present: set[str], calls: list | None = None):
+        calls = [] if calls is None else calls
+        with (
+            patch("token_store._has_keychain", return_value=darwin),
+            patch("token_store.subprocess.run", side_effect=self._security(present, calls)),
+            patch("tools.setup_oauth.has_token", return_value=True),
+            patch("adapters.http_client.get_sync_client", return_value=MagicMock()),
+            patch("tools.setup_oauth.subprocess.Popen"),
+        ):
+            return do_setup_oauth(force=False)
+
+    def test_darwin_names_the_keychain_service_beside_the_file(self, tmp_token_file, monkeypatch):
+        monkeypatch.delenv("MISE_EN_SPACE_OAUTH_CLIENT", raising=False)
+        calls: list = []
+        r = self._already(tmp_token_file, darwin=True, present={"mise-oauth-token"}, calls=calls)
+        cues = r["cues"]
+        assert cues["token_location"] == str(tmp_token_file), "the file cue stays"
+        assert cues["token_keychain_service"] == "mise-oauth-token"
+        assert "Keychain" in cues["token_store"] and "canonical" in cues["token_store"]
+        assert any("find-generic-password" in c and "mise-oauth-token" in c for c in calls), (
+            "the cue must come from a real Keychain read, not a hard-coded claim"
+        )
+
+    def test_a_kit_client_names_its_per_client_service(self, tmp_token_file, tmp_path, monkeypatch):
+        import json
+        client = tmp_path / "client.json"
+        client.write_text(json.dumps({"installed": {"client_id": self.CLIENT_ID, "client_secret": "p"}}))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(client))
+        service = f"mise-oauth-token:{self.CLIENT_ID}"
+        r = self._already(tmp_token_file, darwin=True, present={service})
+        assert r["cues"]["token_keychain_service"] == service
+        assert "canonical" in r["cues"]["token_store"]
+
+    def test_darwin_without_the_entry_says_the_file_is_the_only_copy(self, tmp_token_file, tmp_path, monkeypatch):
+        """An adopted token (copied from a pre-seam store) has no per-client entry
+        yet — seen on sameer-macbook-air, 28 Sep. Calling the Keychain canonical
+        there would be the false claim this card exists to stop."""
+        import json
+        client = tmp_path / "client.json"
+        client.write_text(json.dumps({"installed": {"client_id": self.CLIENT_ID, "client_secret": "p"}}))
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(client))
+        r = self._already(tmp_token_file, darwin=True, present={"mise-home-oauth-token"})
+        store = r["cues"]["token_store"]
+        assert r["cues"]["token_keychain_service"] == f"mise-oauth-token:{self.CLIENT_ID}"
+        assert "canonical" not in store
+        assert "only copy" in store and "setup_oauth" in store
+
+    def test_linux_says_the_file_is_the_store_and_names_no_keychain(self, tmp_token_file, monkeypatch):
+        monkeypatch.delenv("MISE_EN_SPACE_OAUTH_CLIENT", raising=False)
+        r = self._already(tmp_token_file, darwin=False, present=set())
+        assert "token_keychain_service" not in r["cues"]
+        assert "no Keychain" in r["cues"]["token_store"]
+
+    def test_the_consent_flow_says_where_the_token_will_go(self, tmp_token_file, monkeypatch):
+        monkeypatch.delenv("MISE_EN_SPACE_OAUTH_CLIENT", raising=False)
+        with (
+            patch("token_store._has_keychain", return_value=True),
+            patch("tools.setup_oauth.has_token", return_value=False),
+            patch("tools.setup_oauth.port_is_free", return_value=True),
+            patch("tools.setup_oauth.get_auth_url", return_value=FAKE_URL),
+            patch("tools.setup_oauth.subprocess.Popen"),
+        ):
+            r = do_setup_oauth()
+        assert r["cues"]["token_will_save_to"] == str(tmp_token_file)
+        assert r["cues"]["token_keychain_service"] == "mise-oauth-token"
+        assert "removed" in r["cues"]["token_store"], (
+            "on macOS save_token deletes the file after the Keychain write — "
+            "token_will_save_to alone says the opposite"
+        )

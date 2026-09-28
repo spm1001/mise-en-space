@@ -65,7 +65,7 @@ def _bootstrap_hint(guest_mode: bool) -> str:
         "re-authenticate there. Do not attempt setup_oauth or CLI auth."
         if guest_mode
         else "Call mise.do(operation=\"setup_oauth\") to authenticate "
-        "(opens a browser; saves token to Keychain). "
+        "(opens a browser or returns its URL; saves to the macOS Keychain, else token.json). "
         "CLI fallback: uv run python -m auth --auto"
     )
 

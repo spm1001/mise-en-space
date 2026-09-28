@@ -18,7 +18,7 @@ User flow in Cowork:
 1. Calls mise.do(operation="setup_oauth")
 2. Browser tab opens (or they paste the URL we returned)
 3. They approve at Google's consent screen
-4. Subprocess saves token to Keychain
+4. Subprocess saves the token (macOS Keychain, else the data-dir file)
 5. They retry their original mise call — now it works.
 """
 
@@ -44,7 +44,7 @@ from oauth_config import (
     oauth_client_file,
     port_is_free,
 )
-from token_store import has_token
+from token_store import describe_store, has_token, override_path
 
 # Where the subprocess lives — at the package root, runnable as `python -m auth`.
 _PACKAGE_ROOT = Path(__file__).parent.parent
@@ -98,8 +98,11 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
                     "original mise call again. If it fails with an auth error, call "
                     "setup_oauth with force=true to re-auth."
                 ),
+                # Name the canonical store beside the file: on macOS the file
+                # is a copy of a Keychain entry (mise-robive).
                 "cues": with_identity({
-                    "token_location": str(TOKEN_FILE),
+                    "token_location": str(override_path() or TOKEN_FILE),
+                    **describe_store(TOKEN_FILE),
                 }),
             }
 
@@ -212,6 +215,7 @@ def do_setup_oauth(force: bool = False, **_kwargs: Any) -> dict[str, Any]:
         ),
         "log_path": str(log_path),
         "token_will_save_to": str(TOKEN_FILE),
+        **describe_store(TOKEN_FILE, pending=True),
         "oauth_client": str(client_file),
     }
     if stale_creds_diagnostic:

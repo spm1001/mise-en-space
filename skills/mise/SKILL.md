@@ -16,7 +16,13 @@ If the MCP server returns an auth error, the user needs to authenticate with Goo
 mise.do(operation="setup_oauth")
 ```
 
-This opens a browser at Google's consent screen on the user's Mac, runs a localhost listener, exchanges the auth code, and stashes the token in macOS Keychain. The MCP call returns immediately with the consent URL inline as a fallback (in case the browser didn't auto-open). Once the user sees "Authorization Successful" in the browser, retry the original mise call.
+This opens Google's consent screen in the user's browser, runs a localhost listener, exchanges the auth code and saves the token. On a headless or remote-desktop machine it opens nothing and returns the URL with instructions instead. The MCP call returns immediately with the consent URL inline as a fallback (in case the browser didn't auto-open). Once the user sees "Authorization Successful" in the browser, retry the original mise call.
+
+**Where the token lives.** `setup_oauth`'s response says so for the machine it runs on: `cues.token_store` in plain words, `cues.token_location` for the file, and on a Mac `cues.token_keychain_service` for the Keychain entry. Read those rather than assuming, because the answer depends on platform and history:
+
+- **macOS:** once the user has signed in through `setup_oauth`, the Keychain holds the canonical copy. The sign-in stores the token there and removes the file; each time the server starts it copies the token back to `token.json`. So a plain `token.json` beside a Keychain entry is expected, not a mismatch. The entry is named `mise-oauth-token`, or `mise-oauth-token:<client id>` when the kit supplies its own OAuth client. A token carried over from an older install is copied into the file only, so until the user next signs in, that file is the only copy.
+- **Linux and other platforms:** there is no Keychain, so `token.json` is the store.
+- **Which directory:** the kit's plugin data directory, or `~/.claude/plugins/data/mise-batterie-de-savoir` when the kit names none. If the host leaves the kit's data-directory placeholder unfilled (seen in the Claude desktop app), mise uses `~/.claude/plugins/data/mise-client-<number>`, where the number is the OAuth client's Google Cloud project number. Each install surface can have its own directory and so its own file; on a Mac they converge on the Keychain copy once the user signs in again.
 
 If `setup_oauth` itself fails (e.g. port 3000 in use), the error message will name the remediation. The CLI fallback (`uv run python -m auth --auto` from the mise-en-space repo) exists for users running mise outside Cowork/Desktop, but `setup_oauth` is the path to default to.
 

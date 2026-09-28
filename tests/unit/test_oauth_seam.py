@@ -407,3 +407,52 @@ class TestCliRefusesAnUnconfiguredClient:
         assert "MISE_EN_SPACE_OAUTH_CLIENT" in capsys.readouterr().out
         mint.assert_not_called()
         exchange.assert_not_called()
+
+
+class TestWhereAKitTokenIsWritten:
+    """mise-robive's question, answered by the code rather than a reading of it:
+    does a kit-supplied client get its own Keychain entry at all?
+
+    Yes on CONSENT: save_token (the end of setup_oauth and of `python -m auth`)
+    writes `mise-oauth-token:<client_id>` and removes the file. No on ADOPTION:
+    a token copied in from a pre-seam store lands in the data-dir file only, so
+    a kit install that adopted its token has no per-client entry until the user
+    next consents — which is why none existed on sameer-macbook-air on 28 Sep.
+    """
+
+    def _security_ok(self, calls):
+        import subprocess
+
+        def run(argv, **kw):
+            calls.append(argv)
+            if argv[:2] == ["security", "find-generic-password"]:
+                raise subprocess.CalledProcessError(44, argv)
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        return run
+
+    def test_consent_writes_the_per_client_entry_and_removes_the_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(_client_file(tmp_path / "c.json", HOME_ID)))
+        token = tmp_path / "store" / "token.json"
+        token.parent.mkdir()
+        token.write_text(_token(HOME_ID, "fresh") .replace('"token": "ya29.fresh", ', ""))
+        calls: list = []
+        with patch("token_store._has_keychain", return_value=True), \
+             patch("token_store.subprocess.run", side_effect=self._security_ok(calls)):
+            token_store.save_token(token)
+        adds = [c for c in calls if c[:2] == ["security", "add-generic-password"]]
+        assert len(adds) == 1 and adds[0][adds[0].index("-s") + 1] == f"mise-oauth-token:{HOME_ID}"
+        assert not token.exists(), "the Keychain is canonical after consent — the file is removed"
+
+    def test_adoption_writes_the_file_only(self, tmp_path, monkeypatch, pre_seam):
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(_client_file(tmp_path / "c.json", HOME_ID)))
+        store = tmp_path / "kit" / "token.json"
+        calls: list = []
+        with patch("token_store._has_keychain", return_value=True), \
+             patch("token_store.PRE_SEAM_KEYCHAIN_SERVICES", ()), \
+             patch("token_store.subprocess.run", side_effect=self._security_ok(calls)):
+            assert token_store.resolve_token_path(store) == store
+        assert json.loads(store.read_text())["client_id"] == HOME_ID, "adopted by copy"
+        assert not [c for c in calls if "add-generic-password" in c], (
+            "adoption does not write the Keychain — if this changes, the skill's "
+            "'the file is the only copy until you next consent' wording must change too"
+        )
