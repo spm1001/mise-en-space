@@ -1,0 +1,24 @@
+❯ Second call, same rules: call mcp__miseclone__do exactly once more with the same arguments but WITHOUT recurrence (operation='create_event', title='mise-pukiri probe (scratch, safe to delete)',
+  time_min='2026-10-04T04:00', time_max='2026-10-04T04:15', attendees=['sameer.modha@itv.com'], send_updates='none'). Do NOT pass confirm and do not retry. Then print the result's file_id and cues
+  block verbatim and stop.
+  Called miseclone
+● This one booked. There's now a real event on the calendar even though I didn't pass confirm: the server raised an elicitation (a confirm-or-cancel question sent to the client), the client answered
+  proceed=true, and it booked on that answer. I called the tool once and didn't retry.
+  file_id: osk194gk4dqhg5vnpr5ir8mqk0
+  cues block, verbatim:
+  {"warnings":[],"confirm_gate":"elicitation: the client answered proceed=true; booked on that answer","attendees_invited":["sameer.modha@itv.com"],"attendees_notified":"NO invite emails sent
+  (send_updates='none') — attendees see the event only when they look at their
+  calendar","properties":{"mise:minted_at":"2026-09-28T01:27:22+00:00","mise:minted_by":"mise"},"timezone":"Europe/London","_identity":{"email":"sameer.modha@itv.com"}}
+  Dialog: again, none reached me. I didn't see or answer any elicitation, yet the server logged one as answered yes. The likeliest explanation is that this session's bypass-permissions mode, or the
+  client itself, auto-accepts elicitations. If so, the confirm gate doesn't protect anything in unattended sessions like this one. I can't tell from here which part of the client answered.
+  The two calls disagree: with a recurrence rule, the first call stopped at a plain preview and asked for confirm=True. Without one, the gate went through elicitation and booked.
+  Still open:
+  - Stray event (watch; the dispatcher's move): the scratch event is on Sameer's ITV calendar for Sun 4 Oct 2026, 04:00–04:15 (link). You told me to stop, so I haven't deleted it. It sent no email
+    and is harmless, but someone should remove it when the probe run finishes.
+  - Confirm gate (act; for whoever owns mise-pukiri): it's worth checking whether an auto-accepted elicitation should count as the user's yes.
+✻ Brewed for 20s · done 2:27
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  deglacer Opus 5.5 (1M) xhigh 92% Vertex
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents
