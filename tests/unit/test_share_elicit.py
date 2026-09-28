@@ -1,9 +1,9 @@
 """The elicit-or-confirm seam on do(share) — mise-jonoha.
 
 Two paths, one preview text. Where the connected client declared form
-elicitation, the share confirmation rides mcp's resolver injection (the
-`share_confirm` resolver on do()'s `share_answer`) and executes only on an
-accepted proceed=true; everywhere else the existing preview-then-confirm=True
+elicitation, the share confirmation rides mcp's resolver injection (do()'s
+`confirm_gate` param, filled by the resolvers in tools/confirm_gate.py since mise-pukiri)
+and executes only on an accepted proceed=true; everywhere else the existing preview-then-confirm=True
 round-trip runs unchanged. Pinned at three depths: the body's reading of an
 outcome, the resolver against declared capabilities, and the real envelope —
 an in-memory mcp Client against server.mcp in BOTH protocol eras (legacy
@@ -25,7 +25,8 @@ from mcp.types import (
 
 from models import DoResult
 from tools.elicit import ConfirmAnswer, client_supports_elicitation, dialog_verdict
-from tools.share import do_share, share_confirm
+from tools.confirm_gate import confirm_ask, gate_question
+from tools.share import do_share
 
 _META = {"id": "f1", "name": "Report", "webViewLink": "https://docs.google.com/d/f1"}
 _PREVIEW_TEXT = "Would share 'Report' with alice@example.com as reader"
@@ -40,9 +41,14 @@ def _client() -> MagicMock:
     return client
 
 
+def confirm_gate(operation, ctx, **kwargs):
+    """The dialog a call would raise: the two gate resolvers, composed as mcp runs them."""
+    return confirm_ask(gate_question(operation, ctx, **kwargs))
+
+
 def _ctx(elicitation: ElicitationCapability | None) -> SimpleNamespace:
     caps = ClientCapabilities(elicitation=elicitation) if elicitation is not None else ClientCapabilities()
-    return SimpleNamespace(client_capabilities=caps)
+    return SimpleNamespace(client_capabilities=caps, input_responses=None)  # a first round
 
 
 class TestVerdictReading:
@@ -87,6 +93,26 @@ class TestBodyOnAVerdict:
         assert ("confirm_required" in result["cues"]) == (action == "cancel")
         if action == "decline":
             assert "confirm=True" not in result["cues"]["confirm_gate"]
+
+    @pytest.mark.parametrize("outcome,cue", [
+        (YES, "elicitation: the client answered proceed=true; shared on that answer"),
+        (DeclinedElicitation(),
+         "elicitation: declined — the client declined the dialog. Nothing was shared. The user "
+         "said no through the dialog; ask them again before any further attempt."),
+        (CancelledElicitation(),
+         "elicitation: cancel — the client cancelled the dialog without an answer. Nothing was "
+         "shared; no dialog decided this, so the confirm= round-trip applies: show this preview "
+         "to the user and call again with confirm=True on their yes."),
+    ])
+    @patch("retry.time.sleep")
+    @patch("tools.share.get_sync_client")
+    def test_cue_wording_is_pinned_verbatim(self, get_client, _sleep, outcome, cue) -> None:
+        # The calendar ops share this wording through tools/elicit.py (mise-pukiri);
+        # share's text was seen live on 2026-09-14 and must not drift in that refactor.
+        get_client.return_value = _client()
+        result = do_share("f1", "alice@example.com", answer=outcome)
+        cues = result.cues if isinstance(result, DoResult) else result["cues"]
+        assert cues["confirm_gate"] == cue
 
     @patch("retry.time.sleep")
     @patch("tools.share.get_sync_client")
@@ -134,13 +160,29 @@ class TestResolverAtTheClientSeam:
     def test_asks_only_for_an_unconfirmed_share_on_a_capable_client(self, get_client, _sleep) -> None:
         get_client.return_value = _client()
         capable = _ctx(ElicitationCapability())
-        marker = share_confirm("share", capable, file_id="f1", to="alice@example.com")
+        marker = confirm_gate("share", capable, file_id="f1", to="alice@example.com")
         assert isinstance(marker, Elicit)
         assert marker.message == _PREVIEW_TEXT  # the dialog text IS the preview text
         assert marker.schema is ConfirmAnswer
-        assert share_confirm("share", capable, file_id="f1", to="alice@example.com", confirm=True) is None
-        assert share_confirm("rename", capable, file_id="f1", to="alice@example.com") is None
-        assert share_confirm("share", _ctx(None), file_id="f1", to="alice@example.com") is None
+        assert confirm_gate("share", capable, file_id="f1", to="alice@example.com", confirm=True) is None
+        assert confirm_gate("rename", capable, file_id="f1", to="alice@example.com") is None
+        assert confirm_gate("share", _ctx(None), file_id="f1", to="alice@example.com") is None
+
+    @patch("retry.time.sleep")
+    @patch("tools.share.get_sync_client")
+    def test_a_preview_the_dialog_would_clip_is_never_asked(self, get_client, _sleep) -> None:
+        # Claude Code clips each dialog line at (terminal width − 6) columns, so a
+        # long title or several recipients would hide who gets access (mise-pukiri).
+        client = _client()
+        client.get_json.return_value = {**_META, "name": "Q3 Measurement Innovation Team strategy review"}
+        get_client.return_value = client
+        capable = _ctx(ElicitationCapability())
+        assert confirm_gate("share", capable, file_id="f1", to="alice@example.com, bob@example.com") is None
+        question = gate_question("share", capable, file_id="f1", to="alice@example.com, bob@example.com")
+        preview = do_share("f1", "alice@example.com, bob@example.com", question=question)
+        assert preview["cues"]["confirm_required"]
+        assert preview["cues"]["confirm_gate"].startswith("no dialog: this preview is longer")  # says why
+        assert "confirm_gate" not in do_share("f1", "alice@example.com, bob@example.com")["cues"]
 
     @patch("retry.time.sleep")
     @patch("tools.share.get_sync_client")
@@ -148,11 +190,11 @@ class TestResolverAtTheClientSeam:
         from models import ErrorKind, MiseError
         client = _client(); get_client.return_value = client
         capable = _ctx(ElicitationCapability())
-        assert share_confirm("share", capable, file_id="f1", to="alice@example.com", role="owner") is None
-        assert share_confirm("share", capable, file_id=["f1", "f2"], to="alice@example.com") is None
-        assert share_confirm("share", capable, file_id="f1", to=None) is None
+        assert confirm_gate("share", capable, file_id="f1", to="alice@example.com", role="owner") is None
+        assert confirm_gate("share", capable, file_id=["f1", "f2"], to="alice@example.com") is None
+        assert confirm_gate("share", capable, file_id="f1", to=None) is None
         client.get_json.side_effect = MiseError(ErrorKind.NOT_FOUND, "gone")
-        assert share_confirm("share", capable, file_id="f1", to="alice@example.com") is None
+        assert confirm_gate("share", capable, file_id="f1", to="alice@example.com") is None
         assert client.post_json.call_count == 0
 
 
@@ -199,7 +241,7 @@ class TestGateThroughTheEnvelope:
     async def test_client_without_the_capability_gets_the_confirm_round_trip(self, drive, mode) -> None:
         async with Client(server.mcp, mode=mode) as c:  # no elicitation_callback => capability not declared
             schema = {t.name: t.input_schema for t in (await c.list_tools()).tools}["do"]
-            assert "share_answer" not in schema["properties"]  # never a wire param
+            assert "confirm_gate" not in schema["properties"]  # never a wire param
             preview = _payload(await c.call_tool("do", _ARGS))
             assert preview["preview"] is True and "confirm_gate" not in preview["cues"]
             assert preview["cues"]["confirm_required"].startswith("This is a preview.")

@@ -1,0 +1,22 @@
+  one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three twenty-four twenty-five
+  twenty-six twenty-seven twenty-eight twenty-nine thirty END'. Do NOT pass confirm. Then print the cues block verbatim and stop.
+  Called miseclone
+● The client cancelled the dialog this time, where the first probe got a decline. Nothing was booked and no email went out. I made one call without confirm.
+  The cues block, verbatim:
+  {"confirm_required":"This is a preview — nothing is booked and nobody has been emailed. Show it to the user; to book and send invites, call again with confirm=True.","warnings":["The start falls on
+  a Sunday but BYDAY=MO — Google keeps the start as an EXTRA instance outside the pattern. Align time_min with BYDAY unless that stray first meeting is
+  deliberate."],"_identity":{"email":"sameer.modha@itv.com"},"confirm_gate":"elicitation: cancel — the client cancelled the dialog without an answer. Nothing was booked and nobody was emailed; no
+  dialog decided this, so the confirm= round-trip applies: show this preview to the user and call again with confirm=True on their yes."}
+  The two probes came back differently:
+  - Different answer from the dialog: the first probe got declined, which the server reads as a user "no". This one got cancel, which it reads as "no decision", so it falls back to asking for
+    confirm=True.
+  - confirm_required appears only in the cancel case. It wasn't in the first probe's cues. Whether that's intended is for whoever is testing the server to judge.
+  - The day mismatch was caught: 4 October 2026 is a Sunday but the rule repeats on Mondays, and the server warned that Google would add the Sunday as an extra meeting. The rule you gave caused the
+    warning; the server didn't get anything wrong.
+  - The long location came through in full. It appears whole in the preview message and in the location field. How it wraps on screen can only be seen in a real client.
+✻ Baked for 1m 19s · done 2:16
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  deglacer Opus 5.5 (1M) xhigh 92% Vertex
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents

@@ -11,7 +11,8 @@ LOUD (warning cue), never silent.
 
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any
 
 from adapters.calendar import resolve_calendar_timezone
@@ -79,13 +80,94 @@ def bound_datetime(time_dict: dict[str, Any]) -> datetime:
     """A start/end dict → aware datetime, for ordering checks and clash windows.
 
     Naive dateTimes (zone attached separately) and bare dates are pinned to
-    UTC — fine for ordering and a clash window, not for display.
+    UTC — fine for ordering, wrong for a clash window (use zoned_datetime)
+    and for display.
     """
     raw = time_dict.get("dateTime") or time_dict["date"]
     dt = datetime.fromisoformat(raw)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt
+
+
+_DAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_MONTH_NAMES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def _day_words(day: date) -> str:
+    return f"{_DAY_NAMES[day.weekday()]} {day.day} {_MONTH_NAMES[day.month - 1]} {day.year}"
+
+
+def _zone_words(bound: dict[str, Any], dt: datetime) -> str:
+    if bound.get("timeZone"):
+        return f" {bound['timeZone']}"
+    offset = dt.utcoffset()
+    if offset is None:
+        return ""
+    return " UTC" if not offset else f" UTC{dt.isoformat()[-6:]}"
+
+
+def _in_zone(bound: dict[str, Any]) -> datetime:
+    """A dateTime bound as wall-clock in its own timeZone, when it names one.
+
+    An offset-carrying dateTime beside a timeZone (a 'Z' time on a recurring
+    booking, or an event read back in another zone) is converted, so the
+    words never pair one zone's clock with another zone's name.
+    """
+    dt = datetime.fromisoformat(bound["dateTime"])
+    zone = bound.get("timeZone")
+    if zone and dt.tzinfo is not None:
+        try:
+            return dt.astimezone(ZoneInfo(zone))
+        except ZoneInfoNotFoundError:
+            return dt
+    return dt
+
+
+def zoned_datetime(time_dict: dict[str, Any]) -> datetime:
+    """A start/end dict → aware datetime in the event's own zone.
+
+    For windows that must name the right instant, such as the clash check:
+    a naive dateTime means wall-clock in its timeZone, so pinning it to UTC
+    (bound_datetime) asks about the wrong hour whenever the zone is not UTC.
+    """
+    raw = time_dict.get("dateTime")
+    zone = time_dict.get("timeZone")
+    if raw and zone:
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            try:
+                return dt.replace(tzinfo=ZoneInfo(zone))
+            except ZoneInfoNotFoundError:
+                pass
+    return bound_datetime(time_dict)
+
+
+def describe_when(start: dict[str, Any], end: dict[str, Any]) -> str:
+    """A start/end pair in short words — 'Sun 4 Oct 2026 04:00–04:15 Europe/London'.
+
+    For preview messages, which are also the confirm dialog's text and must
+    fit its 74-column lines (tools/elicit.py). The weekday is there because
+    a wrong-day booking is the mistake a human catches at a glance. Bounds
+    that do not parse are shown as given rather than guessed at.
+    """
+    try:
+        if "date" in start:
+            first = date.fromisoformat(start["date"])
+            last = date.fromisoformat(end["date"]) - timedelta(days=1)  # Google's end is exclusive
+            if last <= first:
+                return f"{_day_words(first)}, all day"
+            return f"{_day_words(first)} – {_day_words(last)}, all day"
+        s = _in_zone(start)
+        e = _in_zone(end)
+    except (KeyError, TypeError, ValueError):
+        return f"{start.get('dateTime') or start.get('date')} – {end.get('dateTime') or end.get('date')}"
+    if s.date() == e.date():
+        span = f"{_day_words(s.date())} {s:%H:%M}–{e:%H:%M}"
+    else:
+        span = f"{_day_words(s.date())} {s:%H:%M} – {_day_words(e.date())} {e:%H:%M}"
+    return span + _zone_words(start, s)
 
 
 def build_event_times(
@@ -107,6 +189,15 @@ def build_event_times(
         raise ValueError(
             "time_min and time_max must be the same kind — both bare dates "
             "(all-day event) or both datetimes."
+        )
+    if ("timeZone" in start) != ("timeZone" in end):
+        # One bound naive (wall-clock in your zone), the other with an offset:
+        # every rendering of the pair then pairs one clock with the other's
+        # zone, and the ordering check compares a guess (mise-pukiri).
+        raise ValueError(
+            "time_min and time_max must both carry an offset or both omit one — "
+            "got one of each. Give both as wall-clock times (e.g. "
+            "'2026-09-08T14:00') or both with offsets."
         )
     if bound_datetime(end) <= bound_datetime(start):
         raise ValueError(

@@ -14,15 +14,23 @@ history, so the prior value IS the restore point).
 file_id takes either id space, routed like respond: a 16-hex Gmail id means
 "the invite thread"; anything else is tried as a Calendar event id.
 
+Where the connected client declared MCP elicitation, a structural edit's
+preview `message` rides a dialog the client renders (do()'s one confirm
+resolver, tools/confirm_gate.py, asks with `update_event_confirm_message`),
+and the patch runs only on an accepted yes (mise-pukiri). A pre-supplied
+confirm=True still runs without a dialog — Sameer's policy A, 2026-09-06.
+
 Deliberately NOT in remote mode's allowed ops.
 """
 
 import logging
 from typing import Any
 
+from mcp.server.elicitation import ElicitationResult
+
 from adapters.calendar import get_event, patch_event
-from cues_util import with_identity
 from models import DoResult, ErrorKind, MiseError
+from tools.elicit import ConfirmAnswer, GateQuestion, settle_gate
 from tools.events_util import (
     REAUTH_ADVICE,
     build_attachments,
@@ -42,35 +50,37 @@ from tools.events_util import (
     validate_visibility,
 )
 from tools.respond import _resolve_event_from_thread
+from tools.update_event_preview import COSMETIC, STRUCTURAL, Edit, edit_preview
 from validation import is_gmail_api_id
 
 logger = logging.getLogger(__name__)
 
-_STRUCTURAL = "structural"
-_COSMETIC = "cosmetic"
 
 
-def do_update_event(
-    file_id: str | None = None,
-    title: str | None = None,
-    content: str | None = None,
-    location: str | None = None,
-    time_min: str | None = None,
-    time_max: str | None = None,
-    attendees: list[str] | str | None = None,
-    recurrence: str | list[str] | None = None,
-    include: list[str] | None = None,
-    meet: bool | None = None,
-    send_updates: str | None = None,
-    properties: dict[str, str] | None = None,
-    color: str | None = None,
-    visibility: str | None = None,
-    transparency: str | None = None,
-    confirm: bool = False,
-) -> DoResult | dict[str, Any]:
-    """Edit an event on the user's primary calendar."""
-    assert file_id is not None
+def _read_event(file_id: str) -> tuple[dict[str, Any] | None, Any]:
+    """The event and how it was found — (None, message) for an invite-less
+    thread. Google errors RAISE: the confirm resolver turns them into "no
+    dialog, and here is why", the body into its teaching error."""
+    if is_gmail_api_id(file_id):
+        return _resolve_event_from_thread(file_id)
+    return get_event(file_id), {}
 
+
+def _plan_edit(
+    file_id: str, title: str | None, content: str | None, location: str | None,
+    time_min: str | None, time_max: str | None,
+    attendees: list[str] | str | None, recurrence: str | list[str] | None,
+    include: list[str] | None, meet: bool | None, send_updates: str | None,
+    properties: dict[str, str] | None, color: str | None,
+    visibility: str | None, transparency: str | None,
+    read: Any = None,
+) -> Edit | dict[str, Any]:
+    """Read the event, validate, classify each change; an error dict on refusal.
+
+    `read` is an already-made _read_event result (the confirm resolver reads
+    for itself so a Google error can raise); otherwise the read happens here
+    and its errors become error dicts.
+    """
     if (time_min is None) != (time_max is None):
         return error(
             "invalid_input",
@@ -78,15 +88,10 @@ def do_update_event(
             "and end) — deriving one from the other would be a guess.",
         )
 
-    disclosure: dict[str, Any] = {}
     try:
-        if is_gmail_api_id(file_id):
-            event, resolved = _resolve_event_from_thread(file_id)
-            if event is None:
-                return error("not_found", resolved)  # resolved is the message
-            disclosure = resolved  # type: ignore[assignment]
-        else:
-            event = get_event(file_id)
+        event, disclosure = read if read is not None else _read_event(file_id)
+        if event is None:
+            return error("not_found", disclosure)  # disclosure is the message
     except MiseError as e:
         if e.kind is ErrorKind.PERMISSION_DENIED:
             return error(e.kind.value, e.message + REAUTH_ADVICE)
@@ -119,13 +124,19 @@ def do_update_event(
     except ValueError as e:
         return error("invalid_input", str(e))
 
-    changes: dict[str, str] = {}  # field -> structural|cosmetic
+    changes: dict[str, str] = {}
     if time_min is not None:
-        changes["time"] = _STRUCTURAL
+        changes["time"] = STRUCTURAL
     if recurrence_lines:
-        changes["recurrence"] = _STRUCTURAL
-    if emails:
-        changes["attendees"] = _STRUCTURAL
+        changes["recurrence"] = STRUCTURAL
+    # Who is actually new, decided before any dialog, so nobody is asked to
+    # approve adding people who are already there.
+    known = {a.get("email", "").lower() for a in event.get("attendees", [])}
+    added = [e for e in emails if e.lower() not in known]
+    if added:
+        changes["attendees"] = STRUCTURAL
+    elif emails:
+        warnings.append("All named attendees are already on the event.")
     # meet: True adds a Meet link, False REMOVES one, None leaves it alone.
     # Judged here, against the event already read, so the preview never
     # promises a change the write would then skip (mise-tijeko: callers
@@ -135,23 +146,23 @@ def do_update_event(
     elif meet is False and not event.get("conferenceData"):
         warnings.append("The event has no Meet link — nothing to remove.")
     elif meet is not None:
-        changes["meet"] = _STRUCTURAL
+        changes["meet"] = STRUCTURAL
     if content is not None:
-        changes["description"] = _COSMETIC
+        changes["description"] = COSMETIC
     if title is not None:
-        changes["title"] = _COSMETIC
+        changes["title"] = COSMETIC
     if location is not None:
-        changes["location"] = _COSMETIC
+        changes["location"] = COSMETIC
     if include:
-        changes["attachments"] = _COSMETIC
+        changes["attachments"] = COSMETIC
     if programme_keys:
-        changes["properties"] = _COSMETIC
+        changes["properties"] = COSMETIC
     if color_id:
-        changes["color"] = _COSMETIC
+        changes["color"] = COSMETIC
     if vis:
-        changes["visibility"] = _COSMETIC
+        changes["visibility"] = COSMETIC
     if transp:
-        changes["transparency"] = _COSMETIC
+        changes["transparency"] = COSMETIC
 
     if not changes and warnings:
         return error("invalid_input", "Nothing left to change: " + "; ".join(warnings))
@@ -182,34 +193,10 @@ def do_update_event(
                 "do(operation='respond').",
             )
 
-    structural = [f for f, kind in changes.items() if kind == _STRUCTURAL]
-    effective_updates = explicit_updates or ("all" if structural else "none")
-
-    if structural and not confirm:
-        preview: dict[str, Any] = {
-            "preview": True,
-            "operation": "update_event",
-            "title": event.get("summary"),
-            "event_id": event.get("id"),
-            "changes": _describe_changes(
-                event, changes, time_min, time_max, emails, recurrence_lines, meet,
-            ),
-            "send_updates": effective_updates,
-            "attendee_count": len(event.get("attendees", [])),
-            "cues": with_identity({
-                "confirm_required": (
-                    "This is a preview — nothing has changed and nobody has "
-                    "been emailed. Structural edits (time, recurrence, "
-                    "attendees, Meet) touch other people's diaries: show this "
-                    "to the user, then call again with confirm=True."
-                ),
-                **disclosure,
-            }),
-        }
-        return preview
-
-    body: dict[str, Any] = {}
-    previous: dict[str, Any] = {}
+    # Resolved here, before any dialog, so the preview's warnings (unresolved
+    # zone, stray BYDAY instance) reach the words the human approves, and a
+    # bad move is refused before anyone is asked about it.
+    start = end = None
     if time_min is not None and time_max is not None:
         try:
             start, end = build_event_times(
@@ -219,26 +206,107 @@ def do_update_event(
             )
         except ValueError as e:
             return error("invalid_input", str(e))
-        body["start"], body["end"] = start, end
-        previous["start"], previous["end"] = event.get("start"), event.get("end")
     if recurrence_lines:
         byday_warning = byday_mismatch_warning(
-            body.get("start", event.get("start", {})), recurrence_lines,
+            start or event.get("start", {}), recurrence_lines,
         )
         if byday_warning:
             warnings.append(byday_warning)
+
+    structural = [f for f, kind in changes.items() if kind == STRUCTURAL]
+    effective_updates = explicit_updates or ("all" if structural else "none")
+    return Edit(event, disclosure, changes, added, recurrence_lines,
+                 programme_keys, color_id, vis, transp, warnings, structural,
+                 effective_updates, start, end)
+
+
+def update_event_confirm_message(
+    file_id: Any, title: str | None, content: str | None, location: str | None,
+    time_min: str | None, time_max: str | None,
+    attendees: list[str] | str | None, recurrence: str | list[str] | None,
+    include: list[str] | None, meet: bool | None, send_updates: str | None,
+    properties: dict[str, str] | None, color: str | None,
+    visibility: str | None, transparency: str | None,
+) -> str | None:
+    """The dialog text for a structural edit: the preview's message.
+
+    None — no dialog — for a cosmetic-only edit (nothing to gate) or inputs
+    the body would refuse; the body then runs or reports exactly as it does
+    without a dialog. A failed Google read raises (UNAVAILABLE upstream).
+    """
+    if not isinstance(file_id, str):
+        return None
+    read = _read_event(file_id)  # a Google error raises: tools/confirm_gate.py says why
+    edit = _plan_edit(file_id, title, content, location, time_min, time_max,
+                      attendees, recurrence, include, meet, send_updates,
+                      properties, color, visibility, transparency, read=read)
+    if isinstance(edit, dict) or not edit.structural:
+        return None
+    return str(edit_preview(edit, time_min, time_max, meet)["message"])
+
+
+def do_update_event(
+    file_id: str | None = None,
+    title: str | None = None,
+    content: str | None = None,
+    location: str | None = None,
+    time_min: str | None = None,
+    time_max: str | None = None,
+    attendees: list[str] | str | None = None,
+    recurrence: str | list[str] | None = None,
+    include: list[str] | None = None,
+    meet: bool | None = None,
+    send_updates: str | None = None,
+    properties: dict[str, str] | None = None,
+    color: str | None = None,
+    visibility: str | None = None,
+    transparency: str | None = None,
+    confirm: bool = False,
+    answer: ElicitationResult[ConfirmAnswer] | None = None,
+    question: GateQuestion | None = None,
+) -> DoResult | dict[str, Any]:
+    """Edit an event on the user's primary calendar.
+
+    `answer` is the client-rendered dialog's outcome and `question` what it
+    carried (tools/confirm_gate.py); with no dialog, confirm= is the gate.
+    """
+    assert file_id is not None
+
+    edit = _plan_edit(file_id, title, content, location, time_min, time_max,
+                      attendees, recurrence, include, meet, send_updates,
+                      properties, color, visibility, transparency)
+    if isinstance(edit, dict):
+        return edit
+    event, disclosure, changes = edit.event, edit.disclosure, edit.changes
+    emails, recurrence_lines = edit.emails, edit.recurrence_lines
+    programme_keys, color_id = edit.programme_keys, edit.color_id
+    vis, transp, warnings = edit.vis, edit.transp, edit.warnings
+    structural, effective_updates = edit.structural, edit.effective_updates
+
+    # A dialog the client rendered can stand in for confirm=True — only on an
+    # accept of exactly what is about to be written (settle_gate). This event
+    # was re-read after the dialog; a decline never writes, whatever it says now.
+    gate_cue = None
+    if not confirm:
+        stop, gate_cue = settle_gate(
+            answer, question, gated=bool(structural),
+            preview=lambda: edit_preview(edit, time_min, time_max, meet),
+            nothing="Nothing has changed and nobody was emailed", done="updated",
+        )
+        if stop is not None:
+            return stop
+
+    body: dict[str, Any] = {}
+    previous: dict[str, Any] = {}
+    if edit.start is not None and edit.end is not None:
+        body["start"], body["end"] = edit.start, edit.end
+        previous["start"], previous["end"] = event.get("start"), event.get("end")
+    if recurrence_lines:
         body["recurrence"] = recurrence_lines
         previous["recurrence"] = event.get("recurrence")
-    if emails:
+    if emails:  # only the people not already on the event (_plan_edit)
         # Patch replaces arrays WHOLESALE — merge, never send the delta.
-        existing = list(event.get("attendees", []))
-        known = {a.get("email", "").lower() for a in existing}
-        added = [e for e in emails if e.lower() not in known]
-        if not added:
-            warnings.append("All named attendees are already on the event.")
-            changes.pop("attendees", None)
-        else:
-            body["attendees"] = existing + [{"email": e} for e in added]
+        body["attendees"] = list(event.get("attendees", [])) + [{"email": e} for e in emails]
     if "meet" in changes:
         body["conferenceData"] = meet_request() if meet else None
         if not meet:
@@ -313,6 +381,8 @@ def do_update_event(
         "warnings": warnings,
         **disclosure,
     }
+    if gate_cue:
+        cues["confirm_gate"] = gate_cue
     if previous:
         # Events have no revision history — the old values ARE the restore
         # point. Long descriptions are trimmed; the Calendar UI holds nothing
@@ -327,8 +397,8 @@ def do_update_event(
             if effective_updates != "none"
             else "NO update emails sent (send_updates='none')"
         )
-    if emails and "attendees" in changes:
-        cues["attendees_added"] = added
+    if emails:
+        cues["attendees_added"] = emails
     if programme_keys:
         # Read-back of the merged map proves the keys landed beside the rest.
         cues["properties"] = patched.get("extendedProperties", {}).get("private", {})
@@ -362,44 +432,3 @@ def do_update_event(
         cues=cues,
         extras={"type": "calendar_event"},
     )
-
-
-def _describe_changes(
-    event: dict[str, Any],
-    changes: dict[str, str],
-    time_min: str | None,
-    time_max: str | None,
-    emails: list[str],
-    recurrence_lines: list[str],
-    meet: bool | None,
-) -> dict[str, Any]:
-    """Old → new, per changed field, for the preview."""
-    described: dict[str, Any] = {}
-    if "time" in changes:
-        described["time"] = {
-            "from": {"start": event.get("start"), "end": event.get("end")},
-            "to": {"start": time_min, "end": time_max},
-        }
-    if "recurrence" in changes:
-        described["recurrence"] = {
-            "from": event.get("recurrence"),
-            "to": recurrence_lines,
-        }
-    if "attendees" in changes:
-        existing = {
-            a.get("email", "").lower() for a in event.get("attendees", [])
-        }
-        described["attendees_to_add"] = [
-            e for e in emails if e.lower() not in existing
-        ]
-    if "meet" in changes:
-        described["meet"] = "add a Meet link" if meet else (
-            f"remove the Meet link ({extract_meet_link(event) or 'conference'})"
-        )
-    for cosmetic in (
-        "description", "title", "location", "attachments",
-        "properties", "color", "visibility", "transparency",
-    ):
-        if cosmetic in changes:
-            described.setdefault("also_cosmetic", []).append(cosmetic)
-    return described

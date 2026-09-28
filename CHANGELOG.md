@@ -26,6 +26,27 @@ shipped_in <commit>   # first suite version whose vendored mise contains it; emp
 # Both -C flags are load-bearing: without them "not shipped" and "wrong directory" print identically (cold read, 2026-09-17).
 ```
 
+## 2026-09-28 (mise-pukiri)
+
+### Added
+- **`do(create_event)` with attendees and a structural `do(update_event)` ask the client for the yes, as share does.** Where the connected client declared MCP form elicitation, the call shows the human a dialog carrying the preview's new `message` field, and it books or patches only on an accepted proceed=true. The cue reads `elicitation: the client answered proceed=true; booked on that answer` (`updated` for update_event). A decline returns the preview with `confirm_required` withdrawn. A cancel, or a client without the capability, gets the preview-then-`confirm=True` round-trip unchanged. A pre-supplied `confirm=True` still skips the dialog (policy A).
+- **One gate param for all three ops.** `do()`'s resolver param `share_answer` became `confirm_gate`, filled by three composed resolvers in `tools/confirm_gate.py`. `gate_question` works out the words (checking capability before any API read, and stepping aside on a missing token or Google error so the body's teaching error reaches the caller). `confirm_ask` raises the dialog. `gate_result` hands the body both the question and the answer.
+- **An accept covers exactly the words shown.** `tools/elicit.py::settle_gate`: once a dialog is answered, anything but an accept never writes, and an accept writes only if the state the body re-reads still renders to the words the dialog carried. Otherwise the caller gets the current preview and a cue saying it no longer matches. Found by cold essayeurs: update_event re-reads the event after the dialog, and a change in between could make it write after a decline, or remove a Meet link under an accepted cue while the dialog had said there was none. On the 2026-07-28 protocol the same race came back through the retry round. The client resends its answer, the resolvers re-run, and if nothing is left to ask the answer went unread. That round is now marked ORPHANED and writes nothing (an envelope test changes the event between reads, with four answers in both eras). A Google read that fails inside the gate gets a `no dialog:` cue saying so, rather than falling back silently.
+- Both calendar previews gained a `message`. It uses short lines: the event, a human date in the event's own zone (`Sun 4 Oct 2026 04:00–04:15 Europe/London`), every attendee, who gets emailed, the clash check and its first-instance caveat, and every warning. update_event now resolves its new times, the stray-BYDAY check and which named attendees are actually new before the gate. So those warnings are in its preview too, and an end-before-start move or a no-op attendee add is refused before anyone is asked. Both ops now refuse a pair of times where one carries an offset and the other doesn't, when the calendar zone resolves. **Still open (mise-mafori):** two bounds with *different* offsets (across a clock change, say) still render a wrong span in the message, and the dialog can show it. So a daylight fix is due before this is relied on for such pairs. update_event's preview rendering moved to `tools/update_event_preview.py` (the 500-line module cap).
+
+### Changed
+- **A confirm dialog is raised only when Claude Code would show the whole message: 4 lines of 74 columns, an 80-column terminal.** This came from the live render (`docs/research/2026-09-28-pukiri-hublot/`). CC 2.1.283 clips each dialog line at (terminal width − 6) columns, never wraps, and shows a longer message as its first 3 lines plus `… (+N more lines)` (read from its bundle: `tXe`, `t2=3`). The first cut's clash check, caveat and warnings were out of sight. A longer preview now takes the confirm= round-trip, where the model shows it in full, and its `confirm_gate` cue begins `no dialog:` to say why the fallback fired.
+- **This applies to share too, and it switches share's dialog off for most real shares.** A share preview is one line: `Would share 'NAME' with EMAILS as ROLE`. Essayeur B rebuilt it for every distinct share in the local call log and found **1 of 21 fits** 74 columns. An ITV address alone is about 26 characters. Those shares now take the confirm= preview they had before the jonoha pilot, rather than a dialog that clipped who gets access. That is share's one behaviour change; its cue wording is pinned verbatim and unchanged. A two-line share layout would fit about 11 of 21, but it changes share's preview text, so it waits for Sameer (parked on mise-pukiri).
+- Seen live on CC 2.1.283:
+  - a fitting booking's dialog shows all four lines;
+  - Accept books, and Decline and Esc book nothing;
+  - a warned booking through the same client gets no dialog, and on the repaired code it gets the `no dialog:` cue.
+  - The one scratch event was deleted and confirmed gone.
+  - Bypass-permissions mode does not answer dialogs: each one waited for a keypress.
+
+### Fixed
+- **The create_event clash check asked about the wrong hour whenever the zone was not UTC.** A naive booking time is wall-clock in the user's zone, but the clash window pinned it to UTC. So a 09:00 London booking in summer was checked against 10:00. This was inherited from the first calendar-write release. `tools/events_util.py::zoned_datetime` now builds the window.
+
 ## 2026-09-27 (bds-cofico sweep, mise side)
 
 ### Fixed

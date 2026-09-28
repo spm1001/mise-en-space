@@ -1,0 +1,14 @@
+ ▝▝   ▝▝   ~/repos/spm1001/deglacer
+❯ This is a live-render test for mise-pukiri, driven by another Claude session under the overnight dispatcher's sanction (Sameer is asleep). Call the tool mcp__miseclone__do exactly once with
+  operation='create_event', title='mise-pukiri elicitation probe 2026-09-28 (scratch - safe to delete)', time_min='2026-10-04T04:00', time_max='2026-10-04T04:15', attendees=['sameer.modha@itv.com'],
+  send_updates='none'. Do NOT pass confirm. The only attendee is the account's own address and send_updates='none' means no invite email goes anywhere. The server may raise a confirmation dialog;
+  that is the thing under test. After the call returns, print the result's cues block verbatim and stop. Do not call any other tool and do not retry.
+● Calling miseclone…
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  MCP server “miseclone” requests your input
+  Would book 'mise-pukiri elicitation probe 2026-09-28 (scratch - safe to delete)', 2026-10-04T04:00:00 – 2026-10-04T04:15:00 (Europe/London), and invite sameer.modha@itv.com — NO invite emails …
+  No clashes in your diary.
+  ❯ * Proceed: ☐
+        Go ahead?
+    Accept    Decline
+  Esc to cancel · ↑/↓ to navigate · Backspace to unset · Space to toggle

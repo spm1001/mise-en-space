@@ -9,9 +9,9 @@ with confirm=True executes. This prevents Claude from sharing
 files without explicit user approval.
 
 Where the connected client declared MCP elicitation (tools/elicit.py),
-the same preview text rides a dialog the client renders — via the
-`share_confirm` resolver on do()'s `share_answer` param — and the share
-executes only on an accepted yes: the human's yes as a UI event rather
+the same preview text rides a dialog the client renders — do()'s one
+confirm resolver (tools/confirm_gate.py) asks with `share_confirm_message`
+— and the share executes only on an accepted yes: the human's yes as a UI event rather
 than a confirm=True the model supplies itself (mise-jonoha pilot). A
 cancelled dialog returns the preview with confirm= still open as the
 fallback; a decline closes it.
@@ -23,16 +23,23 @@ try silent first, fall back to notification if Google requires it.
 Uses httpx via MiseSyncClient (Phase 1 migration).
 """
 
-from typing import Annotated, Any
+from typing import Any
 
 import httpx
 
 from cues_util import with_identity
 
 from mcp.server.elicitation import ElicitationResult
-from mcp.server.mcpserver import Context, Elicit, Resolve
 
-from tools.elicit import ConfirmAnswer, ConfirmVerdict, confirm_marker, dialog_verdict
+from tools.elicit import (
+    ConfirmAnswer,
+    ConfirmVerdict,
+    GateQuestion,
+    accepted_cue,
+    dialog_verdict,
+    skipped_preview,
+    unaccepted_preview,
+)
 
 from adapters.http_client import get_sync_client
 from models import DoResult, MiseError
@@ -87,6 +94,7 @@ def do_share(
     role: str | None = None,
     confirm: bool = False,
     answer: ElicitationResult[ConfirmAnswer] | None = None,
+    question: GateQuestion | None = None,
     **_kwargs: Any,
 ) -> DoResult | dict[str, Any]:
     """
@@ -100,9 +108,11 @@ def do_share(
         to: Email address(es), comma-separated for multiple
         role: Permission role — reader (default), writer, or commenter
         confirm: Must be True to actually share. Without it, returns preview.
-        answer: The outcome of the client-rendered confirmation dialog (the
-            `share_confirm` resolver), or None when no dialog was asked — then
+        answer: The outcome of the client-rendered confirmation dialog
+            (tools/confirm_gate.py), or None when no dialog was asked — then
             confirm= is the gate, exactly as before.
+        question: What the gate asked, or why it did not; a capable client
+            not asked because the preview would not fit gets a cue saying so.
 
     Returns:
         Preview dict (confirm=False), DoResult (confirm=True), or error dict
@@ -115,7 +125,10 @@ def do_share(
     verdict = dialog_verdict(answer)
     try:
         if confirm or verdict is None:
-            return _share_file(file_id, emails, effective_role, confirm)
+            result = _share_file(file_id, emails, effective_role, confirm)
+            if not confirm and isinstance(result, dict):
+                result = skipped_preview(result, question)
+            return result
         return _share_after_dialog(file_id, emails, effective_role, verdict)
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
@@ -127,73 +140,37 @@ def _share_after_dialog(
     """Act on the client-rendered dialog's answer; share only on an accepted yes.
 
     The dialog carried exactly the preview text the confirm= path returns
-    (share_confirm builds it from the same _share_file preview), so the
-    human's yes covers the same facts either way. Anything but an accept
-    returns that same preview, with a cue saying what the dialog did and
-    whether the confirm= round-trip is still open:
-
-    - cancel: no dialog decided this (headless clients auto-cancel; a
-      dismissed dialog cancels) — confirm= stays the fallback.
-    - decline: an answer. The confirm_required cue is withdrawn so the model
-      is not nudged into supplying the yes the dialog just refused.
-
-    The cue names the mechanism and the client's answer — never "the human
-    approved": from here an auto-resolved accept is indistinguishable.
+    (share_confirm_message builds it from the same _share_file preview), so
+    the human's yes covers the same facts either way. Anything but an accept
+    returns that same preview with a confirm_gate cue (tools/elicit.py).
     """
     action, detail = verdict
     if action == "accept":
         result = _share_file(file_id, emails, role, True)
         if isinstance(result, DoResult):
-            result.cues["confirm_gate"] = f"elicitation: {detail}; shared on that answer"
+            result.cues["confirm_gate"] = accepted_cue(detail, "shared")
         return result
     preview = _share_file(file_id, emails, role, False)
     if not isinstance(preview, dict):  # confirm=False always previews; keeps mypy honest
         return preview
-    cues = dict(preview["cues"])
-    if action == "decline":
-        cues.pop("confirm_required", None)
-        cues["confirm_gate"] = (
-            f"elicitation: declined — {detail}. Nothing was shared. The user said no "
-            "through the dialog; ask them again before any further attempt."
-        )
-    else:
-        cues["confirm_gate"] = (
-            f"elicitation: {action} — {detail}. Nothing was shared; no dialog decided "
-            "this, so the confirm= round-trip applies: show this preview to the user "
-            "and call again with confirm=True on their yes."
-        )
-    return {**preview, "cues": cues}
+    return unaccepted_preview(preview, verdict, "Nothing was shared")
 
 
-def share_confirm(
-    operation: str, ctx: Context, file_id: Any = None, to: Any = None,
-    role: str | None = None, confirm: bool = False,
-) -> Elicit[ConfirmAnswer] | None:
-    """Resolver for do()'s `share_answer`: the confirmation question, or None.
+def share_confirm_message(file_id: Any, to: Any, role: str | None) -> str | None:
+    """The dialog text for an unconfirmed share: the preview's own message.
 
-    Runs before the tool body on EVERY do() call, so it answers None fast for
-    anything that is not an unconfirmed share on a dialog-capable client.
-    Invalid inputs and Drive errors also answer None: the body then reports
-    them exactly as it does today, instead of the resolver failing the call.
+    Invalid inputs answer None — no dialog — so the body reports them
+    exactly as it does today. A Drive error raises: the confirm resolver
+    (tools/confirm_gate.py) turns it into "no dialog, and here is why".
     """
-    if operation != "share" or confirm or not isinstance(file_id, str) or not isinstance(to, str):
+    if not isinstance(file_id, str) or not isinstance(to, str):
         return None
     parsed = _parse_share_inputs(file_id, to, role)
     if isinstance(parsed, dict):
         return None
     file_id, emails, effective_role = parsed
-    try:
-        preview = _share_file(file_id, emails, effective_role, False)
-    except MiseError:
-        return None
-    message = preview["message"] if isinstance(preview, dict) else None
-    return confirm_marker(ctx, message)
-
-
-# do()'s injected param (server.py): mcp fills it by running share_confirm and
-# asking the client; the union annotation hands the body accept/decline/cancel
-# rather than aborting the call on a no. Never a wire param.
-ShareAnswer = Annotated[ElicitationResult[ConfirmAnswer], Resolve(share_confirm)]
+    preview = _share_file(file_id, emails, effective_role, False)
+    return preview["message"] if isinstance(preview, dict) else None
 
 
 @with_retry(max_attempts=3, delay_ms=1000)

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "miseclone": {
+      "command": "uv",
+      "args": ["run", "--project", "/home/modha/repos/spm1001/mise-en-space", "--extra", "extraction", "python3", "/home/modha/repos/spm1001/mise-en-space/server.py"]
+    }
+  }
+}
