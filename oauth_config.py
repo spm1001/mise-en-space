@@ -10,6 +10,7 @@ Workspace it serves.
 
 import json
 import os
+import re
 import shlex
 import socket
 import sys
@@ -344,12 +345,44 @@ PRE_SEAM_DATA_DIRS = tuple(dict.fromkeys((
 )))
 
 
+_UNFILLED = re.compile(r"\$\{?[A-Za-z_]")
+
+
+def _unfilled_fallback_dir() -> Path:
+    """Where the store goes when the host hands over MISE_EN_SPACE_DATA_DIR with a
+    placeholder it never filled in. Keyed by the configured client's GCP project
+    number (the client_id prefix), so each Workspace keeps its own stable store
+    whatever the host does. With no client supplied from outside, the bundled
+    client's own dir, which is where that client's token already lives."""
+    if not client_from_env():
+        return _DEFAULT_DATA_DIR
+    client_id = configured_client_id()
+    if not client_id:
+        return _DEFAULT_DATA_DIR
+    return Path.home() / '.claude' / 'plugins' / 'data' / f"mise-client-{client_id.split('-', 1)[0]}"
+
+
 def resolve_data_dir() -> Path:
-    """MISE_EN_SPACE_DATA_DIR when set (must be absolute), else the flavour's own dir."""
+    """MISE_EN_SPACE_DATA_DIR when set (must be absolute), else the flavour's own dir.
+
+    A placeholder the host left unfilled is a designed failure, not an operator
+    error: the Claude desktop app's local server runner (Cowork) expands
+    ${CLAUDE_PLUGIN_ROOT} in a plugin's server env but hands ${CLAUDE_PLUGIN_DATA}
+    over literally (measured on the family kit, 28 Sep 2026), and refusing it
+    left every family machine's Google tools dead there. So expand what the
+    process environment can fill, and failing that use a per-client store and
+    say so on stderr, which lands in the host's MCP log.
+    """
     raw = os.environ.get(DATA_DIR_ENV)
     if not raw:
         return _DEFAULT_DATA_DIR
-    path = Path(raw).expanduser()
+    expanded = os.path.expandvars(raw)
+    if _UNFILLED.search(expanded):
+        fallback = _unfilled_fallback_dir()
+        print(f"mise: {DATA_DIR_ENV}={raw!r} arrived with a placeholder the host did not "
+              f"fill in; using {fallback}", file=sys.stderr)
+        return fallback
+    path = Path(expanded).expanduser()
     if not path.is_absolute():
         # A relative store would resolve against whatever cwd the MCP server
         # was spawned in, so the token would move between launches.

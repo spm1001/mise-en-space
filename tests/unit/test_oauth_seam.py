@@ -149,6 +149,47 @@ class TestDataDir:
         with pytest.raises(ValueError, match="absolute"):
             resolve_data_dir()
 
+    # The Claude desktop app's local server runner (Cowork) fills in
+    # ${CLAUDE_PLUGIN_ROOT} but hands ${CLAUDE_PLUGIN_DATA} over literally; the
+    # engine refused it and the family kit's server died at import (28 Sep).
+    def test_unfilled_placeholder_is_expanded_from_the_environment(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path / "plugin-data"))
+        monkeypatch.setenv("MISE_EN_SPACE_DATA_DIR", "${CLAUDE_PLUGIN_DATA}")
+        assert resolve_data_dir() == tmp_path / "plugin-data"
+
+    def test_unfillable_placeholder_falls_back_to_a_per_client_store(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.delenv("CLAUDE_PLUGIN_DATA", raising=False)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        client = _client_file(tmp_path / "client.json", "903554315162-abc.apps.googleusercontent.com")
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(client))
+        monkeypatch.setenv("MISE_EN_SPACE_DATA_DIR", "${CLAUDE_PLUGIN_DATA}")
+        assert resolve_data_dir() == tmp_path / ".claude" / "plugins" / "data" / "mise-client-903554315162"
+        assert "did not fill in" in capsys.readouterr().err
+
+    def test_unfillable_placeholder_with_the_bundled_client_is_the_flavour_dir(self, monkeypatch):
+        monkeypatch.delenv("CLAUDE_PLUGIN_DATA", raising=False)
+        monkeypatch.delenv("MISE_EN_SPACE_OAUTH_CLIENT", raising=False)
+        monkeypatch.setenv("MISE_EN_SPACE_DATA_DIR", "${CLAUDE_PLUGIN_DATA}")
+        assert resolve_data_dir() == oauth_config._DEFAULT_DATA_DIR
+
+    def test_unfilled_placeholder_no_longer_kills_the_import(self, tmp_path):
+        """The desktop crash was at import (DATA_DIR is computed there), so check
+        a fresh process with exactly the family kit's env."""
+        import os
+        import subprocess
+        import sys
+        client = _client_file(tmp_path / "client.json", "903554315162-abc.apps.googleusercontent.com")
+        env = {k: v for k, v in os.environ.items()
+               if not k.startswith("MISE_EN_SPACE_") and k != "CLAUDE_PLUGIN_DATA"}
+        env.update(HOME=str(tmp_path), MISE_EN_SPACE_OAUTH_CLIENT=str(client),
+                   MISE_EN_SPACE_DATA_DIR="${CLAUDE_PLUGIN_DATA}")
+        out = subprocess.run(
+            [sys.executable, "-c", "import oauth_config; print(oauth_config.DATA_DIR)"],
+            cwd=Path(oauth_config.__file__).parent, env=env,
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        assert out == str(tmp_path / ".claude" / "plugins" / "data" / "mise-client-903554315162")
+
     def test_jdx_mise_data_dir_does_not_engage_the_seam(self, tmp_path, monkeypatch, no_keychain):
         """MISE_DATA_DIR is jdx/mise's own documented override — the unrelated
         version manager's users export it. It must not move mise's token store
