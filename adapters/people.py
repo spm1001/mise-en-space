@@ -40,8 +40,10 @@ from typing import Any
 
 import httpx
 
+from adapters import directory_refusal
 from adapters.http_client import get_sync_client
 from cues_util import current_user_email
+from logging_config import logger
 from models import DirectoryPerson, ErrorKind, MiseError, PeopleSearchResults
 from retry import with_retry
 
@@ -333,8 +335,9 @@ _ENRICH_WORKERS = 6
 
 
 def clear_profile_cache() -> None:
-    """Drop cached directory profiles (test isolation, and re-auth)."""
+    """Drop cached directory profiles and any standing refusal (test isolation, and re-auth)."""
     _PROFILE_CACHE.clear()
+    directory_refusal.clear()
 
 
 def address_of(header_value: str | None) -> str | None:
@@ -352,17 +355,29 @@ def _own_domain() -> str | None:
 
 
 def _fetch_profile(address: str) -> dict[str, Any] | None:
-    """One cached lookup. None means 'asked, and there is no profile'."""
+    """One cached lookup. None means 'asked, and there is no profile' — or,
+    while a refusal stands, 'not asked': a refusal is never cached (mise-hejeze)."""
     if address in _PROFILE_CACHE:
         return _PROFILE_CACHE[address]
+    if directory_refusal.blocking():
+        return None
+    value: dict[str, Any] | None = None
     try:
-        person = get_person(address)
-        value: dict[str, Any] | None = person.to_dict()
-    except Exception:
-        # Best-effort by design: enrichment decorates a search that has
-        # already succeeded, so a directory hiccup must never fail it. Cached
-        # as a negative so the same dead address is not retried all session.
-        value = None
+        value = get_person(address).to_dict()
+        directory_refusal.clear()
+    except MiseError as e:
+        if e.kind is ErrorKind.PERMISSION_DENIED:  # the token, not the address
+            directory_refusal.note(e)
+            return None
+        if e.kind is ErrorKind.NOT_FOUND:  # external, departed, opted out, a group
+            directory_refusal.clear()
+        else:
+            logger.warning(f"Directory lookup for {address} failed ({e.kind.value}): {e.message}")
+    except Exception as e:
+        # Best-effort by design: enrichment decorates a result that has already
+        # succeeded, so an unforeseen failure must not fail it — but it says why.
+        logger.warning(f"Directory lookup for {address} failed unexpectedly: {e!r}")
+    # Negatives cache too, so the same dead address is not retried all session.
     if len(_PROFILE_CACHE) < _CACHE_MAX:
         _PROFILE_CACHE[address] = value
     return value
@@ -373,13 +388,37 @@ def own_profile() -> dict[str, Any] | None:
 
     Exists for relation arithmetic — a thread fetch names 'X is Y's manager'
     with the user in the set (mise-nelizu) — NEVER for attaching under a
-    `people` key: placing the user to themselves is noise (see profiles_for).
+    `people` key: placing the user to themselves is noise (see _wanted).
     One directory call per session, then the cache answers.
     """
     me = (current_user_email() or "").lower()
     if not me or "@" not in me:
         return None
     return _fetch_profile(me)
+
+
+def _wanted(header_values: Iterable[str | None]) -> set[str]:
+    """The own-domain addresses among these headers — never the user: a real
+    inbox rendered an invite Sameer sent as "Sameer Modha — Client Strategy
+    Data & Effectiveness Lead", and excluding here (not in the render) lets
+    the fallback to the thread's ORIGINATOR place the colleague who started it."""
+    domain = _own_domain()
+    if not domain:
+        return set()
+    me = (current_user_email() or "").lower()
+    return {
+        addr
+        for addr in (address_of(v) for v in header_values)
+        if addr and addr.endswith(f"@{domain}") and addr != me
+    }
+
+
+def placement_refused(header_values: Iterable[str | None]) -> str | None:
+    """The `people_unavailable` cue when own-domain addresses here went unplaced
+    because the directory REFUSED (a refusal is never cached, so an uncached one
+    was skipped); None for an all-external set, which had nothing to place."""
+    unasked = sum(a not in _PROFILE_CACHE for a in _wanted(header_values))
+    return directory_refusal.cue(unasked)
 
 
 def profiles_for(header_values: Iterable[str | None]) -> dict[str, dict[str, Any]]:
@@ -390,23 +429,7 @@ def profiles_for(header_values: Iterable[str | None]) -> dict[str, dict[str, Any
     is the honest answer for an external sender and must not be rendered as a
     failed lookup.
     """
-    domain = _own_domain()
-    if not domain:
-        return {}
-
-    # Never place the user to themselves. Measured on a real inbox: without
-    # this, a calendar invite Sameer had sent rendered as "Sameer Modha —
-    # Client Strategy Data & Effectiveness Lead", which is a wasted lookup and
-    # a wasted line. Excluding here rather than in the render also means the
-    # fallback to the thread's ORIGINATOR fires, so a thread he replied to
-    # last still places the colleague who started it.
-    me = (current_user_email() or "").lower()
-
-    wanted = {
-        addr
-        for addr in (address_of(v) for v in header_values)
-        if addr and addr.endswith(f"@{domain}") and addr != me
-    }
+    wanted = _wanted(header_values)
     if not wanted:
         return {}
 
@@ -416,6 +439,9 @@ def profiles_for(header_values: Iterable[str | None]) -> dict[str, dict[str, Any
             list(ex.map(_fetch_profile, uncached))
 
     return {a: p for a in wanted if (p := _fetch_profile(a)) is not None}
+
+
+SENDER_KEYS = ("from", "last_sender")  # the placed headers on a Gmail search row
 
 
 def attach_profiles(rows: list[dict[str, Any]]) -> int:
@@ -433,12 +459,12 @@ def attach_profiles(rows: list[dict[str, Any]]) -> int:
     """
     if not rows:
         return 0
-    people = profiles_for([r.get(k) for r in rows for k in ("from", "last_sender")])
+    people = profiles_for([r.get(k) for r in rows for k in SENDER_KEYS])
     if not people:
         return 0
     for row in rows:
         found = {}
-        for key in ("from", "last_sender"):
+        for key in SENDER_KEYS:
             addr = address_of(row.get(key))
             if addr and addr in people:
                 found[addr] = people[addr]

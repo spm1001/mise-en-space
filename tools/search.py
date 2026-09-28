@@ -14,7 +14,9 @@ from adapters.gmail import search_threads
 from adapters.activity import search_comment_activities
 from adapters.calendar import list_events
 from adapters.calendar_list import list_all_events
-from adapters.people import attach_profiles, expand_profile, search_people
+from adapters.people import (
+    SENDER_KEYS, attach_profiles, expand_profile, placement_refused, search_people,
+)
 from models import (
     CalendarEvent,
     CalendarSearchResult,
@@ -333,6 +335,13 @@ def do_search(
             # adapter, so a session's recurring correspondents cost one
             # lookup each. Best-effort: never fails the search.
             placed = attach_profiles(result.gmail_results)
+            # A REFUSED directory is not an empty one (mise-hejeze): say so
+            # once, and drop the honest-absence line below, which it falsifies.
+            refused = placement_refused(
+                [r.get(k) for r in result.gmail_results for k in SENDER_KEYS]
+            )
+            if refused:
+                result.cues["people_unavailable"] = refused
             if placed:
                 # Say WHICH set the count describes. It counts people across
                 # every fetched thread, while the preview renders a handful of
@@ -346,9 +355,11 @@ def do_search(
                     "profiles are on each row's `people` key in the deposit. The "
                     "preview shows fewer, and omits a line for anyone whose entry "
                     "carries no role (shared mailboxes, service accounts) and for "
-                    "you. An address with no entry is external or "
+                    "you."
+                ) + ("" if refused else (
+                    " An address with no entry is external or "
                     "directory-opted-out — an honest absence, not a failed lookup."
-                )
+                ))
         except MiseError as e:
             result.errors.append(f"Gmail search failed: {e.message}")
         except Exception as e:
