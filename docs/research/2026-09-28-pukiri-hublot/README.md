@@ -25,11 +25,24 @@ The limits come from the CC bundle, not from one render. The dialog passes the m
 | `pane-6-dialog-fits-whole.txt` | The ordinary booking's dialog: `Book '…'` / `When: Sun 4 Oct 2026 04:00–04:15 Europe/London` / `Invite: sameer.modha@itv.com (no emails sent)` / `Clashes: none.` All four lines are whole. |
 | `pane-7-accept-result.txt` | Space (tick Proceed) → Down → Enter (Accept). Booked as event `osk194gk4dqhg5vnpr5ir8mqk0`; `confirm_gate: "elicitation: the client answered proceed=true; booked on that answer"`. |
 
+## Third session: the essayeur repairs (4b96683), seen live without a write
+
+Two cold essayeurs then found that update_event could write after a decline, when the event changed between the resolver's read and the body's, and that the too-long fallback gave no reason. The repair made the gate three composed resolvers. The body now receives the words the dialog carried as well as the answer, and it writes only if the state it re-read still renders to those words. Tonight's one calendar write was already spent, so this session re-rendered the no-write paths only.
+
+| File | What it shows |
+|---|---|
+| `pane-8-repaired-dialog.txt` | The same four-line dialog, raised through the composed resolvers in real CC. |
+| `pane-9-repaired-decline-result.txt` | Decline: nothing booked, the decline cue. |
+| `pane-10-repaired-too-long-cue.txt` | A warned booking: no dialog, and the preview's `confirm_gate` now reads `no dialog: this preview is longer than a Claude Code confirm dialog shows whole (4 lines of 74 columns on an 80-column terminal)…`. |
+
+The accept path of the repaired code is pinned only through the in-memory mcp Client, in both protocol eras. It was not seen live, because that would have been a second calendar write.
+
 Clean-up: the worker read the event back (summary and sole attendee matched), deleted it with `sendUpdates=none`, and re-fetched it. The re-fetch showed `status: cancelled` (Calendar still returns a deleted event by id), and the event no longer appears in a calendar listing of the window.
 
 ## Things worth knowing
 
 - **Bypass-permissions mode does not answer elicitation dialogs.** Each dialog stayed up until the driver pressed a key (pane-3's sat for minutes). The driven model twice guessed the opposite, that bypass mode auto-accepts. It cannot see the dialog, so from inside the model this is a guess, and tonight's captures refute it.
+- **The driven model twice called the decline cue's wording unverifiable.** The cue says "The user said no through the dialog", and a server cannot know a person said it. The model was wrong about who answered tonight (the driver did), but right that the claim is one the server can't make. The same wording is share's, seen live on 14 Sep and pinned verbatim, so it is filed rather than changed here (mise-jojewi).
 - **The honesty rule held, unprompted.** After each call the driven model said no dialog had reached it and that only the screen could say who answered. After the accept, it flagged "whether an auto-accepted elicitation should count as the user's yes". That is policy A's recorded trade-off (mise-wagina, 2026-09-06), not a new finding.
 - **Other clients are unmeasured.** The fit budget is Claude Code's. Applying it to every client errs toward the confirm= path, which is safe. A client that renders long messages in full loses nothing but the dialog on long previews.
 - **Fullscreen CC may show fewer than 4 lines on a short terminal** (the bundle takes `min(4, height-derived)` there). This is unmeasured and the fit check does not model it.
