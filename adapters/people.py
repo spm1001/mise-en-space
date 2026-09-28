@@ -34,14 +34,13 @@ a colleague does not exist.
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from email.utils import getaddresses
-import json
-from pathlib import Path
 from typing import Any
 
 import httpx
 
 from adapters import directory_refusal
 from adapters.http_client import get_sync_client
+from adapters.org_map import division_for
 from cues_util import current_user_email
 from logging_config import logger
 from models import DirectoryPerson, ErrorKind, MiseError, PeopleSearchResults
@@ -56,56 +55,6 @@ _DOMAIN_PUBLIC = {"viewType": "domain_public"}
 # directory search that needs paging is the wrong shape of question.
 _MAX_PAGE = 500
 
-
-
-# --- Coarse division, from the hand-maintained org map ---------------------
-#
-# `org_map.json` at the package root is DATA, deliberately with no code in it,
-# so it can be reviewed, diffed or replaced without reading Python — and so it
-# rides a normal release like credentials.json, the other tenant-keyed fact
-# mise already ships. Domain-keyed: the mechanism is generic, only the data is
-# tenant-specific, so the mise-home flavour finds no entry for its own domain
-# and the file is simply inert there rather than needing a build-time swap.
-
-_ORG_MAP_FILE = Path(__file__).parent.parent / "org_map.json"
-_org_map: dict[str, Any] | None = None
-
-
-def _load_org_map() -> dict[str, Any]:
-    """Read and cache org_map.json. A broken map costs divisions, never a fetch."""
-    global _org_map
-    if _org_map is None:
-        try:
-            _org_map = json.loads(_ORG_MAP_FILE.read_text()).get("domains") or {}
-        except Exception:
-            # Absent or malformed: degrade to no divisions at all. This is
-            # decoration on a directory read that has already succeeded.
-            _org_map = {}
-    return _org_map
-
-
-def division_for(email: str, department: str | None) -> str | None:
-    """Coarse division for a colleague, or None. NEVER guesses.
-
-    Exact department match wins; an ordered substring list is the fallback.
-    An unmapped department yields nothing, because a wrong division is worse
-    than none — 'Strategy, Policy & Regulation' is the corporate centre and a
-    keyword rule would file it under Commercial, misplacing precisely the
-    senior people it matters most to place correctly.
-    """
-    if not department or "@" not in (email or ""):
-        return None
-    entry = _load_org_map().get(email.rsplit("@", 1)[-1].lower())
-    if not entry:
-        return None
-    exact = (entry.get("departments") or {}).get(department)
-    if exact:
-        return exact
-    low = department.lower()
-    for pair in entry.get("patterns") or []:
-        if len(pair) == 2 and pair[0] in low:
-            return pair[1]
-    return None
 
 
 def _parse_person(data: dict[str, Any]) -> DirectoryPerson:
@@ -329,7 +278,7 @@ def expand_profile(person: DirectoryPerson) -> dict[str, Any]:
 _PROFILE_CACHE: dict[str, dict[str, Any] | None] = {}
 # Bounded so a long session sweeping a large mailbox cannot grow it without
 # limit. Far above any realistic correspondent count, so it is a backstop
-# rather than an eviction policy — hence the crude clear-all.
+# rather than an eviction policy — hence the crude clear-all in _fetch_profile.
 _CACHE_MAX = 2000
 _ENRICH_WORKERS = 6
 
@@ -355,8 +304,10 @@ def _own_domain() -> str | None:
 
 
 def _fetch_profile(address: str) -> dict[str, Any] | None:
-    """One cached lookup. None means 'asked, and there is no profile' — or,
-    while a refusal stands, 'not asked': a refusal is never cached (mise-hejeze)."""
+    """One cached lookup. None means 'no profile' — but only a real answer is
+    cached (a profile, or NOT_FOUND). A refusal or a failed call is left
+    uncached, so the address stays visibly unplaced and is asked again, never
+    remembered as absent (mise-hejeze; a dropped connection did that too)."""
     if address in _PROFILE_CACHE:
         return _PROFILE_CACHE[address]
     if directory_refusal.blocking():
@@ -364,22 +315,24 @@ def _fetch_profile(address: str) -> dict[str, Any] | None:
     value: dict[str, Any] | None = None
     try:
         value = get_person(address).to_dict()
-        directory_refusal.clear()
     except MiseError as e:
         if e.kind is ErrorKind.PERMISSION_DENIED:  # the token, not the address
             directory_refusal.note(e)
             return None
-        if e.kind is ErrorKind.NOT_FOUND:  # external, departed, opted out, a group
-            directory_refusal.clear()
-        else:
+        if e.kind is not ErrorKind.NOT_FOUND:  # NOT_FOUND: external, departed, opted out, a group
             logger.warning(f"Directory lookup for {address} failed ({e.kind.value}): {e.message}")
+            directory_refusal.note_failure(f"{e.kind.value}: {e.message}")
+            return None
     except Exception as e:
         # Best-effort by design: enrichment decorates a result that has already
         # succeeded, so an unforeseen failure must not fail it — but it says why.
         logger.warning(f"Directory lookup for {address} failed unexpectedly: {e!r}")
-    # Negatives cache too, so the same dead address is not retried all session.
-    if len(_PROFILE_CACHE) < _CACHE_MAX:
-        _PROFILE_CACHE[address] = value
+        directory_refusal.note_failure(repr(e))
+        return None
+    directory_refusal.clear()  # the directory answered, so it is readable
+    if len(_PROFILE_CACHE) >= _CACHE_MAX:
+        _PROFILE_CACHE.clear()  # the backstop: crude, and far above real use
+    _PROFILE_CACHE[address] = value
     return value
 
 
@@ -413,32 +366,33 @@ def _wanted(header_values: Iterable[str | None]) -> set[str]:
     }
 
 
-def placement_refused(header_values: Iterable[str | None]) -> str | None:
-    """The `people_unavailable` cue when own-domain addresses here went unplaced
-    because the directory REFUSED (a refusal is never cached, so an uncached one
-    was skipped); None for an all-external set, which had nothing to place."""
-    unasked = sum(a not in _PROFILE_CACHE for a in _wanted(header_values))
-    return directory_refusal.cue(unasked)
+def placement_gap(header_values: Iterable[str | None]) -> str | None:
+    """The `people_unavailable` cue when own-domain addresses here are unplaced
+    for want of an ANSWER — a refusal, or a failed call — rather than known to be
+    absent (mise-hejeze). Only answers are cached, so a wanted address missing
+    from the cache after profiles_for is exactly that. None for an all-external
+    set, which had nothing to place."""
+    unknown = sum(a not in _PROFILE_CACHE for a in _wanted(header_values))
+    return directory_refusal.cue(unknown)
 
 
 def profiles_for(header_values: Iterable[str | None]) -> dict[str, dict[str, Any]]:
     """Directory profiles for the own-domain addresses in these headers.
 
     Deduped, cached and fetched in parallel. Returns only what resolved, keyed
-    by lowercased address — an absent key means "not in the directory", which
-    is the honest answer for an external sender and must not be rendered as a
-    failed lookup.
+    by lowercased address. An absent key is an honest "not in the directory"
+    only when no lookup failed or was refused — placement_gap says when that
+    does not hold, and callers withhold the honest-absence wording then.
     """
     wanted = _wanted(header_values)
     if not wanted:
         return {}
-
     uncached = [a for a in wanted if a not in _PROFILE_CACHE]
-    if uncached:
+    got = {a: _PROFILE_CACHE[a] for a in wanted if a in _PROFILE_CACHE}
+    if uncached:  # one pass: a failed lookup is uncached, and must not re-fire
         with ThreadPoolExecutor(max_workers=min(_ENRICH_WORKERS, len(uncached))) as ex:
-            list(ex.map(_fetch_profile, uncached))
-
-    return {a: p for a in wanted if (p := _fetch_profile(a)) is not None}
+            got.update(zip(uncached, ex.map(_fetch_profile, uncached)))
+    return {a: p for a, p in got.items() if p is not None}
 
 
 SENDER_KEYS = ("from", "last_sender")  # the placed headers on a Gmail search row

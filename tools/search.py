@@ -15,7 +15,7 @@ from adapters.activity import search_comment_activities
 from adapters.calendar import list_events
 from adapters.calendar_list import list_all_events
 from adapters.people import (
-    SENDER_KEYS, attach_profiles, expand_profile, placement_refused, search_people,
+    SENDER_KEYS, attach_profiles, expand_profile, placement_gap, search_people,
 )
 from models import (
     CalendarEvent,
@@ -335,13 +335,13 @@ def do_search(
             # adapter, so a session's recurring correspondents cost one
             # lookup each. Best-effort: never fails the search.
             placed = attach_profiles(result.gmail_results)
-            # A REFUSED directory is not an empty one (mise-hejeze): say so
-            # once, and drop the honest-absence line below, which it falsifies.
-            refused = placement_refused(
+            # A refused or failed lookup is not an absence (mise-hejeze): say
+            # so once, and drop the honest-absence line below, which it falsifies.
+            gap = placement_gap(
                 [r.get(k) for r in result.gmail_results for k in SENDER_KEYS]
             )
-            if refused:
-                result.cues["people_unavailable"] = refused
+            if gap:
+                result.cues["people_unavailable"] = gap
             if placed:
                 # Say WHICH set the count describes. It counts people across
                 # every fetched thread, while the preview renders a handful of
@@ -356,7 +356,7 @@ def do_search(
                     "preview shows fewer, and omits a line for anyone whose entry "
                     "carries no role (shared mailboxes, service accounts) and for "
                     "you."
-                ) + ("" if refused else (
+                ) + ("" if gap else (
                     " An address with no entry is external or "
                     "directory-opted-out — an honest absence, not a failed lookup."
                 ))

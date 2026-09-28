@@ -654,7 +654,7 @@ class TestOrgMap:
     def test_a_missing_or_broken_map_costs_divisions_never_an_exception(self) -> None:
         from pathlib import Path
 
-        from adapters import people as P
+        from adapters import org_map as P  # the map's state moved out of people.py (mise-hejeze)
 
         original = P._org_map
         try:

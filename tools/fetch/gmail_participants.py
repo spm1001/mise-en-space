@@ -6,7 +6,7 @@ and (mise-nelizu) placed from the staff directory.
 from email.utils import formataddr, getaddresses
 from typing import Any
 
-from adapters.people import address_of, own_profile, placement_refused, profiles_for
+from adapters.people import address_of, own_profile, placement_gap, profiles_for
 from cues_util import current_user_email
 
 
@@ -116,14 +116,14 @@ def participants_with_placement(thread_data: Any) -> tuple[list[str], dict[str, 
       - `people_note`: when some participants have no entry — external or
         directory-opted-out, an honest absence, not a failed lookup
       - `people_unavailable` (mise-hejeze): own-domain participants went
-        unplaced because the directory REFUSED the token — names the cause
-        and the fix, and replaces `people_note`, whose honest-absence claim
-        would then be false
+        unplaced because the directory REFUSED the token (cause and fix named)
+        or a lookup FAILED (asked again next call) — and it replaces
+        `people_note`, whose honest-absence claim would then be false
     """
     participants = _extract_participants(thread_data)
     people = profiles_for(participants)
-    refused = placement_refused(participants)
-    extras: dict[str, Any] = {"people_unavailable": refused} if refused else {}
+    gap = placement_gap(participants)
+    extras: dict[str, Any] = {"people_unavailable": gap} if gap else {}
     if not people:
         return participants, extras
     extras["people"] = people
@@ -138,7 +138,7 @@ def participants_with_placement(thread_data: Any) -> tuple[list[str], dict[str, 
 
     me = (current_user_email() or "").lower()
     others = {a for a in (address_of(p) for p in participants) if a and a != me}
-    if len(people) < len(others) and not refused:
+    if len(people) < len(others) and not gap:
         extras["people_note"] = (
             f"{len(people)} of {len(others)} participants have directory "
             "profiles (under cues.people). An address with no entry is "

@@ -87,11 +87,6 @@ MYPY_BASELINE: dict[tuple[str, str], tuple[int, str]] = {
         "Any escaping an untyped Google response into str-declared returns "
         "— same family as http_client",
     ),
-    ("adapters/people.py", "no-any-return"): (
-        2,
-        "same response.json() family; shipped in 1.49.0 and sat uncounted "
-        "in prose for a day — the data point that argued for this ratchet",
-    ),
     ("extractors/image.py", "assignment"): (
         1,
         "stubs-only, not runtime: the resize path is test-covered and "

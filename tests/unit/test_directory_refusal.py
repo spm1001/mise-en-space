@@ -213,3 +213,112 @@ class TestSearchRowsNameARefusal:
                          client=_directory(known={"pat.example@itv.com": ("Pat Example", None)}))
         assert "people_unavailable" not in r.cues
         assert "honest absence" in r.cues["people_context"]
+
+
+def _flaky(known: dict, calls: list, down: dict):
+    """Answer from `known`, but die in transport while down["now"] is true — the
+    'Server disconnected' the essayeur saw live in one of six cold fetches. A
+    switch, not a call count: parallel lookups may be skipped during the pause."""
+    good = _directory(known=known)
+
+    def get_json(url, params=None):
+        calls.append(url.rsplit("/", 1)[-1])
+        if down["now"]:
+            raise httpx.RemoteProtocolError("Server disconnected")
+        return good.get_json(url, params)
+
+    client = MagicMock()
+    client.get_json = get_json
+    return client
+
+
+KNOWN = {"pat.example@itv.com": ("Pat Example", None),
+         "robin.sample@itv.com": ("Robin Sample", "pat.example@itv.com")}
+
+
+class TestAFailedLookupIsNotAbsenceEither:
+    """essayeur 28 Sep, finding 1: with the scope present, a dropped connection
+    was cached as None — the card's exact symptom by another door."""
+
+    def test_a_transport_failure_cues_pauses_then_is_asked_again(self) -> None:
+        import adapters.directory_refusal as DR
+
+        calls: list = []
+        down = {"now": True}
+        client = _flaky(KNOWN, calls, down)
+        _, extras = _place(COLLEAGUES, client)
+        cue = extras.get("people_unavailable")
+        assert cue and "incomplete" in cue and "Server disconnected" in cue, extras
+        assert "people_note" not in extras
+        assert "setup_oauth" not in cue, "a dropped connection is not a scope problem"
+        asked = len(calls)
+        _, extras = _place(COLLEAGUES, client)  # inside the pause: skipped, still cued
+        assert len(calls) == asked and "people_unavailable" in extras, (
+            "a hanging directory would add the request timeout to every call"
+        )
+        down["now"] = False
+        with patch.object(DR, "_FAILURE_PAUSE_SECONDS", 0.0):
+            _, extras = _place(COLLEAGUES, client)
+        assert set(extras["people"]) == set(KNOWN), "a failure was cached as absence"
+        assert "people_unavailable" not in extras
+
+    def test_one_pass_per_call_a_failed_lookup_is_not_re_fired(self) -> None:
+        calls: list = []
+        _place(_thread("pat.example@itv.com"), _flaky(KNOWN, calls, {"now": True}))
+        assert calls == ["pat.example@itv.com"], f"re-asked within one call: {calls}"
+
+
+class TestMixedCasesWithholdTheHonestAbsenceLine:
+    """essayeur finding 2: with a profile cached BEFORE the refusal, people is
+    non-empty — the guards that drop people_note / people_context's tail had no test."""
+
+    def _warm_then_refuse(self):
+        import adapters.people as P
+
+        with patch("adapters.people.get_sync_client", return_value=_directory(known=KNOWN)), \
+             patch.object(P, "current_user_email", return_value=ME):
+            P.profiles_for(["pat.example@itv.com"])
+        return _directory(refuse_with=SCOPE_BODY)
+
+    def test_fetch(self) -> None:
+        _, extras = _place(COLLEAGUES, self._warm_then_refuse())
+        assert set(extras["people"]) == {"pat.example@itv.com"}
+        assert "1 own-domain" in extras["people_unavailable"]
+        assert "people_note" not in extras
+
+    def test_search(self, tmp_path) -> None:
+        refusing = self._warm_then_refuse()
+        r = TestSearchRowsNameARefusal()._search(
+            tmp_path, "pat.example@itv.com", "robin.sample@itv.com", client=refusing)
+        assert "people_unavailable" in r.cues
+        assert "people_context" in r.cues and "honest absence" not in r.cues["people_context"]
+
+
+class TestTheGapSurvivesARace:
+    def test_a_refusal_cleared_mid_flight_still_leaves_a_cue(self) -> None:
+        """essayeur finding 3: a sibling's success could clear the refusal between
+        profiles_for and the cue; the gap is read from the cache, so a cue remains."""
+        import adapters.directory_refusal as DR
+        import adapters.people as P
+
+        _place(COLLEAGUES, _directory(refuse_with=SCOPE_BODY))
+        DR.clear()
+        with patch.object(P, "current_user_email", return_value=ME):
+            cue = P.placement_gap(["pat.example@itv.com", "robin.sample@itv.com"])
+        assert cue and "UNPLACED" in cue
+
+
+class TestALibraryIdentitySwitchForgetsTheRefusal:
+    def test_mise_constructor_clears_it(self, tmp_path, monkeypatch) -> None:
+        """essayeur finding 4: Mise(token_path=…) cleared the HTTP clients only."""
+        import adapters.directory_refusal as DR
+        from mise_en_space import Mise
+
+        monkeypatch.delenv("MISE_TOKEN_PATH", raising=False)
+        monkeypatch.delenv("MISE_CREDENTIALS", raising=False)
+        _place(COLLEAGUES, _directory(refuse_with=SCOPE_BODY))
+        assert DR.blocking()
+        Mise(token_path=tmp_path / "other.json")
+        assert DR.reason() is None and not DR.blocking()
+        from token_store import configure_identity
+        configure_identity()
