@@ -35,6 +35,7 @@ from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from email.utils import getaddresses
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -154,8 +155,12 @@ def get_person(email: str) -> DirectoryPerson:
     """
     client = get_sync_client()
     try:
+        # Percent-encode: the address comes from mail headers, and a raw
+        # '../groups/x@<domain>' walked onto another endpoint (a real scope 403
+        # on a healthy token) while 'x/../<colleague>@<domain>' fetched that
+        # colleague's profile (essayeur, 28 Sep — mise-hejeze).
         data = client.get_json(
-            f"{_ADMIN_USERS_API}/{email}",
+            f"{_ADMIN_USERS_API}/{quote(email, safe='@')}",
             params={**_DOMAIN_PUBLIC, "projection": "full"},
         )
     except httpx.HTTPStatusError as e:

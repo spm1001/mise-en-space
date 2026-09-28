@@ -105,8 +105,8 @@ def cue(unplaced: int) -> str | None:
         )
     why = f" ({_failure[0]})" if _failure else ""
     return (
-        f"Directory placement incomplete: the lookup failed for {unplaced} "
-        f"own-domain address(es) just now{why}. They are UNPLACED, not absent — "
-        "do not report them as external or opted out; they are asked again after "
-        f"a {int(_FAILURE_PAUSE_SECONDS)}-second pause."
+        f"Directory placement incomplete for {unplaced} own-domain address(es): "
+        f"a lookup failed{why}, and lookups pause for {int(_FAILURE_PAUSE_SECONDS)} "
+        "seconds after a failure. They are UNPLACED, not absent — do not report "
+        "them as external or opted out; they are asked again after the pause."
     )

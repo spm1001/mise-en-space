@@ -322,3 +322,43 @@ class TestALibraryIdentitySwitchForgetsTheRefusal:
         assert DR.reason() is None and not DR.blocking()
         from token_store import configure_identity
         configure_identity()
+
+
+class TestAHeaderAddressCannotSteerTheDirectoryCall:
+    """essayeur round 2, 28 Sep: get_person put the header address into the URL
+    path raw. A Cc of '../groups/x@itv.com' walked onto the groups endpoint and
+    drew a REAL scope 403 on a healthy token (a false refusal cue); a Cc of
+    'x/../pat.example@itv.com' was placed with Pat's profile."""
+
+    def _urls(self, header: str):
+        import adapters.people as P
+
+        urls: list = []
+        known = _directory(known=KNOWN)
+
+        def get_json(url, params=None):
+            urls.append(url)
+            return known.get_json(url, params)  # answers by the LAST path segment
+
+        client = MagicMock()
+        client.get_json = get_json
+        with patch("adapters.people.get_sync_client", return_value=client), \
+             patch.object(P, "current_user_email", return_value=ME):
+            placed = P.profiles_for([header])
+        return urls, placed
+
+    def test_the_address_is_one_path_segment(self) -> None:
+        urls, placed = self._urls("../groups/x@itv.com")
+        assert urls == [
+            "https://admin.googleapis.com/admin/directory/v1/users/..%2Fgroups%2Fx@itv.com"
+        ]
+        assert placed == {}
+
+    def test_a_dotted_path_cannot_borrow_a_colleagues_profile(self) -> None:
+        _, placed = self._urls("x/../pat.example@itv.com")
+        assert placed == {}, "a crafted address was placed as a real colleague"
+
+    def test_an_ordinary_address_is_unchanged(self) -> None:
+        urls, placed = self._urls("Pat Example <pat.example@itv.com>")
+        assert urls[0].endswith("/users/pat.example@itv.com")
+        assert set(placed) == {"pat.example@itv.com"}
