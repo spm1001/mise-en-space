@@ -471,3 +471,34 @@ class TestCueNamesTheRealStore:
             "on macOS save_token deletes the file after the Keychain write — "
             "token_will_save_to alone says the opposite"
         )
+
+    def test_an_unreadable_keychain_is_not_reported_as_absent(self, tmp_token_file, monkeypatch):
+        """A locked keychain (non-interactive ssh) makes `security` exit 36, not 44;
+        'no entry exists … re-consent' would send the user through consent for
+        nothing (essayeur, 28 Sep)."""
+        import subprocess
+        monkeypatch.delenv("MISE_EN_SPACE_OAUTH_CLIENT", raising=False)
+
+        def locked(argv, **kw):
+            raise subprocess.CalledProcessError(36, argv)
+        with (
+            patch("token_store._has_keychain", return_value=True),
+            patch("token_store.subprocess.run", side_effect=locked),
+            patch("tools.setup_oauth.has_token", return_value=True),
+            patch("adapters.http_client.get_sync_client", return_value=MagicMock()),
+        ):
+            store = do_setup_oauth(force=False)["cues"]["token_store"]
+        assert "could not be read" in store and "36" in store
+        assert "exists yet" not in store and "setup_oauth" not in store
+
+    def test_guest_mode_consent_says_the_token_would_land_where_it_is_never_read(self, tmp_token_file, tmp_path, monkeypatch):
+        monkeypatch.setenv("MISE_TOKEN_PATH", str(tmp_path / "caller" / "adc.json"))
+        with (
+            patch("tools.setup_oauth.has_token", return_value=False),
+            patch("tools.setup_oauth.port_is_free", return_value=True),
+            patch("tools.setup_oauth.get_auth_url", return_value=FAKE_URL),
+            patch("tools.setup_oauth.subprocess.Popen"),
+        ):
+            cues = do_setup_oauth()["cues"]
+        assert "never reads" in cues["token_store"] and "embedding application" in cues["token_store"]
+        assert "token_keychain_service" not in cues

@@ -415,9 +415,12 @@ class TestWhereAKitTokenIsWritten:
 
     Yes on CONSENT: save_token (the end of setup_oauth and of `python -m auth`)
     writes `mise-oauth-token:<client_id>` and removes the file. No on ADOPTION:
-    a token copied in from a pre-seam store lands in the data-dir file only, so
+    resolve_token_path copies a pre-seam token into the data-dir file only, so
     a kit install that adopted its token has no per-client entry until the user
     next consents — which is why none existed on sameer-macbook-air on 28 Sep.
+    (Outside this pin: an adopted token lacking `_identity` is written to the
+    Keychain by cues_util.resolve_user_email_eager's backfill at the first
+    client build; the Mac's tokens carried `_identity`, so nothing wrote.)
     """
 
     def _security_ok(self, calls):
