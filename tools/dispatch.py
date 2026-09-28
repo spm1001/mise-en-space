@@ -292,6 +292,7 @@ DISPATCH: dict[str, Any] = {
         send_updates=p.get("send_updates"), properties=p.get("properties"),
         color=p.get("color"), visibility=p.get("visibility"),
         transparency=p.get("transparency"), confirm=p.get("confirm", False),
+        answer=p.get("_elicit"),
     ),
     "update_event": lambda p: do_update_event(
         file_id=p["file_id"], title=p["title"], content=p["content"],
@@ -301,7 +302,7 @@ DISPATCH: dict[str, Any] = {
         meet=p.get("meet"), send_updates=p.get("send_updates"),
         properties=p.get("properties"), color=p.get("color"),
         visibility=p.get("visibility"), transparency=p.get("transparency"),
-        confirm=p.get("confirm", False),
+        confirm=p.get("confirm", False), answer=p.get("_elicit"),
     ),
     "freebusy": lambda p: do_freebusy(
         attendees=p.get("attendees"), time_min=p.get("time_min"),

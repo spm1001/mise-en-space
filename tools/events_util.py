@@ -88,6 +88,14 @@ def bound_datetime(time_dict: dict[str, Any]) -> datetime:
     return dt
 
 
+def describe_when(start: dict[str, Any], end: dict[str, Any]) -> str:
+    """A start/end pair in words, for preview messages (the dialog's text)."""
+    if "date" in start:
+        return f"all day {start.get('date')} – {end.get('date')} (end date exclusive)"
+    zone = start.get("timeZone")
+    return f"{start.get('dateTime')} – {end.get('dateTime')}" + (f" ({zone})" if zone else "")
+
+
 def build_event_times(
     time_min: str,
     time_max: str,

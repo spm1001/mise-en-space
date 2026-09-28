@@ -6,9 +6,10 @@ elicitation makes the yes a UI event instead — the server parks the tool
 call and asks the CLIENT, which renders a dialog the model cannot see,
 answer or detect (probe-confirmed against Claude Code 2.1.241, 2026-08-23).
 
-The gate rides mcp's resolver injection (`Annotated[…, Resolve(fn)]`): an op
-declares a resolver that returns `confirm_marker(ctx, preview_text)`, and the
-framework asks the client by whatever the negotiated protocol allows — a
+The gate rides mcp's resolver injection (`Annotated[…, Resolve(fn)]`): do()
+carries ONE resolver (tools/confirm_gate.py) that returns
+`confirm_marker(ctx, preview_text)` for whichever gated op is being called,
+and the framework asks the client by whatever the negotiated protocol allows — a
 standalone elicitation/create request over the back-channel on <= 2025-11-25
 (Claude Code today), an InputRequiredResult round-trip on >= 2026-07-28. The
 tool body receives the outcome; `dialog_verdict` reads it.
@@ -94,3 +95,43 @@ def dialog_verdict(outcome: ElicitationResult[ConfirmAnswer] | None) -> ConfirmV
     if isinstance(outcome, DeclinedElicitation):
         return "decline", "the client declined the dialog"
     return "cancel", "the client cancelled the dialog without an answer"
+
+
+def accepted_cue(detail: str, done: str) -> str:
+    """The confirm_gate cue after an accepted dialog: the mechanism, then what ran.
+
+    `done` is the op's past tense ("shared", "booked", "updated"). The cue says
+    what the client answered, never that a human approved.
+    """
+    return f"elicitation: {detail}; {done} on that answer"
+
+
+def unaccepted_preview(
+    preview: dict[str, Any], verdict: ConfirmVerdict, nothing: str,
+) -> dict[str, Any]:
+    """The preview an op returns when the dialog did not end in a yes.
+
+    The same preview the confirm= path returns, plus a confirm_gate cue
+    saying what the dialog did. `nothing` names what did not happen
+    ("Nothing was shared"), without a closing stop.
+
+    - cancel: no dialog decided this (headless clients auto-cancel; a
+      dismissed dialog cancels), so the confirm= round-trip stays open.
+    - decline: an answer. confirm_required is withdrawn so the model is not
+      nudged into supplying the yes the dialog just refused.
+    """
+    action, detail = verdict
+    cues = dict(preview["cues"])
+    if action == "decline":
+        cues.pop("confirm_required", None)
+        cues["confirm_gate"] = (
+            f"elicitation: declined — {detail}. {nothing}. The user said no "
+            "through the dialog; ask them again before any further attempt."
+        )
+    else:
+        cues["confirm_gate"] = (
+            f"elicitation: {action} — {detail}. {nothing}; no dialog decided "
+            "this, so the confirm= round-trip applies: show this preview to the user "
+            "and call again with confirm=True on their yes."
+        )
+    return {**preview, "cues": cues}

@@ -196,8 +196,8 @@ class TestOpParamsMatchDispatch:
 
         from tools.dispatch import PARAM_OWNERS
 
-        # share_answer is filled by an mcp resolver — the SDK keeps it out of the wire schema.
-        signature = {n for n in inspect.signature(do).parameters if n not in ("operation", "share_answer")}
+        # confirm_answer is filled by an mcp resolver — the SDK keeps it out of the wire schema.
+        signature = {n for n in inspect.signature(do).parameters if n not in ("operation", "confirm_answer")}
         assert set(PARAM_OWNERS) == signature
 
 

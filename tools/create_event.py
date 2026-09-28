@@ -9,27 +9,39 @@ call. Gate grain is blast radius: attendees present → gated (other people's
 diaries and inboxes); no attendees → executes directly, the same judgement
 that lets Doc creation run ungated.
 
+Where the connected client declared MCP elicitation, the preview's
+`message` rides a dialog the client renders (do()'s one confirm resolver,
+tools/confirm_gate.py, asks with `create_event_confirm_message`), and the
+event books only on an accepted yes (mise-pukiri, after share's pilot in
+mise-jonoha). A pre-supplied confirm=True still books without a dialog —
+Sameer's policy A, 2026-09-06.
+
 Deliberately NOT in remote mode's allowed ops — booking meetings is
 organiser-visible mutation.
 """
 
 import logging
+from dataclasses import dataclass
 from typing import Any
+
+from mcp.server.elicitation import ElicitationResult
 
 from adapters.calendar import insert_event
 from cues_util import current_user_email, with_identity
 from models import DoResult, ErrorKind, MiseError
+from tools.elicit import ConfirmAnswer, accepted_cue, dialog_verdict, unaccepted_preview
 from tools.events_util import (
+    EVENT_COLORS,
     REAUTH_ADVICE,
     bound_datetime,
     build_attachments,
     build_event_times,
     byday_mismatch_warning,
     clash_summaries,
+    describe_when,
     error,
     extract_meet_link,
     meet_request,
-    EVENT_COLORS,
     normalise_attendees,
     normalise_recurrence,
     readback_field,
@@ -43,26 +55,29 @@ from tools.events_util import (
 logger = logging.getLogger(__name__)
 
 
-def do_create_event(
-    title: str | None = None,
-    time_min: str | None = None,
-    time_max: str | None = None,
-    content: str | None = None,
-    attendees: list[str] | str | None = None,
-    location: str | None = None,
-    meet: bool = False,
-    recurrence: str | list[str] | None = None,
-    include: list[str] | None = None,
-    send_updates: str | None = None,
-    properties: dict[str, str] | None = None,
-    color: str | None = None,
-    visibility: str | None = None,
-    transparency: str | None = None,
-    confirm: bool = False,
-) -> DoResult | dict[str, Any]:
-    """Create an event on the user's primary calendar."""
-    assert title is not None and time_min is not None and time_max is not None
+@dataclass
+class _Plan:
+    """Validated inputs, shared by the preview, the dialog and the booking."""
 
+    emails: list[str]
+    recurrence_lines: list[str]
+    effective_updates: str
+    programme_keys: dict[str, str]
+    color_id: str | None
+    vis: str | None
+    transp: str | None
+    start: dict[str, Any]
+    end: dict[str, Any]
+    warnings: list[str]
+
+
+def _plan(
+    time_min: str, time_max: str, attendees: list[str] | str | None,
+    recurrence: str | list[str] | None, send_updates: str | None,
+    properties: dict[str, str] | None, color: str | None,
+    visibility: str | None, transparency: str | None,
+) -> _Plan | dict[str, Any]:
+    """Validate once for every path; an error dict on bad input."""
     warnings: list[str] = []
     try:
         emails = normalise_attendees(attendees) if attendees else []
@@ -82,39 +97,160 @@ def do_create_event(
     byday_warning = byday_mismatch_warning(start, recurrence_lines)
     if byday_warning:
         warnings.append(byday_warning)
+    return _Plan(emails, recurrence_lines, effective_updates, programme_keys,
+                 color_id, vis, transp, start, end, warnings)
+
+
+_INVITE_EMAILS = {
+    "all": "invite emails go to every attendee",
+    "externalOnly": "invite emails go only to attendees outside your organisation",
+    "none": "NO invite emails — attendees see it only on their calendars",
+}
+
+
+def _preview_message(
+    title: str, plan: _Plan, meet: bool, location: str | None,
+    include: list[str] | None, clashes: list[str], clash_note: str | None,
+) -> str:
+    """Everything the preview shows, in words — this IS the dialog's text.
+
+    The attendee list, the clash check and its caveat, and the warnings all
+    belong here: the human must never approve less than the preview shows.
+    """
+    lines = [(
+        f"Would book '{title}', {describe_when(plan.start, plan.end)}, and invite "
+        f"{', '.join(plan.emails)} — {_INVITE_EMAILS[plan.effective_updates]}."
+    )]
+    if plan.recurrence_lines:
+        lines.append(f"Repeats: {'; '.join(plan.recurrence_lines)}.")
+    if location:
+        lines.append(f"Location: {location}.")
+    if meet:
+        lines.append("With a new Meet link.")
+    if include:
+        lines.append(f"With {len(include)} Drive attachment(s).")
+    lines.append(
+        f"Clashes in your diary: {'; '.join(clashes)}." if clashes
+        else "No clashes in your diary."
+    )
+    if clash_note:
+        lines.append(clash_note)
+    lines.extend(f"Warning: {w}" for w in plan.warnings)
+    return "\n".join(lines)
+
+
+def _preview(
+    title: str, plan: _Plan, meet: bool, location: str | None,
+    include: list[str] | None,
+) -> dict[str, Any]:
+    """The gated preview: nothing booked, nobody emailed, clash check included."""
+    clashes = clash_summaries(bound_datetime(plan.start), bound_datetime(plan.end))
+    clash_note = (
+        "Clash check covers the FIRST instance only."
+        if plan.recurrence_lines else None
+    )
+    preview: dict[str, Any] = {
+        "preview": True,
+        "operation": "create_event",
+        "title": title,
+        "start": plan.start,
+        "end": plan.end,
+        "attendees": plan.emails,
+        "send_updates": plan.effective_updates,
+        "meet": meet,
+        "clashes": clashes,
+        "message": _preview_message(
+            title, plan, meet, location, include, clashes, clash_note,
+        ),
+        "cues": with_identity({
+            "confirm_required": (
+                "This is a preview — nothing is booked and nobody has "
+                "been emailed. Show it to the user; to book and send "
+                "invites, call again with confirm=True."
+            ),
+            "warnings": plan.warnings,
+        }),
+    }
+    if plan.recurrence_lines:
+        preview["recurrence"] = plan.recurrence_lines
+        preview["clash_note"] = clash_note
+    if location:
+        preview["location"] = location
+    return preview
+
+
+def create_event_confirm_message(
+    title: Any, time_min: Any, time_max: Any,
+    attendees: list[str] | str | None, location: str | None, meet: bool,
+    recurrence: str | list[str] | None, include: list[str] | None,
+    send_updates: str | None, properties: dict[str, str] | None,
+    color: str | None, visibility: str | None, transparency: str | None,
+) -> str | None:
+    """The dialog text for an attendee-bearing booking: the preview's message.
+
+    None — no dialog — when there is nothing to gate (no attendees) or the
+    inputs would not reach the preview; the body then books solo, or reports
+    the error, exactly as it does without a dialog.
+    """
+    if not (isinstance(title, str) and isinstance(time_min, str)
+            and isinstance(time_max, str) and attendees):
+        return None
+    plan = _plan(time_min, time_max, attendees, recurrence, send_updates,
+                 properties, color, visibility, transparency)
+    if isinstance(plan, dict) or not plan.emails:
+        return None
+    return str(_preview(title, plan, meet, location, include)["message"])
+
+
+def do_create_event(
+    title: str | None = None,
+    time_min: str | None = None,
+    time_max: str | None = None,
+    content: str | None = None,
+    attendees: list[str] | str | None = None,
+    location: str | None = None,
+    meet: bool = False,
+    recurrence: str | list[str] | None = None,
+    include: list[str] | None = None,
+    send_updates: str | None = None,
+    properties: dict[str, str] | None = None,
+    color: str | None = None,
+    visibility: str | None = None,
+    transparency: str | None = None,
+    confirm: bool = False,
+    answer: ElicitationResult[ConfirmAnswer] | None = None,
+) -> DoResult | dict[str, Any]:
+    """Create an event on the user's primary calendar.
+
+    `answer` is the client-rendered dialog's outcome (tools/confirm_gate.py),
+    or None when no dialog was asked — then confirm= is the gate.
+    """
+    assert title is not None and time_min is not None and time_max is not None
+
+    plan = _plan(time_min, time_max, attendees, recurrence, send_updates,
+                 properties, color, visibility, transparency)
+    if isinstance(plan, dict):
+        return plan
+    emails, recurrence_lines = plan.emails, plan.recurrence_lines
+    effective_updates, programme_keys = plan.effective_updates, plan.programme_keys
+    color_id, vis, transp = plan.color_id, plan.vis, plan.transp
+    start, end, warnings = plan.start, plan.end, plan.warnings
 
     # Blast-radius gate: attendees mean other people's diaries and inboxes.
     # The preview carries the clash check so approval is informed; a solo
-    # event books directly (own diary, recoverable in the UI).
+    # event books directly (own diary, recoverable in the UI). A dialog the
+    # client rendered can stand in for confirm=True — only on an accept.
+    gate_cue = None
     if emails and not confirm:
-        clashes = clash_summaries(bound_datetime(start), bound_datetime(end))
-        preview: dict[str, Any] = {
-            "preview": True,
-            "operation": "create_event",
-            "title": title,
-            "start": start,
-            "end": end,
-            "attendees": emails,
-            "send_updates": effective_updates,
-            "meet": meet,
-            "clashes": clashes,
-            "cues": with_identity({
-                "confirm_required": (
-                    "This is a preview — nothing is booked and nobody has "
-                    "been emailed. Show it to the user; to book and send "
-                    "invites, call again with confirm=True."
-                ),
-                "warnings": warnings,
-            }),
-        }
-        if recurrence_lines:
-            preview["recurrence"] = recurrence_lines
-            preview["clash_note"] = (
-                "Clash check covers the FIRST instance only."
+        verdict = dialog_verdict(answer)
+        if verdict is None or verdict[0] != "accept":
+            preview = _preview(title, plan, meet, location, include)
+            if verdict is None:
+                return preview
+            return unaccepted_preview(
+                preview, verdict, "Nothing was booked and nobody was emailed",
             )
-        if location:
-            preview["location"] = location
-        return preview
+        gate_cue = accepted_cue(verdict[1], "booked")
 
     body: dict[str, Any] = {"summary": title, "start": start, "end": end}
     if content:
@@ -159,6 +295,8 @@ def do_create_event(
         return error(e.kind.value, e.message)
 
     cues: dict[str, Any] = {"warnings": warnings}
+    if gate_cue:
+        cues["confirm_gate"] = gate_cue
     if emails:
         cues["attendees_invited"] = emails
         cues["attendees_notified"] = (

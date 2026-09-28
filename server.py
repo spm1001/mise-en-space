@@ -43,7 +43,7 @@ from adapters.conversion import cleanup_orphaned_temp_files
 from logging_config import configure_call_logging, log_mcp_call
 from tools import do_search, do_fetch
 from tools.dispatch import DO_DESCRIPTION_FULL, DO_DESCRIPTION_REMOTE, run_operation
-from tools.share import ShareAnswer
+from tools.confirm_gate import ConfirmGateAnswer
 from tools.remote import REMOTE_ALLOWED_OPS, fetch_remote, search_remote
 from tools.search import VALID_TYPE_FILTERS, CANONICAL_TYPE_NAMES
 from validation import looks_like_drive_query
@@ -337,7 +337,7 @@ def do(
     properties: dict[str, str] | None = None,
     color: str | None = None,
     visibility: str | None = None,
-    transparency: str | None = None, share_answer: ShareAnswer = None,  # resolved by mcp, never a wire param
+    transparency: str | None = None, confirm_answer: ConfirmGateAnswer = None,  # resolved by mcp, never a wire param
 ) -> dict[str, Any]:
     """Act on Google Workspace."""
     # Build log params — include operation and non-None values that matter,
@@ -412,7 +412,7 @@ def do(
         "send_updates": send_updates, "duration": duration,
         "properties": properties, "color": color,
         "visibility": visibility, "transparency": transparency,
-        "_elicit": share_answer,  # the share dialog's outcome, if a client rendered one (tools/elicit.py)
+        "_elicit": confirm_answer,  # the confirm dialog's outcome, if a client rendered one (tools/confirm_gate.py)
     }
 
     # Validation, metadata prefetch, and execution live in tools/dispatch.py.
