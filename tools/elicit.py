@@ -27,8 +27,17 @@ Three facts shape what is here:
 - The model cannot distinguish a human's accept from an auto-resolved one,
   so nothing built on this may say "the human approved". Verdict details
   name the mechanism and the client's answer.
+- A dialog shows only what fits it. Claude Code 2.1.283 clips every line of
+  the message to (terminal width − 6) columns, never wraps, and shows at most
+  4 lines — the rest collapse to "… (+N more lines)" (read from its bundle,
+  `tXe` with `t2=3`, and seen live: docs/research/2026-09-28-pukiri-hublot/).
+  So `confirm_marker` asks only when the whole message fits an 80-column
+  terminal; anything longer takes the confirm= round-trip, where the model
+  shows the full preview. A human must never approve less than the preview
+  shows.
 """
 
+import unicodedata
 from typing import Any
 
 from mcp.server.elicitation import (
@@ -66,14 +75,34 @@ def client_supports_elicitation(ctx: Any) -> bool:
     return elicitation is not None and (elicitation.form is not None or elicitation.url is None)
 
 
+# Claude Code's dialog budget on an 80-column terminal (see module docstring).
+DIALOG_MAX_LINES = 4
+DIALOG_MAX_COLS = 80 - 6
+
+
+def _display_width(text: str) -> int:
+    """Terminal columns: wide and full-width characters take two."""
+    return sum(2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in text)
+
+
+def fits_dialog(message: str) -> bool:
+    """Would Claude Code show this message whole, on an 80-column terminal?"""
+    lines = message.split("\n")
+    return len(lines) <= DIALOG_MAX_LINES and all(
+        _display_width(line) <= DIALOG_MAX_COLS for line in lines
+    )
+
+
 def confirm_marker(ctx: Any, message: str | None) -> Elicit[ConfirmAnswer] | None:
     """What a confirm resolver returns: the question, or None to fall back.
 
-    None whenever the client cannot render the dialog or there is nothing
-    to confirm — decided here, once, so an op never reasons about
-    capabilities itself.
+    None whenever the client cannot render the dialog, there is nothing to
+    confirm, or the message would not be shown whole — decided here, once,
+    so an op never reasons about capabilities or screen budgets itself.
     """
-    if message is None or ctx is None or not client_supports_elicitation(ctx):
+    if message is None or ctx is None or not fits_dialog(message):
+        return None
+    if not client_supports_elicitation(ctx):
         return None
     return Elicit(message=message, schema=ConfirmAnswer)
 

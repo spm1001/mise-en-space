@@ -165,6 +165,18 @@ class TestResolverAtTheClientSeam:
 
     @patch("retry.time.sleep")
     @patch("tools.share.get_sync_client")
+    def test_a_preview_the_dialog_would_clip_is_never_asked(self, get_client, _sleep) -> None:
+        # Claude Code clips each dialog line at (terminal width − 6) columns, so a
+        # long title or several recipients would hide who gets access (mise-pukiri).
+        client = _client()
+        client.get_json.return_value = {**_META, "name": "Q3 Measurement Innovation Team strategy review"}
+        get_client.return_value = client
+        capable = _ctx(ElicitationCapability())
+        assert confirm_gate("share", capable, file_id="f1", to="alice@example.com, bob@example.com") is None
+        assert do_share("f1", "alice@example.com, bob@example.com")["cues"]["confirm_required"]
+
+    @patch("retry.time.sleep")
+    @patch("tools.share.get_sync_client")
     def test_bad_inputs_and_drive_errors_answer_none_so_the_body_reports_them(self, get_client, _sleep) -> None:
         from models import ErrorKind, MiseError
         client = _client(); get_client.return_value = client

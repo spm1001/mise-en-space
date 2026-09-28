@@ -9,9 +9,12 @@ everywhere else the preview-then-confirm=True round-trip runs unchanged.
 Pinned at three depths, like share: the body's reading of an outcome, the
 resolver against declared capabilities, and the real envelope — an in-memory
 mcp Client against server.mcp in both protocol eras. The load-bearing
-property throughout is that the dialog text IS the preview's message, and
-that message carries every attendee, the clash check and its caveat, and
-the warnings: the human must never approve less than the preview shows.
+property throughout is that the dialog text IS the preview's message, that
+the message carries every attendee, the clash check and its caveat, and the
+warnings — and that a dialog is raised only when Claude Code would show that
+message WHOLE (4 lines of 74 columns; tools/elicit.py). A message that would
+be clipped takes the confirm= path instead: the human must never approve
+less than the preview shows.
 """
 
 import json
@@ -28,7 +31,7 @@ import server  # registers search/fetch/do on server.mcp
 from models import DoResult
 from tools.confirm_gate import confirm_gate
 from tools.create_event import do_create_event
-from tools.elicit import ConfirmAnswer
+from tools.elicit import DIALOG_MAX_COLS, ConfirmAnswer, fits_dialog
 from tools.update_event import do_update_event
 
 YES = AcceptedElicitation(data=ConfirmAnswer(proceed=True))
@@ -37,13 +40,16 @@ NOT_ASKED = AcceptedElicitation[object].model_construct(data=None)  # resolver r
 UNACCEPTED = [(NO_VIA_FORM, "decline"), (DeclinedElicitation(), "decline"), (CancelledElicitation(), "cancel")]
 
 _TZ = "tools.events_util.resolve_calendar_timezone"
-_CLASHES = ["Standup (2026-09-08T14:00:00+01:00 – 2026-09-08T14:15:00+01:00)"]
+_CLASHES = ["Standup (09:00 – 09:15)"]
 _BOOKING = {
     "title": "LSM catch-up", "time_min": "2026-09-08T14:00", "time_max": "2026-09-08T14:30",
     "attendees": ["a@itv.com", "b@itv.com"],
 }
-# 2026-09-08 is a Tuesday, so BYDAY=MO draws the stray-instance warning.
-_RECURRING = {**_BOOKING, "recurrence": "RRULE:FREQ=WEEKLY;BYDAY=MO", "location": "Room 4", "meet": True}
+# Fits the dialog when the diary is clear: the clash caveat rides line 4.
+_RECURRING = {**_BOOKING, "recurrence": "RRULE:FREQ=DAILY;COUNT=2", "location": "Room 4", "meet": True}
+# 2026-09-08 is a Tuesday, so BYDAY=MO draws the stray-instance warning — never fits.
+_WARNED = {**_BOOKING, "recurrence": "RRULE:FREQ=WEEKLY;BYDAY=MO"}
+_CROWD = {**_BOOKING, "attendees": [f"person{i}@itv.com" for i in range(8)]}
 
 
 def _ctx(capable: bool) -> SimpleNamespace:
@@ -79,11 +85,11 @@ _MOVE = {"file_id": "evt123", "time_min": "2026-08-28T10:00", "time_max": "2026-
 def calendar():
     """Hermetic calendar: fixed zone and clashes, recorded writes."""
     with patch(_TZ, return_value="Europe/London"), \
-         patch("tools.create_event.clash_summaries", return_value=list(_CLASHES)), \
+         patch("tools.create_event.clash_summaries", return_value=list(_CLASHES)) as clash, \
          patch("tools.create_event.insert_event", return_value=_created()) as insert, \
          patch("tools.update_event.get_event", return_value=_event()), \
          patch("tools.update_event.patch_event", return_value=_event()) as patch_:
-        yield SimpleNamespace(insert=insert, patch=patch_)
+        yield SimpleNamespace(insert=insert, patch=patch_, clash=clash)
 
 
 # ---------------------------------------------------------------------------
@@ -92,43 +98,82 @@ def calendar():
 
 class TestPreviewMessage:
     def test_create_event_message_carries_every_fact_the_preview_shows(self, calendar) -> None:
-        preview = do_create_event(**_RECURRING)
+        preview = do_create_event(**_BOOKING)
         message = preview["message"]
+        assert message.splitlines()[0] == "Book 'LSM catch-up'"
+        assert "When: Tue 8 Sep 2026 14:00–14:30 Europe/London" in message
         for attendee in preview["attendees"]:
             assert attendee in message
         for clash in preview["clashes"]:
             assert clash in message
-        assert preview["clash_note"] in message
-        assert preview["cues"]["warnings"] and all(w in message for w in preview["cues"]["warnings"])
+        assert "(invites emailed)" in message
+        assert fits_dialog(message)
+
+    def test_a_recurring_booking_carries_the_clash_caveat_and_can_still_fit(self, calendar) -> None:
+        calendar.clash.return_value = []
+        preview = do_create_event(**_RECURRING)
+        message = preview["message"]
+        assert preview["clash_note"] in message and "Clashes: none." in message
+        assert "RRULE:FREQ=DAILY;COUNT=2" in message
         assert "Room 4" in message and "Meet link" in message
-        assert "RRULE:FREQ=WEEKLY;BYDAY=MO" in message
-        assert "2026-09-08T14:00:00" in message and "Europe/London" in message
-        assert "invite emails go to every attendee" in message
+        assert fits_dialog(message)
+
+    def test_every_warning_is_in_the_message_and_a_warned_booking_never_fits(self, calendar) -> None:
+        preview = do_create_event(**_WARNED)
+        assert preview["cues"]["warnings"]
+        assert all(f"Warning: {w}" in preview["message"] for w in preview["cues"]["warnings"])
+        assert not fits_dialog(preview["message"])
+
+    def test_every_attendee_is_listed_even_when_that_cannot_fit(self, calendar) -> None:
+        message = do_create_event(**_CROWD)["message"]
+        assert all(a in message for a in _CROWD["attendees"])
+        assert not fits_dialog(message)
 
     def test_create_event_message_says_when_no_invite_is_emailed(self, calendar) -> None:
-        message = do_create_event(**_BOOKING, send_updates="none")["message"]
-        assert "NO invite emails" in message
+        assert "(no emails sent)" in do_create_event(**_BOOKING, send_updates="none")["message"]
 
     def test_create_event_message_says_no_clashes_rather_than_nothing(self, calendar) -> None:
-        with patch("tools.create_event.clash_summaries", return_value=[]):
-            assert "No clashes in your diary." in do_create_event(**_BOOKING)["message"]
+        calendar.clash.return_value = []
+        assert "Clashes: none." in do_create_event(**_BOOKING)["message"]
 
     def test_update_event_message_carries_every_fact_the_preview_shows(self, calendar) -> None:
         preview = do_update_event(**_MOVE)
         message = preview["message"]
-        assert "Weekly sync" in message and "2026-08-27T14:00:00+01:00" in message  # which event, as it stands
-        assert "2026-08-28T10:00" in message and "2026-08-28T11:00" in message   # where it moves
+        assert message.splitlines()[0] == "Update 'Weekly sync', now Thu 27 Aug 2026 14:00–15:00 UTC+01:00"
+        assert "Move to: Fri 28 Aug 2026 10:00–11:00" in message
         for attendee in preview["changes"]["attendees_to_add"]:
             assert attendee in message
-        assert f"{preview['attendee_count']} attendee(s)" in message
-        assert "update emails go to every attendee" in message
+        assert f"({preview['attendee_count']} attendee(s) on it now)" in message
+        assert "Emails: sent to every attendee" in message
+        assert fits_dialog(message)
 
-    def test_update_event_message_names_the_invite_thread_it_resolved(self, calendar) -> None:
+    def test_update_event_message_names_each_structural_change(self, calendar) -> None:
+        preview = do_update_event(file_id="evt123", meet=True, recurrence="RRULE:FREQ=WEEKLY", title="Renamed")
+        message = preview["message"]
+        assert "Meet: add a Meet link" in message
+        assert "Repeat: none → RRULE:FREQ=WEEKLY" in message
+        assert "Also: title" in message
+
+    def test_the_invite_thread_rides_the_cues_and_the_message_names_the_event(self, calendar) -> None:
         with patch("tools.update_event._resolve_event_from_thread",
                    return_value=(_event(), {"resolved_from_thread": "19fb9faca1565748", "ical_uid": "u@google.com"})):
             preview = do_update_event(file_id="19fb9faca1565748", meet=True)
-        assert "19fb9faca1565748" in preview["message"]
-        assert "add a Meet link" in preview["message"]
+        assert preview["cues"]["resolved_from_thread"] == "19fb9faca1565748"
+        assert "Weekly sync" in preview["message"]
+
+
+class TestDialogBudget:
+    """Claude Code 2.1.283 clips lines at (width − 6) and shows 4 lines (tools/elicit.py)."""
+
+    def test_four_lines_of_74_columns_fit_and_one_more_of_either_does_not(self) -> None:
+        full = "\n".join(["x" * DIALOG_MAX_COLS] * 4)
+        assert fits_dialog(full)
+        assert not fits_dialog(full + "\ny")
+        assert not fits_dialog("x" * (DIALOG_MAX_COLS + 1))
+
+    def test_wide_characters_take_two_columns(self) -> None:
+        assert fits_dialog("日" * (DIALOG_MAX_COLS // 2))
+        assert not fits_dialog("日" * (DIALOG_MAX_COLS // 2 + 1))
 
 
 # ---------------------------------------------------------------------------
@@ -212,10 +257,13 @@ class TestUpdateEventOnAVerdict:
 # ---------------------------------------------------------------------------
 
 class TestResolverAtTheClientSeam:
-    def test_create_event_dialog_text_is_the_preview_message(self, calendar) -> None:
-        marker = confirm_gate("create_event", _ctx(True), **_RECURRING)
+    @pytest.mark.parametrize("args,clear_diary", [(_BOOKING, False), (_RECURRING, True)])
+    def test_create_event_dialog_text_is_the_preview_message(self, calendar, args, clear_diary) -> None:
+        if clear_diary:
+            calendar.clash.return_value = []
+        marker = confirm_gate("create_event", _ctx(True), **args)
         assert isinstance(marker, Elicit) and marker.schema is ConfirmAnswer
-        assert marker.message == do_create_event(**_RECURRING)["message"]
+        assert marker.message == do_create_event(**args)["message"]
 
     def test_update_event_dialog_text_is_the_preview_message(self, calendar) -> None:
         marker = confirm_gate("update_event", _ctx(True), **_MOVE)
@@ -227,6 +275,9 @@ class TestResolverAtTheClientSeam:
         ("create_event", {k: v for k, v in _BOOKING.items() if k != "attendees"}),        # nothing to gate
         ("create_event", {**_BOOKING, "time_max": "2026-09-08T13:00"}),                   # body refuses
         ("create_event", {**_BOOKING, "attendees": " , "}),                                 # no address survives
+        ("create_event", _WARNED),                                                        # a warning never fits
+        ("create_event", _CROWD),                                                         # attendees would clip
+        ("create_event", {**_BOOKING, "title": "T" * 80}),                                # the title would clip
         ("update_event", {**_MOVE, "confirm": True}),
         ("update_event", {"file_id": "evt123", "content": "new agenda"}),                 # cosmetic only
         ("update_event", {"file_id": "evt123", "time_min": "2026-08-28T10:00"}),          # half a move
@@ -253,7 +304,7 @@ class TestResolverAtTheClientSeam:
 # ---------------------------------------------------------------------------
 
 ERAS = ["legacy", "auto"]
-_CREATE = {"operation": "create_event", **_RECURRING}
+_CREATE = {"operation": "create_event", **_BOOKING}
 _UPDATE = {"operation": "update_event", **_MOVE}
 
 
@@ -300,14 +351,42 @@ class TestGateThroughTheEnvelope:
         async with Client(server.mcp, mode=mode) as c:  # same facts either way
             fallback = _payload(await c.call_tool("do", args))
         assert shown == [fallback["message"]]
-        # The facts a human must see are in the words they were shown.
+        # The facts a human must see are in the words they were shown, and all of them fit.
+        assert fits_dialog(shown[0])
         if args is _CREATE:
             assert all(a in shown[0] for a in fallback["attendees"])
             assert all(c in shown[0] for c in fallback["clashes"])
-            assert fallback["clash_note"] in shown[0]
-            assert all(w in shown[0] for w in fallback["cues"]["warnings"])
         else:
             assert all(a in shown[0] for a in fallback["changes"]["attendees_to_add"])
+
+    @pytest.mark.parametrize("mode", ERAS)
+    async def test_a_recurring_booking_shows_the_clash_caveat_in_the_dialog(self, envelope, mode) -> None:
+        envelope.clash.return_value = []
+        shown: list[str] = []
+
+        async def accept(_context, params):
+            shown.append(params.message)
+            return ElicitResult(action="accept", content={"proceed": True})
+
+        async with Client(server.mcp, mode=mode, elicitation_callback=accept) as c:
+            await c.call_tool("do", {"operation": "create_event", **_RECURRING})
+        assert len(shown) == 1 and "Clash check covers the FIRST instance only." in shown[0]
+        assert envelope.insert.call_count == 1
+
+    @pytest.mark.parametrize("mode", ERAS)
+    @pytest.mark.parametrize("args", [_WARNED, _CROWD], ids=["warned", "crowd"])
+    async def test_a_message_the_dialog_would_clip_takes_the_confirm_path(self, envelope, mode, args) -> None:
+        asked: list[str] = []
+
+        async def record(_context, params):
+            asked.append(params.message)
+            return ElicitResult(action="accept", content={"proceed": True})
+
+        async with Client(server.mcp, mode=mode, elicitation_callback=record) as c:
+            out = _payload(await c.call_tool("do", {"operation": "create_event", **args}))
+        assert asked == []  # a capable client, never asked
+        assert out["preview"] is True and "confirm_required" in out["cues"] and "confirm_gate" not in out["cues"]
+        assert envelope.insert.call_count == 0
 
     @pytest.mark.parametrize("mode", ERAS)
     @pytest.mark.parametrize("action", ["cancel", "decline"])

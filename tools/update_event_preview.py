@@ -36,45 +36,51 @@ class Edit:
 
 
 _UPDATE_EMAILS = {
-    "all": "update emails go to every attendee",
-    "externalOnly": "update emails go only to attendees outside your organisation",
-    "none": "NO update emails — attendees see the change only on their calendars",
+    "all": "sent to every attendee",
+    "externalOnly": "sent only to external attendees",
+    "none": "none sent",
 }
+
+
+def _raw_bound(text: str) -> dict[str, Any]:
+    """A caller's time_min/time_max as a start/end dict, for describe_when."""
+    return {"date": text} if len(text.strip()) == 10 else {"dateTime": text}
 
 
 def _preview_message(edit: Edit, described: dict[str, Any]) -> str:
     """Everything the preview shows, in words — this IS the dialog's text.
 
-    The attendees being added and the count already on the event belong
-    here: the human must never approve less than the preview shows.
+    Short lines, most decisive first: a client dialog shows it only if the
+    whole message fits (tools/elicit.py), and otherwise the confirm= path
+    shows it in full. The event as it stands, every change, the attendees
+    being added and who gets emailed are in it: the human must never
+    approve less than the preview shows. How the event was found (an invite
+    thread) stays in the cues — it is provenance, not something approved;
+    the title and current time are what identify the event to a human.
     """
     event = edit.event
     lines = [(
-        f"Would update '{event.get('summary', 'untitled')}' (now "
-        f"{describe_when(event.get('start', {}), event.get('end', {}))}):"
+        f"Update '{event.get('summary', 'untitled')}', now "
+        f"{describe_when(event.get('start', {}), event.get('end', {}))}"
     )]
     if "time" in described:
         to = described["time"]["to"]
-        lines.append(f"- move it to {to['start']} – {to['end']}")
+        lines.append(f"Move to: {describe_when(_raw_bound(to['start']), _raw_bound(to['end']))}")
     if "recurrence" in described:
         rec = described["recurrence"]
-        was = "; ".join(rec["from"]) if rec["from"] else "does not repeat"
-        lines.append(f"- repeat: {was} → {'; '.join(rec['to'])}")
+        was = "; ".join(rec["from"]) if rec["from"] else "none"
+        lines.append(f"Repeat: {was} → {'; '.join(rec['to'])}")
     if "attendees_to_add" in described:
-        lines.append(f"- add attendees: {', '.join(described['attendees_to_add'])}")
+        lines.append(f"Add: {', '.join(described['attendees_to_add'])}")
     if "meet" in described:
-        lines.append(f"- {described['meet']}")
+        lines.append(f"Meet: {described['meet']}")
     if "also_cosmetic" in described:
-        lines.append(f"- also change: {', '.join(described['also_cosmetic'])}")
+        lines.append(f"Also: {', '.join(described['also_cosmetic'])}")
     count = len(event.get("attendees", []))
     lines.append(
-        f"The event has {count} attendee(s) now; "
-        f"{_UPDATE_EMAILS[edit.effective_updates]}."
+        f"Emails: {_UPDATE_EMAILS[edit.effective_updates]} "
+        f"({count} attendee(s) on it now)"
     )
-    if edit.disclosure.get("resolved_from_thread"):
-        lines.append(
-            f"Event found from invite thread {edit.disclosure['resolved_from_thread']}."
-        )
     lines.extend(f"Warning: {w}" for w in edit.warnings)
     return "\n".join(lines)
 

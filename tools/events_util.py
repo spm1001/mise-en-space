@@ -11,7 +11,7 @@ LOUD (warning cue), never silent.
 
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from adapters.calendar import resolve_calendar_timezone
@@ -88,12 +88,48 @@ def bound_datetime(time_dict: dict[str, Any]) -> datetime:
     return dt
 
 
+_DAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_MONTH_NAMES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def _day_words(day: date) -> str:
+    return f"{_DAY_NAMES[day.weekday()]} {day.day} {_MONTH_NAMES[day.month - 1]} {day.year}"
+
+
+def _zone_words(bound: dict[str, Any], dt: datetime) -> str:
+    if bound.get("timeZone"):
+        return f" {bound['timeZone']}"
+    offset = dt.utcoffset()
+    if offset is None:
+        return ""
+    return " UTC" if not offset else f" UTC{dt.isoformat()[-6:]}"
+
+
 def describe_when(start: dict[str, Any], end: dict[str, Any]) -> str:
-    """A start/end pair in words, for preview messages (the dialog's text)."""
-    if "date" in start:
-        return f"all day {start.get('date')} – {end.get('date')} (end date exclusive)"
-    zone = start.get("timeZone")
-    return f"{start.get('dateTime')} – {end.get('dateTime')}" + (f" ({zone})" if zone else "")
+    """A start/end pair in short words — 'Sun 4 Oct 2026 04:00–04:15 Europe/London'.
+
+    For preview messages, which are also the confirm dialog's text and must
+    fit its 74-column lines (tools/elicit.py). The weekday is there because
+    a wrong-day booking is the mistake a human catches at a glance. Bounds
+    that do not parse are shown as given rather than guessed at.
+    """
+    try:
+        if "date" in start:
+            first = date.fromisoformat(start["date"])
+            last = date.fromisoformat(end["date"]) - timedelta(days=1)  # Google's end is exclusive
+            if last <= first:
+                return f"{_day_words(first)}, all day"
+            return f"{_day_words(first)} – {_day_words(last)}, all day"
+        s = datetime.fromisoformat(start["dateTime"])
+        e = datetime.fromisoformat(end["dateTime"])
+    except (KeyError, TypeError, ValueError):
+        return f"{start.get('dateTime') or start.get('date')} – {end.get('dateTime') or end.get('date')}"
+    if s.date() == e.date():
+        span = f"{_day_words(s.date())} {s:%H:%M}–{e:%H:%M}"
+    else:
+        span = f"{_day_words(s.date())} {s:%H:%M} – {_day_words(e.date())} {e:%H:%M}"
+    return span + _zone_words(start, s)
 
 
 def build_event_times(

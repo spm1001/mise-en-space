@@ -102,9 +102,9 @@ def _plan(
 
 
 _INVITE_EMAILS = {
-    "all": "invite emails go to every attendee",
-    "externalOnly": "invite emails go only to attendees outside your organisation",
-    "none": "NO invite emails — attendees see it only on their calendars",
+    "all": "invites emailed",
+    "externalOnly": "only external guests emailed",
+    "none": "no emails sent",
 }
 
 
@@ -114,27 +114,32 @@ def _preview_message(
 ) -> str:
     """Everything the preview shows, in words — this IS the dialog's text.
 
-    The attendee list, the clash check and its caveat, and the warnings all
-    belong here: the human must never approve less than the preview shows.
+    Short lines, most decisive first: a client dialog shows it only if the
+    whole message fits (tools/elicit.py), and otherwise the confirm= path
+    shows it in full. The attendee list, the clash check and its caveat, and
+    every warning are in it: the human must never approve less than the
+    preview shows. A warning never fits, so a warned booking always takes
+    the confirm= path.
     """
-    lines = [(
-        f"Would book '{title}', {describe_when(plan.start, plan.end)}, and invite "
-        f"{', '.join(plan.emails)} — {_INVITE_EMAILS[plan.effective_updates]}."
-    )]
-    if plan.recurrence_lines:
-        lines.append(f"Repeats: {'; '.join(plan.recurrence_lines)}.")
+    what = f"Book '{title}'"
     if location:
-        lines.append(f"Location: {location}.")
+        what += f" at {location}"
     if meet:
-        lines.append("With a new Meet link.")
+        what += " with a Meet link"
     if include:
-        lines.append(f"With {len(include)} Drive attachment(s).")
-    lines.append(
-        f"Clashes in your diary: {'; '.join(clashes)}." if clashes
-        else "No clashes in your diary."
-    )
+        what += f" + {len(include)} Drive attachment(s)"
+    when = f"When: {describe_when(plan.start, plan.end)}"
+    if plan.recurrence_lines:
+        when += f"; {'; '.join(plan.recurrence_lines)}"
+    clash_line = f"Clashes: {'; '.join(clashes)}." if clashes else "Clashes: none."
     if clash_note:
-        lines.append(clash_note)
+        clash_line += f" {clash_note}"
+    lines = [
+        what,
+        when,
+        f"Invite: {', '.join(plan.emails)} ({_INVITE_EMAILS[plan.effective_updates]})",
+        clash_line,
+    ]
     lines.extend(f"Warning: {w}" for w in plan.warnings)
     return "\n".join(lines)
 
