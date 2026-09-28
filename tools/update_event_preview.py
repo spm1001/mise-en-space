@@ -24,7 +24,7 @@ class Edit:
     event: dict[str, Any]
     disclosure: dict[str, Any]
     changes: dict[str, str]  # field -> structural|cosmetic
-    emails: list[str]
+    emails: list[str]  # only the attendees not already on the event
     recurrence_lines: list[str]
     programme_keys: dict[str, str]
     color_id: str | None

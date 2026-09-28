@@ -57,6 +57,15 @@ logger = logging.getLogger(__name__)
 
 
 
+def _read_event(file_id: str) -> tuple[dict[str, Any] | None, Any]:
+    """The event and how it was found — (None, message) for an invite-less
+    thread. Google errors RAISE: the confirm resolver turns them into "no
+    dialog, and here is why", the body into its teaching error."""
+    if is_gmail_api_id(file_id):
+        return _resolve_event_from_thread(file_id)
+    return get_event(file_id), {}
+
+
 def _plan_edit(
     file_id: str, title: str | None, content: str | None, location: str | None,
     time_min: str | None, time_max: str | None,
@@ -64,8 +73,14 @@ def _plan_edit(
     include: list[str] | None, meet: bool | None, send_updates: str | None,
     properties: dict[str, str] | None, color: str | None,
     visibility: str | None, transparency: str | None,
+    read: Any = None,
 ) -> Edit | dict[str, Any]:
-    """Read the event, validate, classify each change; an error dict on refusal."""
+    """Read the event, validate, classify each change; an error dict on refusal.
+
+    `read` is an already-made _read_event result (the confirm resolver reads
+    for itself so a Google error can raise); otherwise the read happens here
+    and its errors become error dicts.
+    """
     if (time_min is None) != (time_max is None):
         return error(
             "invalid_input",
@@ -73,15 +88,10 @@ def _plan_edit(
             "and end) — deriving one from the other would be a guess.",
         )
 
-    disclosure: dict[str, Any] = {}
     try:
-        if is_gmail_api_id(file_id):
-            event, resolved = _resolve_event_from_thread(file_id)
-            if event is None:
-                return error("not_found", resolved)  # resolved is the message
-            disclosure = resolved  # type: ignore[assignment]
-        else:
-            event = get_event(file_id)
+        event, disclosure = read if read is not None else _read_event(file_id)
+        if event is None:
+            return error("not_found", disclosure)  # disclosure is the message
     except MiseError as e:
         if e.kind is ErrorKind.PERMISSION_DENIED:
             return error(e.kind.value, e.message + REAUTH_ADVICE)
@@ -119,8 +129,14 @@ def _plan_edit(
         changes["time"] = STRUCTURAL
     if recurrence_lines:
         changes["recurrence"] = STRUCTURAL
-    if emails:
+    # Who is actually new, decided before any dialog, so nobody is asked to
+    # approve adding people who are already there.
+    known = {a.get("email", "").lower() for a in event.get("attendees", [])}
+    added = [e for e in emails if e.lower() not in known]
+    if added:
         changes["attendees"] = STRUCTURAL
+    elif emails:
+        warnings.append("All named attendees are already on the event.")
     # meet: True adds a Meet link, False REMOVES one, None leaves it alone.
     # Judged here, against the event already read, so the preview never
     # promises a change the write would then skip (mise-tijeko: callers
@@ -199,7 +215,7 @@ def _plan_edit(
 
     structural = [f for f, kind in changes.items() if kind == STRUCTURAL]
     effective_updates = explicit_updates or ("all" if structural else "none")
-    return Edit(event, disclosure, changes, emails, recurrence_lines,
+    return Edit(event, disclosure, changes, added, recurrence_lines,
                  programme_keys, color_id, vis, transp, warnings, structural,
                  effective_updates, start, end)
 
@@ -216,13 +232,14 @@ def update_event_confirm_message(
 
     None — no dialog — for a cosmetic-only edit (nothing to gate) or inputs
     the body would refuse; the body then runs or reports exactly as it does
-    without a dialog.
+    without a dialog. A failed Google read raises (UNAVAILABLE upstream).
     """
     if not isinstance(file_id, str):
         return None
+    read = _read_event(file_id)  # a Google error raises: tools/confirm_gate.py says why
     edit = _plan_edit(file_id, title, content, location, time_min, time_max,
                       attendees, recurrence, include, meet, send_updates,
-                      properties, color, visibility, transparency)
+                      properties, color, visibility, transparency, read=read)
     if isinstance(edit, dict) or not edit.structural:
         return None
     return str(edit_preview(edit, time_min, time_max, meet)["message"])
@@ -287,16 +304,9 @@ def do_update_event(
     if recurrence_lines:
         body["recurrence"] = recurrence_lines
         previous["recurrence"] = event.get("recurrence")
-    if emails:
+    if emails:  # only the people not already on the event (_plan_edit)
         # Patch replaces arrays WHOLESALE — merge, never send the delta.
-        existing = list(event.get("attendees", []))
-        known = {a.get("email", "").lower() for a in existing}
-        added = [e for e in emails if e.lower() not in known]
-        if not added:
-            warnings.append("All named attendees are already on the event.")
-            changes.pop("attendees", None)
-        else:
-            body["attendees"] = existing + [{"email": e} for e in added]
+        body["attendees"] = list(event.get("attendees", [])) + [{"email": e} for e in emails]
     if "meet" in changes:
         body["conferenceData"] = meet_request() if meet else None
         if not meet:
@@ -387,8 +397,8 @@ def do_update_event(
             if effective_updates != "none"
             else "NO update emails sent (send_updates='none')"
         )
-    if emails and "attendees" in changes:
-        cues["attendees_added"] = added
+    if emails:
+        cues["attendees_added"] = emails
     if programme_keys:
         # Read-back of the merged map proves the keys landed beside the rest.
         cues["properties"] = patched.get("extendedProperties", {}).get("private", {})

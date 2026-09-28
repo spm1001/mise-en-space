@@ -159,9 +159,9 @@ def _share_after_dialog(
 def share_confirm_message(file_id: Any, to: Any, role: str | None) -> str | None:
     """The dialog text for an unconfirmed share: the preview's own message.
 
-    Invalid inputs and Drive errors answer None — no dialog — so the body
-    then reports them exactly as it does today, instead of the resolver
-    failing the call.
+    Invalid inputs answer None — no dialog — so the body reports them
+    exactly as it does today. A Drive error raises: the confirm resolver
+    (tools/confirm_gate.py) turns it into "no dialog, and here is why".
     """
     if not isinstance(file_id, str) or not isinstance(to, str):
         return None
@@ -169,10 +169,7 @@ def share_confirm_message(file_id: Any, to: Any, role: str | None) -> str | None
     if isinstance(parsed, dict):
         return None
     file_id, emails, effective_role = parsed
-    try:
-        preview = _share_file(file_id, emails, effective_role, False)
-    except MiseError:
-        return None
+    preview = _share_file(file_id, emails, effective_role, False)
     return preview["message"] if isinstance(preview, dict) else None
 
 

@@ -190,6 +190,15 @@ def build_event_times(
             "time_min and time_max must be the same kind — both bare dates "
             "(all-day event) or both datetimes."
         )
+    if ("timeZone" in start) != ("timeZone" in end):
+        # One bound naive (wall-clock in your zone), the other with an offset:
+        # every rendering of the pair then pairs one clock with the other's
+        # zone, and the ordering check compares a guess (mise-pukiri).
+        raise ValueError(
+            "time_min and time_max must both carry an offset or both omit one — "
+            "got one of each. Give both as wall-clock times (e.g. "
+            "'2026-09-08T14:00') or both with offsets."
+        )
     if bound_datetime(end) <= bound_datetime(start):
         raise ValueError(
             f"time_max ({time_max}) must be after time_min ({time_min})."

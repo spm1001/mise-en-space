@@ -39,7 +39,9 @@ from mcp.server.mcpserver import Context, Elicit, Resolve
 from models import MiseError
 from tools.create_event import create_event_confirm_message
 from tools.elicit import (
+    ORPHANED,
     TOO_LONG,
+    UNAVAILABLE,
     ConfirmAnswer,
     GateQuestion,
     client_supports_elicitation,
@@ -72,9 +74,10 @@ def gate_question(
     """Resolver: the confirmation question for this call, or why there is none.
 
     Parameters are bound by name from the tool's own arguments. A missing
-    token and Google errors answer "nothing to ask" — named here, so the
-    body then reports them with their teaching text instead of the resolver
-    failing the whole call opaquely. Anything else propagates.
+    token and Google errors mean no dialog (UNAVAILABLE) — named here, so the
+    body then reports them with their teaching text, or falls back with a cue
+    saying why, instead of the resolver failing the whole call opaquely.
+    Anything else propagates.
     """
     if confirm or operation not in CONFIRM_GATED_OPS or not client_supports_elicitation(ctx):
         return GateQuestion()
@@ -98,12 +101,21 @@ def gate_question(
                 visibility=visibility, transparency=transparency,
             )
     except (MiseError, FileNotFoundError):  # FileNotFoundError = no token (adapters/http_client.py)
-        return GateQuestion()
-    if message is None:
-        return GateQuestion()
-    if not fits_dialog(message):
-        return GateQuestion(message=message, skipped=TOO_LONG)
-    return GateQuestion(message=message)
+        question = GateQuestion(skipped=UNAVAILABLE)
+    else:
+        if message is None:
+            question = GateQuestion()
+        elif not fits_dialog(message):
+            question = GateQuestion(message=message, skipped=TOO_LONG)
+        else:
+            question = GateQuestion(message=message)
+    # On >= 2026-07-28 the client retries with its answer and these resolvers
+    # re-run. If this round would not ask, that answer would go unread and
+    # the body would see "no dialog" — so say it was orphaned, and the body
+    # stops. do()'s only elicitation is confirm_ask, so any response is ours.
+    if not question.ask and ctx.input_responses:
+        return GateQuestion(message=question.message, skipped=ORPHANED)
+    return question
 
 
 def confirm_ask(

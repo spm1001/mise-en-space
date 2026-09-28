@@ -54,7 +54,14 @@ from pydantic import BaseModel, Field
 ConfirmVerdict = tuple[str, str]
 
 # Why a capable client with a gated call got no dialog (GateQuestion.skipped).
-TOO_LONG = "too_long"
+TOO_LONG = "too_long"          # the message would not be shown whole
+UNAVAILABLE = "unavailable"    # the question could not be prepared (a Google read failed)
+# An answer arrived for a question this round no longer asks. On >= 2026-07-28
+# the resolvers re-run when the client retries with its answer; if the state
+# changed so the call is no longer gated, the answer would never be read and
+# the body would see "no dialog". It must stop instead (mise-pukiri, round-2
+# essayeur: update_event wrote after a decline that way).
+ORPHANED = "orphaned"
 
 
 @dataclass(frozen=True)
@@ -63,7 +70,8 @@ class GateQuestion:
 
     message: the op's preview message, or None when there is nothing to
         confirm here (not gated, confirmed, no capability, invalid inputs).
-    skipped: why a message was NOT asked — TOO_LONG — else None.
+    skipped: why a gated call was NOT asked — TOO_LONG, UNAVAILABLE or
+        ORPHANED — else None.
     Built by tools/confirm_gate.py; lives here so the ops can read it.
     """
 
@@ -182,15 +190,33 @@ TOO_LONG_CUE = (
 )
 
 
+_SKIP_CUES = {
+    TOO_LONG: TOO_LONG_CUE,
+    UNAVAILABLE: (
+        "no dialog: the confirmation question could not be prepared (a Google read "
+        "failed), so the confirm= round-trip applies: show the user this preview "
+        "and call again with confirm=True on their yes."
+    ),
+    ORPHANED: (
+        "elicitation: an answer came back for a question this call no longer asks — "
+        "what would happen changed while the dialog waited. Nothing was written; "
+        "the preview below is the current state, so the confirm= round-trip "
+        "applies: show it to the user and call again with confirm=True on their yes."
+    ),
+}
+
+
 def skipped_preview(preview: dict[str, Any], question: GateQuestion | None) -> dict[str, Any]:
     """The confirm= preview, plus a cue when a capable client was not asked.
 
-    A fallback says why it fired: without this, a too-long preview looks
-    exactly like a client with no dialog support.
+    A fallback says why it fired: without this, a too-long preview, a failed
+    read or an orphaned answer looks exactly like a client with no dialog
+    support.
     """
-    if question is None or question.skipped != TOO_LONG:
+    cue = _SKIP_CUES.get(question.skipped) if question and question.skipped else None
+    if cue is None:
         return preview
-    return {**preview, "cues": {**preview["cues"], "confirm_gate": TOO_LONG_CUE}}
+    return {**preview, "cues": {**preview["cues"], "confirm_gate": cue}}
 
 
 def stale_preview(preview: dict[str, Any], detail: str, nothing: str) -> dict[str, Any]:
@@ -229,8 +255,11 @@ def settle_gate(
 
     Once a dialog has been answered, the answer governs whatever the re-read
     says: anything but an accept never writes, and an accept writes only if
-    the current preview's message is the one the dialog carried.
+    the current preview's message is the one the dialog carried. An answer
+    to a question this round no longer asks (ORPHANED) never writes either.
     """
+    if question is not None and question.skipped == ORPHANED:
+        return skipped_preview(preview(), question), None
     verdict = dialog_verdict(answer)
     if verdict is None:
         if not gated:

@@ -48,7 +48,7 @@ def confirm_gate(operation, ctx, **kwargs):
 
 def _ctx(elicitation: ElicitationCapability | None) -> SimpleNamespace:
     caps = ClientCapabilities(elicitation=elicitation) if elicitation is not None else ClientCapabilities()
-    return SimpleNamespace(client_capabilities=caps)
+    return SimpleNamespace(client_capabilities=caps, input_responses=None)  # a first round
 
 
 class TestVerdictReading:

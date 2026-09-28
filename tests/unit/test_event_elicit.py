@@ -31,7 +31,10 @@ import server  # registers search/fetch/do on server.mcp
 from models import DoResult
 from tools.confirm_gate import confirm_ask, gate_question
 from tools.create_event import do_create_event
-from tools.elicit import DIALOG_MAX_COLS, TOO_LONG, TOO_LONG_CUE, ConfirmAnswer, GateQuestion, fits_dialog
+from tools.elicit import (
+    DIALOG_MAX_COLS, ORPHANED, TOO_LONG, TOO_LONG_CUE, UNAVAILABLE, ConfirmAnswer, GateQuestion, fits_dialog,
+)
+from models import ErrorKind, MiseError
 from tools.update_event import do_update_event
 
 YES = AcceptedElicitation(data=ConfirmAnswer(proceed=True))
@@ -59,7 +62,7 @@ def confirm_gate(operation, ctx, **kwargs):
 
 def _ctx(capable: bool) -> SimpleNamespace:
     caps = ClientCapabilities(elicitation=ElicitationCapability()) if capable else ClientCapabilities()
-    return SimpleNamespace(client_capabilities=caps)
+    return SimpleNamespace(client_capabilities=caps, input_responses=None)  # a first round
 
 
 def _created() -> dict:
@@ -399,6 +402,41 @@ class TestResolverAtTheClientSeam:
             assert confirm_gate("update_event", _ctx(False), **_MOVE) is None
         clash.assert_not_called(); get.assert_not_called()
 
+    def test_an_answer_this_round_no_longer_asks_about_is_orphaned(self, calendar) -> None:
+        retry = SimpleNamespace(client_capabilities=_ctx(True).client_capabilities,
+                                input_responses={"tools.confirm_gate:confirm_ask": object()})
+        # Nothing to ask now (cosmetic only), but the client is answering a prior round.
+        question = gate_question("update_event", retry, file_id="evt123", content="agenda")
+        assert question.skipped == ORPHANED and not question.ask
+        # A round that still asks is not orphaned: the framework reads the answer.
+        assert gate_question("update_event", retry, **_MOVE).ask
+
+    def test_a_failed_read_is_unavailable_not_silent(self, calendar) -> None:
+        with patch("tools.update_event.get_event", side_effect=MiseError(ErrorKind.NETWORK_ERROR, "boom")):
+            assert gate_question("update_event", _ctx(True), **_MOVE).skipped == UNAVAILABLE
+        preview = do_update_event(**_MOVE, question=GateQuestion(skipped=UNAVAILABLE))
+        assert preview["cues"]["confirm_gate"].startswith("no dialog: the confirmation question could not be prepared")
+        calendar.patch.assert_not_called()
+
+    def test_an_orphaned_answer_never_writes_even_when_nothing_is_gated(self, calendar) -> None:
+        result = do_update_event(file_id="evt123", title="Renamed", answer=None,
+                                 question=GateQuestion(message=None, skipped=ORPHANED))
+        calendar.patch.assert_not_called()
+        assert "no longer asks" in result["cues"]["confirm_gate"]
+
+    def test_mixed_naive_and_offset_bounds_are_refused_before_any_dialog(self, calendar) -> None:
+        mixed = {**_BOOKING, "time_max": "2026-09-08T14:30:00Z"}
+        assert gate_question("create_event", _ctx(True), **mixed).message is None
+        result = do_create_event(**mixed)
+        assert result["error"] is True and "both carry an offset or both omit one" in result["message"]
+
+    def test_nobody_is_asked_to_approve_adding_people_already_there(self, calendar) -> None:
+        already = {"file_id": "evt123", "attendees": ["colleague@itv.com"]}
+        assert gate_question("update_event", _ctx(True), **already).message is None
+        assert "already on the event" in do_update_event(**already)["message"]
+        moved = do_update_event(**{**_MOVE, "attendees": ["colleague@itv.com"]})
+        assert "Add:" not in moved["message"] and "Move to:" in moved["message"]
+
     def test_a_guest_reshape_answers_none_so_the_body_reports_the_refusal(self, calendar) -> None:
         guest = _event(organizer={"email": "boss@itv.com"})
         with patch("tools.update_event.get_event", return_value=guest):
@@ -498,6 +536,33 @@ class TestGateThroughTheEnvelope:
         assert out["preview"] is True and "confirm_required" in out["cues"]
         assert out["cues"]["confirm_gate"] == TOO_LONG_CUE  # the fallback says why it fired
         assert envelope.insert.call_count == 0
+
+    @pytest.mark.parametrize("mode", ERAS)
+    @pytest.mark.parametrize("answer", [
+        ElicitResult(action="decline"), ElicitResult(action="cancel"),
+        ElicitResult(action="accept", content={"proceed": False}),
+        ElicitResult(action="accept", content={"proceed": True}),
+    ], ids=["decline", "cancel", "proceed-false", "accept"])
+    async def test_nothing_is_written_when_the_event_changes_while_the_dialog_waits(self, envelope, mode, answer) -> None:
+        # The dialog asks about removing a Meet link. Every later read finds the link
+        # gone, so the rest is cosmetic. On 2026-07-28 the retry round re-runs the
+        # resolvers against the new state and asks nothing; the answer must not be
+        # dropped and turned into a write (round-2 essayeur).
+        meet = {"conferenceData": {"entryPoints": [{"entryPointType": "video", "uri": "https://meet.google.com/abc"}]}}
+        reads = iter([_event(**meet)] + [_event()] * 5)
+        shown: list[str] = []
+
+        async def respond(_context, params):
+            shown.append(params.message)
+            return answer
+
+        with patch("tools.update_event.get_event", side_effect=lambda _id: next(reads)):
+            async with Client(server.mcp, mode=mode, elicitation_callback=respond) as c:
+                out = _payload(await c.call_tool("do", {"operation": "update_event", "file_id": "evt123",
+                                                        "meet": False, "title": "Renamed"}))
+        assert len(shown) == 1 and "Meet: remove the Meet link" in shown[0]
+        assert envelope.patch.call_count == 0
+        assert out["preview"] is True and "confirm_gate" in out["cues"]
 
     @pytest.mark.parametrize("mode", ERAS)
     async def test_no_token_on_a_capable_client_still_teaches(self, monkeypatch, tmp_path, mode) -> None:
