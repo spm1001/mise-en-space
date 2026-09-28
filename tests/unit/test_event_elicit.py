@@ -154,6 +154,13 @@ class TestPreviewMessage:
         assert "Repeat: none → RRULE:FREQ=WEEKLY" in message
         assert "Also: title" in message
 
+    def test_every_warning_reaches_the_update_message(self, calendar) -> None:
+        with_meet = _event(conferenceData={"entryPoints": [{"uri": "https://meet.google.com/abc"}]})
+        with patch("tools.update_event.get_event", return_value=with_meet):
+            preview = do_update_event(**_MOVE, meet=True)
+        assert preview["changes"]["time"]  # still structural, so still previewed
+        assert "Warning: The event already has a Meet link — left as is." in preview["message"]
+
     def test_the_invite_thread_rides_the_cues_and_the_message_names_the_event(self, calendar) -> None:
         with patch("tools.update_event._resolve_event_from_thread",
                    return_value=(_event(), {"resolved_from_thread": "19fb9faca1565748", "ical_uid": "u@google.com"})):
@@ -170,6 +177,16 @@ class TestDialogBudget:
         assert fits_dialog(full)
         assert not fits_dialog(full + "\ny")
         assert not fits_dialog("x" * (DIALOG_MAX_COLS + 1))
+
+    def test_the_budget_is_an_80_column_terminal_less_claude_codes_six(self) -> None:
+        # Measured, not chosen: CC clips at max(20, width - 6); 193 columns in a
+        # 199-column pane, seen live. Moving this number is a claim about CC.
+        assert fits_dialog("x" * 74) and not fits_dialog("x" * 75)
+
+    def test_confirm_marker_itself_refuses_a_client_without_the_capability(self) -> None:
+        from tools.elicit import confirm_marker
+        assert confirm_marker(_ctx(False), "Book 'x'") is None
+        assert isinstance(confirm_marker(_ctx(True), "Book 'x'"), Elicit)
 
     def test_wide_characters_take_two_columns(self) -> None:
         assert fits_dialog("日" * (DIALOG_MAX_COLS // 2))
