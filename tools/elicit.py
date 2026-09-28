@@ -7,17 +7,17 @@ call and asks the CLIENT, which renders a dialog the model cannot see,
 answer or detect (probe-confirmed against Claude Code 2.1.241, 2026-08-23).
 
 The gate rides mcp's resolver injection (`Annotated[…, Resolve(fn)]`): do()
-carries ONE resolver (tools/confirm_gate.py) that returns
-`confirm_marker(ctx, preview_text)` for whichever gated op is being called,
-and the framework asks the client by whatever the negotiated protocol allows — a
+carries one gate param (tools/confirm_gate.py) whose resolvers work out the
+question — the gated op's own preview message — and ask it, and the
+framework asks the client by whatever the negotiated protocol allows — a
 standalone elicitation/create request over the back-channel on <= 2025-11-25
 (Claude Code today), an InputRequiredResult round-trip on >= 2026-07-28. The
-tool body receives the outcome; `dialog_verdict` reads it.
+tool body receives the question and the outcome; `settle_gate` decides.
 
 Three facts shape what is here:
 
 - Capability is declared at initialize and READ at the client seam, never
-  assumed. `confirm_marker` returns None for a client that did not declare
+  assumed. The gate asks nothing of a client that did not declare
   form elicitation, and the op runs its preview-then-confirm=True round-trip
   unchanged. (The framework would otherwise refuse the whole call with
   MISSING_REQUIRED_CLIENT_CAPABILITY.)
@@ -31,13 +31,15 @@ Three facts shape what is here:
   the message to (terminal width − 6) columns, never wraps, and shows at most
   4 lines — the rest collapse to "… (+N more lines)" (read from its bundle,
   `tXe` with `t2=3`, and seen live: docs/research/2026-09-28-pukiri-hublot/).
-  So `confirm_marker` asks only when the whole message fits an 80-column
+  So `tools/confirm_gate.py` asks only when the whole message fits an 80-column
   terminal; anything longer takes the confirm= round-trip, where the model
   shows the full preview. A human must never approve less than the preview
   shows.
 """
 
 import unicodedata
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from mcp.server.elicitation import (
@@ -45,12 +47,32 @@ from mcp.server.elicitation import (
     DeclinedElicitation,
     ElicitationResult,
 )
-from mcp.server.mcpserver import Elicit
 from pydantic import BaseModel, Field
 
 # (action, detail): action is "accept" | "decline" | "cancel"; detail is what
 # the client answered, in words an op can drop straight into a cue.
 ConfirmVerdict = tuple[str, str]
+
+# Why a capable client with a gated call got no dialog (GateQuestion.skipped).
+TOO_LONG = "too_long"
+
+
+@dataclass(frozen=True)
+class GateQuestion:
+    """What the dialog carries (or would), and whether it is asked.
+
+    message: the op's preview message, or None when there is nothing to
+        confirm here (not gated, confirmed, no capability, invalid inputs).
+    skipped: why a message was NOT asked — TOO_LONG — else None.
+    Built by tools/confirm_gate.py; lives here so the ops can read it.
+    """
+
+    message: str | None = None
+    skipped: str | None = None
+
+    @property
+    def ask(self) -> bool:
+        return self.message is not None and self.skipped is None
 
 
 class ConfirmAnswer(BaseModel):
@@ -91,20 +113,6 @@ def fits_dialog(message: str) -> bool:
     return len(lines) <= DIALOG_MAX_LINES and all(
         _display_width(line) <= DIALOG_MAX_COLS for line in lines
     )
-
-
-def confirm_marker(ctx: Any, message: str | None) -> Elicit[ConfirmAnswer] | None:
-    """What a confirm resolver returns: the question, or None to fall back.
-
-    None whenever the client cannot render the dialog, there is nothing to
-    confirm, or the message would not be shown whole — decided here, once,
-    so an op never reasons about capabilities or screen budgets itself.
-    """
-    if message is None or ctx is None or not fits_dialog(message):
-        return None
-    if not client_supports_elicitation(ctx):
-        return None
-    return Elicit(message=message, schema=ConfirmAnswer)
 
 
 def dialog_verdict(outcome: ElicitationResult[ConfirmAnswer] | None) -> ConfirmVerdict | None:
@@ -164,3 +172,74 @@ def unaccepted_preview(
             "and call again with confirm=True on their yes."
         )
     return {**preview, "cues": cues}
+
+
+TOO_LONG_CUE = (
+    "no dialog: this preview is longer than a Claude Code confirm dialog shows "
+    f"whole ({DIALOG_MAX_LINES} lines of {DIALOG_MAX_COLS} columns on an 80-column "
+    "terminal), so the confirm= round-trip applies: show the user the whole "
+    "preview and call again with confirm=True on their yes."
+)
+
+
+def skipped_preview(preview: dict[str, Any], question: GateQuestion | None) -> dict[str, Any]:
+    """The confirm= preview, plus a cue when a capable client was not asked.
+
+    A fallback says why it fired: without this, a too-long preview looks
+    exactly like a client with no dialog support.
+    """
+    if question is None or question.skipped != TOO_LONG:
+        return preview
+    return {**preview, "cues": {**preview["cues"], "confirm_gate": TOO_LONG_CUE}}
+
+
+def stale_preview(preview: dict[str, Any], detail: str, nothing: str) -> dict[str, Any]:
+    """The current preview when an accepted dialog showed something else.
+
+    The accept covered the words the dialog carried. If the state about to
+    be written no longer renders to those words (an event re-read after the
+    dialog changed underneath it), the accept does not cover it.
+    """
+    cues = dict(preview["cues"])
+    cues["confirm_gate"] = (
+        f"elicitation: {detail}, but what the dialog showed no longer matches what "
+        f"would happen now. {nothing}; the preview below is the current state, so "
+        "the confirm= round-trip applies: show it to the user and call again with "
+        "confirm=True on their yes."
+    )
+    return {**preview, "cues": cues}
+
+
+def settle_gate(
+    answer: ElicitationResult[ConfirmAnswer] | None,
+    question: GateQuestion | None,
+    gated: bool,
+    preview: Callable[[], dict[str, Any]],
+    nothing: str,
+    done: str,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Decide a gated write from the dialog's outcome and the state now.
+
+    Returns (preview, None) when the op must stop and return that preview,
+    or (None, cue) when it may write — `cue` is the confirm_gate text to
+    attach, None when no dialog decided. `gated` is the op's own test on
+    the state it just read; the caller handles a pre-supplied confirm=True
+    before calling (policy A), so this never sees one. `preview` is called
+    only when needed (it may read the API).
+
+    Once a dialog has been answered, the answer governs whatever the re-read
+    says: anything but an accept never writes, and an accept writes only if
+    the current preview's message is the one the dialog carried.
+    """
+    verdict = dialog_verdict(answer)
+    if verdict is None:
+        if not gated:
+            return None, None
+        return skipped_preview(preview(), question), None
+    action, detail = verdict
+    current = preview()
+    if action != "accept":
+        return unaccepted_preview(current, verdict, nothing), None
+    if question is None or current.get("message") != question.message:
+        return stale_preview(current, detail, nothing), None
+    return None, accepted_cue(detail, done)

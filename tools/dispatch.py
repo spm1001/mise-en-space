@@ -18,6 +18,7 @@ from typing import Any
 
 from adapters.drive import get_file_metadata
 from models import MiseError
+from tools.confirm_gate import gate_asked, gate_outcome
 from token_store import ambient_mode
 from validation import diagnose_sa_quota_403
 from tools import (
@@ -235,7 +236,8 @@ DISPATCH: dict[str, Any] = {
     ),
     "share": lambda p: do_share(
         file_id=p["file_id"], to=p["to"], role=p.get("role"),
-        confirm=p.get("confirm", False), answer=p.get("_elicit"),
+        confirm=p.get("confirm", False), answer=gate_outcome(p.get("_elicit")),
+        question=gate_asked(p.get("_elicit")),
     ),
     "overwrite": lambda p: do_overwrite(
         file_id=p["file_id"], content=p["content"],
@@ -292,7 +294,7 @@ DISPATCH: dict[str, Any] = {
         send_updates=p.get("send_updates"), properties=p.get("properties"),
         color=p.get("color"), visibility=p.get("visibility"),
         transparency=p.get("transparency"), confirm=p.get("confirm", False),
-        answer=p.get("_elicit"),
+        answer=gate_outcome(p.get("_elicit")), question=gate_asked(p.get("_elicit")),
     ),
     "update_event": lambda p: do_update_event(
         file_id=p["file_id"], title=p["title"], content=p["content"],
@@ -302,7 +304,8 @@ DISPATCH: dict[str, Any] = {
         meet=p.get("meet"), send_updates=p.get("send_updates"),
         properties=p.get("properties"), color=p.get("color"),
         visibility=p.get("visibility"), transparency=p.get("transparency"),
-        confirm=p.get("confirm", False), answer=p.get("_elicit"),
+        confirm=p.get("confirm", False), answer=gate_outcome(p.get("_elicit")),
+        question=gate_asked(p.get("_elicit")),
     ),
     "freebusy": lambda p: do_freebusy(
         attendees=p.get("attendees"), time_min=p.get("time_min"),

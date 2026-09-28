@@ -12,6 +12,7 @@ LOUD (warning cue), never silent.
 import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any
 
 from adapters.calendar import resolve_calendar_timezone
@@ -79,7 +80,8 @@ def bound_datetime(time_dict: dict[str, Any]) -> datetime:
     """A start/end dict → aware datetime, for ordering checks and clash windows.
 
     Naive dateTimes (zone attached separately) and bare dates are pinned to
-    UTC — fine for ordering and a clash window, not for display.
+    UTC — fine for ordering, wrong for a clash window (use zoned_datetime)
+    and for display.
     """
     raw = time_dict.get("dateTime") or time_dict["date"]
     dt = datetime.fromisoformat(raw)
@@ -106,6 +108,42 @@ def _zone_words(bound: dict[str, Any], dt: datetime) -> str:
     return " UTC" if not offset else f" UTC{dt.isoformat()[-6:]}"
 
 
+def _in_zone(bound: dict[str, Any]) -> datetime:
+    """A dateTime bound as wall-clock in its own timeZone, when it names one.
+
+    An offset-carrying dateTime beside a timeZone (a 'Z' time on a recurring
+    booking, or an event read back in another zone) is converted, so the
+    words never pair one zone's clock with another zone's name.
+    """
+    dt = datetime.fromisoformat(bound["dateTime"])
+    zone = bound.get("timeZone")
+    if zone and dt.tzinfo is not None:
+        try:
+            return dt.astimezone(ZoneInfo(zone))
+        except ZoneInfoNotFoundError:
+            return dt
+    return dt
+
+
+def zoned_datetime(time_dict: dict[str, Any]) -> datetime:
+    """A start/end dict → aware datetime in the event's own zone.
+
+    For windows that must name the right instant, such as the clash check:
+    a naive dateTime means wall-clock in its timeZone, so pinning it to UTC
+    (bound_datetime) asks about the wrong hour whenever the zone is not UTC.
+    """
+    raw = time_dict.get("dateTime")
+    zone = time_dict.get("timeZone")
+    if raw and zone:
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            try:
+                return dt.replace(tzinfo=ZoneInfo(zone))
+            except ZoneInfoNotFoundError:
+                pass
+    return bound_datetime(time_dict)
+
+
 def describe_when(start: dict[str, Any], end: dict[str, Any]) -> str:
     """A start/end pair in short words — 'Sun 4 Oct 2026 04:00–04:15 Europe/London'.
 
@@ -121,8 +159,8 @@ def describe_when(start: dict[str, Any], end: dict[str, Any]) -> str:
             if last <= first:
                 return f"{_day_words(first)}, all day"
             return f"{_day_words(first)} – {_day_words(last)}, all day"
-        s = datetime.fromisoformat(start["dateTime"])
-        e = datetime.fromisoformat(end["dateTime"])
+        s = _in_zone(start)
+        e = _in_zone(end)
     except (KeyError, TypeError, ValueError):
         return f"{start.get('dateTime') or start.get('date')} – {end.get('dateTime') or end.get('date')}"
     if s.date() == e.date():

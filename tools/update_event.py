@@ -30,7 +30,7 @@ from mcp.server.elicitation import ElicitationResult
 
 from adapters.calendar import get_event, patch_event
 from models import DoResult, ErrorKind, MiseError
-from tools.elicit import ConfirmAnswer, accepted_cue, dialog_verdict, unaccepted_preview
+from tools.elicit import ConfirmAnswer, GateQuestion, settle_gate
 from tools.events_util import (
     REAUTH_ADVICE,
     build_attachments,
@@ -177,11 +177,31 @@ def _plan_edit(
                 "do(operation='respond').",
             )
 
+    # Resolved here, before any dialog, so the preview's warnings (unresolved
+    # zone, stray BYDAY instance) reach the words the human approves, and a
+    # bad move is refused before anyone is asked about it.
+    start = end = None
+    if time_min is not None and time_max is not None:
+        try:
+            start, end = build_event_times(
+                time_min, time_max, recurring=bool(
+                    recurrence_lines or event.get("recurrence")
+                ), warnings=warnings,
+            )
+        except ValueError as e:
+            return error("invalid_input", str(e))
+    if recurrence_lines:
+        byday_warning = byday_mismatch_warning(
+            start or event.get("start", {}), recurrence_lines,
+        )
+        if byday_warning:
+            warnings.append(byday_warning)
+
     structural = [f for f, kind in changes.items() if kind == STRUCTURAL]
     effective_updates = explicit_updates or ("all" if structural else "none")
     return Edit(event, disclosure, changes, emails, recurrence_lines,
                  programme_keys, color_id, vis, transp, warnings, structural,
-                 effective_updates)
+                 effective_updates, start, end)
 
 
 def update_event_confirm_message(
@@ -226,11 +246,12 @@ def do_update_event(
     transparency: str | None = None,
     confirm: bool = False,
     answer: ElicitationResult[ConfirmAnswer] | None = None,
+    question: GateQuestion | None = None,
 ) -> DoResult | dict[str, Any]:
     """Edit an event on the user's primary calendar.
 
-    `answer` is the client-rendered dialog's outcome (tools/confirm_gate.py),
-    or None when no dialog was asked — then confirm= is the gate.
+    `answer` is the client-rendered dialog's outcome and `question` what it
+    carried (tools/confirm_gate.py); with no dialog, confirm= is the gate.
     """
     assert file_id is not None
 
@@ -245,38 +266,25 @@ def do_update_event(
     vis, transp, warnings = edit.vis, edit.transp, edit.warnings
     structural, effective_updates = edit.structural, edit.effective_updates
 
-    # A dialog the client rendered can stand in for confirm=True — only on an accept.
+    # A dialog the client rendered can stand in for confirm=True — only on an
+    # accept of exactly what is about to be written (settle_gate). This event
+    # was re-read after the dialog; a decline never writes, whatever it says now.
     gate_cue = None
-    if structural and not confirm:
-        verdict = dialog_verdict(answer)
-        if verdict is None or verdict[0] != "accept":
-            preview = edit_preview(edit, time_min, time_max, meet)
-            if verdict is None:
-                return preview
-            return unaccepted_preview(
-                preview, verdict, "Nothing has changed and nobody was emailed",
-            )
-        gate_cue = accepted_cue(verdict[1], "updated")
+    if not confirm:
+        stop, gate_cue = settle_gate(
+            answer, question, gated=bool(structural),
+            preview=lambda: edit_preview(edit, time_min, time_max, meet),
+            nothing="Nothing has changed and nobody was emailed", done="updated",
+        )
+        if stop is not None:
+            return stop
 
     body: dict[str, Any] = {}
     previous: dict[str, Any] = {}
-    if time_min is not None and time_max is not None:
-        try:
-            start, end = build_event_times(
-                time_min, time_max, recurring=bool(
-                    recurrence_lines or event.get("recurrence")
-                ), warnings=warnings,
-            )
-        except ValueError as e:
-            return error("invalid_input", str(e))
-        body["start"], body["end"] = start, end
+    if edit.start is not None and edit.end is not None:
+        body["start"], body["end"] = edit.start, edit.end
         previous["start"], previous["end"] = event.get("start"), event.get("end")
     if recurrence_lines:
-        byday_warning = byday_mismatch_warning(
-            body.get("start", event.get("start", {})), recurrence_lines,
-        )
-        if byday_warning:
-            warnings.append(byday_warning)
         body["recurrence"] = recurrence_lines
         previous["recurrence"] = event.get("recurrence")
     if emails:

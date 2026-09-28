@@ -33,6 +33,8 @@ class Edit:
     warnings: list[str]
     structural: list[str]
     effective_updates: str
+    start: dict[str, Any] | None  # the new bounds, resolved (zone attached) — None unless moving
+    end: dict[str, Any] | None
 
 
 _UPDATE_EMAILS = {
@@ -40,11 +42,6 @@ _UPDATE_EMAILS = {
     "externalOnly": "sent only to external attendees",
     "none": "none sent",
 }
-
-
-def _raw_bound(text: str) -> dict[str, Any]:
-    """A caller's time_min/time_max as a start/end dict, for describe_when."""
-    return {"date": text} if len(text.strip()) == 10 else {"dateTime": text}
 
 
 def _preview_message(edit: Edit, described: dict[str, Any]) -> str:
@@ -63,9 +60,8 @@ def _preview_message(edit: Edit, described: dict[str, Any]) -> str:
         f"Update '{event.get('summary', 'untitled')}', now "
         f"{describe_when(event.get('start', {}), event.get('end', {}))}"
     )]
-    if "time" in described:
-        to = described["time"]["to"]
-        lines.append(f"Move to: {describe_when(_raw_bound(to['start']), _raw_bound(to['end']))}")
+    if edit.start is not None and edit.end is not None:
+        lines.append(f"Move to: {describe_when(edit.start, edit.end)}")
     if "recurrence" in described:
         rec = described["recurrence"]
         was = "; ".join(rec["from"]) if rec["from"] else "none"

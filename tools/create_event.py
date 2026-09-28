@@ -29,11 +29,10 @@ from mcp.server.elicitation import ElicitationResult
 from adapters.calendar import insert_event
 from cues_util import current_user_email, with_identity
 from models import DoResult, ErrorKind, MiseError
-from tools.elicit import ConfirmAnswer, accepted_cue, dialog_verdict, unaccepted_preview
+from tools.elicit import ConfirmAnswer, GateQuestion, settle_gate
 from tools.events_util import (
     EVENT_COLORS,
     REAUTH_ADVICE,
-    bound_datetime,
     build_attachments,
     build_event_times,
     byday_mismatch_warning,
@@ -50,6 +49,7 @@ from tools.events_util import (
     validate_send_updates,
     validate_transparency,
     validate_visibility,
+    zoned_datetime,
 )
 
 logger = logging.getLogger(__name__)
@@ -118,8 +118,8 @@ def _preview_message(
     whole message fits (tools/elicit.py), and otherwise the confirm= path
     shows it in full. The attendee list, the clash check and its caveat, and
     every warning are in it: the human must never approve less than the
-    preview shows. A warning never fits, so a warned booking always takes
-    the confirm= path.
+    preview shows. Every warning create_event can raise today is longer than
+    a dialog line, so a warned booking takes the confirm= path.
     """
     what = f"Book '{title}'"
     if location:
@@ -149,7 +149,7 @@ def _preview(
     include: list[str] | None,
 ) -> dict[str, Any]:
     """The gated preview: nothing booked, nobody emailed, clash check included."""
-    clashes = clash_summaries(bound_datetime(plan.start), bound_datetime(plan.end))
+    clashes = clash_summaries(zoned_datetime(plan.start), zoned_datetime(plan.end))
     clash_note = (
         "Clash check covers the FIRST instance only."
         if plan.recurrence_lines else None
@@ -224,11 +224,12 @@ def do_create_event(
     transparency: str | None = None,
     confirm: bool = False,
     answer: ElicitationResult[ConfirmAnswer] | None = None,
+    question: GateQuestion | None = None,
 ) -> DoResult | dict[str, Any]:
     """Create an event on the user's primary calendar.
 
-    `answer` is the client-rendered dialog's outcome (tools/confirm_gate.py),
-    or None when no dialog was asked — then confirm= is the gate.
+    `answer` is the client-rendered dialog's outcome and `question` what it
+    carried (tools/confirm_gate.py); with no dialog, confirm= is the gate.
     """
     assert title is not None and time_min is not None and time_max is not None
 
@@ -244,18 +245,17 @@ def do_create_event(
     # Blast-radius gate: attendees mean other people's diaries and inboxes.
     # The preview carries the clash check so approval is informed; a solo
     # event books directly (own diary, recoverable in the UI). A dialog the
-    # client rendered can stand in for confirm=True — only on an accept.
+    # client rendered can stand in for confirm=True — only on an accept of
+    # exactly what is about to be booked (settle_gate re-checks the clashes).
     gate_cue = None
-    if emails and not confirm:
-        verdict = dialog_verdict(answer)
-        if verdict is None or verdict[0] != "accept":
-            preview = _preview(title, plan, meet, location, include)
-            if verdict is None:
-                return preview
-            return unaccepted_preview(
-                preview, verdict, "Nothing was booked and nobody was emailed",
-            )
-        gate_cue = accepted_cue(verdict[1], "booked")
+    if not confirm:
+        stop, gate_cue = settle_gate(
+            answer, question, gated=bool(emails),
+            preview=lambda: _preview(title, plan, meet, location, include),
+            nothing="Nothing was booked and nobody was emailed", done="booked",
+        )
+        if stop is not None:
+            return stop
 
     body: dict[str, Any] = {"summary": title, "start": start, "end": end}
     if content:

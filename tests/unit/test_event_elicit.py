@@ -29,9 +29,9 @@ from mcp.types import ClientCapabilities, ElicitationCapability, ElicitResult
 
 import server  # registers search/fetch/do on server.mcp
 from models import DoResult
-from tools.confirm_gate import confirm_gate
+from tools.confirm_gate import confirm_ask, gate_question
 from tools.create_event import do_create_event
-from tools.elicit import DIALOG_MAX_COLS, ConfirmAnswer, fits_dialog
+from tools.elicit import DIALOG_MAX_COLS, TOO_LONG, TOO_LONG_CUE, ConfirmAnswer, GateQuestion, fits_dialog
 from tools.update_event import do_update_event
 
 YES = AcceptedElicitation(data=ConfirmAnswer(proceed=True))
@@ -50,6 +50,11 @@ _RECURRING = {**_BOOKING, "recurrence": "RRULE:FREQ=DAILY;COUNT=2", "location": 
 # 2026-09-08 is a Tuesday, so BYDAY=MO draws the stray-instance warning — never fits.
 _WARNED = {**_BOOKING, "recurrence": "RRULE:FREQ=WEEKLY;BYDAY=MO"}
 _CROWD = {**_BOOKING, "attendees": [f"person{i}@itv.com" for i in range(8)]}
+
+
+def confirm_gate(operation, ctx, **kwargs):
+    """The dialog a call would raise: the two gate resolvers, composed as mcp runs them."""
+    return confirm_ask(gate_question(operation, ctx, **kwargs))
 
 
 def _ctx(capable: bool) -> SimpleNamespace:
@@ -161,6 +166,32 @@ class TestPreviewMessage:
         assert preview["changes"]["time"]  # still structural, so still previewed
         assert "Warning: The event already has a Meet link — left as is." in preview["message"]
 
+    def test_an_offset_time_is_shown_in_the_events_own_zone(self, calendar) -> None:
+        args = {**_BOOKING, "time_min": "2026-10-05T08:00:00Z", "time_max": "2026-10-05T08:15:00Z",
+                "recurrence": "RRULE:FREQ=DAILY;COUNT=5"}
+        preview = do_create_event(**args)
+        assert preview["start"]["timeZone"] == "Europe/London"
+        assert "When: Mon 5 Oct 2026 09:00–09:15 Europe/London" in preview["message"]  # 08:00Z is 09:00 BST
+
+    def test_the_clash_check_asks_about_the_booked_hour(self, calendar) -> None:
+        do_create_event(**{**_BOOKING, "time_min": "2026-10-05T09:00", "time_max": "2026-10-05T09:30"})
+        start, end = calendar.clash.call_args[0]
+        assert start.isoformat() == "2026-10-05T09:00:00+01:00" and end.isoformat() == "2026-10-05T09:30:00+01:00"
+
+    def test_update_warnings_computed_for_the_write_reach_the_message(self, calendar) -> None:
+        args = {"file_id": "evt123", "recurrence": "RRULE:FREQ=WEEKLY;BYDAY=TU"}  # the event starts on a Thursday
+        preview = do_update_event(**args)
+        assert "Warning: The start falls on a Thursday but BYDAY=TU" in preview["message"]
+        assert not fits_dialog(preview["message"])
+        with patch(_TZ, return_value=None):
+            unzoned = do_update_event(**_MOVE)["message"]
+        assert "Warning: time_min has no timezone" in unzoned
+
+    def test_the_move_line_carries_the_zone_the_write_will_use(self, calendar) -> None:
+        assert "Move to: Fri 28 Aug 2026 10:00–11:00" in do_update_event(**{**_MOVE, "recurrence": "RRULE:FREQ=DAILY"})["message"]
+        message = do_update_event(**{**_MOVE, "recurrence": "RRULE:FREQ=DAILY"})["message"]
+        assert "Europe/London" in message.splitlines()[1]
+
     def test_the_invite_thread_rides_the_cues_and_the_message_names_the_event(self, calendar) -> None:
         with patch("tools.update_event._resolve_event_from_thread",
                    return_value=(_event(), {"resolved_from_thread": "19fb9faca1565748", "ical_uid": "u@google.com"})):
@@ -183,10 +214,11 @@ class TestDialogBudget:
         # 199-column pane, seen live. Moving this number is a claim about CC.
         assert fits_dialog("x" * 74) and not fits_dialog("x" * 75)
 
-    def test_confirm_marker_itself_refuses_a_client_without_the_capability(self) -> None:
-        from tools.elicit import confirm_marker
-        assert confirm_marker(_ctx(False), "Book 'x'") is None
-        assert isinstance(confirm_marker(_ctx(True), "Book 'x'"), Elicit)
+    def test_a_too_long_question_is_kept_but_not_asked(self, calendar) -> None:
+        question = gate_question("create_event", _ctx(True), **_CROWD)
+        assert question.skipped == TOO_LONG and not question.ask
+        assert question.message == do_create_event(**_CROWD)["message"]
+        assert confirm_ask(question) is None
 
     def test_wide_characters_take_two_columns(self) -> None:
         assert fits_dialog("日" * (DIALOG_MAX_COLS // 2))
@@ -197,9 +229,14 @@ class TestDialogBudget:
 # The body's reading of an outcome.
 # ---------------------------------------------------------------------------
 
+def _asked(message: str) -> GateQuestion:
+    return GateQuestion(message=message)
+
+
 class TestCreateEventOnAVerdict:
     def test_accept_books_with_a_mechanism_naming_cue(self, calendar) -> None:
-        result = do_create_event(**_BOOKING, answer=YES)
+        asked = _asked(do_create_event(**_BOOKING)["message"])
+        result = do_create_event(**_BOOKING, answer=YES, question=asked)
         assert isinstance(result, DoResult)
         calendar.insert.assert_called_once()
         assert result.cues["confirm_gate"] == "elicitation: the client answered proceed=true; booked on that answer"
@@ -229,10 +266,24 @@ class TestCreateEventOnAVerdict:
         assert isinstance(result, DoResult) and "confirm_gate" not in result.cues
         calendar.insert.assert_called_once()
 
-    def test_a_solo_event_is_not_gated_so_no_cue_claims_the_dialog(self, calendar) -> None:
+    def test_a_solo_event_books_with_no_cue_claiming_a_dialog(self, calendar) -> None:
         solo = {k: v for k, v in _BOOKING.items() if k != "attendees"}
-        result = do_create_event(**solo, answer=YES)
+        result = do_create_event(**solo)
         assert isinstance(result, DoResult) and "confirm_gate" not in result.cues
+
+    def test_an_accept_of_different_words_books_nothing(self, calendar) -> None:
+        asked = _asked(do_create_event(**_BOOKING)["message"])
+        calendar.clash.return_value = ["Board meeting (14:00 – 15:00)"]  # the diary moved while the dialog sat
+        result = do_create_event(**_BOOKING, answer=YES, question=asked)
+        calendar.insert.assert_not_called()
+        assert result["preview"] is True and "Board meeting" in result["message"]
+        assert "no longer matches" in result["cues"]["confirm_gate"]
+        assert "confirm_required" in result["cues"]  # the round-trip stays open
+
+    def test_an_answer_without_its_question_books_nothing(self, calendar) -> None:
+        result = do_create_event(**_BOOKING, answer=YES)
+        calendar.insert.assert_not_called()
+        assert "no longer matches" in result["cues"]["confirm_gate"]
 
     def test_validation_errors_win_over_any_answer(self, calendar) -> None:
         result = do_create_event(**{**_BOOKING, "time_max": "2026-09-08T13:00"}, answer=YES)
@@ -242,7 +293,8 @@ class TestCreateEventOnAVerdict:
 
 class TestUpdateEventOnAVerdict:
     def test_accept_patches_with_a_mechanism_naming_cue(self, calendar) -> None:
-        result = do_update_event(**_MOVE, answer=YES)
+        asked = _asked(do_update_event(**_MOVE)["message"])
+        result = do_update_event(**_MOVE, answer=YES, question=asked)
         assert isinstance(result, DoResult)
         calendar.patch.assert_called_once()
         assert result.cues["confirm_gate"] == "elicitation: the client answered proceed=true; updated on that answer"
@@ -260,9 +312,34 @@ class TestUpdateEventOnAVerdict:
     def test_no_dialog_returns_todays_preview_byte_for_byte(self, calendar) -> None:
         assert do_update_event(**_MOVE, answer=NOT_ASKED) == do_update_event(**_MOVE)
 
-    def test_a_cosmetic_edit_is_not_gated_so_no_cue_claims_the_dialog(self, calendar) -> None:
-        result = do_update_event(file_id="evt123", content="new agenda", answer=YES)
+    def test_a_cosmetic_edit_runs_with_no_cue_claiming_a_dialog(self, calendar) -> None:
+        result = do_update_event(file_id="evt123", content="new agenda")
         assert isinstance(result, DoResult) and "confirm_gate" not in result.cues
+
+    _WITH_MEET = {"conferenceData": {"entryPoints": [{"entryPointType": "video", "uri": "https://meet.google.com/abc-defg-hij"}]}}
+
+    @pytest.mark.parametrize("outcome", [DeclinedElicitation(), NO_VIA_FORM, CancelledElicitation()])
+    def test_a_decline_never_writes_even_when_the_re_read_turns_cosmetic(self, calendar, outcome) -> None:
+        # The dialog asked about removing a Meet link; by the time the body re-reads,
+        # the link is gone, so the rest looks cosmetic. The person still said no.
+        args = {"file_id": "evt123", "meet": False, "title": "Renamed"}
+        with patch("tools.update_event.get_event", return_value=_event(**self._WITH_MEET)):
+            asked = _asked(do_update_event(**args)["message"])
+        assert "Meet: remove the Meet link" in asked.message
+        result = do_update_event(**args, answer=outcome, question=asked)  # re-read: no Meet link
+        calendar.patch.assert_not_called()
+        assert result["preview"] is True
+
+    def test_an_accept_never_writes_what_the_dialog_ruled_out(self, calendar) -> None:
+        # The dialog said "no Meet link — nothing to remove"; the re-read has one.
+        args = {**_MOVE, "meet": False}
+        asked = _asked(do_update_event(**args)["message"])
+        assert "nothing to remove" in asked.message
+        with patch("tools.update_event.get_event", return_value=_event(**self._WITH_MEET)):
+            result = do_update_event(**args, answer=YES, question=asked)
+        calendar.patch.assert_not_called()
+        assert "no longer matches" in result["cues"]["confirm_gate"]
+        assert "remove the Meet link" in result["message"]  # the preview shows what would happen now
 
     def test_confirm_true_patches_regardless_of_the_dialog(self, calendar) -> None:
         result = do_update_event(**_MOVE, confirm=True, answer=DeclinedElicitation())
@@ -287,6 +364,17 @@ class TestResolverAtTheClientSeam:
         assert isinstance(marker, Elicit)
         assert marker.message == do_update_event(**_MOVE)["message"]
 
+    def test_every_argument_reaches_the_resolver_as_it_reaches_the_body(self, calendar) -> None:
+        # One fixture setting every update argument, so a swapped pair in the
+        # resolver's call (content/location, recurrence/include) cannot pass.
+        full = {"file_id": "evt123", "title": "T2", "content": "agenda", "location": "Rm 9",
+                "time_min": "2026-08-28T10:00", "time_max": "2026-08-28T10:30",
+                "attendees": ["n@itv.com"], "recurrence": "RRULE:FREQ=DAILY;COUNT=2",
+                "include": ["1AbCdEfGhIjKlMnOpQrStUvWxYz"], "meet": True, "send_updates": "none",
+                "properties": {"k": "v"}, "color": "sage", "visibility": "private", "transparency": "free"}
+        question = gate_question("update_event", _ctx(True), **full)
+        assert question.message == do_update_event(**full)["message"]
+
     @pytest.mark.parametrize("operation,args", [
         ("create_event", {**_BOOKING, "confirm": True}),                                   # policy A
         ("create_event", {k: v for k, v in _BOOKING.items() if k != "attendees"}),        # nothing to gate
@@ -299,6 +387,7 @@ class TestResolverAtTheClientSeam:
         ("update_event", {"file_id": "evt123", "content": "new agenda"}),                 # cosmetic only
         ("update_event", {"file_id": "evt123", "time_min": "2026-08-28T10:00"}),          # half a move
         ("update_event", {"file_id": ["evt123"], "attendees": ["x@itv.com"]}),            # not an id
+        ("update_event", {**_MOVE, "time_min": "2026-08-28T11:00", "time_max": "2026-08-28T10:00"}),  # end before start
     ])
     def test_answers_none_wherever_the_body_would_not_preview(self, calendar, operation, args) -> None:
         assert confirm_gate(operation, _ctx(True), **args) is None
@@ -330,6 +419,10 @@ def envelope(monkeypatch, tmp_path, calendar):
     monkeypatch.setenv("MISE_TOKEN_PATH", str(tmp_path / "deliberately-absent.json"))
     monkeypatch.setattr("server.cleanup_orphaned_temp_files", lambda: 0)
     return calendar
+
+
+def _raise_no_token():
+    raise FileNotFoundError("No OAuth token found at /nowhere/token.json")
 
 
 def _payload(result) -> dict:
@@ -402,8 +495,26 @@ class TestGateThroughTheEnvelope:
         async with Client(server.mcp, mode=mode, elicitation_callback=record) as c:
             out = _payload(await c.call_tool("do", {"operation": "create_event", **args}))
         assert asked == []  # a capable client, never asked
-        assert out["preview"] is True and "confirm_required" in out["cues"] and "confirm_gate" not in out["cues"]
+        assert out["preview"] is True and "confirm_required" in out["cues"]
+        assert out["cues"]["confirm_gate"] == TOO_LONG_CUE  # the fallback says why it fired
         assert envelope.insert.call_count == 0
+
+    @pytest.mark.parametrize("mode", ERAS)
+    async def test_no_token_on_a_capable_client_still_teaches(self, monkeypatch, tmp_path, mode) -> None:
+        # No calendar mocks: the resolver meets the missing token first. It must
+        # step aside so the body reports the teaching error, not an opaque failure.
+        monkeypatch.setenv("MISE_TOKEN_PATH", str(tmp_path / "deliberately-absent.json"))
+        monkeypatch.setattr("server.cleanup_orphaned_temp_files", lambda: 0)
+        monkeypatch.setattr("tools.events_util.resolve_calendar_timezone", _raise_no_token)
+        asked: list[str] = []
+
+        async def record(_context, params):
+            asked.append(params.message)
+            return ElicitResult(action="accept", content={"proceed": True})
+
+        async with Client(server.mcp, mode=mode, elicitation_callback=record) as c:
+            out = _payload(await c.call_tool("do", _CREATE))
+        assert asked == [] and out["error"] is True and "No OAuth token" in out["message"]
 
     @pytest.mark.parametrize("mode", ERAS)
     @pytest.mark.parametrize("action", ["cancel", "decline"])

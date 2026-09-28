@@ -32,7 +32,13 @@ from cues_util import with_identity
 from mcp.server.elicitation import ElicitationResult
 
 from tools.elicit import (
-    ConfirmAnswer, ConfirmVerdict, accepted_cue, dialog_verdict, unaccepted_preview,
+    ConfirmAnswer,
+    ConfirmVerdict,
+    GateQuestion,
+    accepted_cue,
+    dialog_verdict,
+    skipped_preview,
+    unaccepted_preview,
 )
 
 from adapters.http_client import get_sync_client
@@ -88,6 +94,7 @@ def do_share(
     role: str | None = None,
     confirm: bool = False,
     answer: ElicitationResult[ConfirmAnswer] | None = None,
+    question: GateQuestion | None = None,
     **_kwargs: Any,
 ) -> DoResult | dict[str, Any]:
     """
@@ -104,6 +111,8 @@ def do_share(
         answer: The outcome of the client-rendered confirmation dialog
             (tools/confirm_gate.py), or None when no dialog was asked — then
             confirm= is the gate, exactly as before.
+        question: What the gate asked, or why it did not; a capable client
+            not asked because the preview would not fit gets a cue saying so.
 
     Returns:
         Preview dict (confirm=False), DoResult (confirm=True), or error dict
@@ -116,7 +125,10 @@ def do_share(
     verdict = dialog_verdict(answer)
     try:
         if confirm or verdict is None:
-            return _share_file(file_id, emails, effective_role, confirm)
+            result = _share_file(file_id, emails, effective_role, confirm)
+            if not confirm and isinstance(result, dict):
+                result = skipped_preview(result, question)
+            return result
         return _share_after_dialog(file_id, emails, effective_role, verdict)
     except MiseError as e:
         return {"error": True, "kind": e.kind.value, "message": e.message}
