@@ -1,0 +1,2 @@
+{"name":"enginehost","version":"0.0.1","description":"probe: stands in for batterie's mise component — installs the engine as a uv tool at SessionStart",
+ "hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"${CLAUDE_PLUGIN_ROOT}/hooks/install-engine.sh","timeout":300}]}]}}

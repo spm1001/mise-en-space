@@ -1,0 +1,14 @@
+{
+  "name": "famprobe",
+  "version": "0.0.1",
+  "description": "probe: stands in for family@family",
+  "mcpServers": {
+    "mise": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/launch/mise.sh",
+      "env": {
+        "MISE_EN_SPACE_OAUTH_CLIENT": "/home/modha/.claude/plugins/cache/family/family/2.0.1/mise/planetmodha-client.json",
+        "MISE_EN_SPACE_DATA_DIR": "/tmp/uvtool-probe/fam-data"
+      }
+    }
+  }
+}

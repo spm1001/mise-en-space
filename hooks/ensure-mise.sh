@@ -138,18 +138,67 @@ if [ -z "$UV_BIN" ]; then
     BLOCKING=true
 fi
 
-# 2. Check dependencies are synced (look for .venv in plugin root)
-if [ ! -d "$PLUGIN_ROOT/.venv" ]; then
+# 2. Dependencies: a .venv holding the extraction extra. It is what this kit's
+#    server line runs with (`uv run --extra extraction`) and what ring kits'
+#    launchers exec (step 2c). Syncing WITH the extra here means the server's
+#    own spawn finds the env complete, instead of adding packages to it while
+#    another kit's server is starting from it. `uv sync` is exact — it removes
+#    whatever the command does not name — so it must always name the extra.
+_venv_complete() { ls -d "$PLUGIN_ROOT"/.venv/lib/python*/site-packages/markitdown >/dev/null 2>&1; }
+if ! _venv_complete; then
     if [ -n "$UV_BIN" ]; then
-        # Auto-sync — this is safe and idempotent
-        "$UV_BIN" sync --project "$PLUGIN_ROOT" --quiet >"$SYNC_LOG" 2>&1
+        "$UV_BIN" sync --project "$PLUGIN_ROOT" --extra extraction --quiet >"$SYNC_LOG" 2>&1
         if [ ! -d "$PLUGIN_ROOT/.venv" ]; then
-            ISSUES="${ISSUES}• Dependencies not installed (full error: ${SYNC_LOG}). Run: uv sync --project \"$PLUGIN_ROOT\"\n"
+            ISSUES="${ISSUES}• Dependencies not installed (full error: ${SYNC_LOG}). Run: uv sync --project \"$PLUGIN_ROOT\" --extra extraction\n"
             BLOCKING=true
+        elif ! _venv_complete; then
+            ISSUES="${ISSUES}• The PDF extraction extra did not install (full error: ${SYNC_LOG}); PDF text falls back to Drive's conversion. Run: uv sync --project \"$PLUGIN_ROOT\" --extra extraction\n"
+            # advisory — the server still starts
         fi
     else
         ISSUES="${ISSUES}• Dependencies not installed (need uv first)\n"
         BLOCKING=true
+    fi
+fi
+
+# 2c. Say where this kit's engine lives, for ring kits (bds-sovabu). A ring kit
+#     (mit@mit, and family once it depends on batterie) ships no engine of its
+#     own: its server line runs a small launcher that reads this pointer and
+#     execs <root>/.venv/bin/python <root>/server.py with the kit's own OAuth
+#     client. So the engine every kit runs is this locked, CI-tested env — not a
+#     separately resolved one — and nothing is ever replaced in place: each
+#     plugin version has its own dir, and moving the pointer is one rename.
+#     Never moves backwards while the newer target is intact, so a long-lived
+#     session on an older version cannot pull ring kits back onto it. Plain
+#     file, not a symlink: BSD mv follows a symlink to a directory. No python3,
+#     so a broken Command Line Tools stub cannot turn this into a loop.
+if [ -x "$PLUGIN_ROOT/.venv/bin/python" ] && [ -f "$PLUGIN_ROOT/server.py" ] && _venv_complete; then
+    _ptr_dir="${XDG_DATA_HOME:-$HOME/.local/share}/mise-en-space"
+    _ptr="$_ptr_dir/engine"
+    _my_ver=""
+    for _pjf in "$PLUGIN_ROOT/../.claude-plugin/plugin.json" "$PLUGIN_ROOT/.claude-plugin/plugin.json"; do
+        [ -f "$_pjf" ] || continue
+        _my_ver="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$_pjf" | head -1)"
+        [ -n "$_my_ver" ] && break
+    done
+    _rec_ver=""; _rec_root=""
+    if [ -f "$_ptr" ]; then
+        _rec_ver="$(sed -n 's/^version=//p' "$_ptr")"
+        _rec_root="$(sed -n 's/^root=//p' "$_ptr")"
+    fi
+    _write=false
+    if [ -z "$_rec_root" ] || [ ! -x "$_rec_root/.venv/bin/python" ] || [ ! -f "$_rec_root/server.py" ]; then
+        _write=true
+    elif [ "$_rec_root" != "$PLUGIN_ROOT" ] && [ -n "$_my_ver" ] \
+         && [ "$(printf '%s\n%s\n' "$_rec_ver" "$_my_ver" | sort -V | tail -1)" = "$_my_ver" ]; then
+        _write=true
+    fi
+    if [ "$_write" = true ]; then
+        if ! { mkdir -p "$_ptr_dir" && _tmp="$(mktemp "$_ptr_dir/.engine.XXXXXX")" \
+               && printf 'version=%s\nroot=%s\n' "$_my_ver" "$PLUGIN_ROOT" > "$_tmp" \
+               && mv -f "$_tmp" "$_ptr"; } 2>/dev/null; then
+            ISSUES="${ISSUES}• Could not record where the mise engine lives ($_ptr). This kit's own server is unaffected; a ring kit's mise (mit, family) will say it cannot find the engine.\n"
+        fi
     fi
 fi
 

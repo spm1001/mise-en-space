@@ -1,0 +1,14 @@
+{
+  "name": "ringprobe",
+  "version": "0.0.1",
+  "description": "probe: stands in for mit@mit — only a server line naming the engine command plus its own client",
+  "mcpServers": {
+    "mise": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/launch/mise.sh",
+      "env": {
+        "MISE_EN_SPACE_OAUTH_CLIENT": "/tmp/uvtool-probe/engine/credentials.json",
+        "MISE_EN_SPACE_DATA_DIR": "/tmp/uvtool-probe/o/data"
+      }
+    }
+  }
+}

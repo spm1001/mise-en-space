@@ -57,3 +57,12 @@ def test_shipped_code_imports_only_shipped_root_modules() -> None:
         f"force-include: {missing} — add them to "
         "[tool.hatch.build.targets.wheel.force-include] in pyproject.toml"
     )
+
+
+def test_jeton_has_a_floor_pypi_cannot_meet() -> None:
+    """The name "jeton" on PyPI belongs to an unrelated package (0.1.0). Our
+    jeton reaches installs through [tool.uv.sources], which does not ride into
+    wheel metadata, so an install that forgets to name its source must fail to
+    resolve rather than take the stranger's package (mise-fafono)."""
+    deps = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["dependencies"]
+    assert any(d.replace(" ", "").startswith("jeton>=1.") for d in deps), deps
