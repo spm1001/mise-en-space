@@ -138,27 +138,33 @@ if [ -z "$UV_BIN" ]; then
     BLOCKING=true
 fi
 
-# 2. Dependencies: a .venv holding the extraction extra. It is what this kit's
-#    server line runs with (`uv run --extra extraction`) and what ring kits'
-#    launchers exec (step 2c). Syncing WITH the extra here means the server's
-#    own spawn finds the env complete, instead of adding packages to it while
-#    another kit's server is starting from it. `uv sync` is exact — it removes
-#    whatever the command does not name — so it must always name the extra.
-_venv_complete() { ls -d "$PLUGIN_ROOT"/.venv/lib/python*/site-packages/markitdown >/dev/null 2>&1; }
-if ! _venv_complete; then
-    if [ -n "$UV_BIN" ]; then
-        "$UV_BIN" sync --project "$PLUGIN_ROOT" --extra extraction --quiet >"$SYNC_LOG" 2>&1
-        if [ ! -d "$PLUGIN_ROOT/.venv" ]; then
-            ISSUES="${ISSUES}• Dependencies not installed (full error: ${SYNC_LOG}). Run: uv sync --project \"$PLUGIN_ROOT\" --extra extraction\n"
-            BLOCKING=true
-        elif ! _venv_complete; then
-            ISSUES="${ISSUES}• The PDF extraction extra did not install (full error: ${SYNC_LOG}); PDF text falls back to Drive's conversion. Run: uv sync --project \"$PLUGIN_ROOT\" --extra extraction\n"
-            # advisory — the server still starts
-        fi
-    else
-        ISSUES="${ISSUES}• Dependencies not installed (need uv first)\n"
+# 2. Dependencies: a .venv holding the extraction extra, matching the lock. It
+#    is what this kit's server line runs with (`uv run --extra extraction`) and
+#    what ring kits' launchers exec (step 2c). Syncing WITH the extra here means
+#    the server's own spawn finds the env complete, instead of adding packages
+#    to it while another kit's server is starting from it. `uv sync` is exact —
+#    it removes whatever the command does not name — so it always names the
+#    extra. Completeness is uv's own verdict (`--check`, ~40 ms), not the
+#    presence of one package's folder: a sync killed part-way once left
+#    markitdown/ in place with urllib3 missing, and a ring kit exec'ing that env
+#    dies at start (essayeur, 28 Sep). Where `--check` is unknown (an older uv)
+#    the fallback is a plain sync, a no-op when the env is already complete.
+ENGINE_SYNCED=false
+if [ -n "$UV_BIN" ]; then
+    if "$UV_BIN" sync --project "$PLUGIN_ROOT" --extra extraction --frozen --check --quiet >/dev/null 2>&1; then
+        ENGINE_SYNCED=true
+    elif "$UV_BIN" sync --project "$PLUGIN_ROOT" --extra extraction --frozen --quiet >"$SYNC_LOG" 2>&1; then
+        ENGINE_SYNCED=true
+    elif [ ! -d "$PLUGIN_ROOT/.venv" ]; then
+        ISSUES="${ISSUES}• Dependencies not installed (full error: ${SYNC_LOG}). Run: uv sync --project \"$PLUGIN_ROOT\" --extra extraction\n"
         BLOCKING=true
+    else
+        ISSUES="${ISSUES}• Dependencies did not finish syncing (full error: ${SYNC_LOG}). This kit's server repairs its env when it starts; kits that run the engine by pointer (mit, family) wait for a clean sync. Run: uv sync --project \"$PLUGIN_ROOT\" --extra extraction\n"
+        # advisory — `uv run` at this kit's server spawn repairs the env
     fi
+else
+    ISSUES="${ISSUES}• Dependencies not installed (need uv first)\n"
+    BLOCKING=true
 fi
 
 # 2c. Say where this kit's engine lives, for ring kits (bds-sovabu). A ring kit
@@ -168,11 +174,25 @@ fi
 #     client. So the engine every kit runs is this locked, CI-tested env — not a
 #     separately resolved one — and nothing is ever replaced in place: each
 #     plugin version has its own dir, and moving the pointer is one rename.
-#     Never moves backwards while the newer target is intact, so a long-lived
-#     session on an older version cannot pull ring kits back onto it. Plain
-#     file, not a symlink: BSD mv follows a symlink to a directory. No python3,
-#     so a broken Command Line Tools stub cannot turn this into a loop.
-if [ -x "$PLUGIN_ROOT/.venv/bin/python" ] && [ -f "$PLUGIN_ROOT/server.py" ] && _venv_complete; then
+#     Written only after a clean sync (above). It moves forward only while the
+#     recorded target is intact, so a long-lived session on an older version
+#     cannot pull ring kits back onto it; the check and the rename are two
+#     steps, so a same-instant race can land one version low, which the next
+#     session corrects. Versions compare release part first, and a pre-release
+#     (2.1.0-canary.1) ranks below its release. Plain file, not a symlink (BSD
+#     mv follows a symlink to a directory); no python3 and no `sort -V`.
+_ver_ge() { # is $1 >= $2 ?
+    _a="${1%%-*}"; _b="${2%%-*}"
+    if [ "$_a" != "$_b" ]; then
+        [ "$(printf '%s\n%s\n' "$_a" "$_b" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)" = "$_a" ]
+        return
+    fi
+    case "$1" in
+        *-*) case "$2" in *-*) [ "$(printf '%s\n%s\n' "$1" "$2" | sort | tail -1)" = "$1" ] ;; *) return 1 ;; esac ;;
+        *)   return 0 ;;
+    esac
+}
+if [ "$ENGINE_SYNCED" = true ] && [ -x "$PLUGIN_ROOT/.venv/bin/python" ] && [ -f "$PLUGIN_ROOT/server.py" ]; then
     _ptr_dir="${XDG_DATA_HOME:-$HOME/.local/share}/mise-en-space"
     _ptr="$_ptr_dir/engine"
     _my_ver=""
@@ -189,8 +209,7 @@ if [ -x "$PLUGIN_ROOT/.venv/bin/python" ] && [ -f "$PLUGIN_ROOT/server.py" ] && 
     _write=false
     if [ -z "$_rec_root" ] || [ ! -x "$_rec_root/.venv/bin/python" ] || [ ! -f "$_rec_root/server.py" ]; then
         _write=true
-    elif [ "$_rec_root" != "$PLUGIN_ROOT" ] && [ -n "$_my_ver" ] \
-         && [ "$(printf '%s\n%s\n' "$_rec_ver" "$_my_ver" | sort -V | tail -1)" = "$_my_ver" ]; then
+    elif [ "$_rec_root" != "$PLUGIN_ROOT" ] && [ -n "$_my_ver" ] && _ver_ge "$_my_ver" "$_rec_ver"; then
         _write=true
     fi
     if [ "$_write" = true ]; then
