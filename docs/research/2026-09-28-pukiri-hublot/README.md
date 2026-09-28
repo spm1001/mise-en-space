@@ -17,7 +17,7 @@ The limits come from the CC bundle, not from one render. The dialog passes the m
 
 ## What changed (e3e4a51), and what the second session showed
 
-`tools/elicit.py::confirm_marker` now asks only when the whole message fits 4 lines of 74 columns (`fits_dialog`). Anything longer takes the confirm= round-trip, where the model shows the full preview. The calendar messages were re-laid out with short lines and human dates, so an ordinary booking fits. A booking with a warning never fits.
+mise now asks only when the whole message fits 4 lines of 74 columns (`tools/elicit.py::fits_dialog`, applied in `tools/confirm_gate.py::gate_question`; this commit's `confirm_marker` was folded into the gate in round 1). Anything longer takes the confirm= round-trip, where the model shows the full preview. The calendar messages were re-laid out with short lines and human dates, so an ordinary booking fits. A booking with a warning never fits.
 
 | File | What it shows |
 |---|---|

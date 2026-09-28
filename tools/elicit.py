@@ -29,7 +29,7 @@ Three facts shape what is here:
   name the mechanism and the client's answer.
 - A dialog shows only what fits it. Claude Code 2.1.283 clips every line of
   the message to (terminal width − 6) columns, never wraps, and shows at most
-  4 lines — the rest collapse to "… (+N more lines)" (read from its bundle,
+  4 lines — a longer message shows its first 3 plus "… (+N more lines)" (read from its bundle,
   `tXe` with `t2=3`, and seen live: docs/research/2026-09-28-pukiri-hublot/).
   So `tools/confirm_gate.py` asks only when the whole message fits an 80-column
   terminal; anything longer takes the confirm= round-trip, where the model
