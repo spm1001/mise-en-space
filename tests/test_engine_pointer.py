@@ -155,6 +155,19 @@ def _register(tmp: Path, *ids: str) -> None:
     reg.write_text('{"plugins": {' + ", ".join(f'"{i}": []' for i in ids) + "}}")
 
 
+def _register_mit(tmp: Path, *, server: bool, extra: tuple = ("batterie@batterie",)) -> None:
+    """mit@mit at a real installPath; server=True gives it mise/launch.sh (post-switch)."""
+    root = tmp / "cache" / "mit"
+    (root / "mise").mkdir(parents=True, exist_ok=True)
+    if server:
+        (root / "mise" / "launch.sh").write_text("#!/bin/sh\n")
+    reg = tmp / "home" / ".claude" / "plugins" / "installed_plugins.json"
+    reg.parent.mkdir(parents=True, exist_ok=True)
+    plugins = {i: [] for i in extra}
+    plugins["mit@mit"] = [{"scope": "user", "installPath": str(root)}]
+    reg.write_text(json.dumps({"plugins": plugins}))
+
+
 def test_advises_the_mit_kit_to_someone_signed_in_before_the_switch(tmp_path: Path, kits) -> None:
     comp = kits("a", "2.0.7")
     _pre_switch_token(tmp_path)
@@ -164,12 +177,14 @@ def test_advises_the_mit_kit_to_someone_signed_in_before_the_switch(tmp_path: Pa
     assert "claude plugin marketplace update mit" in out
     # On screen as well as in Claude's context (rehearsal, 29 Sep: context only is invisible).
     assert "claude plugin install mit@mit --scope user" in json.loads(out)["systemMessage"]
+    # Scoped claim: adoption is proven on Linux file stores, not the macOS Keychain.
+    assert "nothing asks you to consent" not in out and "Usually your Google sign-in carries over" in out
 
 
 def test_silent_once_mit_is_installed(tmp_path: Path, kits) -> None:
     comp = kits("a", "2.0.7")
     _pre_switch_token(tmp_path)
-    _register(tmp_path, "batterie@batterie", "mit@mit")
+    _register_mit(tmp_path, server=True)
     out = _hook_output(tmp_path, comp)
     assert "mit@mit" not in out and "systemMessage" not in out
 
@@ -190,7 +205,7 @@ def _unwritable_pointer(tmp: Path) -> None:
 
 def test_pointer_fault_blocks_when_mit_runs_the_engine(tmp_path: Path, kits) -> None:
     comp = kits("a", "2.0.7")
-    _register(tmp_path, "batterie@batterie", "mit@mit")
+    _register_mit(tmp_path, server=True)
     _unwritable_pointer(tmp_path)
     ctx = json.loads(_hook_output(tmp_path, comp))["hookSpecificOutput"]["additionalContext"]
     assert "needs setup" in ctx and "MIT kit's Google server will say" in ctx
@@ -202,5 +217,54 @@ def test_pointer_fault_without_mit_is_a_neutral_note(tmp_path: Path, kits) -> No
     _register(tmp_path, "batterie@batterie")
     _unwritable_pointer(tmp_path)
     ctx = json.loads(_hook_output(tmp_path, comp))["hookSpecificOutput"]["additionalContext"]
-    assert "No kit here runs it yet" in ctx and "Nothing in this session depends" in ctx
+    assert "No kit here runs the engine yet" in ctx and "Nothing in this session depends" in ctx
+    assert "mit@mit" not in ctx  # no ITV hypothetical on a machine without mit (D3)
     assert "nothing is broken" not in ctx and "MIT kit's" not in ctx
+
+
+
+# Round 4 (essayeur, 29 Sep): registered is not the same as carrying a server.
+def test_a_serverless_mit_gets_the_update_advice_on_screen(tmp_path: Path, kits) -> None:
+    comp = kits("a", "2.0.7")
+    _pre_switch_token(tmp_path)
+    _register_mit(tmp_path, server=False)
+    sm = json.loads(_hook_output(tmp_path, comp))["systemMessage"]
+    assert "claude plugin update mit@mit" in sm and "claude plugin marketplace update mit" in sm
+
+
+def test_an_older_intact_engine_keeps_mit_running_through_a_failed_sync(tmp_path: Path, kits) -> None:
+    old, new = kits("a", "2.0.6"), kits("b", "2.0.7")
+    _register_mit(tmp_path, server=True)
+    _hook_output(tmp_path, old)                  # records 2.0.6
+    shutil.rmtree(tmp_path / "wheels")           # 2.0.7 cannot sync offline now
+    ctx = json.loads(_hook_output(tmp_path, new))["hookSpecificOutput"]["additionalContext"]
+    assert "keeps running the engine recorded before this one (version 2.0.6)" in ctx
+    assert "needs setup" not in ctx and "cannot find the engine" not in ctx
+
+
+BWRAP = shutil.which("bwrap")
+
+
+@pytest.mark.skipif(BWRAP is None, reason="needs bwrap to hide poppler")
+def test_missing_poppler_is_said_to_degrade_mits_tools(tmp_path: Path, kits) -> None:
+    comp = kits("a", "2.0.7")
+    _register_mit(tmp_path, server=True)
+    home = tmp_path / "home"
+    env = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(comp), "HOME": str(home),
+           "CLAUDE_CONFIG_DIR": str(home / ".claude"), "XDG_DATA_HOME": str(tmp_path / "xdg"),
+           "UV_OFFLINE": "1", "PATH": "/usr/bin:/bin:" + os.path.dirname(shutil.which("uv"))}
+    env.pop("MISE_EN_SPACE_OAUTH_CLIENT", None)
+    # An empty /usr/bin with only the tools the hook uses: no pdftotext anywhere.
+    args = [BWRAP, "--bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/usr/bin"]
+    for b in ("bash", "sh", "env", "sed", "grep", "mktemp", "mv", "mkdir", "sort", "tail", "head",
+              "dirname", "cat", "basename", "tr", "python3", "rm", "cp", "chmod", "ls"):
+        real = shutil.which(b, path="/usr/bin:/bin")
+        if real:
+            args += ["--ro-bind", os.path.realpath(real), f"/usr/bin/{b}"]
+    r = subprocess.run(args + ["/usr/bin/bash", str(comp / "hooks" / "ensure-mise.sh")], env=env,
+                       cwd=tmp_path, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=180)
+    if r.returncode != 0 and "bwrap" in r.stderr:
+        pytest.skip(f"bwrap unusable here: {r.stderr.strip()[:120]}")
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "PDF text extraction in the MIT kit's Google tools is degraded" in ctx
+    assert "Nothing in this session depends" not in ctx
