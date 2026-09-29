@@ -40,7 +40,7 @@ import orjson
 from google.auth.transport.requests import Request as GoogleAuthRequest
 
 from jeton import load_credentials
-from oauth_config import TOKEN_FILE, SCOPES, ClientNotConfigured, cli_env_prefix, configured_client_id
+from oauth_config import TOKEN_FILE, SCOPES, ClientNotConfigured, cli_auth_command, configured_client_id
 from token_store import _has_keychain, resolve_token_path
 
 logger = logging.getLogger(__name__)
@@ -55,8 +55,8 @@ def _bootstrap_hint(guest_mode: bool) -> str:
     embedding app's. With no OAuth client (bds-jasuha) setup_oauth could only fail."""
     try:
         unconfigured = not guest_mode and configured_client_id() is None
-    except ClientNotConfigured:  # env names a bad file: say the normal thing, never refuse
-        unconfigured = False
+    except ClientNotConfigured as e:  # the env names a bad client file: that IS the remedy
+        return str(e)
     if unconfigured:
         return ("mise has no OAuth client configured, so there is nothing to sign in with: "
                 "Workspace access comes from your Workspace's kit (ITV: mit@mit; Planet Modha: "
@@ -67,7 +67,7 @@ def _bootstrap_hint(guest_mode: bool) -> str:
         if guest_mode
         else "Call mise.do(operation=\"setup_oauth\") to authenticate "
         "(opens a browser or returns its URL; saves to the macOS Keychain, else token.json). "
-        f"CLI fallback: {cli_env_prefix()}uv run python -m auth --auto"
+        f"CLI fallback: {cli_auth_command('--auto')}"
     )
 
 

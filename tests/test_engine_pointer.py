@@ -9,6 +9,7 @@ throwaway kit whose project has one extra dependency: a local wheel, so nothing
 touches the network.
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -161,13 +162,16 @@ def test_advises_the_mit_kit_to_someone_signed_in_before_the_switch(tmp_path: Pa
     out = _hook_output(tmp_path, comp)
     assert "claude plugin install mit@mit --scope user" in out
     assert "claude plugin marketplace update mit" in out
+    # On screen as well as in Claude's context (rehearsal, 29 Sep: context only is invisible).
+    assert "claude plugin install mit@mit --scope user" in json.loads(out)["systemMessage"]
 
 
 def test_silent_once_mit_is_installed(tmp_path: Path, kits) -> None:
     comp = kits("a", "2.0.7")
     _pre_switch_token(tmp_path)
     _register(tmp_path, "batterie@batterie", "mit@mit")
-    assert "mit@mit" not in _hook_output(tmp_path, comp)
+    out = _hook_output(tmp_path, comp)
+    assert "mit@mit" not in out and "systemMessage" not in out
 
 
 def test_silent_for_someone_never_signed_in(tmp_path: Path, kits) -> None:
@@ -175,3 +179,28 @@ def test_silent_for_someone_never_signed_in(tmp_path: Path, kits) -> None:
     _register(tmp_path, "batterie@batterie")
     out = _hook_output(tmp_path, comp)
     assert "mit@mit" not in out and "OAuth token" not in out
+
+
+# An engine fault with no client of this kit's own: say who it breaks, and only
+# call it blocking when a kit that runs the engine (mit@mit) is installed.
+def _unwritable_pointer(tmp: Path) -> None:
+    (tmp / "xdg").mkdir(exist_ok=True)
+    (tmp / "xdg" / "mise-en-space").write_text("a file where the pointer's directory should be")
+
+
+def test_pointer_fault_blocks_when_mit_runs_the_engine(tmp_path: Path, kits) -> None:
+    comp = kits("a", "2.0.7")
+    _register(tmp_path, "batterie@batterie", "mit@mit")
+    _unwritable_pointer(tmp_path)
+    ctx = json.loads(_hook_output(tmp_path, comp))["hookSpecificOutput"]["additionalContext"]
+    assert "needs setup" in ctx and "MIT kit's Google server will say" in ctx
+    assert "nothing is broken" not in ctx
+
+
+def test_pointer_fault_without_mit_is_a_neutral_note(tmp_path: Path, kits) -> None:
+    comp = kits("a", "2.0.7")
+    _register(tmp_path, "batterie@batterie")
+    _unwritable_pointer(tmp_path)
+    ctx = json.loads(_hook_output(tmp_path, comp))["hookSpecificOutput"]["additionalContext"]
+    assert "No kit here runs it yet" in ctx and "Nothing in this session depends" in ctx
+    assert "nothing is broken" not in ctx and "MIT kit's" not in ctx
