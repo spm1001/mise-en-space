@@ -17,20 +17,6 @@
     "gmail",
     "mcp"
   ],
-  "mcpServers": {
-    "mise": {
-      "command": "uv",
-      "args": [
-        "run",
-        "--project",
-        "${CLAUDE_PLUGIN_ROOT}",
-        "--extra",
-        "extraction",
-        "python3",
-        "${CLAUDE_PLUGIN_ROOT}/server.py"
-      ]
-    }
-  },
   "hooks": {
     "SessionStart": [
       {

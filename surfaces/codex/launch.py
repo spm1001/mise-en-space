@@ -32,6 +32,30 @@ def resolve(instance, registry):
     return root, metadata
 
 
+def workspace_environment(instance, registry, home=None):
+    """The OAuth-client seam for the ITV flavour (bds-jasuha).
+
+    The batterie kit ships no OAuth client since the MIT switch-over; mit@mit
+    carries ITV's, and its server runs the engine with a token store of its own
+    (${CLAUDE_PLUGIN_DATA}, i.e. data/mit-mit). Point Codex at the same pair so
+    both surfaces share one sign-in. No mit@mit install: add nothing, and the
+    engine says plainly that no client is configured.
+    """
+    if instance != "mise":
+        return {}
+    data = json.loads(registry.read_text())
+    roots = {Path(row["installPath"]).resolve()
+             for row in data.get("plugins", {}).get("mit@mit", []) if row.get("scope") == "user"}
+    if len(roots) != 1:
+        return {}
+    client = roots.pop() / "mise" / "itv-oauth-client.json"
+    if not client.is_file():
+        return {}
+    home = Path(home) if home is not None else Path.home()
+    return {"MISE_EN_SPACE_OAUTH_CLIENT": str(client),
+            "MISE_EN_SPACE_DATA_DIR": str(home / ".claude/plugins/data/mit-mit")}
+
+
 def launch_environment(root, original):
     environment = dict(original)
     # This server name selects the established flavour's identity. An ambient
@@ -48,14 +72,16 @@ def main():
     parser.add_argument("--describe", action="store_true")
     args = parser.parse_args()
     try:
-        root, metadata = resolve(args.instance, Path.home() / ".claude/plugins/installed_plugins.json")
-        description = {"instance": args.instance, "identity": metadata.get("identity"), "version": metadata.get("version"), "code_root": str(root)}
+        registry = Path.home() / ".claude/plugins/installed_plugins.json"
+        root, metadata = resolve(args.instance, registry)
+        seam = workspace_environment(args.instance, registry)
+        description = {"instance": args.instance, "identity": metadata.get("identity"), "version": metadata.get("version"), "code_root": str(root), "oauth_client": seam.get("MISE_EN_SPACE_OAUTH_CLIENT")}
         if args.describe:
             print(json.dumps(description))
             return 0
         print("mise-codex: " + json.dumps(description), file=sys.stderr)
         command = ["uv", "run", "--project", str(root), "--frozen", "--extra", "extraction", "python3", str(root / "server.py")]
-        os.execvpe(command[0], command, launch_environment(root, os.environ))
+        os.execvpe(command[0], command, {**launch_environment(root, os.environ), **seam})
     except (OSError, ValueError, KeyError) as error:
         print(f"mise-codex: {error}", file=sys.stderr)
         return 2

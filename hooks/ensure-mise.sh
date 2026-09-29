@@ -2,10 +2,14 @@
 # SessionStart hook: ensure the mise MCP server can start, and install this
 # flavour's rules shard. Silent when all is well; helpful and FLAVOUR-AWARE when
 # it's not (mise-tatego). One mise engine serves two Workspaces — ITV through
-# the batterie kit, Planet Modha through the family kit (since the 2.0.0 fold;
-# before it, the mise and mise-home plugins) — and this hook is what lets a
-# Claude tell them apart, instead of reading one's missing-token warning as
+# the mit kit, Planet Modha through the family kit — and this hook is what lets
+# a Claude tell them apart, instead of reading one's missing-token warning as
 # "the other mise is broken". The family kit wires its own hook, not this one.
+# Since the MIT switch-over (bds-jasuha) the batterie kit runs no Google server
+# and ships no OAuth client: it carries the engine (synced and recorded below
+# for ring kits' launchers), this skill and the shard. With no client the
+# no-token check below stays quiet, because the kit that supplies the client
+# (mit, family) owns sign-in.
 #
 # THE SHARD IS REWRITTEN FROM HERE EVERY SESSION START (temp+mv, below). Editing
 # ~/.claude/rules/mise*.md by hand is therefore a no-op that survives until the
@@ -94,17 +98,20 @@ if [ -f "$_PLUGIN_ROOT/instructions.md" ]; then
         # the sentence is about install method, not about which flavour.
         # Only the stamp below is per-flavour — it says which file this is.
         printf '<!-- mise flavour: %s -->\n' "$DISPLAY_NAME"
-        printf '**Which Mise to reach for.** One mise per Google Workspace: the **batterie** kit'"'"'s '
+        printf '**Which Mise to reach for.** One mise per Google Workspace: the **mit** kit'"'"'s '
         printf 'mise acts on **ITV (itv.com)**, the **family** kit'"'"'s on **Planet Modha (planetmodha)**. '
         printf 'Reach for whichever matches where the content lives — only the kits whose '
         printf 'tools are present in this session are installed.\n\n'
         printf '**Matching the tool names.** Both servers are called `mise`, so the KIT part of the '
-        printf 'name is what tells them apart: `mcp__plugin_batterie_mise__` is ITV and '
+        printf 'name is what tells them apart: `mcp__plugin_mit_mise__` is ITV and '
         printf '`mcp__plugin_family_mise__` is Planet Modha (so `…__search`, `…__fetch`, `…__do`). '
         printf 'Wired as a bare MCP server instead, the `plugin_<kit>_` part is absent — a grep for '
         printf '`mcp__mise__` returns zero in a plugin session, and that zero is the harness naming '
-        printf 'scheme, not a missing mise. (Before the 2.0.0 fold the Planet Modha tools were '
-        printf '`mcp__plugin_mise-home_mise-home__`; a machine not yet migrated may still show them.)\n\n'
+        printf 'scheme, not a missing mise. The batterie kit carries the engine and this skill but '
+        printf 'no server of its own: with batterie alone installed there are no Google tools at all. '
+        printf '(Until the MIT switch-over the ITV tools were `mcp__plugin_batterie_mise__`, and before '
+        printf 'the 2.0.0 fold the Planet Modha ones `mcp__plugin_mise-home_mise-home__`; a machine not '
+        printf 'yet migrated may still show them.)\n\n'
         cat "$_PLUGIN_ROOT/instructions.md"
     } > "$_tmp"
     mv -f "$_tmp" "$RULES_DEST"

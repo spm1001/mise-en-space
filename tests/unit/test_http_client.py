@@ -82,6 +82,18 @@ class TestAuth:
             with pytest.raises(FileNotFoundError, match="No OAuth token found"):
                 MiseHttpClient()
 
+    def test_missing_token_with_no_client_says_no_client(self) -> None:
+        """No token AND no OAuth client (the public kit ships none since bds-jasuha):
+        the honest message is that no Workspace is wired, not 'call setup_oauth',
+        which would only fail again for want of a client."""
+        with patch("adapters.http_client.resolve_token_path", return_value=Path("/nonexistent/token.json")), \
+             patch("adapters.http_client.configured_client_id", return_value=None):
+            with pytest.raises(FileNotFoundError) as ei:
+                MiseHttpClient()
+        msg = str(ei.value)
+        assert "no OAuth client configured" in msg
+        assert "setup_oauth" not in msg
+
     def test_corrupt_token_file_raises(self, tmp_path) -> None:
         """Clear error when token.json is corrupt."""
         bad_token = tmp_path / "token.json"

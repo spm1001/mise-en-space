@@ -40,7 +40,7 @@ import orjson
 from google.auth.transport.requests import Request as GoogleAuthRequest
 
 from jeton import load_credentials
-from oauth_config import TOKEN_FILE, SCOPES
+from oauth_config import TOKEN_FILE, SCOPES, configured_client_id
 from token_store import resolve_token_path
 
 logger = logging.getLogger(__name__)
@@ -50,16 +50,16 @@ API_TIMEOUT = 60
 
 
 def _bootstrap_hint(guest_mode: bool) -> str:
-    """The re-auth remedy line for credential errors.
-
-    Points at the setup_oauth tool, which is what's reachable when running
-    under Claude Desktop / Cowork. The CLI fallback (`uv run python -m auth
-    --auto`) is mentioned only when the bootstrap tool can't be reached.
-    In guest mode (MISE_TOKEN_PATH) neither applies — the credential belongs
-    to the embedding app, and an agent reading this error must be pointed
-    AWAY from self-service re-auth (observed live: an agent followed the CLI
-    hint into a PATH-probing expedition inside a sealed sandbox).
+    """The re-auth remedy line for credential errors: the setup_oauth tool (CLI as
+    fallback). Guest mode (MISE_TOKEN_PATH) points AWAY from self-service re-auth —
+    the credential is the embedding app's (an agent once followed the CLI hint into
+    a PATH-probing expedition inside a sealed sandbox). With no OAuth client at all
+    (the public kit ships none since bds-jasuha) setup_oauth could only fail again.
     """
+    if not guest_mode and configured_client_id() is None:
+        return ("mise has no OAuth client configured, so there is nothing to sign in with: "
+                "Workspace access comes from your Workspace's kit (ITV: mit@mit; Planet Modha: "
+                "family@family), or set MISE_EN_SPACE_OAUTH_CLIENT to an installed-app client JSON.")
     return (
         "This credential file belongs to the embedding application — "
         "re-authenticate there. Do not attempt setup_oauth or CLI auth."
