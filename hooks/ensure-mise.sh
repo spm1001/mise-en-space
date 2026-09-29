@@ -170,10 +170,20 @@ _older_engine_runs() {
     [ -n "$_rec_root" ] && [ "$_rec_root" != "$PLUGIN_ROOT" ] \
         && [ -x "$_rec_root/.venv/bin/python" ] && [ -f "$_rec_root/server.py" ]
 }
-# engine_fault SENTENCE [TAIL]: report a fault in this version's engine, for a kit
-# with no Google server of its own, by who it actually affects.
+_this_engine_recorded() {
+    [ "$_rec_root" = "$PLUGIN_ROOT" ] \
+        && [ -x "$_rec_root/.venv/bin/python" ] && [ -f "$_rec_root/server.py" ]
+}
+# engine_fault SENTENCE [TAIL] [nouv]: report a fault in this version's engine, for
+# a kit with no Google server of its own, by who it actually affects. "nouv" marks
+# the uv-missing case: mit's launch.sh execs the recorded venv's python directly and
+# never needs uv, so THIS version's engine, recorded after a clean sync, still runs.
+# (After a failed resync the same record may be half-rewritten, so only uv-missing
+# earns that reading.)
 engine_fault() {
-    if [ "$MIT_SERVER" = true ] && _older_engine_runs; then
+    if [ "$MIT_SERVER" = true ] && [ "${3:-}" = nouv ] && _this_engine_recorded; then
+        ISSUES="${ISSUES}• $1 The MIT kit's Google server does not need uv to run: it keeps running this engine, prepared earlier (version ${_rec_ver:-unknown}).${2:-}\n"
+    elif [ "$MIT_SERVER" = true ] && _older_engine_runs; then
         ISSUES="${ISSUES}• $1 The MIT kit's Google server keeps running the engine recorded before this one (version ${_rec_ver:-unknown}) meanwhile.${2:-}\n"
     elif [ "$MIT_SERVER" = true ]; then
         ISSUES="${ISSUES}• $1 So the MIT kit's Google server will say it cannot find the engine.${2:-}\n"
@@ -200,7 +210,7 @@ if [ -z "$UV_BIN" ]; then
     done
 fi
 if [ -z "$UV_BIN" ] && [ "$UNCONFIGURED" = true ]; then
-    engine_fault "uv was not found, so the Google Workspace engine cannot be prepared." " Install uv from https://docs.astral.sh/uv/"
+    engine_fault "uv was not found, so the Google Workspace engine cannot be prepared." " Install uv from https://docs.astral.sh/uv/" nouv
 elif [ -z "$UV_BIN" ]; then
     ISSUES="${ISSUES}• uv not found — install from https://docs.astral.sh/uv/\n"
     BLOCKING=true
@@ -433,4 +443,16 @@ MSG="${HEADER}\n\n${ISSUES}\n${FOOTER}"
 # Render via json.dumps so messages containing quotes (e.g. the quoted PLUGIN_ROOT
 # in recovery commands) produce valid JSON — a raw heredoc does not escape them
 # (bon-dotupu).
-python3 -c "import json; out = {'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': '''${MSG}'''}}; sm = '''${SYSTEM_MSG}'''; sm and out.update(systemMessage=sm); print(json.dumps(out))"
+# The text travels in the environment, NEVER in Python source: it carries values
+# read from disk (the pointer's version=), and `\N{x` in source is a SyntaxError
+# that left the hook printing nothing (essayeur, 29 Sep). The one escape the bash
+# side writes, a literal backslash-n, becomes a newline here.
+MISE_HOOK_MSG="$MSG" MISE_HOOK_SYSTEM_MSG="$SYSTEM_MSG" python3 -c '
+import json, os
+msg = os.environ["MISE_HOOK_MSG"].replace("\\n", "\n")
+out = {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": msg}}
+sm = os.environ.get("MISE_HOOK_SYSTEM_MSG", "").replace("\\n", "\n")
+if sm:
+    out["systemMessage"] = sm
+print(json.dumps(out))
+'

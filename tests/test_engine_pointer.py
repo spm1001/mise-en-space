@@ -219,6 +219,7 @@ def test_pointer_fault_without_mit_is_a_neutral_note(tmp_path: Path, kits) -> No
     ctx = json.loads(_hook_output(tmp_path, comp))["hookSpecificOutput"]["additionalContext"]
     assert "No kit here runs the engine yet" in ctx and "Nothing in this session depends" in ctx
     assert "mit@mit" not in ctx  # no ITV hypothetical on a machine without mit (D3)
+    assert "\n\n" in ctx and "\\n" not in ctx  # real newlines, no literal backslash-n
     assert "nothing is broken" not in ctx and "MIT kit's" not in ctx
 
 
@@ -268,3 +269,34 @@ def test_missing_poppler_is_said_to_degrade_mits_tools(tmp_path: Path, kits) -> 
     ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
     assert "PDF text extraction in the MIT kit's Google tools is degraded" in ctx
     assert "Nothing in this session depends" not in ctx
+
+
+# Round 5 (essayeur, 29 Sep).
+def test_a_hostile_recorded_version_cannot_break_the_output(tmp_path: Path, kits) -> None:
+    # The pointer's version= reaches the message; it once reached Python SOURCE,
+    # where `\N{x` is a SyntaxError: exit 1, empty stdout.
+    old, new = kits("a", "2.0.6"), kits("b", "2.0.7")
+    _register_mit(tmp_path, server=True)
+    _hook_output(tmp_path, old)
+    ptr = tmp_path / "xdg" / "mise-en-space" / "engine"
+    ptr.write_text("version=2.0.5\\N{x\nroot=%s\n" % old)
+    shutil.rmtree(tmp_path / "wheels")           # 2.0.7 cannot sync: the message names the record
+    ctx = json.loads(_hook_output(tmp_path, new))["hookSpecificOutput"]["additionalContext"]
+    assert "version 2.0.5\\N{x" in ctx
+
+
+def test_no_uv_with_this_engine_already_recorded_does_not_block(tmp_path: Path, kits) -> None:
+    # mit's launch.sh execs the recorded venv's python directly and never needs uv.
+    comp = kits("a", "2.0.7")
+    _register_mit(tmp_path, server=True)
+    _hook_output(tmp_path, comp)                 # records this engine, with uv
+    home = tmp_path / "home"
+    env = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(comp), "HOME": str(home),
+           "CLAUDE_CONFIG_DIR": str(home / ".claude"), "XDG_DATA_HOME": str(tmp_path / "xdg"),
+           "PATH": "/usr/bin:/bin"}             # no uv anywhere the hook looks
+    env.pop("MISE_EN_SPACE_OAUTH_CLIENT", None)
+    r = subprocess.run(["bash", str(comp / "hooks" / "ensure-mise.sh")], env=env, cwd=tmp_path,
+                       stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=180, check=True)
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "uv was not found" in ctx and "does not need uv" in ctx
+    assert "needs setup" not in ctx and "cannot find the engine" not in ctx
