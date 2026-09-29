@@ -124,6 +124,16 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
 ISSUES=""
 BLOCKING=false
 
+# Does this kit run a Google server of its own? Only with an OAuth client: the
+# bundled credentials.json, or one handed over in MISE_EN_SPACE_OAUTH_CLIENT.
+# Since the MIT switch-over (bds-jasuha) the batterie kit ships neither, so here
+# the engine exists to be run by a Workspace kit's launcher (mit's), and the
+# wording below says so instead of promising a server this kit does not start.
+UNCONFIGURED=false
+if [ ! -f "$_PLUGIN_ROOT/credentials.json" ] && [ -z "${MISE_EN_SPACE_OAUTH_CLIENT:-}" ]; then
+    UNCONFIGURED=true
+fi
+
 # Capture uv sync output so a failed dependency install is diagnosable (bon-dotupu).
 SYNC_LOG="$HOME/.cache/mise/ensure.log"
 mkdir -p "$(dirname "$SYNC_LOG")" 2>/dev/null
@@ -166,8 +176,13 @@ if [ -n "$UV_BIN" ]; then
         ISSUES="${ISSUES}• Dependencies not installed (full error: ${SYNC_LOG}). Run: uv sync --project \"$PLUGIN_ROOT\" --extra extraction\n"
         BLOCKING=true
     else
-        ISSUES="${ISSUES}• Dependencies did not finish syncing (full error: ${SYNC_LOG}). This kit's server repairs its env when it starts; kits that run the engine by pointer (mit, family) wait for a clean sync. Run: uv sync --project \"$PLUGIN_ROOT\" --extra extraction\n"
-        # advisory — `uv run` at this kit's server spawn repairs the env
+        if [ "$UNCONFIGURED" = true ]; then
+            ISSUES="${ISSUES}• Dependencies did not finish syncing (full error: ${SYNC_LOG}). Your Workspace kit's Google server (mit's mise) runs this engine only after a clean sync, so until then it will say it cannot find the engine. Run: uv sync --project \"$PLUGIN_ROOT\" --extra extraction\n"
+        else
+            ISSUES="${ISSUES}• Dependencies did not finish syncing (full error: ${SYNC_LOG}). This kit's server repairs its env when it starts; kits that run the engine by pointer (mit, family) wait for a clean sync. Run: uv sync --project \"$PLUGIN_ROOT\" --extra extraction\n"
+        fi
+        # advisory — a kit with its own server repairs the env at spawn; a pointer
+        # kit's launcher waits, and the next session's sync completes it
     fi
 else
     ISSUES="${ISSUES}• Dependencies not installed (need uv first)\n"
@@ -223,7 +238,11 @@ if [ "$ENGINE_SYNCED" = true ] && [ -x "$PLUGIN_ROOT/.venv/bin/python" ] && [ -f
         if ! { mkdir -p "$_ptr_dir" && _tmp="$(mktemp "$_ptr_dir/.engine.XXXXXX")" \
                && printf 'version=%s\nroot=%s\n' "$_my_ver" "$PLUGIN_ROOT" > "$_tmp" \
                && mv -f "$_tmp" "$_ptr"; } 2>/dev/null; then
-            ISSUES="${ISSUES}• Could not record where the mise engine lives ($_ptr). This kit's own server is unaffected; a ring kit's mise (mit, family) will say it cannot find the engine.\n"
+            if [ "$UNCONFIGURED" = true ]; then
+                ISSUES="${ISSUES}• Could not record where the mise engine lives ($_ptr), so your Workspace kit's mise (mit's) will say it cannot find the engine.\n"
+            else
+                ISSUES="${ISSUES}• Could not record where the mise engine lives ($_ptr). This kit's own server is unaffected; a ring kit's mise (mit, family) will say it cannot find the engine.\n"
+            fi
         fi
     fi
 fi
@@ -236,11 +255,7 @@ fi
 #    Quiet until configured (mise-nujina): an engine that ships no OAuth
 #    client and was handed none (MISE_EN_SPACE_OAUTH_CLIENT) has not been switched on
 #    for any Workspace, so a missing token is not news — say nothing. The
-#    kit that supplies the client owns that nag.
-UNCONFIGURED=false
-if [ ! -f "$_PLUGIN_ROOT/credentials.json" ] && [ -z "${MISE_EN_SPACE_OAUTH_CLIENT:-}" ]; then
-    UNCONFIGURED=true
-fi
+#    kit that supplies the client owns that nag. (UNCONFIGURED is set above.)
 HAS_TOKEN=false
 CHECKED="the token file"
 if command -v security &>/dev/null; then
@@ -299,6 +314,26 @@ if [ "$HAS_TOKEN" = false ] && [ "$UNCONFIGURED" = false ]; then
     fi
 fi
 
+# 3b. Moved over? (bds-jasuha) Before the MIT switch-over this kit ran ITV's
+#     Google server itself and kept its token in data/mise-batterie-de-savoir
+#     (or the macOS Keychain entry mise-oauth-token). Now the mit kit runs it.
+#     Someone who was signed in here and has no mit@mit has just lost their
+#     Google tools, so say how to get them back. Silent in every other case:
+#     a family member or stranger with batterie alone never had an ITV token.
+if [ "$UNCONFIGURED" = true ]; then
+    _had_itv=false
+    [ -f "$HOME/.claude/plugins/data/mise-batterie-de-savoir/token.json" ] && _had_itv=true
+    if [ "$_had_itv" = false ] && command -v security &>/dev/null \
+       && security find-generic-password -s "mise-oauth-token" -w &>/dev/null; then
+        _had_itv=true
+    fi
+    if [ "$_had_itv" = true ] \
+       && ! grep -q '"mit@mit"' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json" 2>/dev/null; then
+        ISSUES="${ISSUES}• Your ITV Google tools (Gmail, Drive, Calendar) now come from the MIT kit, mit@mit, which is not installed here — batterie no longer runs a Google server of its own. In a terminal: claude plugin marketplace update mit; claude plugin install mit@mit --scope user; claude plugin uninstall commons@mit --scope user — then restart Claude Code. Your Google sign-in carries over; nothing asks you to consent again.\n"
+        BLOCKING=true
+    fi
+fi
+
 # 4. Poppler (pdftotext/pdftoppm) backs PDF text extraction and page/deck
 #    thumbnails (mise-mitoki, mise-releko). Its absence is silent per-fetch —
 #    text degrades to markitdown, thumbnails skip — and it bites hardest on
@@ -323,8 +358,13 @@ fi
 # Header + footer match severity: a real blocker says "won't work"; an advisory
 # (only this flavour unauthed while a sibling works) says so plainly instead.
 if [ "$BLOCKING" = true ]; then
-    HEADER="⚠️ ${DISPLAY_NAME} MCP server needs setup:"
-    FOOTER="The MCP server won't work until these are resolved."
+    if [ "$UNCONFIGURED" = true ]; then
+        HEADER="⚠️ ${DISPLAY_NAME} (the Google Workspace engine) needs setup:"
+        FOOTER="Your Google Workspace tools won't work until these are resolved."
+    else
+        HEADER="⚠️ ${DISPLAY_NAME} MCP server needs setup:"
+        FOOTER="The MCP server won't work until these are resolved."
+    fi
 else
     HEADER="ℹ️ ${DISPLAY_NAME} — optional setup:"
     FOOTER="Advisory only: nothing is broken — these just make mise better."

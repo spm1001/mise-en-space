@@ -124,3 +124,54 @@ def test_no_pointer_when_the_sync_fails(tmp_path: Path, kits) -> None:
     broken = PYPROJECT.replace("depx-0.1-py3-none-any.whl", "missing-0.1-py3-none-any.whl")
     _run(tmp_path, kits("a", "2.0.2", pyproject=broken))
     assert _pointer(tmp_path) == {}
+
+
+# --- The MIT switch-over advice (bds-jasuha) -------------------------------------
+# The batterie kit ships no OAuth client, so its hook says nothing about tokens —
+# except to someone who WAS signed in to batterie's old ITV server and has no
+# mit@mit yet: they have just lost their Google tools and need the three lines.
+
+def _hook_output(tmp: Path, comp: Path) -> str:
+    home = tmp / "home"
+    env = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(comp), "HOME": str(home),
+           "CLAUDE_CONFIG_DIR": str(home / ".claude"), "XDG_DATA_HOME": str(tmp / "xdg"),
+           "UV_OFFLINE": "1", "PATH": "/usr/bin:/bin:" + os.path.dirname(shutil.which("uv"))}
+    env.pop("MISE_EN_SPACE_OAUTH_CLIENT", None)
+    r = subprocess.run(["bash", str(comp / "hooks" / "ensure-mise.sh")], env=env, cwd=tmp,
+                       stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=180, check=True)
+    return r.stdout
+
+
+def _pre_switch_token(tmp: Path) -> None:
+    d = tmp / "home" / ".claude" / "plugins" / "data" / "mise-batterie-de-savoir"
+    d.mkdir(parents=True)
+    (d / "token.json").write_text("{}")
+
+
+def _register(tmp: Path, *ids: str) -> None:
+    reg = tmp / "home" / ".claude" / "plugins" / "installed_plugins.json"
+    reg.parent.mkdir(parents=True, exist_ok=True)
+    reg.write_text('{"plugins": {' + ", ".join(f'"{i}": []' for i in ids) + "}}")
+
+
+def test_advises_the_mit_kit_to_someone_signed_in_before_the_switch(tmp_path: Path, kits) -> None:
+    comp = kits("a", "2.0.7")
+    _pre_switch_token(tmp_path)
+    _register(tmp_path, "batterie@batterie", "commons@mit")
+    out = _hook_output(tmp_path, comp)
+    assert "claude plugin install mit@mit --scope user" in out
+    assert "claude plugin marketplace update mit" in out
+
+
+def test_silent_once_mit_is_installed(tmp_path: Path, kits) -> None:
+    comp = kits("a", "2.0.7")
+    _pre_switch_token(tmp_path)
+    _register(tmp_path, "batterie@batterie", "mit@mit")
+    assert "mit@mit" not in _hook_output(tmp_path, comp)
+
+
+def test_silent_for_someone_never_signed_in(tmp_path: Path, kits) -> None:
+    comp = kits("a", "2.0.7")
+    _register(tmp_path, "batterie@batterie")
+    out = _hook_output(tmp_path, comp)
+    assert "mit@mit" not in out and "OAuth token" not in out

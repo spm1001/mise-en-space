@@ -94,6 +94,32 @@ class TestAuth:
         assert "no OAuth client configured" in msg
         assert "setup_oauth" not in msg
 
+    def test_valid_token_loads_when_the_env_names_a_missing_client(self, tmp_path, monkeypatch) -> None:
+        """A broken MISE_EN_SPACE_OAUTH_CLIENT must not refuse a VALID token: the
+        remedy hint is only needed when something failed (essayeur, 29 Sep)."""
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(tmp_path / "gone.json"))
+        token_file = tmp_path / "token.json"
+        token_file.write_text('{"token": "t", "refresh_token": "r"}')
+        creds = _mock_credentials()
+        with patch("adapters.http_client.resolve_token_path", return_value=token_file), \
+             patch("adapters.http_client.load_credentials", return_value=creds):
+            client = MiseHttpClient()
+        assert client is not None
+
+    def test_missing_token_hint_carries_the_env_and_no_keychain_claim_off_macos(self, tmp_path, monkeypatch) -> None:
+        """The CLI fallback runs from a shell without the server's MISE_* env, so it
+        must spell the env out; and 'also checked Keychain' is false off macOS."""
+        client_file = tmp_path / "client.json"
+        client_file.write_text('{"installed": {"client_id": "123-abc.apps.googleusercontent.com"}}')
+        monkeypatch.setenv("MISE_EN_SPACE_OAUTH_CLIENT", str(client_file))
+        with patch("adapters.http_client.resolve_token_path", return_value=Path("/nonexistent/token.json")), \
+             patch("adapters.http_client._has_keychain", return_value=False):
+            with pytest.raises(FileNotFoundError) as ei:
+                MiseHttpClient()
+        msg = str(ei.value)
+        assert f"MISE_EN_SPACE_OAUTH_CLIENT={client_file} uv run python -m auth --auto" in msg
+        assert "Keychain)" not in msg
+
     def test_corrupt_token_file_raises(self, tmp_path) -> None:
         """Clear error when token.json is corrupt."""
         bad_token = tmp_path / "token.json"
