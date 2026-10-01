@@ -40,8 +40,8 @@ import orjson
 from google.auth.transport.requests import Request as GoogleAuthRequest
 
 from jeton import load_credentials
-from oauth_config import TOKEN_FILE, SCOPES
-from token_store import resolve_token_path
+from oauth_config import TOKEN_FILE, SCOPES, ClientNotConfigured, cli_auth_command, configured_client_id
+from token_store import _has_keychain, resolve_token_path
 
 logger = logging.getLogger(__name__)
 
@@ -50,23 +50,24 @@ API_TIMEOUT = 60
 
 
 def _bootstrap_hint(guest_mode: bool) -> str:
-    """The re-auth remedy line for credential errors.
-
-    Points at the setup_oauth tool, which is what's reachable when running
-    under Claude Desktop / Cowork. The CLI fallback (`uv run python -m auth
-    --auto`) is mentioned only when the bootstrap tool can't be reached.
-    In guest mode (MISE_TOKEN_PATH) neither applies — the credential belongs
-    to the embedding app, and an agent reading this error must be pointed
-    AWAY from self-service re-auth (observed live: an agent followed the CLI
-    hint into a PATH-probing expedition inside a sealed sandbox).
-    """
+    """The re-auth remedy for credential errors: setup_oauth, CLI as fallback. Guest mode
+    (MISE_TOKEN_PATH) points AWAY from self-service re-auth — the credential is the
+    embedding app's. With no OAuth client (bds-jasuha) setup_oauth could only fail."""
+    try:
+        unconfigured = not guest_mode and configured_client_id() is None
+    except ClientNotConfigured as e:  # the env names a bad client file: that IS the remedy
+        return str(e)
+    if unconfigured:
+        return ("mise has no OAuth client configured, so there is nothing to sign in with: "
+                "Workspace access comes from your Workspace's kit (ITV: mit@mit; Planet Modha: "
+                "family@family), or set MISE_EN_SPACE_OAUTH_CLIENT to an installed-app client JSON.")
     return (
         "This credential file belongs to the embedding application — "
         "re-authenticate there. Do not attempt setup_oauth or CLI auth."
         if guest_mode
         else "Call mise.do(operation=\"setup_oauth\") to authenticate "
         "(opens a browser or returns its URL; saves to the macOS Keychain, else token.json). "
-        "CLI fallback: uv run python -m auth --auto"
+        f"CLI fallback: {cli_auth_command('--auto')}"
     )
 
 
@@ -89,13 +90,11 @@ def _load_and_diagnose_credentials(token_path: str | Path) -> Any:
     token_path = Path(token_path)
     guest_mode = override_path() is not None
 
-    _BOOTSTRAP_HINT = _bootstrap_hint(guest_mode)
-
     if not token_path.exists():
         raise FileNotFoundError(
             f"No OAuth token found at {token_path}"
-            + (" (also checked Keychain)" if not guest_mode else "")
-            + f". {_BOOTSTRAP_HINT}"
+            + (" (also checked Keychain)" if not guest_mode and _has_keychain() else "")
+            + f". {_bootstrap_hint(guest_mode)}"
         )
 
     # File exists — try to read it
@@ -104,7 +103,7 @@ def _load_and_diagnose_credentials(token_path: str | Path) -> Any:
     except (json.JSONDecodeError, IOError) as e:
         raise FileNotFoundError(
             f"OAuth token at {token_path} is corrupt ({type(e).__name__}). "
-            f"{_BOOTSTRAP_HINT}"
+            f"{_bootstrap_hint(guest_mode)}"
         )
 
     if guest_mode:
@@ -123,7 +122,7 @@ def _load_and_diagnose_credentials(token_path: str | Path) -> Any:
         except ValueError as e:
             raise FileNotFoundError(
                 f"Credential file at {token_path} is not a valid "
-                f"authorized_user file ({e}). {_BOOTSTRAP_HINT}"
+                f"authorized_user file ({e}). {_bootstrap_hint(guest_mode)}"
             )
 
     # Try loading through jeton (handles refresh automatically)
@@ -138,13 +137,13 @@ def _load_and_diagnose_credentials(token_path: str | Path) -> Any:
     if not has_refresh:
         raise FileNotFoundError(
             f"OAuth token at {token_path} has no refresh_token — cannot auto-refresh. "
-            f"{_BOOTSTRAP_HINT}"
+            f"{_bootstrap_hint(guest_mode)}"
         )
 
     # Has refresh_token but load_credentials still returned None — refresh must have failed
     raise FileNotFoundError(
         f"OAuth token at {token_path} is expired and refresh failed "
-        f"(refresh_token may be revoked). {_BOOTSTRAP_HINT}"
+        f"(refresh_token may be revoked). {_bootstrap_hint(guest_mode)}"
     )
 
 

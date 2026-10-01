@@ -326,6 +326,12 @@ def cli_env_prefix() -> str:
     return " ".join(parts) + " " if parts else ""
 
 
+def cli_auth_command(args: str) -> str:
+    """A pasteable `python -m auth` line: the shell has neither the server's cwd
+    nor its MISE_* env, so spell both out (else "No module named auth")."""
+    return f"cd {shlex.quote(str(_PACKAGE_ROOT))} && {cli_env_prefix()}uv run python -m auth {args}"
+
+
 # Plugin data directory — version-stable, survives plugin cache upgrades AND
 # Cowork's session-scoped staging dir wipes. Path.home() on the Mac side resolves
 # to the real user home regardless of whether mise is running under Claude Code

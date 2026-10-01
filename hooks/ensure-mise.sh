@@ -2,10 +2,14 @@
 # SessionStart hook: ensure the mise MCP server can start, and install this
 # flavour's rules shard. Silent when all is well; helpful and FLAVOUR-AWARE when
 # it's not (mise-tatego). One mise engine serves two Workspaces — ITV through
-# the batterie kit, Planet Modha through the family kit (since the 2.0.0 fold;
-# before it, the mise and mise-home plugins) — and this hook is what lets a
-# Claude tell them apart, instead of reading one's missing-token warning as
+# the mit kit, Planet Modha through the family kit — and this hook is what lets
+# a Claude tell them apart, instead of reading one's missing-token warning as
 # "the other mise is broken". The family kit wires its own hook, not this one.
+# Since the MIT switch-over (bds-jasuha) the batterie kit runs no Google server
+# and ships no OAuth client: it carries the engine (synced and recorded below
+# for ring kits' launchers), this skill and the shard. With no client the
+# no-token check below stays quiet, because the kit that supplies the client
+# (mit, family) owns sign-in.
 #
 # THE SHARD IS REWRITTEN FROM HERE EVERY SESSION START (temp+mv, below). Editing
 # ~/.claude/rules/mise*.md by hand is therefore a no-op that survives until the
@@ -94,17 +98,20 @@ if [ -f "$_PLUGIN_ROOT/instructions.md" ]; then
         # the sentence is about install method, not about which flavour.
         # Only the stamp below is per-flavour — it says which file this is.
         printf '<!-- mise flavour: %s -->\n' "$DISPLAY_NAME"
-        printf '**Which Mise to reach for.** One mise per Google Workspace: the **batterie** kit'"'"'s '
+        printf '**Which Mise to reach for.** One mise per Google Workspace: the **mit** kit'"'"'s '
         printf 'mise acts on **ITV (itv.com)**, the **family** kit'"'"'s on **Planet Modha (planetmodha)**. '
         printf 'Reach for whichever matches where the content lives — only the kits whose '
         printf 'tools are present in this session are installed.\n\n'
         printf '**Matching the tool names.** Both servers are called `mise`, so the KIT part of the '
-        printf 'name is what tells them apart: `mcp__plugin_batterie_mise__` is ITV and '
+        printf 'name is what tells them apart: `mcp__plugin_mit_mise__` is ITV and '
         printf '`mcp__plugin_family_mise__` is Planet Modha (so `…__search`, `…__fetch`, `…__do`). '
         printf 'Wired as a bare MCP server instead, the `plugin_<kit>_` part is absent — a grep for '
         printf '`mcp__mise__` returns zero in a plugin session, and that zero is the harness naming '
-        printf 'scheme, not a missing mise. (Before the 2.0.0 fold the Planet Modha tools were '
-        printf '`mcp__plugin_mise-home_mise-home__`; a machine not yet migrated may still show them.)\n\n'
+        printf 'scheme, not a missing mise. The batterie kit carries the engine and this skill but '
+        printf 'no server of its own: with batterie alone installed there are no Google tools at all. '
+        printf '(Until the MIT switch-over the ITV tools were `mcp__plugin_batterie_mise__`, and before '
+        printf 'the 2.0.0 fold the Planet Modha ones `mcp__plugin_mise-home_mise-home__`; a machine not '
+        printf 'yet migrated may still show them.)\n\n'
         cat "$_PLUGIN_ROOT/instructions.md"
     } > "$_tmp"
     mv -f "$_tmp" "$RULES_DEST"
@@ -116,6 +123,75 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
 
 ISSUES=""
 BLOCKING=false
+
+# Does this kit run a Google server of its own? Only with an OAuth client: the
+# bundled credentials.json, or one handed over in MISE_EN_SPACE_OAUTH_CLIENT.
+# Since the MIT switch-over (bds-jasuha) the batterie kit ships neither, so here
+# the engine exists to be run by a Workspace kit's launcher (mit's), and the
+# wording below says so instead of promising a server this kit does not start.
+UNCONFIGURED=false
+if [ ! -f "$_PLUGIN_ROOT/credentials.json" ] && [ -z "${MISE_EN_SPACE_OAUTH_CLIENT:-}" ]; then
+    UNCONFIGURED=true
+fi
+# ...and is a kit that runs this engine by pointer installed, and does the copy
+# Claude Code holds carry its server? (Only mit@mit today; family carries its own
+# engine copy.) Registered is not enough: a mit@mit installed on 27-28 Sep is
+# cached without mise/launch.sh until its update lands (essayeur, 29 Sep), and
+# with batterie already moved over that teammate has no Google tools at all.
+_REGF="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json"
+MIT_KIT=false; MIT_SERVER=false
+grep -q '"mit@mit"' "$_REGF" 2>/dev/null && MIT_KIT=true
+if [ "$MIT_KIT" = true ]; then
+    _mit_root="$(python3 - "$_REGF" <<'PY' 2>/dev/null
+import json, sys
+try:
+    rows = json.load(open(sys.argv[1]))["plugins"]["mit@mit"]
+except (OSError, ValueError, KeyError, TypeError):
+    sys.exit(0)
+rows = [r for r in rows if isinstance(r, dict) and r.get("scope") == "user"] or [r for r in rows if isinstance(r, dict)]
+print(rows[0].get("installPath", "") if rows else "")
+PY
+)"
+    [ -n "$_mit_root" ] && [ -f "$_mit_root/mise/launch.sh" ] && MIT_SERVER=true
+fi
+SYSTEM_MSG=""
+
+# The engine a ring kit's launcher runs today: whatever the pointer records (2c
+# below moves it). An intact record for ANOTHER version means a fault in this
+# version's engine leaves mit's server running the recorded one.
+_ptr_dir="${XDG_DATA_HOME:-$HOME/.local/share}/mise-en-space"
+_ptr="$_ptr_dir/engine"
+_rec_ver=""; _rec_root=""
+if [ -f "$_ptr" ]; then
+    _rec_ver="$(sed -n 's/^version=//p' "$_ptr")"
+    _rec_root="$(sed -n 's/^root=//p' "$_ptr")"
+fi
+_older_engine_runs() {
+    [ -n "$_rec_root" ] && [ "$_rec_root" != "$PLUGIN_ROOT" ] \
+        && [ -x "$_rec_root/.venv/bin/python" ] && [ -f "$_rec_root/server.py" ]
+}
+_this_engine_recorded() {
+    [ "$_rec_root" = "$PLUGIN_ROOT" ] \
+        && [ -x "$_rec_root/.venv/bin/python" ] && [ -f "$_rec_root/server.py" ]
+}
+# engine_fault SENTENCE [TAIL] [nouv]: report a fault in this version's engine, for
+# a kit with no Google server of its own, by who it actually affects. "nouv" marks
+# the uv-missing case: mit's launch.sh execs the recorded venv's python directly and
+# never needs uv, so THIS version's engine, recorded after a clean sync, still runs.
+# (After a failed resync the same record may be half-rewritten, so only uv-missing
+# earns that reading.)
+engine_fault() {
+    if [ "$MIT_SERVER" = true ] && [ "${3:-}" = nouv ] && _this_engine_recorded; then
+        ISSUES="${ISSUES}• $1 The MIT kit's Google server does not need uv to run: it keeps running this engine, prepared earlier (version ${_rec_ver:-unknown}).${2:-}\n"
+    elif [ "$MIT_SERVER" = true ] && _older_engine_runs; then
+        ISSUES="${ISSUES}• $1 The MIT kit's Google server keeps running the engine recorded before this one (version ${_rec_ver:-unknown}) meanwhile.${2:-}\n"
+    elif [ "$MIT_SERVER" = true ]; then
+        ISSUES="${ISSUES}• $1 So the MIT kit's Google server will say it cannot find the engine.${2:-}\n"
+        BLOCKING=true
+    else
+        ISSUES="${ISSUES}• $1 No kit here runs the engine yet; a Workspace kit's Google server would need it.${2:-}\n"
+    fi
+}
 
 # Capture uv sync output so a failed dependency install is diagnosable (bon-dotupu).
 SYNC_LOG="$HOME/.cache/mise/ensure.log"
@@ -133,7 +209,9 @@ if [ -z "$UV_BIN" ]; then
         if [ -x "$_c" ]; then UV_BIN="$_c"; break; fi
     done
 fi
-if [ -z "$UV_BIN" ]; then
+if [ -z "$UV_BIN" ] && [ "$UNCONFIGURED" = true ]; then
+    engine_fault "uv was not found, so the Google Workspace engine cannot be prepared." " Install uv from https://docs.astral.sh/uv/" nouv
+elif [ -z "$UV_BIN" ]; then
     ISSUES="${ISSUES}• uv not found — install from https://docs.astral.sh/uv/\n"
     BLOCKING=true
 fi
@@ -155,14 +233,16 @@ if [ -n "$UV_BIN" ]; then
         ENGINE_SYNCED=true
     elif "$UV_BIN" sync --project "$PLUGIN_ROOT" --extra extraction --frozen --quiet >"$SYNC_LOG" 2>&1; then
         ENGINE_SYNCED=true
+    elif [ "$UNCONFIGURED" = true ]; then
+        engine_fault "The Google Workspace engine did not finish syncing (full error: ${SYNC_LOG})." " Run: uv sync --project \"$PLUGIN_ROOT\" --extra extraction"
     elif [ ! -d "$PLUGIN_ROOT/.venv" ]; then
         ISSUES="${ISSUES}• Dependencies not installed (full error: ${SYNC_LOG}). Run: uv sync --project \"$PLUGIN_ROOT\" --extra extraction\n"
         BLOCKING=true
     else
         ISSUES="${ISSUES}• Dependencies did not finish syncing (full error: ${SYNC_LOG}). This kit's server repairs its env when it starts; kits that run the engine by pointer (mit, family) wait for a clean sync. Run: uv sync --project \"$PLUGIN_ROOT\" --extra extraction\n"
-        # advisory — `uv run` at this kit's server spawn repairs the env
+        # advisory — this kit's own server repairs the env at spawn
     fi
-else
+elif [ "$UNCONFIGURED" = false ]; then
     ISSUES="${ISSUES}• Dependencies not installed (need uv first)\n"
     BLOCKING=true
 fi
@@ -193,19 +273,12 @@ _ver_ge() { # is $1 >= $2 ?
     esac
 }
 if [ "$ENGINE_SYNCED" = true ] && [ -x "$PLUGIN_ROOT/.venv/bin/python" ] && [ -f "$PLUGIN_ROOT/server.py" ]; then
-    _ptr_dir="${XDG_DATA_HOME:-$HOME/.local/share}/mise-en-space"
-    _ptr="$_ptr_dir/engine"
     _my_ver=""
     for _pjf in "$PLUGIN_ROOT/../.claude-plugin/plugin.json" "$PLUGIN_ROOT/.claude-plugin/plugin.json"; do
         [ -f "$_pjf" ] || continue
         _my_ver="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$_pjf" | head -1)"
         [ -n "$_my_ver" ] && break
     done
-    _rec_ver=""; _rec_root=""
-    if [ -f "$_ptr" ]; then
-        _rec_ver="$(sed -n 's/^version=//p' "$_ptr")"
-        _rec_root="$(sed -n 's/^root=//p' "$_ptr")"
-    fi
     _write=false
     if [ -z "$_rec_root" ] || [ ! -x "$_rec_root/.venv/bin/python" ] || [ ! -f "$_rec_root/server.py" ]; then
         _write=true
@@ -216,7 +289,11 @@ if [ "$ENGINE_SYNCED" = true ] && [ -x "$PLUGIN_ROOT/.venv/bin/python" ] && [ -f
         if ! { mkdir -p "$_ptr_dir" && _tmp="$(mktemp "$_ptr_dir/.engine.XXXXXX")" \
                && printf 'version=%s\nroot=%s\n' "$_my_ver" "$PLUGIN_ROOT" > "$_tmp" \
                && mv -f "$_tmp" "$_ptr"; } 2>/dev/null; then
-            ISSUES="${ISSUES}• Could not record where the mise engine lives ($_ptr). This kit's own server is unaffected; a ring kit's mise (mit, family) will say it cannot find the engine.\n"
+            if [ "$UNCONFIGURED" = true ]; then
+                engine_fault "Could not record where the Google Workspace engine lives ($_ptr)."
+            else
+                ISSUES="${ISSUES}• Could not record where the mise engine lives ($_ptr). This kit's own server is unaffected; a ring kit's mise (mit, family) will say it cannot find the engine.\n"
+            fi
         fi
     fi
 fi
@@ -229,11 +306,7 @@ fi
 #    Quiet until configured (mise-nujina): an engine that ships no OAuth
 #    client and was handed none (MISE_EN_SPACE_OAUTH_CLIENT) has not been switched on
 #    for any Workspace, so a missing token is not news — say nothing. The
-#    kit that supplies the client owns that nag.
-UNCONFIGURED=false
-if [ ! -f "$_PLUGIN_ROOT/credentials.json" ] && [ -z "${MISE_EN_SPACE_OAUTH_CLIENT:-}" ]; then
-    UNCONFIGURED=true
-fi
+#    kit that supplies the client owns that nag. (UNCONFIGURED is set above.)
 HAS_TOKEN=false
 CHECKED="the token file"
 if command -v security &>/dev/null; then
@@ -292,6 +365,36 @@ if [ "$HAS_TOKEN" = false ] && [ "$UNCONFIGURED" = false ]; then
     fi
 fi
 
+# 3b. Moved over? (bds-jasuha) Before the MIT switch-over this kit ran ITV's
+#     Google server itself and kept its token in data/mise-batterie-de-savoir
+#     (or the macOS Keychain entry mise-oauth-token). Now the mit kit runs it.
+#     Someone who was signed in here and has no mit@mit has just lost their
+#     Google tools, so say how to get them back. Silent in every other case:
+#     a family member or stranger with batterie alone never had an ITV token.
+if [ "$UNCONFIGURED" = true ]; then
+    _had_itv=false
+    [ -f "$HOME/.claude/plugins/data/mise-batterie-de-savoir/token.json" ] && _had_itv=true
+    if [ "$_had_itv" = false ] && command -v security &>/dev/null \
+       && security find-generic-password -s "mise-oauth-token" -w &>/dev/null; then
+        _had_itv=true
+    fi
+    # The sign-in claim is scoped: adoption is proven on Linux file stores; the
+    # macOS Keychain path is unmeasured (bds-jasuha), so say what is true either way.
+    _signin="Usually your Google sign-in carries over; if Google asks you to sign in once, that's expected."
+    if [ "$MIT_KIT" = true ] && [ "$MIT_SERVER" = false ]; then
+        # Registered but cached from before the move: no mise/launch.sh in it yet.
+        SYSTEM_MSG="Your MIT kit is a copy from before the Google-server move, so your ITV Google tools are missing. In a terminal: claude plugin marketplace update mit; claude plugin update mit@mit (or run /mit-refresh) — then restart Claude Code. ${_signin}"
+        ISSUES="${ISSUES}• Your ITV Google tools (Gmail, Drive, Calendar) come from the MIT kit, mit@mit, but the copy installed here predates the Google-server move and has no server — batterie no longer runs one of its own. In a terminal: claude plugin marketplace update mit; claude plugin update mit@mit (or run /mit-refresh) — then restart Claude Code. ${_signin}\n"
+        BLOCKING=true
+    elif [ "$_had_itv" = true ] && [ "$MIT_KIT" = false ]; then
+        # On screen too (systemMessage): additionalContext reaches only Claude, and a
+        # teammate whose tools just vanished should not have to ask (rehearsal, 29 Sep).
+        SYSTEM_MSG="Your ITV Google tools now come from the MIT kit, which is not installed. In a terminal: claude plugin marketplace update mit; claude plugin install mit@mit --scope user; claude plugin uninstall commons@mit --scope user — then restart Claude Code. ${_signin}"
+        ISSUES="${ISSUES}• Your ITV Google tools (Gmail, Drive, Calendar) now come from the MIT kit, mit@mit, which is not installed here — batterie no longer runs a Google server of its own. In a terminal: claude plugin marketplace update mit; claude plugin install mit@mit --scope user; claude plugin uninstall commons@mit --scope user — then restart Claude Code. ${_signin}\n"
+        BLOCKING=true
+    fi
+fi
+
 # 4. Poppler (pdftotext/pdftoppm) backs PDF text extraction and page/deck
 #    thumbnails (mise-mitoki, mise-releko). Its absence is silent per-fetch —
 #    text degrades to markitdown, thumbnails skip — and it bites hardest on
@@ -305,7 +408,9 @@ if [ -z "$POPPLER_BIN" ]; then
         if [ -x "$_c" ]; then POPPLER_BIN="$_c"; break; fi
     done
 fi
-if [ -z "$POPPLER_BIN" ]; then
+if [ -z "$POPPLER_BIN" ] && [ "$UNCONFIGURED" = true ] && [ "$MIT_SERVER" = true ]; then
+    ISSUES="${ISSUES}• poppler is not installed, so PDF text extraction in the MIT kit's Google tools is degraded (tables, page markers) and PDF/deck thumbnails are skipped until it is. Install: apt-get install poppler-utils (Debian/Ubuntu) or brew install poppler (macOS).\n"
+elif [ -z "$POPPLER_BIN" ]; then
     ISSUES="${ISSUES}• poppler is not installed — PDF text extraction degrades (tables, page markers) and PDF/deck thumbnails are skipped. Install: apt-get install poppler-utils (Debian/Ubuntu) or brew install poppler (macOS).\n"
     # advisory — do NOT set BLOCKING
 fi
@@ -316,8 +421,19 @@ fi
 # Header + footer match severity: a real blocker says "won't work"; an advisory
 # (only this flavour unauthed while a sibling works) says so plainly instead.
 if [ "$BLOCKING" = true ]; then
-    HEADER="⚠️ ${DISPLAY_NAME} MCP server needs setup:"
-    FOOTER="The MCP server won't work until these are resolved."
+    if [ "$UNCONFIGURED" = true ]; then
+        HEADER="⚠️ ${DISPLAY_NAME} (the Google Workspace engine) needs setup:"
+        FOOTER="Your Google Workspace tools won't work until these are resolved."
+    else
+        HEADER="⚠️ ${DISPLAY_NAME} MCP server needs setup:"
+        FOOTER="The MCP server won't work until these are resolved."
+    fi
+elif [ "$UNCONFIGURED" = true ] && [ "$MIT_SERVER" = true ]; then
+    HEADER="ℹ️ ${DISPLAY_NAME} (the Google Workspace engine) — optional setup:"
+    FOOTER="The MIT kit's Google tools run this engine and keep working meanwhile, within the limits noted above."
+elif [ "$UNCONFIGURED" = true ]; then
+    HEADER="ℹ️ ${DISPLAY_NAME} (the Google Workspace engine) — notes:"
+    FOOTER="Nothing in this session depends on these; they matter once a Workspace kit runs the engine."
 else
     HEADER="ℹ️ ${DISPLAY_NAME} — optional setup:"
     FOOTER="Advisory only: nothing is broken — these just make mise better."
@@ -327,4 +443,16 @@ MSG="${HEADER}\n\n${ISSUES}\n${FOOTER}"
 # Render via json.dumps so messages containing quotes (e.g. the quoted PLUGIN_ROOT
 # in recovery commands) produce valid JSON — a raw heredoc does not escape them
 # (bon-dotupu).
-python3 -c "import json; print(json.dumps({'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': '''${MSG}'''}}))"
+# The text travels in the environment, NEVER in Python source: it carries values
+# read from disk (the pointer's version=), and `\N{x` in source is a SyntaxError
+# that left the hook printing nothing (essayeur, 29 Sep). The one escape the bash
+# side writes, a literal backslash-n, becomes a newline here.
+MISE_HOOK_MSG="$MSG" MISE_HOOK_SYSTEM_MSG="$SYSTEM_MSG" python3 -c '
+import json, os
+msg = os.environ["MISE_HOOK_MSG"].replace("\\n", "\n")
+out = {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": msg}}
+sm = os.environ.get("MISE_HOOK_SYSTEM_MSG", "").replace("\\n", "\n")
+if sm:
+    out["systemMessage"] = sm
+print(json.dumps(out))
+'

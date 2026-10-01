@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from launch import resolve, launch_environment
+from launch import resolve, launch_environment, workspace_environment
 
 
 class LaunchSelection(unittest.TestCase):
@@ -59,6 +59,22 @@ class LaunchSelection(unittest.TestCase):
         self.register("mise@batterie", [self.package("old", "mise")])
         with self.assertRaisesRegex(ValueError, "found 0"):
             resolve("mise", self.registry)
+
+    def test_itv_takes_its_client_and_store_from_the_mit_kit(self):
+        # bds-jasuha: the batterie kit ships no OAuth client; mit@mit carries ITV's.
+        mit = self.root / "mitkit"
+        (mit / "mise").mkdir(parents=True)
+        (mit / "mise/itv-oauth-client.json").write_text("{}")
+        self.registry.write_text(json.dumps({"plugins": {
+            "batterie@batterie": [{"scope": "user", "installPath": str(self.kit("b"))}],
+            "mit@mit": [{"scope": "user", "installPath": str(mit)}]}}))
+        env = workspace_environment("mise", self.registry, home=self.root)
+        self.assertEqual(env["MISE_EN_SPACE_OAUTH_CLIENT"], str(mit / "mise/itv-oauth-client.json"))
+        self.assertEqual(env["MISE_EN_SPACE_DATA_DIR"], str(self.root / ".claude/plugins/data/mit-mit"))
+
+    def test_itv_without_the_mit_kit_adds_nothing(self):
+        self.register("batterie@batterie", [self.kit("b")])
+        self.assertEqual(workspace_environment("mise", self.registry, home=self.root), {})
 
     def test_caller_identity_overrides_are_removed_without_mutating_caller(self):
         caller = {"MISE_TOKEN_PATH": "some-other-account", "MISE_CREDENTIALS": "ambient", "PATH": "preserved"}

@@ -1,7 +1,7 @@
 ---
 name: mise
 description: Orchestrates content fetching via the mise MCP server's search/fetch/do tools. Load before using search/fetch/do — invoke first when you see 'search Drive', 'search Gmail', 'find docs about', 'fetch this document', 'research in Workspace', 'move this file', 'create a doc', 'triage my inbox', 'archive these', 'draft an email', 'book a meeting', 'when are they free'. Covers research loops, Gmail triage with batch ops, email drafting, calendar booking and free-slot finding, and result filtering the tools alone don't know. (user)
-allowed-tools: [Bash, Read, "mcp__plugin_batterie_mise__*", "mcp__mise__*"]
+allowed-tools: [Bash, Read, "mcp__plugin_mit_mise__*", "mcp__mise__*"]
 ---
 
 # mise
@@ -30,7 +30,7 @@ If `setup_oauth` itself fails (e.g. port 3000 in use), the error message will na
 
 When multiple Workspace connectors are loaded in the same session — Cowork's native Drive/Calendar bound to one Google account, mise bound to another — the connector names alone don't say which is which. **Mise responses self-disclose: `cues._identity.email` shows the authenticated email on every response.** Read it, especially when the user has both a personal and a work Workspace identity active.
 
-When in doubt about which account a question targets, prefer `mcp__plugin_batterie_mise__*` (or whatever name your runtime gives mise's tools) over generic Drive/Gmail tools — mise's binding is explicit. If you've fetched data and the user reacts with "that's not the account I meant", check `cues._identity` in the response, then re-route or have them re-auth with the right account.
+When in doubt about which account a question targets, prefer `mcp__plugin_mit_mise__*` (or whatever name your runtime gives mise's tools) over generic Drive/Gmail tools — mise's binding is explicit. If you've fetched data and the user reacts with "that's not the account I meant", check `cues._identity` in the response, then re-route or have them re-auth with the right account.
 
 **Iron Law: Files are artifacts. Emails are meaning.**
 
