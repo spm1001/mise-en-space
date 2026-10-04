@@ -663,6 +663,10 @@ For Google Docs: uses Drive's import engine — all markdown formatting (heading
 
 For plain files: content is uploaded as-is. Response includes `cues.plain_file: true` and `cues.mime_type`.
 
+**Diff before you republish from a markdown copy.** An overwrite replaces every edit the human typed in the Doc since your copy was fetched, and the comment count does not see them: on 17 Sep 2026 there were zero open comments, and a retitle and a rewritten opening were lost. Before any overwrite, fetch again, read `comments.md`, and diff the fresh `content.md` against your copy. Publish from a separate folder, never by copying over the fetched deposit, which is the only local copy of their edits. Recovery is Drive revision history: export two revisions as text and diff them (carte-hazaja).
+
+**Keep Doc tables to about six columns.** A wider table is unreadable on a portrait page, with every cell wrapping to a word a line, and markdown that looks fine in a terminal gives no warning (10 Sep 2026, a ten-column table). Split it into a narrow summary table and a workings table, or put the wide one in a Sheet tab and link it. Pageless layout only helps on a new Doc: `page_setup` applies on create, not overwrite (carte-jasawi).
+
 ### Sheets: aim the write with `range=`
 
 On a spreadsheet, `overwrite` takes CSV content and an optional `range=` in A1 notation — this is how you write one tab, or a handful of cells, without touching anything else:
@@ -942,6 +946,8 @@ Both draft ops auto-append the user's Gmail signature (from their sendAs setting
 **Check who a reply draft is addressed to before you report it.** It answers the last LIVE message in the thread (trashed ones are skipped) and its result states `to`, `cc` and `reply_anchor`. If that last message was an internal aside, the inferred To is your colleague, not the correspondent: a warning names the thread's originator when they are missing, and `to=` (plus `cc=`) sets the addressing explicitly.
 
 **One draft per thread.** Gmail's conversation view shows only ONE draft inline per thread — a second draft object exists but hides exactly where the user hits Send. So `reply_draft` refuses when the thread already carries a draft, naming its id. The right move is almost always to **update the existing draft**: `do(operation="draft", file_id="<draft_id>", content=...)`. Pass `supersede=True` only when you deliberately want to discard the old draft and start fresh (permanent — and it may eat the user's hand-edits, so check whose words are in it first: the refusal includes a snippet).
+
+**Don't update a draft the user has open.** Gmail's composer holds its own copy, and their Send ships that copy: on 2026-09-09 an update reported "Draft updated in place", and the mail sent an hour later carried the old body. The API reports success either way. If they may be editing, give them the replacement lines to paste, or ask them to close the composer first, and after any in-place update confirm the body from Gmail before relying on it (carte-divufu).
 
 ### Common mistakes
 
