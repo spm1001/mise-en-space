@@ -136,6 +136,11 @@ ADJUDICATED: tuple[tuple[str, str, str], ...] = (
      "true ACL boundary: a free/busy-only colleague's diary refuses the detail lane "
      "by the OWNER's sharing setting — do(freebusy) still answers (mise-wavotu; "
      "enrolled 2026-08-24, the ship predated this lint run)"),
+    ("skills/mise/SKILL.md", "**Diff before you republish from a markdown copy.**",
+     "true + advice: a Doc's comment count cannot see direct body edits (17 Sep "
+     "2026 incident: zero open comments, edits lost), and 'never copy over the "
+     "deposit' is safety steering. op:comment is a prose collision via "
+     "`comments.md` (mise-hahihe; enrolled 2026-10-07)"),
 )
 
 
