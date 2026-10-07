@@ -29,5 +29,10 @@ Provenance: Claude Code on the atelier, session 5d25f874-cc54-481d-9928-230d9d97
   - what: 1. measured send (internal; external if possible) 2. rewrite the `include=` paragraph in `skills/mise/SKILL.md`: Gmail shares on send at its default role; share first only for a non-default role (the operator usually wants comment or edit for his boss), for external recipients if the measurement says so, or when the draft won't be sent from Gmail 3. consider a `draft`/`reply_draft` cue naming the linked files and saying Gmail will share them on send at its default role
   - done: the skill paragraph matches a measured send, and a session drafting an email with Doc links no longer tells the user to share first by default
 
+- **NEW** action (Field Report) — "A draft's text/plain part carries HTML entities and no line breaks"
+  - why: seen the same day on a draft updated in place with `do(draft, file_id=…)`: `adapters.gmail.fetch_thread(…).messages[-1].body_text` read as one run-on line with `&#39;` for every apostrophe and `&amp;` for ampersands. Gmail shows the HTML part, so most recipients never see it, but plain-text clients, previews and any reader of the text part (including mise's own fetch) get the mangled version
+  - what: build the text/plain alternative from the markdown source (or unescape and keep paragraph breaks) rather than from flattened HTML; check `draft`, `reply_draft` and the update path
+  - done: a round-tripped draft's `body_text` keeps paragraphs and literal apostrophes; a unit test pins it
+
 ## For Claudes to come
 A mise draft is finished by a human in Gmail, so Gmail's send-time behaviour is part of what the draft does. Before advising on access to linked files, ask what the send itself will do.
