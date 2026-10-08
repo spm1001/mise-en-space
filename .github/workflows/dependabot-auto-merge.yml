@@ -43,6 +43,21 @@ jobs:
             echo "No open Dependabot PR for branch $BRANCH — skipping."
             exit 0
           fi
+          # Majors wait for a human (mise-lahutu, 2026-10-08): a merge here is a
+          # release, and unit CI is hermetic, so a major in the sign-in path
+          # (oauthlib 4.0) would ship on tests that never run the real flow.
+          # Fail closed: merge only when EVERY update-type line Dependabot wrote
+          # is patch or minor; none at all means we can't tell, so it waits too.
+          types=$(gh pr view "$pr" --repo "$REPO" --json commits \
+                    --jq '.commits[].messageBody' \
+                  | sed -n 's/^ *update-type: *//p' | sort -u)
+          if [ -z "$types" ] || printf '%s\n' "$types" | grep -qv -E '^version-update:semver-(patch|minor)$'; then
+            why=$(printf '%s' "${types:-no update-type metadata}" | tr '\n' ' ')
+            echo "PR #$pr left for a human: $why"
+            gh pr comment "$pr" --repo "$REPO" \
+              --body "Auto-merge skipped: \`$why\`. Majors (or PRs without update-type metadata) wait for a human, because a merge to main is a release. Run the live integration suite before merging."
+            exit 0
+          fi
           echo "CI green on $BRANCH → squash-merging Dependabot PR #$pr"
           gh pr merge "$pr" --repo "$REPO" --squash --delete-branch
           # workflow_dispatch is the one event a GITHUB_TOKEN can still fire,

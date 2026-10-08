@@ -1,4 +1,15 @@
 version: 2
+# spm1001/jeton is private (bds-sipaba). Dependabot's updater fetches it
+# itself and never runs workflow steps, so the CI deploy key can't reach it,
+# and git registries take a token, not an SSH key. JETON_READ_TOKEN is a
+# fine-grained PAT: jeton only, Contents read-only, 1-year expiry
+# (minted 2026-10-08; mise-lahutu).
+registries:
+  github-jeton:
+    type: git
+    url: https://github.com
+    username: x-access-token
+    password: ${{secrets.JETON_READ_TOKEN}}
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -6,6 +17,8 @@ updates:
       interval: "monthly"
   - package-ecosystem: "uv"
     directory: "/"
+    registries:
+      - github-jeton
     schedule:
       interval: "weekly"
     groups:
