@@ -51,6 +51,17 @@ jobs:
           types=$(gh pr view "$pr" --repo "$REPO" --json commits \
                     --jq '.commits[].messageBody' \
                   | sed -n 's/^ *update-type: *//p' | sort -u)
+          # Security-update commits carry no update-type line (seen on #43/#44,
+          # 2026-10-08), so read the bump off Dependabot's title instead: same
+          # major is merge-eligible, anything unparseable still waits.
+          if [ -z "$types" ]; then
+            title=$(gh pr view "$pr" --repo "$REPO" --json title --jq .title)
+            from=$(printf '%s' "$title" | sed -n 's/.* from v\{0,1\}\([0-9][0-9]*\)\..* to v\{0,1\}\([0-9][0-9]*\)\..*/\1 \2/p')
+            if [ -n "$from" ]; then
+              set -- $from
+              if [ "$1" = "$2" ]; then types="version-update:semver-minor"; else types="version-update:semver-major"; fi
+            fi
+          fi
           if [ -z "$types" ] || printf '%s\n' "$types" | grep -qv -E '^version-update:semver-(patch|minor)$'; then
             why=$(printf '%s' "${types:-no update-type metadata}" | tr '\n' ' ')
             echo "PR #$pr left for a human: $why"
