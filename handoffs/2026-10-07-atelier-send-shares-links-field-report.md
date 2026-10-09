@@ -18,7 +18,7 @@ format: fond-v2
 - `skills/mise/SKILL.md` (the "What recipients see from `include=`" paragraph) currently says the opposite for the draft path: "mise sends the chip regardless, and a recipient without access hits 'request access' on click … share it first (`do(share)`) — mise won't warn you." That steers sessions into a redundant share, and into the confirm-gated share flow, for every draft that links a Doc.
 - Not measured in this session: at what role Gmail shares (viewer, commenter or editor), whether it shares silently or via its prompt under this domain's settings, and what happens for recipients outside the owner's domain. The operator's statement is the evidence; a measured send would pin the details.
 
-### Candidates
+### Candidates (minted 2026-10-09)
 
 <!-- Board visible, writer unreachable (dolt on tube) — a writer-bearing /open mints or drops each; unminted = wish. -->
 Provenance: Claude Code on the atelier, session 5d25f874-cc54-481d-9928-230d9d9714a7 — 2026-10-07
