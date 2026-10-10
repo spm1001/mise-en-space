@@ -26,6 +26,16 @@ shipped_in <commit>   # first suite version whose vendored mise contains it; emp
 # Both -C flags are load-bearing: without them "not shipped" and "wrong directory" print identically (cold read, 2026-09-17).
 ```
 
+## 2026-10-10 (mise-wujuza, mise-miceru)
+
+### Added
+- **Reply drafts quote the message they answer**, beneath the signature in both MIME parts, as Gmail's Reply does. Built from that message's original HTML and text, never fetch's quote-stripped view, so its own nested history comes along. `quote='none'` leaves a reply bare; `draft(file_id=…)` on a reply draft keeps it quoted or bare as it was, unless `quote=` says otherwise. The quoted HTML loses `<style>`, `<script>`, `<head>` and document tags so it cannot restyle the reply. `cid:` images in the quote become alt text, with a warning; a second warning fires when the answered message quotes none of the thread's earlier ones. Every mise reply from February until now went out bare.
+
+### Fixed
+- **The HTML-to-text fallback decodes entities and keeps line breaks.** Without markitdown, an HTML-only email read as one run-on line with `&#39;` for every apostrophe; the fallback now shares the signature renderer's parser and drops `<style>`/`<head>` text. mise's own drafts were measured clean on both create and update, so the 7 Oct report was this reader path.
+- **A message's body is never taken from a forwarded attachment.** The MIME walker descended into `message/rfc822` parts, so a message with no HTML of its own read as the forwarded message's HTML — and a reply would have quoted it under the wrong sender.
+- `do()`'s description no longer mentions `cues.restore_point` (the cue still arrives and is documented in `mise://docs/do`); the 2048-character budget needed the room for `quote=`.
+
 ## 2026-09-27 (bds-cofico sweep, mise side)
 
 ### Fixed

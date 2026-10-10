@@ -96,7 +96,7 @@ DO_PARAM_DEFAULTS: dict[str, Any] = {
     "reply_all": False, "role": None, "confirm": False, "label": None,
     "remove": False, "comment_id": None, "action": None, "force": False,
     "restore_comment": True, "supersede": False, "range": None, "tab": None,
-    "anchor": None, "suggest": False,
+    "anchor": None, "suggest": False, "quote": None,
     "attendees": None, "time_min": None, "time_max": None, "location": None,
     "meet": None, "recurrence": None, "send_updates": None, "duration": None,
     "properties": None, "color": None, "visibility": None, "transparency": None,
@@ -131,9 +131,9 @@ OP_PARAMS: dict[str, frozenset[str]] = {
     "prepend": frozenset({"file_id", "content", "suggest"}),
     "append": frozenset({"file_id", "content", "tab", "suggest"}),
     "replace_text": frozenset({"file_id", "find", "content", "suggest"}),
-    "draft": frozenset({"to", "subject", "content", "cc", "include", "file_id"}),
+    "draft": frozenset({"to", "subject", "content", "cc", "include", "file_id", "quote"}),
     "reply_draft": frozenset({"file_id", "content", "cc", "include",
-                              "reply_all", "supersede", "to"}),
+                              "reply_all", "supersede", "to", "quote"}),
     "archive": frozenset({"file_id"}),
     "star": frozenset({"file_id"}),
     "label": frozenset({"file_id", "label", "remove"}),
@@ -258,11 +258,13 @@ DISPATCH: dict[str, Any] = {
     "draft": lambda p: do_draft(
         to=p["to"], subject=p["subject"], content=p["content"],
         cc=p["cc"], include=p["include"], file_id=p["file_id"],
+        quote=p.get("quote"),
     ),
     "reply_draft": lambda p: do_reply_draft(
         file_id=p["file_id"], content=p["content"],
         cc=p["cc"], include=p["include"], reply_all=p.get("reply_all", False),
         supersede=p.get("supersede", False), to=p.get("to"),
+        quote=p.get("quote"),
     ),
     "archive": lambda p: do_archive(file_id=p["file_id"]),
     "star": lambda p: do_star(file_id=p["file_id"]),
@@ -316,9 +318,9 @@ Act on Google Workspace: create, move, edit, draft/reply email, organise Gmail, 
 
 Operations: create, copy, move, rename, share, overwrite, prepend, append, replace_text, draft, reply_draft, archive, star, label, comment, comment_reply, suggest, trash, respond, create_event, update_event, freebusy, setup_oauth.
 Create: content + title + doc_type (doc/sheet/file/folder/form). page_setup='pageless'; file_path= reads disk; form: YAML/JSON.
-Edit: overwrite (full replace), prepend/append, replace_text (find + content); append tab='T' adds a new doc tab (plain text). Sheets: overwrite=CSV, range='Tab'/'Tab!F9:F15'; [label](url)→link, @url→chip. Doc edits return cues.restore_point. Docs: suggest=True on prepend/append/replace_text proposes a tracked change; do(suggest, action=accept|reject, find='s2') folds one ([sN] from a markup fetch; tags RENUMBER after each fold).
+Edit: overwrite (full replace), prepend/append, replace_text (find + content); append tab='T' adds a new doc tab (plain text). Sheets: overwrite=CSV, range='Tab'/'Tab!F9:F15'; [label](url)→link, @url→chip. Docs: suggest=True on prepend/append/replace_text proposes a tracked change; do(suggest, action=accept|reject, find='s2') folds one ([sN] from a markup fetch; tags RENUMBER after each fold).
 Calendar: create_event (title + time_min/time_max + attendees/content/location/meet/recurrence/include; attendees ⇒ preview, confirm=True books). update_event (event or invite-thread id; time/attendees/recurrence gated). freebusy (attendees + window + duration → slots). respond (file_id + action). properties/color/visibility/transparency on both. See mise://docs/do.
-Email: draft (to + subject + content; file_id=draft_id updates it), reply_draft (file_id + content — refuses if the thread has a draft; supersede=True discards), archive/star/label. Signature auto-appends — no sign-off.
+Email: draft (to + subject + content; file_id=draft_id updates it), reply_draft (file_id + content — refuses if the thread has a draft; supersede=True discards), archive/star/label. Signature + quoted original auto-append (quote='none' skips) — no sign-off.
 Trash: file_id(s) — Drive→trash (recoverable); Gmail drafts (r+digits) go for good.
 Comments: comment (file_id + content = NEW thread; anchor='slide 3'/'Tab!B12'/quoted doc text anchors it, else panel-only; to= assigns), comment_reply (comment_id + content/action=resolve|reopen). '[agent] ' prefix.
 Share: file_id + to + role (reader/writer/commenter); confirm=True executes.
@@ -341,6 +343,7 @@ Args:
     cc: CC address(es), comma-separated (for draft, reply_draft)
     include: List of Drive file IDs to include as links in the email body (for draft, reply_draft)
     reply_all: If True, infer Cc from all recipients on the last message (for reply_draft)
+    quote: 'none' leaves the reply bare; default quotes the message answered beneath the signature (for reply_draft)
     label: Label name to add/remove (for label operation; resolved to ID automatically)
     remove: If True, remove the label instead of adding it (for label operation)
 

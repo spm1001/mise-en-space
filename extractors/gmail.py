@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from models import GmailThreadData, EmailMessage, ForwardedMessage
-from html_convert import clean_html_for_conversion as _clean_html_for_conversion
+from html_convert import clean_html_for_conversion as _clean_html_for_conversion, strip_html_tags
 
 from extractors.inline_replies import find_inline_replies, render_inline_replies, reply_points_into_quote
 from .talon_signature import split_forward_sections, strip_signature_and_quotes
@@ -19,7 +19,8 @@ from .talon_signature import split_forward_sections, strip_signature_and_quotes
 
 def _convert_html_to_markdown(html: str) -> tuple[str, bool]:
     """
-    Pure HTML-to-text fallback — strips tags and collapses whitespace.
+    Pure HTML-to-text fallback — html_convert.strip_html_tags, which decodes
+    entities and keeps line breaks (mise-miceru).
 
     The high-quality markitdown conversion (which requires temp file I/O)
     now lives in html_convert.py and is called by the adapter layer before
@@ -36,9 +37,7 @@ def _convert_html_to_markdown(html: str) -> tuple[str, bool]:
     if not html or not html.strip():
         return '', False
 
-    text = re.sub(r'<[^>]+>', ' ', html)  # Remove HTML tags
-    text = re.sub(r'\s+', ' ', text)  # Collapse whitespace
-    return text.strip(), True
+    return strip_html_tags(html), True
 
 
 # =============================================================================
@@ -75,8 +74,10 @@ def extract_message_content(
         if used_fallback:
             warnings.append("HTML conversion failed, used basic tag stripping")
     else:
-        warnings.append("Message has no body content")
-        return '', warnings
+        body = ''  # forwarded-only (forward-as-attachment, nothing typed): the blocks below carry it
+        if not message.forwarded_messages:
+            warnings.append("Message has no body content")
+            return '', warnings
 
     # Strip signatures and quoted replies if requested
     if strip_signature and body:
@@ -367,8 +368,8 @@ def _extract_body_by_mime_type(payload: dict[str, Any], mime_type: str) -> str |
                 if body_data:
                     return base64.urlsafe_b64decode(body_data).decode('utf-8', errors='ignore')
 
-            # Recurse into nested parts
-            if 'parts' in part:
+            # Never into a forwarded message — its HTML became the outer sender's quoted words (mise-wujuza)
+            if 'parts' in part and part.get('mimeType') != 'message/rfc822':
                 result = _extract_body_by_mime_type(part, mime_type)
                 if result:
                     return result

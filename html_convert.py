@@ -269,18 +269,32 @@ class _TextWithLinksParser(HTMLParser):
     Line model: a newline on block-tag CLOSE only (plus <br>), so adjacent
     one-line-per-div Gmail markup reads as single line breaks while a
     deliberate <div><br></div> blank line survives as a paragraph gap.
+    Paragraph-shaped blocks (<p>, headings, lists, tables, quotes) close with
+    a blank line. Text inside <style>, <script> and <title> is never content,
+    so it is dropped. <head> itself is NOT skipped: HTML lets a sender omit
+    </head>, and skipping to a close that never comes emptied the whole body
+    (essayeur, 2026-10-10). A <body> start also ends any skip still open.
+    An unclosed <style> or <script> still blanks the rest: the parser reads
+    their content as raw text to the close, as browsers do.
     """
 
-    _BLOCK_TAGS = {"p", "div", "tr", "li", "table", "ul", "ol"}
+    _BLOCK_TAGS = {"div", "tr", "li"}
+    _PARAGRAPH_TAGS = {"p", "table", "ul", "ol", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6"}
+    _SKIP_TAGS = {"style", "script", "title"}
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
         self._href: str | None = None
         self._link_text: list[str] = []
+        self._skipping = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag == "a":
+        if tag in self._SKIP_TAGS:
+            self._skipping += 1
+        elif tag == "body":
+            self._skipping = 0
+        elif tag == "a":
             self._href = dict(attrs).get("href")
             self._link_text = []
         elif tag == "br":
@@ -291,7 +305,9 @@ class _TextWithLinksParser(HTMLParser):
             self.parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
-        if tag == "a":
+        if tag in self._SKIP_TAGS:
+            self._skipping = max(0, self._skipping - 1)
+        elif tag == "a":
             text = "".join(self._link_text).strip()
             href = (self._href or "").strip()
             # Suppress the (url) suffix when it adds nothing: bare-URL link
@@ -303,10 +319,14 @@ class _TextWithLinksParser(HTMLParser):
                 self.parts.append(text or href)
             self._href = None
             self._link_text = []
+        elif tag in self._PARAGRAPH_TAGS:
+            self.parts.append("\n\n")
         elif tag in self._BLOCK_TAGS:
             self.parts.append("\n")
 
     def handle_data(self, data: str) -> None:
+        if self._skipping:
+            return
         if self._href is not None:
             self._link_text.append(data)
         else:
@@ -339,11 +359,14 @@ def html_to_text_with_links(html: str) -> str:
 
 def strip_html_tags(html: str) -> str:
     """
-    Strip HTML tags and collapse whitespace. Pure, no I/O.
+    HTML to readable plain text. Pure, stdlib-only, no I/O.
 
-    This is the fallback when markitdown isn't available or fails.
-    Also used directly by extractors that need a pure HTML-to-text path.
+    This is the fallback when markitdown isn't available or fails, and it is
+    what a reader gets for an HTML-only email in the slim build. It used to be
+    two regexes (tags to spaces, whitespace collapsed), which left every
+    entity encoded and the whole message on one line: a draft read back as
+    one run-on line with &#39; for each apostrophe (mise-miceru, 2026-10-07).
+    It now shares the signature renderer's parser: entities decoded, block
+    structure kept as line breaks, links as 'text (url)'.
     """
-    text = re.sub(r'<[^>]+>', ' ', html)
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
+    return html_to_text_with_links(html)

@@ -22,6 +22,7 @@ from adapters.gmail import (
 )
 from cues_util import current_user_email
 from models import DoResult, EmailMessage, MiseError
+from tools.reply_quote import build_quote, validate_quote
 from tools.draft import (
     _content_to_html,
     _fetch_signature,
@@ -172,6 +173,7 @@ def do_reply_draft(
     reply_all: bool = False,
     supersede: bool = False,
     to: str | None = None,
+    quote: str | None = None,
     **_kwargs: Any,
 ) -> DoResult | dict[str, Any]:
     """
@@ -199,6 +201,9 @@ def do_reply_draft(
             creating the new one (drafts.delete is permanent)
         to: Optional explicit To, replacing the inferred sender — for when the
             message being answered is an internal aside (mise-newidu)
+        quote: 'last' (default, None means it) quotes the message being answered
+            beneath the signature, as Gmail's UI reply does; 'none' leaves it bare
+            (mise-wujuza)
 
     Returns:
         DoResult on success, error dict on failure
@@ -210,6 +215,8 @@ def do_reply_draft(
     if not content:
         return {"error": True, "kind": "invalid_input",
                 "message": "reply_draft requires 'content' (reply body)"}
+    if bad_quote := validate_quote(quote):
+        return {"error": True, "kind": "invalid_input", "message": bad_quote}
     try:
         validate_gmail_id(file_id, "file_id")
         explicit_cc = _parse_cc(cc) if reply_all and cc else []
@@ -295,10 +302,19 @@ def do_reply_draft(
     if include:
         included_links, include_warnings = _resolve_include(include)
 
-    # Build body: content, then included links, then the Gmail signature
+    # Build body: content, then included links, then the Gmail signature, then
+    # the quoted original — Gmail's own order. The quote comes from the anchor's
+    # raw parts, never fetch's quote-stripped view (tools/reply_quote.py).
     sig_html, sig_text, sig_warnings = _fetch_signature()
     body_text = content + _format_links_text(included_links) + sig_text
     body_html = _content_to_html(content) + _format_links_html(included_links) + sig_html
+    quoted = None
+    if quote != "none":
+        anchor_at = len(thread.messages) - 1 - max(skipped, 0)
+        earlier = sum(1 for m in thread.messages[:anchor_at] if not _NOT_LIVE.intersection(m.label_ids))
+        quoted = build_quote(last_message, earlier)
+        body_text += quoted.text
+        body_html += quoted.html
 
     try:
         result = create_reply_draft(
@@ -346,6 +362,9 @@ def do_reply_draft(
             f"The thread's originator {originator} is not on this draft (To: {to}"
             + (f"; Cc: {final_cc}" if final_cc else "") + "). If the message you are "
             "answering was an internal aside, pass to=/cc= explicitly.")
+    if quoted:
+        cues.update(quoted.cues)
+        warnings.extend(quoted.warnings)
     if warnings:
         cues.setdefault("warnings", []).extend(warnings)
     if sig_html:

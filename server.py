@@ -327,7 +327,7 @@ def do(
     supersede: bool = False,
     range: str | None = None,  # noqa: A002 — MCP property name; A1 notation for Sheets
     tab: str | None = None,
-    anchor: str | None = None, suggest: bool = False,  # two on one line: server.py sits at its 500-line cap
+    anchor: str | None = None, suggest: bool = False, quote: str | None = None,  # three on one line: server.py sits at its 500-line cap
     attendees: list[str] | str | None = None,
     time_min: str | None = None, time_max: str | None = None,
     location: str | None = None, meet: bool | None = None,
@@ -350,7 +350,7 @@ def do(
         ("cc", cc), ("label", label), ("role", role), ("remove", remove),
         ("reply_all", reply_all), ("confirm", confirm),
         ("comment_id", comment_id), ("action", action), ("force", force),
-        ("supersede", supersede), ("range", range), ("tab", tab), ("anchor", anchor), ("suggest", suggest),
+        ("supersede", supersede), ("range", range), ("tab", tab), ("anchor", anchor), ("suggest", suggest), ("quote", quote),
         ("attendees", attendees), ("time_min", time_min), ("time_max", time_max),
         ("location", location), ("meet", meet), ("recurrence", recurrence),
         ("send_updates", send_updates), ("duration", duration),
@@ -406,7 +406,7 @@ def do(
         "comment_id": comment_id, "action": action,
         "page_setup": page_setup, "force": force,
         "restore_comment": restore_comment, "supersede": supersede,
-        "range": range, "tab": tab, "anchor": anchor, "suggest": suggest,
+        "range": range, "tab": tab, "anchor": anchor, "suggest": suggest, "quote": quote,
         "attendees": attendees, "time_min": time_min, "time_max": time_max,
         "location": location, "meet": meet, "recurrence": recurrence,
         "send_updates": send_updates, "duration": duration,

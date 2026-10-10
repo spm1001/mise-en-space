@@ -251,8 +251,9 @@ class TestStripHtmlTags:
     def test_strips_tags(self) -> None:
         assert strip_html_tags("<p>Hello <b>world</b></p>") == "Hello world"
 
-    def test_collapses_whitespace(self) -> None:
-        assert strip_html_tags("<p>  Hello  </p>  <p>  World  </p>") == "Hello World"
+    def test_paragraphs_survive_as_blank_lines(self) -> None:
+        # Was "Hello World": the regex fallback ran every paragraph together (mise-miceru)
+        assert strip_html_tags("<p>  Hello  </p>  <p>  World  </p>") == "Hello\n\nWorld"
 
     def test_empty_input(self) -> None:
         assert strip_html_tags("") == ""

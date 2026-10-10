@@ -13,6 +13,7 @@ from adapters.drive import get_file_metadata
 from adapters.gmail import (
     IncludedLink,
     create_draft,
+    fetch_thread,
     get_draft_headers,
     get_primary_signature,
     update_draft,
@@ -20,6 +21,7 @@ from adapters.gmail import (
 from html_convert import html_to_text_with_links, markdown_to_html
 from adapters.gmail_draft_attachments import download_draft_attachments, get_draft_attachments
 from models import DoResult, MiseError
+from tools.reply_quote import Quote, build_quote, validate_quote
 from validation import validate_drive_id
 
 logger = logging.getLogger(__name__)
@@ -185,6 +187,7 @@ def do_draft(
     cc: str | None = None,
     include: list[str] | None = None,
     file_id: str | None = None,
+    quote: str | None = None,
     **_kwargs: Any,
 ) -> DoResult | dict[str, Any]:
     """
@@ -205,12 +208,20 @@ def do_draft(
         cc: Optional CC address(es), comma-separated
         include: Optional list of Drive file IDs to include as links
         file_id: Existing draft ID to update in place (mise-wemuki)
+        quote: update only — on a reply draft the rebuilt body re-quotes the
+            message it answers ('last', the default) unless 'none' (mise-wujuza)
 
     Returns:
         DoResult on success, error dict on failure
     """
+    if bad_quote := validate_quote(quote):
+        return {"error": True, "kind": "invalid_input", "message": bad_quote}
     if file_id:
-        return _update_draft_in_place(file_id, to, subject, content, cc, include)
+        return _update_draft_in_place(file_id, to, subject, content, cc, include, quote)
+    if quote is not None:
+        return {"error": True, "kind": "invalid_input",
+                "message": "quote= applies to replies — use reply_draft, or draft with "
+                           "file_id=<draft_id> to update a reply draft. Nothing was drafted."}
 
     # Validate required params (create mode)
     if not to:
@@ -280,6 +291,7 @@ def _update_draft_in_place(
     content: str | None,
     cc: str | None,
     include: list[str] | None,
+    quote: str | None = None,
 ) -> DoResult | dict[str, Any]:
     """Update an existing draft (drafts.update rebuilds the message wholesale).
 
@@ -316,7 +328,7 @@ def _update_draft_in_place(
     # must be carried or they vanish (mise-mudupa: a human's PDF did, silently).
     # If they cannot be read, refuse: an update that drops a file is worse than none.
     try:
-        message_id, parts = get_draft_attachments(draft_id)
+        message_id, parts, quoted_now = get_draft_attachments(draft_id)
         attachments = download_draft_attachments(message_id, parts)
     except MiseError as e:
         return {"error": True, "kind": e.kind.value,
@@ -333,6 +345,9 @@ def _update_draft_in_place(
     sig_html, sig_text, sig_warnings = _fetch_signature()
     body_text = content + _format_links_text(included_links) + sig_text
     body_html = _content_to_html(content) + _format_links_html(included_links) + sig_html
+    quoted = _requote(existing.get("thread_id"), headers.get("in-reply-to"), quote, quoted_now)
+    body_text += quoted.text
+    body_html += quoted.html
 
     try:
         result = update_draft(
@@ -377,6 +392,9 @@ def _update_draft_in_place(
             "in Gmail if they matter.")
     if carried:
         cues["carried_over"] = carried
+    cues.update(quoted.cues)
+    if quoted.warnings:
+        cues.setdefault("warnings", []).extend(quoted.warnings)
     if sig_html:
         cues["signature"] = "Gmail signature appended automatically"
     if included_links:
@@ -396,3 +414,35 @@ def _update_draft_in_place(
         operation="draft",
         cues=cues,
     )
+
+
+def _requote(thread_id: str | None, in_reply_to: str | None, quote: str | None,
+             quoted_now: bool | None = None) -> Quote:
+    """The quote a reply draft's rebuilt body needs, found by its In-Reply-To.
+
+    drafts.update replaces the whole body, so without this an update silently
+    removes the quoted original reply_draft put there (mise-wujuza). With no
+    quote= the draft keeps what it had: a bare reply stays bare (one made with
+    quote='none', one from before quoting shipped, or one whose quote the user
+    deleted in Gmail), and a quoted or unreadable one is re-quoted. Fails open
+    with a reason: the update is what was asked for.
+    """
+    if quote == "none":
+        return Quote()
+    if not (thread_id and in_reply_to):
+        if quote:
+            return Quote(warnings=["quote= ignored: this draft is not a reply, so there is nothing to quote."])
+        return Quote()
+    if quote is None and quoted_now is False:
+        return Quote(cues={"quote_kept_bare": "this reply draft had no quoted original, so it stays bare (quote='last' adds one)"})
+    try:
+        messages = fetch_thread(thread_id).messages
+    except MiseError as e:
+        return Quote(warnings=[f"The quoted original was not re-attached: the thread could not be read ({e.message})."])
+    wanted = in_reply_to.strip().lower()
+    for at, msg in enumerate(messages):
+        if (msg.message_id_header or "").strip().lower() == wanted:
+            earlier = sum(1 for m in messages[:at] if not {"TRASH", "DRAFT"} & set(m.label_ids))
+            return build_quote(msg, earlier)
+    return Quote(warnings=["The quoted original was not re-attached: the message this draft "
+                           "answers is no longer in its thread (deleted, or moved by a filter)."])

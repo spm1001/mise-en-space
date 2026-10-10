@@ -17,12 +17,14 @@ more, and re-adding them would surface as stray attachments. They are
 reported so the caller can say so.
 """
 
+import base64
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email import encoders
 from typing import Any
 
 from adapters.http_client import get_sync_client
+from extractors.quoted_history import html_has_history
 from retry import with_retry
 
 _GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -52,16 +54,44 @@ def _scan(part: dict[str, Any], found: list[dict[str, Any]]) -> None:
         _scan(child, found)
 
 
+def _quotes(part: dict[str, Any]) -> bool | None:
+    """Does the draft's own HTML quote earlier mail? None when it can't be read.
+
+    Any client's quote counts (extractors/quoted_history.py), not just Gmail's:
+    a draft last saved by Apple Mail or Outlook keeps its quote too.
+
+    Walks the body tree only — attachments (anything with a filename) are
+    someone else's words. A large part arrives as an attachmentId with no
+    inline data, which is the None case.
+    """
+    if part.get("filename"):
+        return False
+    if part.get("mimeType") == "text/html":
+        data = (part.get("body", {}) or {}).get("data")
+        if not data:
+            return None
+        return html_has_history(base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore"))
+    answers = [_quotes(child) for child in part.get("parts", []) or []]
+    if any(answers):
+        return True
+    return None if None in answers else False
+
+
 @with_retry(max_attempts=3, delay_ms=1000)
-def get_draft_attachments(draft_id: str) -> tuple[str, list[dict[str, Any]]]:
-    """(message_id, attachment parts) of a stored draft; bodies not downloaded."""
+def get_draft_attachments(draft_id: str) -> tuple[str, list[dict[str, Any]], bool | None]:
+    """(message_id, attachment parts, body already quotes?) of a stored draft; bodies not downloaded.
+
+    The third value lets an update keep a reply draft as it stands — quoted
+    or bare — rather than imposing either (mise-wujuza).
+    """
     draft = get_sync_client().get_json(
         f"{_GMAIL_API}/drafts/{draft_id}", params={"format": "full"},
     )
     message = draft.get("message", {}) or {}
+    payload = message.get("payload", {}) or {}
     found: list[dict[str, Any]] = []
-    _scan(message.get("payload", {}) or {}, found)
-    return message.get("id", ""), found
+    _scan(payload, found)
+    return message.get("id", ""), found, _quotes(payload)
 
 
 def download_draft_attachments(

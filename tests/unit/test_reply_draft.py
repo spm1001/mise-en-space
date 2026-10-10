@@ -650,10 +650,8 @@ class TestSupersededDraftGuard:
         self, mock_list, mock_delete, _sig, mock_fetch, mock_create, _sleep
     ) -> None:
         mock_list.return_value = self._EXISTING
-        mock_fetch.return_value = MagicMock(
-            subject="Re: test",
-            messages=[MagicMock(from_address="a@b.com", to_addresses=[], cc_addresses=[])],
-        )
+        mock_fetch.return_value = _make_thread(subject="Re: test",
+                                               messages=[_make_message(from_address="a@b.com")])
         mock_create.return_value = MagicMock(draft_id="r222", web_link="link")
         result = do_reply_draft(file_id="19f8a9797b30561b", content="hi", supersede=True)
         mock_delete.assert_called_once_with("r111")
@@ -668,10 +666,8 @@ class TestSupersededDraftGuard:
     def test_check_failure_fails_open_with_warning(
         self, mock_list, _sig, mock_fetch, mock_create, _sleep
     ) -> None:
-        mock_fetch.return_value = MagicMock(
-            subject="Re: test",
-            messages=[MagicMock(from_address="a@b.com", to_addresses=[], cc_addresses=[])],
-        )
+        mock_fetch.return_value = _make_thread(subject="Re: test",
+                                               messages=[_make_message(from_address="a@b.com")])
         mock_create.return_value = MagicMock(draft_id="r333", web_link="link")
         result = do_reply_draft(file_id="19f8a9797b30561b", content="hi")
         assert any("Could not check for existing drafts" in w for w in result.cues["warnings"])
@@ -786,7 +782,7 @@ class TestReplyAddressing:
         mock_fetch.return_value = self._bart_thread()
         self._ok(mock_create)
         result = do_reply_draft(file_id="abc123def456abc1", content="Thanks",
-                                to="bart@partner.example")
+                                to="bart@partner.example", quote="none")  # addressing only
         assert mock_create.call_args.kwargs["to"] == "bart@partner.example"
         assert result.cues["to"] == "bart@partner.example"
         assert "warnings" not in result.cues
@@ -822,7 +818,7 @@ class TestReplyAddressingEssayeurNotes:
         ext = _make_message("m2", from_address="X <x@partner.example>")
         mock_fetch.return_value = _make_thread(messages=[alice, ext])
         self._ok(mock_create)
-        result = do_reply_draft(file_id="abc123def456abc1", content="Hi")
+        result = do_reply_draft(file_id="abc123def456abc1", content="Hi", quote="none")  # addressing only
         assert "warnings" not in result.cues
 
     @patch("tools.reply_draft.current_user_email", return_value="me@example.com")

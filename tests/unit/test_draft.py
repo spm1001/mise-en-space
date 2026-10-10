@@ -13,7 +13,9 @@ from adapters.gmail import (
     _draft_web_link,
     create_draft,
 )
-from models import DoResult
+from datetime import datetime, timezone
+
+from models import DoResult, EmailMessage, GmailThreadData
 from tools.draft import (
     _content_to_html,
     _format_links_text,
@@ -22,6 +24,23 @@ from tools.draft import (
     _resolve_include,
     do_draft,
 )
+
+
+def _answered_thread(thread_id: str = "thread-789") -> GmailThreadData:
+    """The thread a reply draft's In-Reply-To (<msg-123@mail.example>) points into."""
+    return GmailThreadData(thread_id=thread_id, subject="Original subject", messages=[
+        EmailMessage(message_id="m123", from_address="Alice <alice@example.com>",
+                     to_addresses=["me@example.com"], subject="Original subject", date=datetime(2026, 10, 9, 14, 3, tzinfo=timezone.utc),
+                     body_text="Can you send the deck?", body_html="<div>Can you send the deck?</div>",
+                     message_id_header="<msg-123@mail.example>"),
+    ])
+
+
+@pytest.fixture(autouse=True)
+def _stub_answered_thread(monkeypatch):
+    """Updating a reply draft re-reads the thread to re-quote what it answers
+    (mise-wujuza); every update test here gets a thread holding that message."""
+    monkeypatch.setattr("tools.draft.fetch_thread", lambda thread_id: _answered_thread(thread_id))
 
 
 # =============================================================================
@@ -539,7 +558,7 @@ class TestDraftUpdate:
     def _no_attachments(self):
         # The update path now reads the stored draft's attachments (mise-mudupa);
         # default to a draft with none so these tests stay about headers.
-        with patch("tools.draft.get_draft_attachments", return_value=("m0", [])), \
+        with patch("tools.draft.get_draft_attachments", return_value=("m0", [], True)), \
              patch("tools.draft.download_draft_attachments", return_value=[]):
             yield
 
@@ -629,7 +648,7 @@ class TestDraftUpdateKeepsAttachments:
         mock_update.return_value = DraftResult(draft_id="r1", message_id="m1", web_link="w",
                                                to="alice@example.com", subject="s")
         pdf = ("engagement-letter.pdf", "application/pdf", b"%PDF-1.7 bytes")
-        with patch("tools.draft.get_draft_attachments", return_value=("m9", self._PARTS)), \
+        with patch("tools.draft.get_draft_attachments", return_value=("m9", self._PARTS, True)), \
              patch("tools.draft.download_draft_attachments", return_value=[pdf]) as dl:
             result = do_draft(file_id="r1", content="Better wording")
 
@@ -649,7 +668,7 @@ class TestDraftUpdateKeepsAttachments:
                                                to="alice@example.com", subject="s")
         parts = [{"filename": "inline_image", "mimeType": "image/jpeg",
                   "attachment_id": "A3", "inline": True}]
-        with patch("tools.draft.get_draft_attachments", return_value=("m9", parts)), \
+        with patch("tools.draft.get_draft_attachments", return_value=("m9", parts, True)), \
              patch("tools.draft.download_draft_attachments", return_value=[]):
             result = do_draft(file_id="r1", content="v3")
         assert "inline_images_dropped" not in result.cues and "warnings" not in result.cues
@@ -702,8 +721,9 @@ class TestDraftAttachmentScan:
         client = MagicMock()
         client.get_json.return_value = {"message": {"id": "m7", "payload": payload}}
         with patch("adapters.gmail_draft_attachments.get_sync_client", return_value=client):
-            mid, parts = get_draft_attachments("r1")
+            mid, parts, quoted = get_draft_attachments("r1")
         assert mid == "m7"
+        assert quoted is None  # the html part carried no inline data, so unknown
         assert [(p["filename"], p["inline"]) for p in parts] == [("logo.png", True), ("letter.pdf", False)]
 
 
@@ -715,7 +735,7 @@ class TestConcurrentEditTell:
     def _update(self, current_mid: str):
         with patch("tools.draft.get_primary_signature", return_value=None), \
              patch("tools.draft.get_draft_headers", return_value=_existing_draft_headers()), \
-             patch("tools.draft.get_draft_attachments", return_value=(current_mid, [])), \
+             patch("tools.draft.get_draft_attachments", return_value=(current_mid, [], True)), \
              patch("tools.draft.download_draft_attachments", return_value=[]), \
              patch("tools.draft.update_draft", return_value=DraftResult(
                  draft_id="r5", message_id="m-after", web_link="w", to="a@x", subject="s")):
