@@ -18,11 +18,8 @@ Run it with the same MISE_EN_SPACE_OAUTH_CLIENT / MISE_EN_SPACE_DATA_DIR as the 
 authenticating — setup_oauth prints the exact command, env included.
 """
 
+import errno
 import sys
-import time
-import webbrowser
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
 
 from jeton import authenticate, get_auth_url
 
@@ -37,9 +34,6 @@ from oauth_config import (
     port_is_free,
 )
 from token_store import save_token
-
-# How long the pre-minted-URL listener waits for the OAuth callback.
-_LISTEN_TIMEOUT_S = 300
 
 
 def _can_open_browser() -> bool:
@@ -61,130 +55,44 @@ def _print_code_instructions() -> None:
     print()
 
 
-class _PreMintedCallbackHandler(BaseHTTPRequestHandler):
-    """OAuth callback handler for the pre-minted-URL listener.
-
-    Reads `expected_state` from the server and writes the outcome to
-    `server.oauth_result` as ("code", value) or ("error", reason).
-    Module-level (not a closure) so the CSRF/state logic is unit-testable.
-    """
-
-    def log_message(self, format: str, *args: object) -> None:
-        pass
-
-    def _respond(self, status: int, body: str) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.end_headers()
-        colour = "#2e7d32" if status == 200 else "#c62828"
-        self.wfile.write(
-            f'<!DOCTYPE html><html><body style="font-family:system-ui;'
-            f'text-align:center;padding:60px"><h1 style="color:{colour}">'
-            f"{body}</h1></body></html>".encode()
-        )
-
-    def do_GET(self) -> None:
-        parsed = urlparse(self.path)
-        if parsed.path != "/oauth/callback":
-            self.send_response(404)
-            self.end_headers()
-            return
-        expected_state = getattr(self.server, "expected_state", None)
-        params = parse_qs(parsed.query)
-        error = params.get("error", [None])[0]
-        code = params.get("code", [None])[0]
-        state = params.get("state", [None])[0]
-        if error:
-            self._respond(400, f"Authorization failed: {error}")
-            self.server.oauth_result = ("error", error)  # type: ignore[attr-defined]
-        elif expected_state is not None and state != expected_state:
-            self._respond(400, "State mismatch — stale or foreign callback. Restart authentication.")
-            self.server.oauth_result = ("error", "state_mismatch")  # type: ignore[attr-defined]
-        elif not code:
-            self._respond(400, "No authorization code received")
-            self.server.oauth_result = ("error", "no_code")  # type: ignore[attr-defined]
-        else:
-            self._respond(200, "&#10003; Authorization Successful — you can close this tab")
-            self.server.oauth_result = ("code", code)  # type: ignore[attr-defined]
-
-
 def _serve_pre_minted(auth_url: str, credentials_path: str) -> None:
     """Listener half of the split flow (setup_oauth spawns us in this mode).
 
     The MCP tool already minted auth_url via get_auth_url(), which persisted
-    the PKCE verifier next to TOKEN_FILE. We must NOT mint a second URL —
-    that would overwrite the verifier and orphan the URL the user is already
-    clicking (mise-zefahe: one consent round-trip burned exactly this way).
-    We only open the browser (best-effort), catch the localhost callback,
-    and exchange the code — jeton loads the persisted verifier for that.
+    the PKCE verifier next to TOKEN_FILE. jeton's authenticate(auth_url=...)
+    listens for that URL's callback and exchanges the code without minting a
+    second URL, which would orphan the one the user is already clicking
+    (mise-zefahe). jeton checks the callback's state, binds before any browser
+    opens, runs a threaded listener, and keeps the verifier on a timeout —
+    the lessons of the listener mise used to carry here (jeton-jedaza).
 
-    Runs on headless boxes too: an SSH tunnel (ssh -L 3000:localhost:3000)
-    can deliver the callback here. On timeout the verifier stays on disk,
-    so the --code path keeps working.
-
-    Threaded server: a single-threaded listener wedges when Chrome opens a
-    speculative second connection that never sends a request (seen live).
+    The browser decision stays mise's: can_open_browser() honours
+    MISE_NO_BROWSER and XRDP sessions, whose browser may be signed into the
+    wrong Google account (mise-zikesa).
     """
-    expected_state = parse_qs(urlparse(auth_url).query).get("state", [None])[0]
-
-    # Bind BEFORE opening the browser — a busy port must not burn a consent click.
-    try:
-        server = ThreadingHTTPServer(("localhost", OAUTH_PORT), _PreMintedCallbackHandler)
-    except OSError as e:
-        print(f"Cannot bind localhost:{OAUTH_PORT} ({e}) — another listener holds the port.")
-        _print_code_instructions()
-        sys.exit(1)
-
-    if _can_open_browser():
-        try:
-            webbrowser.open(auth_url)
-            print("Browser opened at Google's consent screen")
-        except Exception:
-            print("Could not auto-open browser — use the URL setup_oauth returned")
-    else:
+    open_browser = _can_open_browser()
+    if not open_browser:
         print("Not opening a browser here (headless, or this box's browser may be")
         print("signed into the wrong Google account — mise-zikesa).")
-        print("Open the URL setup_oauth returned in a browser signed into the")
-        print(f"CORRECT account. The callback must reach localhost:{OAUTH_PORT} on THIS")
-        print(f"machine: either run  ssh -L {OAUTH_PORT}:localhost:{OAUTH_PORT} <this-host>")
-        print("before clicking, or use the --code path when the redirect fails.")
-
-    server.oauth_result = None  # type: ignore[attr-defined]
-    server.expected_state = expected_state  # type: ignore[attr-defined]
-    server.daemon_threads = True
-    server.timeout = 1.0  # so the accept-loop wakes to check deadline/result
-    deadline = time.monotonic() + _LISTEN_TIMEOUT_S
-
-    print(f"Listening on http://localhost:{OAUTH_PORT}/oauth/callback "
-          f"(up to {_LISTEN_TIMEOUT_S // 60} minutes)")
-    while server.oauth_result is None and time.monotonic() < deadline:  # type: ignore[attr-defined]
-        server.handle_request()
-    server.server_close()
-
-    result = server.oauth_result  # type: ignore[attr-defined]
-    if result is None:
+    try:
+        authenticate(
+            credentials_path=credentials_path,
+            token_path=TOKEN_FILE,
+            scopes=SCOPES,
+            auth_url=auth_url,
+            open_browser=open_browser,
+        )
+    except TimeoutError:  # before OSError, which it subclasses
         print("Timed out waiting for the OAuth callback.")
         print("Your consent click is not wasted — the PKCE verifier is still saved.")
         _print_code_instructions()
         sys.exit(1)
-
-    kind, value = result
-    if kind == "error":
-        print(f"OAuth callback reported an error: {value}")
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise  # not the port: a missing client file, an unwritable token dir
+        print(e)  # jeton binds before opening anything, so no click was spent
+        _print_code_instructions()
         sys.exit(1)
-
-    print("Authorization code received")
-    # state= selects THIS flow's PKCE verifier from the keyed state file
-    # (jeton 1.4.0) — without it, a bare code + a concurrent flow's entry
-    # would be refused as ambiguous.
-    authenticate(
-        credentials_path=credentials_path,
-        token_path=TOKEN_FILE,
-        scopes=SCOPES,
-        code=value,
-        port=OAUTH_PORT,
-        state=expected_state,
-    )
     save_token(TOKEN_FILE)
     print()
     print("Authentication complete.")

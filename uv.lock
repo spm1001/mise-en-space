@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
@@ -813,8 +813,8 @@ wheels = [
 
 [[package]]
 name = "jeton"
-version = "1.4.0"
-source = { git = "https://github.com/spm1001/jeton.git#d075bcaddd9b3be83d285c626f9062b3bb5bdc8a" }
+version = "1.5.0"
+source = { git = "https://github.com/spm1001/jeton.git#cf71dab6087c6c0f24db41df8160860e1f2f45f1" }
 dependencies = [
     { name = "google-auth" },
     { name = "google-auth-oauthlib" },

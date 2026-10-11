@@ -41,7 +41,7 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 
 from jeton import load_credentials
 from oauth_config import TOKEN_FILE, SCOPES, ClientNotConfigured, cli_auth_command, configured_client_id
-from token_store import _has_keychain, resolve_token_path
+from token_store import _has_keychain, resolve_token_path, stored_refresh_token
 
 logger = logging.getLogger(__name__)
 
@@ -108,14 +108,10 @@ def _load_and_diagnose_credentials(token_path: str | Path) -> Any:
 
     if guest_mode:
         # ADC-shaped authorized_user file: typically NO access token and NO
-        # expiry. google-auth treats that as not-yet-valid rather than expired
-        # (expired=False when expiry is absent), so jeton's expired-gated
-        # refresh never fires and it returns None — misdiagnosed as a revoked
-        # token while the very same file serves the embedding app fine.
-        # Build credentials directly and let _ensure_valid_token refresh
-        # lazily IN MEMORY. Never write back: the file is the caller's, and
-        # jeton's save shape would drop fields the embedding app's ADC loader
-        # requires (`type`, `quota_project_id`, `universe_domain`).
+        # expiry. jeton <= 1.4.0 returned None for that shape (misdiagnosed as
+        # revoked); 1.4.1+ refreshes it but writes the result back, and the
+        # file is the embedding app's. So build credentials directly and let
+        # _ensure_valid_token refresh lazily IN MEMORY, never writing it.
         from google.oauth2.credentials import Credentials as GoogleUserCredentials
         try:
             return GoogleUserCredentials.from_authorized_user_info(token_data)
@@ -125,7 +121,7 @@ def _load_and_diagnose_credentials(token_path: str | Path) -> Any:
                 f"authorized_user file ({e}). {_bootstrap_hint(guest_mode)}"
             )
 
-    # Try loading through jeton (handles refresh automatically)
+    # jeton loads and refreshes; its network faults raise, and retry.py maps them (jeton-vajiro)
     creds = load_credentials(token_path, scopes=SCOPES)
     if creds is not None:
         return creds
@@ -190,7 +186,9 @@ class MiseHttpClient:
         try:
             self._credentials.refresh(GoogleAuthRequest())
             return
-        except RefreshError:
+        except RefreshError as e:
+            if e.retryable:  # token endpoint 5xx/429: a network fault, not a dead grant
+                raise
             from token_store import ambient_mode, configured_credentials
             if ambient_mode():  # platform identity trouble, not a stale file
                 from adapters.ambient import ambient_refresh_refusal
@@ -200,8 +198,7 @@ class MiseHttpClient:
                 raise injected_refresh_refusal()
             old_refresh = getattr(self._credentials, "refresh_token", None)
             token_path = resolve_token_path(TOKEN_FILE)
-            fresh = _load_and_diagnose_credentials(token_path)
-            if getattr(fresh, "refresh_token", None) == old_refresh:
+            if stored_refresh_token(token_path) == old_refresh:
                 from token_store import override_path
                 raise FileNotFoundError(
                     "OAuth token was refused by Google (refresh failed — "
@@ -211,7 +208,7 @@ class MiseHttpClient:
                     + " Once a fresh token lands, this server picks it up on "
                     "the next call — no restart needed."
                 )
-            self._credentials = fresh
+            self._credentials = _load_and_diagnose_credentials(token_path)
             # A guest-mode reload may return not-yet-refreshed creds; a dead
             # NEW grant would raise RefreshError here — rare, and honest.
             if not self._credentials.valid:
@@ -442,7 +439,9 @@ class MiseSyncClient:
         try:
             self._credentials.refresh(GoogleAuthRequest())
             return
-        except RefreshError:
+        except RefreshError as e:
+            if e.retryable:  # token endpoint 5xx/429: a network fault, not a dead grant
+                raise
             from token_store import ambient_mode, configured_credentials
             if ambient_mode():  # platform identity trouble, not a stale file
                 from adapters.ambient import ambient_refresh_refusal
@@ -452,8 +451,7 @@ class MiseSyncClient:
                 raise injected_refresh_refusal()
             old_refresh = getattr(self._credentials, "refresh_token", None)
             token_path = resolve_token_path(TOKEN_FILE)
-            fresh = _load_and_diagnose_credentials(token_path)
-            if getattr(fresh, "refresh_token", None) == old_refresh:
+            if stored_refresh_token(token_path) == old_refresh:
                 from token_store import override_path
                 raise FileNotFoundError(
                     "OAuth token was refused by Google (refresh failed — "
@@ -463,6 +461,7 @@ class MiseSyncClient:
                     + " Once a fresh token lands, this server picks it up on "
                     "the next call — no restart needed."
                 )
+            fresh = _load_and_diagnose_credentials(token_path)
             # The new grant may belong to a different account. Clear
             # identity-derived caches BEFORE swapping the credentials in:
             # sibling threads skip this lock the moment the new credentials
