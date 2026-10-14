@@ -2,6 +2,7 @@
 
 One line per handoff, newest first. `- [ ]` = not yet processed by an /open sweep; every close appends its line in the same change that writes the handoff.
 
+- [ ] 2026-10-14 [2026-10-14-1728-5fc05aa4.md](2026-10-14-1728-5fc05aa4.md) — Google's 'agentic' OAuth-client notice - why Google wants it, which estate clients are agents, flip them before the 12 Nov freeze
 - [ ] 2026-10-12 [2026-10-12-1715-5f0c24ae.md](2026-10-12-1715-5f0c24ae.md) — Atelier field report - skipped_office_hint names two same-named Office attachments identically (candidate)
 - [x] 2026-10-09 [2026-10-09-2238-b5b08f02.md](2026-10-09-2238-b5b08f02.md) — Evening /open sweep of four handoffs, then the tool's state through its field reports; Gmail stripper cluster gathered under mise-woluso, reply quoting redesigned (mise-wujuza) (processed 2026-10-10)
 - [x] 2026-10-07 [2026-10-07-atelier-send-shares-links-field-report.md](2026-10-07-atelier-send-shares-links-field-report.md) — field report: sending a mise draft from Gmail shares its linked Drive files, so the skill's "share it first" advice is wrong for the draft path (Candidates: measure one send, then rewrite the include= paragraph; plus a draft text/plain part that carries HTML entities) (processed 2026-10-09)
