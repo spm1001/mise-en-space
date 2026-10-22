@@ -152,6 +152,24 @@ class TestResolveMerges:
         filled = _resolve_merges(values, [merge])
         assert filled == 0
 
+    def test_source_value_empty_string_skipped(self) -> None:
+        """A blank merged range is not a merge to resolve.
+
+        The values API returns '' for interior blank cells, so a blank merge's
+        top-left is '' rather than None. Counting it inflated merged_cell_count
+        and raised a false 'merged cells' cue on ordinary sheets (found by the
+        regression census review test, banc regression-dig/review-test)."""
+        values = [
+            ["", "ok"],
+            ["", "fine"],
+        ]
+        merge = {
+            "startRowIndex": 0, "endRowIndex": 2,
+            "startColumnIndex": 0, "endColumnIndex": 1,
+        }
+        filled = _resolve_merges(values, [merge])
+        assert filled == 0
+
     def test_multiple_merges(self) -> None:
         """Multiple independent merges are all resolved."""
         values = [

@@ -77,7 +77,9 @@ def _resolve_merges(
         top_row = values[start_row]
         source_value = top_row[start_col] if start_col < len(top_row) else None
 
-        if source_value is None:
+        # '' is how the values API returns a blank cell, so a blank merge has
+        # nothing to propagate and must not count as a resolved merge.
+        if source_value is None or source_value == "":
             continue
 
         # Fill all cells in the merge range (skip the top-left itself)

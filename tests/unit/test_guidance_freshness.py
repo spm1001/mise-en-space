@@ -213,10 +213,15 @@ class TestGuidanceFreshness:
         """A dated line is an adjudicated capture, not fresh rot."""
         doc = tmp_path / "instructions.md"
         doc.write_text(
-            "mise couldn't do this until `do(create)` shipped it "
+            "mise can't do this until `do(create)` ships it "
             "(corrected 2026-08-10).\n"
         )
         assert not _sweep_abs(doc)
+        # Control: the same line undated must be flagged, or this test proves
+        # nothing about the date exemption. It once used "couldn't", which
+        # _NEGATION does not match, and passed without reaching the exemption.
+        doc.write_text("mise can't do this until `do(create)` ships it.\n")
+        assert _sweep_abs(doc)
 
 
 def _sweep_abs(path: Path) -> list[tuple[str, int, str, list[str]]]:
