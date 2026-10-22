@@ -968,8 +968,25 @@ Both draft ops auto-append the user's Gmail signature (from their sendAs setting
 | `AUTH_EXPIRED` | OAuth token stale | Call `mise.do(operation="setup_oauth")` to re-authenticate (see First Run above) |
 | `NOT_FOUND` | File/thread doesn't exist | Verify the ID; file may have been deleted or moved |
 | `PERMISSION_DENIED` | No access to resource | Tell user they need to request access |
-| `RATE_LIMITED` | Hit API quota | Wait 30s and retry once |
+| `RATE_LIMITED` | Hit API quota | The server has already retried (below). A read: wait 30s and retry once. A write: look first (below) |
 | `EXTRACTION_FAILED` | Couldn't parse content | Report to user with the file type and error detail |
+
+### A failed write may already have happened
+
+The server retries by itself: up to 3 attempts, with backoff, on a 429, any 5xx, a timeout or a dropped connection (`retry.py`, read 2026-10-22). That is right for reads. For a write it means an error can arrive **after** Google did the work, once or more than once: a 503 or a timeout doesn't say whether the request landed.
+
+| Operation | Safe to repeat? | After an error or unclear result |
+|---|---|---|
+| `overwrite`, `rename`, `move`, `archive`, `star`, `label`, `trash`, `respond` | Yes: the same call lands in the same state | Retry |
+| `replace_text` | Yes, unless the replacement contains the find text | Retry, or fetch and check |
+| `share` | Yes for the permission; Google may email the person again | Check the sharing panel before repeating with `confirm=True` |
+| `create`, `copy` | No: a repeat makes a second file | `search` for the title in the folder first |
+| `prepend`, `append` | No: a repeat doubles the text | Fetch the doc and look |
+| `draft`, `reply_draft` | No: a repeat makes a second draft (`reply_draft` refuses if the thread already has one, which is your check) | Search drafts, or retry `reply_draft` and let it refuse |
+| `comment`, `comment_reply` | No: a repeat posts twice | Fetch and read `comments.md` |
+| `create_event` with `confirm=True` | **No: a repeat books a second event and sends every invite again** | List the calendar for that window before anything else |
+
+So for the "No" rows, one attempt from you. If the answer is unclear, look before you act again, and tell the user which state you found.
 
 ## Anti-Patterns
 
